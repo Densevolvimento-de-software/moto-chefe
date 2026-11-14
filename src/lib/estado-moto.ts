@@ -97,12 +97,6 @@ export function motivoBloqueioPorVenda(
 }
 
 /**
- * Motivo pelo qual a moto não pode receber um pedido de aprovação de venda, ou
- * null se pode. Moto 'reservada' é aceita de propósito: é assim que se finaliza
- * uma reserva abaixo do mínimo ou com transferência. A aprovação converte a
- * reserva ativa (criarVendaTx) e a recusa devolve a moto a 'reservada'.
- */
-/**
  * Motivo pelo qual o status físico da moto impede a venda, ou null. Venda direta, pedido de venda,
  * pedido de aprovação e o botão Vender da tela passam por aqui. Moto já vendida e disponibilidade
  * ficam com cada chamador, que tem frase própria para elas.
@@ -112,6 +106,12 @@ export function motivoParaNaoVender(status: string): string | null {
   return null
 }
 
+/**
+ * Motivo pelo qual a moto não pode receber um pedido de aprovação de venda, ou
+ * null se pode. Moto 'reservada' é aceita de propósito: é assim que se finaliza
+ * uma reserva abaixo do mínimo ou com transferência. A aprovação converte a
+ * reserva ativa (criarVendaTx) e a recusa devolve a moto a 'reservada'.
+ */
 export function motivoBloqueioPedidoAprovacao(
   moto: { status: string; disponibilidade: string | null },
 ): string | null {
