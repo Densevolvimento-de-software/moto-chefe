@@ -1,3 +1,5 @@
+import { hojeBrt } from './data-venda'
+
 // ─── Lojas fora do relatório de vendas para a fábrica ─────────────────────────
 // O relatório mostra à fábrica o que foi vendido nos pontos de venda. Duas lojas
 // do Sul de Minas ficam de fora, por decisão do Cesar:
@@ -16,6 +18,18 @@ export const LOJAS_FORA_RELATORIO_FABRICA: readonly string[] = [
 
 export function lojaEntraNoRelatorioFabrica(lojaId: string): boolean {
   return !LOJAS_FORA_RELATORIO_FABRICA.includes(lojaId)
+}
+
+function primeiroDiaDoMes(agora: Date): string {
+  return `${agora.getUTCFullYear()}-${String(agora.getUTCMonth() + 1).padStart(2, '0')}-01`
+}
+
+/** Normaliza os parâmetros de período, caindo no mês corrente quando faltam. */
+export function normalizarPeriodo(de?: string, ate?: string, agora: Date = new Date()): { de: string; ate: string } {
+  return {
+    de: /^\d{4}-\d{2}-\d{2}$/.test(de ?? '') ? de! : primeiroDiaDoMes(agora),
+    ate: /^\d{4}-\d{2}-\d{2}$/.test(ate ?? '') ? ate! : hojeBrt(agora),
+  }
 }
 
 export type LinhaModeloLoja = {

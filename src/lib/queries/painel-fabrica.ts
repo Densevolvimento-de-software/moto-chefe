@@ -9,7 +9,7 @@ import { and, eq, gte, isNull, lte, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { contas, grupos, lojas, modelos, motos, vendas } from '@/lib/db/schema'
 import { motoNoShowroom } from '@/lib/queries/showroom'
-import { normalizarPeriodo } from '@/lib/queries/relatorio-fabrica'
+import { normalizarPeriodo } from '@/lib/relatorio-fabrica'
 import { fimDoDiaBrt, inicioDoDiaBrt } from '@/lib/data-venda'
 import type { LinhaEstoquePainel, LojaPainel, VendaPainel } from '@/lib/painel-fabrica'
 
