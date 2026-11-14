@@ -1,8 +1,7 @@
 // Consultas do Painel da Fábrica MotoChefe (regra em @/lib/painel-fabrica).
 //
-// Lê TODAS as Contas de propósito: é tela da plataforma, só do admin_geral (item
-// `painel-fabrica`, soAdminGeral, em @/lib/navegacao). Quem chama confere o acesso
-// antes. O select é a fronteira do que a fábrica pode ver (#892): da loja, só o nome;
+// Lê TODAS as Contas de propósito: é tela da plataforma, do login da fábrica e do admin_geral
+// (item `painel-fabrica` em @/lib/navegacao). Quem chama confere o acesso antes. O select é a fronteira do que a fábrica pode ver (#892): da loja, só o nome;
 // da venda, só data, número, modelo, cor e chassi. O que não é lido aqui não chega
 // à tela, ao Excel nem ao navegador.
 import { and, eq, gte, isNull, lte, ne, sql } from 'drizzle-orm'

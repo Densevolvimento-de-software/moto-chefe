@@ -1,7 +1,9 @@
 // Teste de banco: Postgres descartável. O login da fábrica (#901) só lê: com a sessão dele, uma
 // Server Action de verdade chamada por pedido forjado (cabeçalho de action, ou formulário sem o
-// cabeçalho) não grava nada, mesmo sem o middleware na frente (fail-open, rota fora do matcher).
-// O login dele vai direto ao painel e o log de login fica sem grupo.
+// cabeçalho) volta ao painel e a linha que ela gravaria (comunicados_lidos) não aparece, sem o
+// middleware na frente. O login dele vai direto ao painel e o log de login fica sem grupo; loja e
+// Conta gravadas na linha não valem; desativado vai à tela de conta desativada; /admin/usuarios
+// não o exclui.
 // Fronteira mockada: sessão do Supabase, cabeçalhos e redirect do Next, next/cache.
 import { after, before, beforeEach, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
