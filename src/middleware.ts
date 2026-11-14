@@ -19,6 +19,19 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   ])
 }
 
+// Leitura não tem corpo. No redirect de uma Server Action (o login), o Next busca a página num GET
+// interno com os cabeçalhos do POST, inclusive o content-type do formulário; o getUsuarioLogado
+// tomaria essa leitura por action do login da fábrica e mandaria de volta ao painel, sem fim.
+// O POST segue com o cabeçalho: fora do middleware, a trava do servidor continua valendo.
+function leituraSemCorpo(request: NextRequest, resposta: NextResponse): NextResponse {
+  if (!['GET', 'HEAD'].includes(request.method) || !request.headers.has('content-type')) return resposta
+  const headers = new Headers(request.headers)
+  headers.delete('content-type')
+  const semCorpo = NextResponse.next({ request: { headers } })
+  for (const cookie of resposta.cookies.getAll()) semCorpo.cookies.set(cookie)
+  return semCorpo
+}
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
@@ -71,7 +84,7 @@ export async function middleware(request: NextRequest) {
     switch (decisao.tipo) {
       case 'recusar': return new NextResponse('Sem permissão', { status: 403 })
       case 'redirecionar': return NextResponse.redirect(new URL(decisao.para, request.url))
-      case 'seguir': return supabaseResponse
+      case 'seguir': return leituraSemCorpo(request, supabaseResponse)
     }
   }
 
