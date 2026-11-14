@@ -45,10 +45,15 @@ const LIMITE_CARREGAR = 30_000
 // Até a fase 5 da #90 o escuro ainda tem telas não migradas: com 0, ele só reporta.
 const escuroFalha = process.env.NAVEGACAO_ESCURO_FALHA !== '0'
 
-/** Classe "dark" no <html> também nas recargas completas (o next-themes reaplicaria o claro). */
+/**
+ * Classe "dark" no <html> também nas recargas completas (o next-themes reaplicaria o claro). Numa
+ * carga completa o script de início roda antes de o <html> existir: espera ele aparecer.
+ */
 async function aplicarTema(contexto: BrowserContext, pagina: Page, tema: Tema) {
-  const script = `(() => { const h = document.documentElement; const escuro = ${tema === 'escuro'};
-    h.classList.toggle('dark', escuro); h.classList.toggle('light', !escuro); h.style.colorScheme = escuro ? 'dark' : 'light' })()`
+  const script = `(() => { const escuro = ${tema === 'escuro'};
+    const aplicar = () => { const h = document.documentElement; if (!h) return false;
+      h.classList.toggle('dark', escuro); h.classList.toggle('light', !escuro); h.style.colorScheme = escuro ? 'dark' : 'light'; return true };
+    if (!aplicar()) new MutationObserver((_, o) => { if (aplicar()) o.disconnect() }).observe(document, { childList: true }) })()`
   await contexto.addInitScript(script)
   await pagina.evaluate(script)
 }
