@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dataBrParaIso, dataPuraBr, dataEHoraBrt, diaBrt, diaCurtoBrt, diaEHoraBrt, fimDoDiaBrt, hojeBrt, inicioDoDiaBrt, mesBrt, parseDataInput, primeiroDiaDoMesBrt, rotuloMesCurto, rotuloMesCurtoAA } from './data-venda'
+import { dataBrParaIso, dataPuraBr, dataEHoraBrt, diaBrt, diaCurtoBrt, diaEHoraBrt, fimDoDiaBrt, hojeBrt, inicioDoDiaBrt, mesBrt, parseDataInput, periodoDoMesBrt, primeiroDiaDoMesBrt, rotuloMesCurto, rotuloMesCurtoAA } from './data-venda'
 
 test('mesBrt: virada de mês à noite NÃO pula pro mês seguinte', () => {
   // 01/08 02:00Z = 31/07 23:00 em Brasília — ainda é julho.
@@ -133,4 +133,39 @@ test('primeiroDiaDoMesBrt: 22h do último dia do mês ainda é o mês de Brasíl
   // 2026-11-01T01:00Z = 31/10 às 22h em Brasília
   assert.equal(primeiroDiaDoMesBrt(new Date('2026-11-01T01:00:00.000Z')), '2026-10-01')
   assert.equal(primeiroDiaDoMesBrt(new Date('2026-11-14T15:00:00.000Z')), '2026-11-01')
+})
+
+// Período padrão das telas (#915): 22h de Brasília no último dia do mês já é o dia 1º seguinte em UTC.
+test('periodoDoMesBrt: no último dia do mês às 22h, o padrão fica no mês de Brasília', () => {
+  assert.deepEqual(periodoDoMesBrt({}, new Date('2026-11-01T01:00:00.000Z')), { de: '2026-10-01', ate: '2026-10-31' })
+})
+
+test('periodoDoMesBrt: na virada exata das 21h00, ainda é o último dia do mês', () => {
+  assert.deepEqual(periodoDoMesBrt({}, new Date('2026-11-01T00:00:00.000Z')), { de: '2026-10-01', ate: '2026-10-31' })
+})
+
+test('periodoDoMesBrt: em 31/12 às 23h não pula para janeiro do ano seguinte', () => {
+  assert.deepEqual(periodoDoMesBrt({}, new Date('2027-01-01T02:00:00.000Z')), { de: '2026-12-01', ate: '2026-12-31' })
+})
+
+test('periodoDoMesBrt: durante o dia vai do dia 1º até hoje', () => {
+  assert.deepEqual(periodoDoMesBrt({}, new Date('2026-11-14T15:00:00.000Z')), { de: '2026-11-01', ate: '2026-11-14' })
+})
+
+test('periodoDoMesBrt: período válido da URL é mantido', () => {
+  assert.deepEqual(
+    periodoDoMesBrt({ de: '2026-09-05', ate: '2026-09-20' }, new Date('2026-11-01T01:00:00.000Z')),
+    { de: '2026-09-05', ate: '2026-09-20' },
+  )
+})
+
+test('periodoDoMesBrt: só o início na URL, às 22h do último dia, completa o fim com o dia de Brasília', () => {
+  assert.deepEqual(periodoDoMesBrt({ de: '2026-10-10' }, new Date('2026-11-01T01:00:00.000Z')), { de: '2026-10-10', ate: '2026-10-31' })
+})
+
+test('periodoDoMesBrt: dia que não existe ou formato torto cai no padrão', () => {
+  const agora = new Date('2026-11-14T15:00:00.000Z')
+  const padrao = { de: '2026-11-01', ate: '2026-11-14' }
+  assert.deepEqual(periodoDoMesBrt({ de: '2026-02-30', ate: '2026-04-31' }, agora), padrao)
+  assert.deepEqual(periodoDoMesBrt({ de: '2026-1-5', ate: 'lixo' }, agora), padrao)
 })

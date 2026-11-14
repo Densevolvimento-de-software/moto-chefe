@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { agruparPorLoja, lojaEntraNoRelatorioFabrica, normalizarPeriodo, type LinhaModeloLoja } from './relatorio-fabrica'
+import { agruparPorLoja, lojaEntraNoRelatorioFabrica, type LinhaModeloLoja } from './relatorio-fabrica'
 
 const GALPAO = 'f154c1a5-c5ed-4bdc-af14-b1dea024beae'
 const LAVRAS = 'd27be175-1a99-4382-a335-7a027195922e'
@@ -63,40 +63,4 @@ test('empate na quantidade desempata pelo nome da loja', () => {
 
 test('sem vendas, sem linhas', () => {
   assert.deepEqual(agruparPorLoja([]), [])
-})
-
-// 22h de Brasília no último dia do mês: em UTC já é o dia 1º do mês seguinte (#915).
-test('período padrão no último dia do mês às 22h fica no mês de Brasília', () => {
-  assert.deepEqual(
-    normalizarPeriodo(undefined, undefined, new Date('2026-11-01T01:00:00.000Z')),
-    { de: '2026-10-01', ate: '2026-10-31' },
-  )
-})
-
-test('período padrão em 31/12 às 23h não pula para janeiro do ano seguinte', () => {
-  assert.deepEqual(
-    normalizarPeriodo(undefined, undefined, new Date('2027-01-01T02:00:00.000Z')),
-    { de: '2026-12-01', ate: '2026-12-31' },
-  )
-})
-
-test('período padrão durante o dia vai do dia 1º até hoje', () => {
-  assert.deepEqual(
-    normalizarPeriodo(undefined, undefined, new Date('2026-11-14T15:00:00.000Z')),
-    { de: '2026-11-01', ate: '2026-11-14' },
-  )
-})
-
-test('período válido da URL é mantido', () => {
-  assert.deepEqual(
-    normalizarPeriodo('2026-09-05', '2026-09-20', new Date('2026-11-01T01:00:00.000Z')),
-    { de: '2026-09-05', ate: '2026-09-20' },
-  )
-})
-
-test('período torto da URL cai no padrão do mês', () => {
-  assert.deepEqual(
-    normalizarPeriodo('2026-1-5', 'x', new Date('2026-11-14T15:00:00.000Z')),
-    { de: '2026-11-01', ate: '2026-11-14' },
-  )
 })

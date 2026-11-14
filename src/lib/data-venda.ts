@@ -48,6 +48,20 @@ export function primeiroDiaDoMesBrt(agora: Date = new Date()): string {
   return `${mesBrt(agora)}-01`
 }
 
+/** "YYYY-MM-DD" que existe no calendário: o formato do <input type="date"> e da URL deixa passar 2026-02-30 e mês 13. */
+export function diaValido(v: string | undefined): v is string {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
+  return parseDataInput(v).toISOString().slice(0, 10) === v
+}
+
+/** Período de tela em dias de Brasília. Padrão: do dia 1º do mês corrente até hoje; dia inválido volta ao padrão. */
+export function periodoDoMesBrt(params: { de?: string; ate?: string }, agora: Date = new Date()): { de: string; ate: string } {
+  return {
+    de: diaValido(params.de) ? params.de : primeiroDiaDoMesBrt(agora),
+    ate: diaValido(params.ate) ? params.ate : hojeBrt(agora),
+  }
+}
+
 const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
 /** 'AAAA-MM' como "out/2026". Pelo texto, sem Date, para o fuso não mudar o mês. */

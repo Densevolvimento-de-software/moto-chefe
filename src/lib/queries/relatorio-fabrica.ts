@@ -1,11 +1,11 @@
 import { listarLojaIdsDoGrupoAtivo, getGrupoAtivo } from '@/lib/grupo'
+import { periodoDoMesBrt } from '@/lib/data-venda'
 import { db } from '@/lib/db'
 import { vendas, motos, modelos, lojas } from '@/lib/db/schema'
 import { eq, inArray, and, gte, lt, sql } from 'drizzle-orm'
 import {
   LOJAS_FORA_RELATORIO_FABRICA,
   agruparPorLoja,
-  normalizarPeriodo,
   type LinhaModeloLoja,
 } from '@/lib/relatorio-fabrica'
 import type { getUsuarioLogado } from '@/lib/auth'
@@ -33,7 +33,7 @@ export async function carregarRelatorioFabrica(
   deRaw?: string,
   ateRaw?: string,
 ) {
-  const { de, ate } = normalizarPeriodo(deRaw, ateRaw)
+  const { de, ate } = periodoDoMesBrt({ de: deRaw, ate: ateRaw })
 
   const grupo = await getGrupoAtivo(usuario)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)

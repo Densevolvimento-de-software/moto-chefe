@@ -1,5 +1,5 @@
 import { codigoRecusa, ehRecusada } from '@/lib/notagateway/status'
-import { hojeBrt, mesBrt, parseDataInput, dataPuraBr } from '@/lib/data-venda'
+import { hojeBrt, dataPuraBr } from '@/lib/data-venda'
 import { estadoDaSelecao, marcarVarias } from '@/lib/selecao'
 
 /** Filtros da tela Notas Emitidas (#348). A Denegada separada da Recusada vem da #347. */
@@ -43,20 +43,6 @@ export function recusaSemVenda(vendaNumero: number): string {
 export function vendaNaDescricao(n: { vendaId: string | null; vendaNumero: number }): string {
   const semVenda = vendaQueNaoExisteMais(n)
   return semVenda ? `. ${semVenda}` : `, venda #${n.vendaNumero}`
-}
-
-// O formato do <input type="date"> pode trazer dia que não existe (30/02): a volta pelo Date denuncia.
-function diaValido(v: string | undefined): v is string {
-  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
-  return parseDataInput(v).toISOString().slice(0, 10) === v
-}
-
-/** Período de emissão da tela, em dias de Brasília. Padrão: do dia 1º do mês corrente até hoje. */
-export function periodoEmissao(params: { de?: string; ate?: string }, agora: Date = new Date()): { de: string; ate: string } {
-  return {
-    de: diaValido(params.de) ? params.de : `${mesBrt(agora)}-01`,
-    ate: diaValido(params.ate) ? params.ate : hojeBrt(agora),
-  }
 }
 
 /** Filtro "Situação" da tela (#402). "Todas" deixa de fora a Descartada, que nunca virou nota. */
