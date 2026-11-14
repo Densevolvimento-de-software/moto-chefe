@@ -114,6 +114,12 @@ async function esperarCarregar(pagina: Page) {
   await pagina.waitForFunction(() => !document.querySelector('main [class*="animate-pulse"]'), null, { timeout: LIMITE_CARREGAR })
 }
 
+/** A tela atual mostra o menu do sistema? A área da fábrica (/fabrica, #901) não tem, por desenho. */
+async function temMenu(pagina: Page): Promise<boolean> {
+  const menu = hamburguer ? pagina.getByRole('button', { name: 'Abrir menu' }) : pagina.locator('aside nav')
+  return (await menu.count()) > 0
+}
+
 // Visita em andamento: os ouvintes da página (registrados uma vez em main) anotam nela.
 let visita: Visita | null = null
 
@@ -135,11 +141,18 @@ async function percorrer(contexto: BrowserContext, pagina: Page, tema: Tema): Pr
     const extras: string[] = []
     const inicio = Date.now()
     try {
-      const menu = await abrirMenu(pagina)
       const anterior = new URL(pagina.url()).pathname
-      visita = v
-      await menu.locator(`a[href="${href}"]`).first().click({ timeout: 10_000 })
-      if (tema === 'escuro') {
+      // Depois de uma tela sem o menu (área da fábrica), o próximo item abre pelo endereço.
+      const peloMenu = await temMenu(pagina)
+      if (peloMenu) {
+        const menu = await abrirMenu(pagina)
+        visita = v
+        await menu.locator(`a[href="${href}"]`).first().click({ timeout: 10_000 })
+      } else {
+        visita = v
+        await pagina.goto(`${base}${href}`, { timeout: LIMITE_CARREGAR })
+      }
+      if (tema === 'escuro' && peloMenu) {
         // Logo após o clique: o esqueleto aparece ou a tela já trocou.
         await pagina.waitForFunction(
           (destino) => !!document.querySelector('main [class*="animate-pulse"]') || location.pathname === destino,
