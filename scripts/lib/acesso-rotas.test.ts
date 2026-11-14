@@ -1,7 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ITENS } from '../../src/lib/navegacao'
-import { ROTAS_MATRIZ, USUARIOS_MATRIZ, esperado, falhaDaVisita, usuariosDaMatriz } from './acesso-rotas'
+import { ROTAS_MATRIZ, USUARIOS_MATRIZ, destinoSemAcesso, esperado, falhaDaVisita, usuariosDaMatriz } from './acesso-rotas'
+import { ROTA_PAINEL_FABRICA } from '../../src/lib/painel-fabrica'
+import { PAPEL_FABRICA } from '../../src/lib/login-fabrica'
 
 test('a matriz cobre toda rota da tabela de navegação e os 6 papéis do seed', () => {
   for (const i of ITENS.filter(i => !i.semTela)) assert.ok(ROTAS_MATRIZ.includes(i.href), i.href)
@@ -46,4 +48,13 @@ test('a lista de usuários pode vir de fora (cópia local, #594); sem ela, os do
   assert.deepEqual(usuariosDaMatriz(JSON.stringify(lista)), lista)
   assert.throws(() => usuariosDaMatriz('[{"email":"x@a.com"}]'), /MATRIZ_USUARIOS/)
   assert.throws(() => usuariosDaMatriz('[]'), /MATRIZ_USUARIOS/)
+})
+
+test('login da fábrica (#901): só o painel abre; toda outra rota tem que terminar no painel', () => {
+  assert.equal(esperado(PAPEL_FABRICA, ROTA_PAINEL_FABRICA), 'abre')
+  assert.equal(esperado(PAPEL_FABRICA, '/dashboard'), 'volta')
+  assert.equal(destinoSemAcesso(PAPEL_FABRICA), ROTA_PAINEL_FABRICA)
+  assert.equal(destinoSemAcesso('vendedor'), '/dashboard')
+  assert.equal(falhaDaVisita('volta', v(ROTA_PAINEL_FABRICA), destinoSemAcesso(PAPEL_FABRICA)), null)
+  assert.equal(falhaDaVisita('volta', v('/dashboard'), destinoSemAcesso(PAPEL_FABRICA)), 'sem permissão e ficou em /dashboard')
 })
