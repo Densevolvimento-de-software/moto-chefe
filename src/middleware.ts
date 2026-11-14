@@ -2,6 +2,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { fetchResiliente } from '@/lib/supabase/fetch-resiliente'
+import { PAPEL_FABRICA, ROTA_SAIR, decisaoDoLoginFabrica } from '@/lib/login-fabrica'
 
 // O middleware roda ANTES de toda página e valida a sessão. Usa getClaims(), que
 // confere a assinatura ES256 do JWT localmente (WebCrypto, JWKS cacheado) — sem
@@ -62,6 +63,18 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
+  // Login da fábrica: só lê o painel e sai (@/lib/login-fabrica). O papel vem do app_metadata,
+  // que só a service role grava. Sem este bloco (fail-open acima, ou rota fora do matcher),
+  // getUsuarioLogado e o layout do sistema seguram.
+  if (user?.app_metadata?.papel === PAPEL_FABRICA) {
+    const decisao = decisaoDoLoginFabrica({ caminho: request.nextUrl.pathname, metodo: request.method })
+    switch (decisao.tipo) {
+      case 'recusar': return new NextResponse('Sem permissão', { status: 403 })
+      case 'redirecionar': return NextResponse.redirect(new URL(decisao.para, request.url))
+      case 'seguir': return supabaseResponse
+    }
+  }
+
   if (!user && !request.nextUrl.pathname.startsWith('/login')) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
@@ -71,7 +84,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user?.user_metadata?.must_change_password === true) {
-    if (!request.nextUrl.pathname.startsWith('/trocar-senha')) {
+    // Sair também: com a senha provisória, o POST de sair voltava para a troca e não saía.
+    const saindo = request.method === 'POST' && request.nextUrl.pathname === ROTA_SAIR
+    if (!request.nextUrl.pathname.startsWith('/trocar-senha') && !saindo) {
       return NextResponse.redirect(new URL('/trocar-senha', request.url))
     }
   }
