@@ -60,3 +60,16 @@ test('leitura do login da fábrica chega ao app sem content-type de formulário;
   assert.ok(seguiu(sair))
   assert.ok(cabecalhosAoApp(sair).includes('content-type'))
 })
+
+test('POST de action do login da fábrica continua barrado, com ou sem o cabeçalho de action', async () => {
+  claims = fabrica()
+  const pedidosDeAction: Record<string, string>[] = [
+    { 'next-action': 'qualquer', 'content-type': 'text/plain;charset=UTF-8' },
+    { 'content-type': 'multipart/form-data; boundary=x' },
+    { 'content-type': 'application/x-www-form-urlencoded' },
+  ]
+  for (const headers of pedidosDeAction) {
+    assert.equal((await pedir('POST', '/fabrica', headers)).status, 403, JSON.stringify(headers))
+    assert.equal((await pedir('POST', '/dashboard', headers)).status, 403, JSON.stringify(headers))
+  }
+})
