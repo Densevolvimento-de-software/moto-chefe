@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ROTA_PAINEL_FABRICA } from './painel-fabrica'
-import { ROTA_CONTA_DESATIVADA, ROTA_SAIR, decisaoDoLoginFabrica, ehPedidoDeAcao } from './login-fabrica'
+import { ROTA_CONTA_DESATIVADA, ROTA_SAIR, decisaoDoLoginFabrica, ehPedidoDeAcao, saidaDeOutroSite } from './login-fabrica'
 
 const decide = (metodo: string, caminho: string) => decisaoDoLoginFabrica({ caminho, metodo })
 const SEGUIR = { tipo: 'seguir' }
@@ -49,4 +49,11 @@ test('pedido de ação: cabeçalho de action, ou formulário multipart ou urlenc
 test('leitura de página não é pedido de ação', () => {
   assert.equal(ehPedidoDeAcao(new Headers()), false)
   assert.equal(ehPedidoDeAcao(new Headers({ accept: 'text/html', rsc: '1' })), false)
+})
+
+test('sair: formulário de outro site é recusado; o do próprio MOVA e o sem origem passam', () => {
+  const site = 'https://www.meumova.com'
+  assert.equal(saidaDeOutroSite('https://atacante.example', site), true)
+  assert.equal(saidaDeOutroSite('https://www.meumova.com', site), false)
+  assert.equal(saidaDeOutroSite(null, site), false)
 })

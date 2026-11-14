@@ -39,3 +39,12 @@ const CORPO_DE_FORMULARIO = /^(multipart\/form-data|application\/x-www-form-urle
 export function ehPedidoDeAcao(cabecalhos: Pick<Headers, 'get'>): boolean {
   return cabecalhos.get('next-action') !== null || CORPO_DE_FORMULARIO.test(cabecalhos.get('content-type') ?? '')
 }
+
+/**
+ * Sair é rota, não Server Action: não ganha a conferência de origem que o Next faz nas actions.
+ * Formulário de outro site derrubaria a sessão; sem cabeçalho de origem, o navegador não mandou
+ * de outro site (POST entre sites sempre leva Origin).
+ */
+export function saidaDeOutroSite(origem: string | null, origemDoSite: string): boolean {
+  return origem !== null && origem !== origemDoSite
+}
