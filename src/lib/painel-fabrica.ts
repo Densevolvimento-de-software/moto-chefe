@@ -16,7 +16,7 @@
 import { diaBrt, periodoDoMesBrt } from '@/lib/data-venda'
 import { addDias } from '@/lib/calendario'
 
-export const ROTA_PAINEL_FABRICA = '/admin/painel-fabrica'
+export const ROTA_PAINEL_FABRICA = '/fabrica'
 
 /** Marca da fábrica. Comparada sem caixa, espaço nem acento: "MotoChefe", "MOTO CHEFE". */
 export const MARCA_PAINEL_FABRICA = 'MotoChefe'
