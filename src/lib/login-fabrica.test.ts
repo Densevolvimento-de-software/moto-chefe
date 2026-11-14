@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ROTA_PAINEL_FABRICA } from './painel-fabrica'
-import { ROTA_CONTA_DESATIVADA, ROTA_SAIR, decisaoDoLoginFabrica, ehPedidoDeAcao, saidaDeOutroSite } from './login-fabrica'
+import { ROTA_CONTA_DESATIVADA, ROTA_SAIR, decisaoDoLoginFabrica, destinoSemPainel, ehPedidoDeAcao, saidaDeOutroSite } from './login-fabrica'
 
 const decide = (metodo: string, caminho: string) => decisaoDoLoginFabrica({ caminho, metodo })
 const SEGUIR = { tipo: 'seguir' }
@@ -56,4 +56,10 @@ test('sair: formulário de outro site é recusado; o do próprio MOVA e o sem or
   assert.equal(saidaDeOutroSite('https://atacante.example', site), true)
   assert.equal(saidaDeOutroSite('https://www.meumova.com', site), false)
   assert.equal(saidaDeOutroSite(null, site), false)
+})
+
+test('sem acesso ao painel: o login da fábrica vai para a saída com Sair; os outros, para o Dashboard', () => {
+  // /dashboard voltaria a /fabrica pelo middleware, e o login da fábrica ficaria num laço.
+  assert.equal(destinoSemPainel('fabrica'), ROTA_CONTA_DESATIVADA)
+  assert.equal(destinoSemPainel('admin_socio'), '/dashboard')
 })

@@ -3,12 +3,12 @@
 // também abre, para ver o que a fábrica vê, e ganha o link de volta ao MOVA. Protótipo: #893.
 import Link from 'next/link'
 import { LogOut } from 'lucide-react'
-import { exigirAcessoPagina } from '@/app/(dashboard)/admin/components/admin-guard'
-import { MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
+import { exigirPainelFabrica } from './exigir-painel'
+import { MARCA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
 import { ROTA_SAIR } from '@/lib/login-fabrica'
 
 export default async function FabricaLayout({ children }: { children: React.ReactNode }) {
-  const usuario = await exigirAcessoPagina(ROTA_PAINEL_FABRICA)
+  const usuario = await exigirPainelFabrica()
 
   return (
     <div className="min-h-dvh bg-background text-foreground">

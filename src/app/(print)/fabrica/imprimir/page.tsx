@@ -1,9 +1,7 @@
-import { redirect } from 'next/navigation'
-import { getUsuarioLogado } from '@/lib/auth'
-import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
+import { exigirPainelFabrica } from '@/app/(fabrica)/exigir-painel'
 import { carregarPainelFabrica } from '@/lib/queries/painel-fabrica'
 import {
-  abaDaUrl, filtroDaUrl, filtrarEstoque, filtrarVendas, nomeDaLoja, rotuloDaAba, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, type ParamsPainel,
+  abaDaUrl, filtroDaUrl, filtrarEstoque, filtrarVendas, nomeDaLoja, rotuloDaAba, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, type ParamsPainel,
 } from '@/lib/painel-fabrica'
 import { dataEHoraBrt } from '@/lib/data-venda'
 import { periodoBr } from '@/lib/notas-emitidas'
@@ -12,8 +10,7 @@ import { PrintButtons } from '@/app/(print)/relatorio-fabrica/imprimir/print-but
 
 export default async function PainelFabricaImprimirPage({ searchParams }: { searchParams: Promise<ParamsPainel> }) {
   // Mesma permissão da tela, antes de qualquer busca.
-  const usuario = await getUsuarioLogado()
-  if (!usuarioPodeAcessar(usuario, ROTA_PAINEL_FABRICA)) redirect('/dashboard')
+  await exigirPainelFabrica()
 
   const params = await searchParams
   const aba = abaDaUrl(params.aba)

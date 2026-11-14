@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { exigirAcessoPagina } from '@/app/(dashboard)/admin/components/admin-guard'
+import { exigirPainelFabrica } from '../exigir-painel'
 import { carregarPainelFabrica } from '@/lib/queries/painel-fabrica'
 import {
   abaDaUrl, filtroDaUrl, filtrarEstoque, filtrarVendas, opcoesDoPainel, paraCsv, planilhaDoPainel, rotuloDaAba, urlDoFiltro,
@@ -14,7 +14,7 @@ import { AcoesPainel } from './components/acoes-painel'
 
 export default async function PainelFabricaPage({ searchParams }: { searchParams: Promise<ParamsPainel> }) {
   // Antes de qualquer busca (#579): lê todas as Contas; só o login da fábrica e o admin_geral.
-  await exigirAcessoPagina(ROTA_PAINEL_FABRICA)
+  await exigirPainelFabrica()
 
   const params = await searchParams
   const aba = abaDaUrl(params.aba)

@@ -48,3 +48,9 @@ export function ehPedidoDeAcao(cabecalhos: Pick<Headers, 'get'>): boolean {
 export function saidaDeOutroSite(origem: string | null, origemDoSite: string): boolean {
   return origem !== null && origem !== origemDoSite
 }
+
+/** Para onde vai quem abre a área /fabrica sem acesso a ela. O login da fábrica não volta ao
+ * Dashboard (o middleware o traria de volta, num laço): vai à tela com Sair. */
+export function destinoSemPainel(papel: string): string {
+  return papel === PAPEL_FABRICA ? ROTA_CONTA_DESATIVADA : '/dashboard'
+}

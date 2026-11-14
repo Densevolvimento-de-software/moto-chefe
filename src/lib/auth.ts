@@ -44,6 +44,9 @@ export const getUsuarioLogado = cache(async () => {
   // respondendo em 150ms quando medido de fora. Ver memória project-auth-getclaims.
   const { data } = await withTimeout(supabase.auth.getClaims(), 8000, 'getClaims do Supabase')
   const userId = data?.claims.sub
+  // O middleware prende em /fabrica quem tem o papel fabrica no token. Se a linha em `usuarios`
+  // some ou diz outro papel, a saída é a tela com Sair: /login e /dashboard voltariam a /fabrica.
+  const tokenDeFabrica = data?.claims.app_metadata?.papel === PAPEL_FABRICA
 
   if (!userId) redirect('/login')
 
@@ -53,7 +56,8 @@ export const getUsuarioLogado = cache(async () => {
     'consulta do usuário no banco',
   )
 
-  if (!usuario) redirect('/login')
+  if (!usuario) redirect(tokenDeFabrica ? ROTA_CONTA_DESATIVADA : '/login')
+  if (tokenDeFabrica && usuario.papel !== PAPEL_FABRICA) redirect(ROTA_CONTA_DESATIVADA)
 
   // Conta desativada (funcionário desligado, conta de teste) não pode
   // continuar usando o sistema, mesmo com a sessão do Supabase ainda válida.
