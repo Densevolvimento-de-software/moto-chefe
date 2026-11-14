@@ -25,7 +25,6 @@ import { ImportarPlanilhaPecasDialog } from './components/importar-planilha-peca
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-
 export default async function PecasPage({
   searchParams,
 }: {

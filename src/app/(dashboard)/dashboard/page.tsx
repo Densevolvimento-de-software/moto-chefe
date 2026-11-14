@@ -388,11 +388,6 @@ async function ProximosEventosSection({ usuario }: { usuario: Awaited<ReturnType
   return <ProximosEventosCard eventos={eventos} />
 }
 
-function hojeISO() {
-  return hojeBrt()
-}
-
-
 // Período de comparação: mesma duração do período selecionado, terminando um dia antes dele.
 function periodoAnterior(dataInicio: string, dataFim: string) {
   const inicio = new Date(dataInicio + 'T00:00:00')
@@ -424,7 +419,7 @@ export default async function DashboardPage({
   const isAuxAdm = usuario.papel === 'aux_adm'
 
   const deDefault = primeiroDiaDoMesBrt()
-  const ateDefault = hojeISO()
+  const ateDefault = hojeBrt()
   const dataInicio = params.de ?? deDefault
   const dataFim = params.ate ?? ateDefault
   const { inicio: dataInicioAnt, fim: dataFimAnt } = periodoAnterior(dataInicio, dataFim)
