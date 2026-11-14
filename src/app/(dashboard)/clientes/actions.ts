@@ -9,6 +9,7 @@ import { acessaModulo } from '@/lib/navegacao'
 import { contaDoGrupoAtivo } from '@/lib/grupo'
 import { revalidatePath } from 'next/cache'
 import { atualizarCliente, cadastrarCliente } from '@/lib/cliente-cadastro'
+import { acao, RecusaUsuario } from '@/lib/resultado-action'
 
 export type ClienteInput = {
   nome: string
@@ -127,29 +128,33 @@ export async function listarCidadesAction() {
   return rows.map(r => r.cidade).filter(Boolean) as string[]
 }
 
-export async function criarClienteAction(dados: ClienteInput): Promise<string> {
-  const usuario = await getUsuarioLogado()
-  if (!acessaModulo(usuario, 'clientes')) throw new Error('Sem permissão')
+export async function criarClienteAction(dados: ClienteInput) {
+  return acao(async () => {
+    const usuario = await getUsuarioLogado()
+    if (!acessaModulo(usuario, 'clientes')) throw new RecusaUsuario('Sem permissão')
 
-  const cpfCnpj = limparCpfCnpj(dados.cpfCnpj)
+    const cpfCnpj = limparCpfCnpj(dados.cpfCnpj)
 
-  const id = await cadastrarCliente(db, { contaId: await contaDoGrupoAtivo(usuario), grupoLiberado: usuario.grupoLiberado }, { ...dados, cpfCnpj })
-  revalidatePath('/clientes')
-  return id
+    const id = await cadastrarCliente(db, { contaId: await contaDoGrupoAtivo(usuario), grupoLiberado: usuario.grupoLiberado }, { ...dados, cpfCnpj })
+    revalidatePath('/clientes')
+    return id
+  })
 }
 
 export async function atualizarClienteAction(id: string, dados: Partial<ClienteInput>) {
-  const usuario = await getUsuarioLogado()
-  if (!acessaModulo(usuario, 'clientes')) throw new Error('Sem permissão')
+  return acao(async () => {
+    const usuario = await getUsuarioLogado()
+    if (!acessaModulo(usuario, 'clientes')) throw new RecusaUsuario('Sem permissão')
 
-  const cpfCnpj = dados.cpfCnpj !== undefined ? limparCpfCnpj(dados.cpfCnpj) : undefined
+    const cpfCnpj = dados.cpfCnpj !== undefined ? limparCpfCnpj(dados.cpfCnpj) : undefined
 
-  await atualizarCliente(db, { contaId: await contaDoGrupoAtivo(usuario), grupoLiberado: usuario.grupoLiberado }, id, {
-    ...dados,
-    ...(cpfCnpj !== undefined ? { cpfCnpj } : {}),
+    await atualizarCliente(db, { contaId: await contaDoGrupoAtivo(usuario), grupoLiberado: usuario.grupoLiberado }, id, {
+      ...dados,
+      ...(cpfCnpj !== undefined ? { cpfCnpj } : {}),
+    })
+    revalidatePath('/clientes')
+    revalidatePath(`/clientes/${id}`)
   })
-  revalidatePath('/clientes')
-  revalidatePath(`/clientes/${id}`)
 }
 
 export async function excluirClienteAction(id: string) {
