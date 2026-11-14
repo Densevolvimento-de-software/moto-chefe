@@ -1,16 +1,10 @@
 import { ultimoDiaDoMes } from '@/lib/contas-pagar'
+import { diaValido } from '@/lib/data-venda'
 
 // Período do /financeiro ("de" e "até", dias do calendário). Antes a tela só
 // filtrava por mês inteiro; agora abre no mês corrente, mas aceita qualquer recorte.
 
 export type PeriodoFinanceiro = { de: string; ate: string }
-
-/** "YYYY-MM-DD" que existe no calendário (recusa 30/02, mês 13 etc.). */
-function diaValido(v: string | undefined): v is string {
-  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
-  const [, mes, dia] = v.split('-').map(Number)
-  return mes >= 1 && mes <= 12 && dia >= 1 && dia <= ultimoDiaDoMes(v.slice(0, 7))
-}
 
 function mesInteiro(mes: string): PeriodoFinanceiro {
   return { de: `${mes}-01`, ate: `${mes}-${String(ultimoDiaDoMes(mes)).padStart(2, '0')}` }
