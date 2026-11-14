@@ -9,8 +9,7 @@ import { and, eq, gte, isNull, lte, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { contas, grupos, lojas, modelos, motos, vendas } from '@/lib/db/schema'
 import { motoNoShowroom } from '@/lib/queries/showroom'
-import { normalizarPeriodo } from '@/lib/queries/relatorio-fabrica'
-import { fimDoDiaBrt, inicioDoDiaBrt } from '@/lib/data-venda'
+import { fimDoDiaBrt, inicioDoDiaBrt, periodoDoMesBrt } from '@/lib/data-venda'
 import type { LinhaEstoquePainel, LojaPainel, VendaPainel } from '@/lib/painel-fabrica'
 
 // Mesma chave de ehMarcaDoPainel (@/lib/painel-fabrica): só letras, minúsculas. O
@@ -74,7 +73,7 @@ export async function vendasDoPainel(de: string, ate: string): Promise<VendaPain
 }
 
 export async function carregarPainelFabrica(deRaw?: string, ateRaw?: string) {
-  const { de, ate } = normalizarPeriodo(deRaw, ateRaw)
+  const { de, ate } = periodoDoMesBrt({ de: deRaw, ate: ateRaw })
   const [lojasPainel, estoque, vendidas] = await Promise.all([
     listarLojasDoPainel(), estoqueDoPainel(), vendasDoPainel(de, ate),
   ])

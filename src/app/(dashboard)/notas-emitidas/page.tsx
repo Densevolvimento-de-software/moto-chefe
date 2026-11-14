@@ -5,8 +5,8 @@ import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { grupoAtivoDaRequisicao } from '@/lib/grupo'
 import { db } from '@/lib/db'
 import { anexarSituacaoDeInutilizacao, contarPorCategoria, listarNotasEmitidas } from '@/lib/queries/notas-emitidas'
-import { naSituacao, periodoBr, periodoEmissao, type Situacao } from '@/lib/notas-emitidas'
-import { diaBrt } from '@/lib/data-venda'
+import { naSituacao, periodoBr, type Situacao } from '@/lib/notas-emitidas'
+import { diaBrt, periodoDoMesBrt } from '@/lib/data-venda'
 import { podePedirInutilizacao } from '@/lib/notagateway/inutilizacao'
 import { listarFaixas } from '@/lib/notagateway/inutilizar-faixa'
 import { tamanhoEstimado } from '@/lib/notas-contador'
@@ -36,7 +36,7 @@ export default async function NotasEmitidasPage({
   const params = await searchParams
   const situacao = SITUACOES.find(s => s.valor === params.situacao)?.valor ?? 'todas'
   const ambiente = params.ambiente === 'Homologacao' ? 'Homologacao' : 'Producao'
-  const periodo = periodoEmissao(params)
+  const periodo = periodoDoMesBrt(params)
   const grupo = await grupoAtivoDaRequisicao(usuario)
 
   const filtro = { grupoId: grupo.id, contaId: usuario.papel === 'admin_geral' ? null : grupo.contaId, ambiente, ...periodo } as const

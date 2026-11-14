@@ -4,9 +4,9 @@ import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
 import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { grupoAtivoDaRequisicao } from '@/lib/grupo'
+import { periodoDoMesBrt } from '@/lib/data-venda'
 import { emailValido, enviarEmail } from '@/lib/email'
 import { registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
-import { periodoEmissao } from '@/lib/notas-emitidas'
 import { VALIDADE_LINK_DIAS, enviarAoContador } from '@/lib/notas-contador'
 import { notasParaContador, salvarEmailDoContador } from '@/lib/queries/notas-contador'
 import { BUCKET_CONTADOR as BUCKET } from '@/lib/notas-contador-limpeza'
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   const corpo = await req.json().catch(() => ({})) as Record<string, unknown>
   const email = typeof corpo.email === 'string' ? corpo.email.trim() : ''
   if (!emailValido(email)) return NextResponse.json({ error: 'E-mail do contador inválido.' }, { status: 400 })
-  const periodo = periodoEmissao({
+  const periodo = periodoDoMesBrt({
     de: typeof corpo.de === 'string' ? corpo.de : undefined,
     ate: typeof corpo.ate === 'string' ? corpo.ate : undefined,
   })
