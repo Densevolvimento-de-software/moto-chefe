@@ -14,7 +14,8 @@ const pedir = async (metodo: string, caminho: string, headers: Record<string, st
   const { middleware } = await import('./middleware')
   return middleware(new NextRequest(`http://localhost:3000${caminho}`, { method: metodo, headers }))
 }
-/** Cabeçalhos que o middleware manda ao app (a resposta do Supabase já repassa os do pedido). */
+/** Cabeçalhos que o middleware manda ao app (a resposta do Supabase já repassa os do pedido). Lê o
+ * `x-middleware-override-headers`, cabeçalho interno do Next que NextResponse.next({ request }) grava. */
 const cabecalhosAoApp = (r: Response) => (r.headers.get('x-middleware-override-headers') ?? '').split(',').filter(Boolean)
 const destino = (r: Response) => (r.headers.get('location') ? new URL(r.headers.get('location')!).pathname : null)
 /** Seguiu para a página: 200 e sem redirecionar (um 403 também não tem location). */
@@ -72,4 +73,19 @@ test('POST de action do login da fábrica continua barrado, com ou sem o cabeça
     assert.equal((await pedir('POST', '/fabrica', headers)).status, 403, JSON.stringify(headers))
     assert.equal((await pedir('POST', '/dashboard', headers)).status, 403, JSON.stringify(headers))
   }
+})
+
+test('HEAD também chega sem content-type; GET com cabeçalho de action chega sem content-type mas com o next-action, e o servidor recusa', async () => {
+  claims = fabrica()
+  const head = await pedir('HEAD', '/fabrica', { 'content-type': 'multipart/form-data; boundary=x' })
+  assert.ok(seguiu(head))
+  assert.ok(!cabecalhosAoApp(head).includes('content-type'))
+  const get = await pedir('GET', '/fabrica', { 'next-action': 'qualquer', 'content-type': 'multipart/form-data; boundary=x' })
+  assert.ok(seguiu(get))
+  const repassados = cabecalhosAoApp(get)
+  assert.ok(!repassados.includes('content-type'))
+  assert.ok(repassados.includes('next-action'))
+  // O GET não executa action no Next; mesmo assim o servidor recusa pelo cabeçalho (getUsuarioLogado).
+  const { ehPedidoDeAcao } = await import('@/lib/login-fabrica')
+  assert.equal(ehPedidoDeAcao(new Headers({ 'next-action': get.headers.get('x-middleware-request-next-action') ?? '' })), true)
 })
