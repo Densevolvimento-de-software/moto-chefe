@@ -50,14 +50,17 @@ export const getUsuarioLogado = cache(async () => {
 
   if (!userId) redirect('/login')
 
-  const [usuario] = await withTimeout(
+  const [linha] = await withTimeout(
     db.select().from(usuarios).where(eq(usuarios.id, userId)).limit(1),
     8000,
     'consulta do usuário no banco',
   )
 
-  if (!usuario) redirect(tokenDeFabrica ? ROTA_CONTA_DESATIVADA : '/login')
-  if (tokenDeFabrica && usuario.papel !== PAPEL_FABRICA) redirect(ROTA_CONTA_DESATIVADA)
+  if (!linha) redirect(tokenDeFabrica ? ROTA_CONTA_DESATIVADA : '/login')
+  if (tokenDeFabrica && linha.papel !== PAPEL_FABRICA) redirect(ROTA_CONTA_DESATIVADA)
+  // O servidor não confia na linha: o login da fábrica não tem loja nem Conta, mesmo que alguém
+  // grave. Com loja, abriria impressos e registros daquela loja (podeAgirNaLoja).
+  const usuario = linha.papel === PAPEL_FABRICA ? { ...linha, lojaId: null, contaId: null } : linha
 
   // Conta desativada (funcionário desligado, conta de teste) não pode
   // continuar usando o sistema, mesmo com a sessão do Supabase ainda válida.

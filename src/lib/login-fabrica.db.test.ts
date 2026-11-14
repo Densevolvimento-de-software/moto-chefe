@@ -20,6 +20,7 @@ const P = 'FAB901'
 class Redirecionou extends Error {
   constructor(readonly destino: string) { super(`redirect ${destino}`) }
 }
+class NaoEncontrado extends Error {}
 
 let idDaSessao = ''
 let cabecalhos = new Headers()
@@ -37,7 +38,10 @@ const mocks = [
     headers: async () => cabecalhos,
     cookies: async () => ({ get: () => undefined }),
   } }),
-  mock.module('next/navigation', { namedExports: { redirect: (destino: string) => { throw new Redirecionou(destino) } } }),
+  mock.module('next/navigation', { namedExports: {
+    redirect: (destino: string) => { throw new Redirecionou(destino) },
+    notFound: () => { throw new NaoEncontrado() },
+  } }),
   mock.module('next/cache', { namedExports: { revalidatePath: () => {} } }),
 ]
 
@@ -45,6 +49,8 @@ type Db = typeof import('@/lib/db')
 let db: Db['db']
 let marcarComoLidoAction: typeof import('@/app/(dashboard)/admin/comunicados/actions')['marcarComoLidoAction']
 let loginAction: typeof import('@/app/(auth)/login/actions')['loginAction']
+let getUsuarioLogado: typeof import('@/lib/auth')['getUsuarioLogado']
+let ImprimirDemandaPage: typeof import('@/app/(print)/demandas/[id]/imprimir/page')['default']
 let ROTA_PAINEL_FABRICA: string
 let PAPEL_FABRICA: string
 let base: Base
@@ -73,6 +79,8 @@ before(async () => {
   ;({ db } = await import('@/lib/db'))
   ;({ marcarComoLidoAction } = await import('@/app/(dashboard)/admin/comunicados/actions'))
   ;({ loginAction } = await import('@/app/(auth)/login/actions'))
+  ;({ getUsuarioLogado } = await import('@/lib/auth'))
+  ;({ default: ImprimirDemandaPage } = await import('@/app/(print)/demandas/[id]/imprimir/page'))
   ;({ ROTA_PAINEL_FABRICA } = await import('@/lib/painel-fabrica'))
   ;({ PAPEL_FABRICA } = await import('@/lib/login-fabrica'))
   base = await semearContaBase(db, { prefixo: P, nome: 'Rede', cnpj: '00000000901001' })
@@ -123,4 +131,26 @@ test('login da fábrica entra direto no painel, e o log do login fica sem grupo'
   const log = await linhas(sql`select grupo_id from log_acoes where usuario_id = ${fabricaId} and tipo = 'login'`)
   assert.equal(log.length, 1)
   assert.equal(log[0].grupo_id, null)
+})
+
+// Linha fabrica que alguém gravou com loja e Conta (o ticket D não deixa, mas o banco aceita):
+// o servidor não confia nela, e o login da fábrica continua sem loja e sem Conta.
+test('login da fábrica com loja e Conta na linha: a sessão sai sem as duas', async () => {
+  idDaSessao = await semearUsuario(db, base, { papel: PAPEL_FABRICA, rotulo: 'fabrica-com-loja', comConta: true })
+  const u = await getUsuarioLogado()
+  assert.equal(u.lojaId, null)
+  assert.equal(u.contaId, null)
+})
+
+test('login da fábrica com loja na linha não abre o impresso de um registro daquela loja', async () => {
+  const solicitante = await semearUsuario(db, base, { papel: 'aux_adm', rotulo: 'aux-da-loja' })
+  const [d] = await linhas(sql`insert into demandas (modelo, cor, loja_id, solicitante_id, sinal_recebido, valor_sinal)
+    values (${`${P} modelo`}, 'PRETO', ${base.lojaId}, ${solicitante}, true, '100') returning id`)
+  const abrir = () => ImprimirDemandaPage({ params: Promise.resolve({ id: d.id }) })
+
+  idDaSessao = solicitante
+  await abrir()
+
+  idDaSessao = await semearUsuario(db, base, { papel: PAPEL_FABRICA, rotulo: 'fabrica-loja-impresso' })
+  await assert.rejects(abrir(), NaoEncontrado)
 })
