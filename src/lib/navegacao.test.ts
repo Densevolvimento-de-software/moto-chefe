@@ -268,5 +268,7 @@ test('painel da fábrica: admin_geral abre; sócio, aux_adm e admin_geral com o 
   assert.ok(podeAcessar(ADMIN_GERAL, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
   assert.ok(!podeAcessar(SOCIO, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
   assert.ok(!podeAcessar(AUX, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar({ papel: 'admin_rede' }, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar({ papel: 'admin_socio', modulosExtras: ['painel-fabrica'] }, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
   assert.ok(!podeAcessar({ papel: 'admin_geral', modulosBloqueados: ['painel-fabrica'] }, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
 })
