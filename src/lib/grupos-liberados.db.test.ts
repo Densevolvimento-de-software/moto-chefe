@@ -284,6 +284,32 @@ test('cadastro de cliente na persona: CPF do grupo liberado e de outro grupo da 
   }), Desfazer)
 })
 
+test('edição de cliente na persona: CPF repetido dá a frase neutra; cliente do grupo irmão recebe a mesma frase de id inexistente', async () => {
+  await assert.rejects(db.transaction(async tx => {
+    const c = await cenario(tx)
+    const { atualizarCliente, CPF_RECUSADO_NA_PERSONA } = await import('@/lib/cliente-cadastro')
+    const persona = usuarioDaRede(c.cadastro, await gruposLiberadosVivos(c.usuarioId, new Date('2026-10-29T12:00:00Z'), tx), c.liberado.grupo)
+    const escopo = { contaId: c.dona, grupoLiberado: persona.grupoLiberado }
+    const erro = async (id: string, dados: { nome?: string; cpfCnpj?: string }) => {
+      try {
+        await tx.transaction(sp => atualizarCliente(sp, escopo, id, dados))
+        return null
+      } catch (e) { return e instanceof Error ? e.message : String(e) }
+    }
+    const cadastro = async (id: string) =>
+      ((await tx.execute(sql`select nome, cpf_cnpj from clientes where id = ${id}`)) as unknown as { rows: { nome: string; cpf_cnpj: string }[] }).rows[0]
+
+    assert.equal(await erro(c.liberado.cliente, { cpfCnpj: '00000000000272' }), CPF_RECUSADO_NA_PERSONA, 'CPF de cliente do grupo irmão: frase neutra')
+    assert.equal((await cadastro(c.liberado.cliente)).cpf_cnpj, '00000000000191', 'o CPF não muda')
+    assert.equal(await erro(c.irmao.cliente, { nome: 'Invasor' }), 'Cliente não encontrado')
+    assert.equal(await erro('00000000-0000-0000-0000-000000000000', { nome: 'Invasor' }), 'Cliente não encontrado', 'mesma frase de id inexistente')
+    assert.equal((await cadastro(c.irmao.cliente)).nome, 'Cliente', 'o cliente do grupo irmão não muda')
+    assert.equal(await erro(c.liberado.cliente, { nome: 'Novo nome' }), null, 'cliente do grupo liberado se edita')
+    assert.equal((await cadastro(c.liberado.cliente)).nome, 'Novo nome')
+    throw new Desfazer()
+  }), Desfazer)
+})
+
 test('persona acima do sócio: edita e desativa o admin_socio do grupo liberado; não alcança sócio com grupo de fora, admin_geral nem admin_rede (decisão do Luis)', async () => {
   await assert.rejects(db.transaction(async tx => {
     const c = await cenario(tx)

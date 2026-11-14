@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
+import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
 import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { grupoAtivoDaRequisicao } from '@/lib/grupo'
+import { periodoDoMesBrt } from '@/lib/data-venda'
 import { emailValido, enviarEmail } from '@/lib/email'
 import { registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
-import { periodoEmissao } from '@/lib/notas-emitidas'
 import { VALIDADE_LINK_DIAS, enviarAoContador } from '@/lib/notas-contador'
 import { notasParaContador, salvarEmailDoContador } from '@/lib/queries/notas-contador'
 import { BUCKET_CONTADOR as BUCKET } from '@/lib/notas-contador-limpeza'
@@ -23,7 +23,7 @@ async function baixar(url: string) {
 }
 
 async function publicar(grupoId: string, zip: Uint8Array): Promise<string | null> {
-  const storage = createSupabaseAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!).storage
+  const storage = clienteSupabaseAdmin().storage
   const caminho = `${grupoId}/${randomUUID()}.zip`
   const subir = () => storage.from(BUCKET).upload(caminho, zip, { contentType: 'application/zip' })
   let { error } = await subir()
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   const corpo = await req.json().catch(() => ({})) as Record<string, unknown>
   const email = typeof corpo.email === 'string' ? corpo.email.trim() : ''
   if (!emailValido(email)) return NextResponse.json({ error: 'E-mail do contador inválido.' }, { status: 400 })
-  const periodo = periodoEmissao({
+  const periodo = periodoDoMesBrt({
     de: typeof corpo.de === 'string' ? corpo.de : undefined,
     ate: typeof corpo.ate === 'string' ? corpo.ate : undefined,
   })
