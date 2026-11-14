@@ -1,7 +1,7 @@
 import { rotuloSyncBrt } from '@/lib/rotulo-sync'
 import { getUsuarioLogado, podeCategorizarDespesaBanco } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
-import { hojeBrt, mesBrt } from '@/lib/data-venda'
+import { hojeBrt, mesBrt, primeiroDiaDoMesBrt } from '@/lib/data-venda'
 import { getGrupoAtivo, listarLojasDoGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { db } from '@/lib/db'
 import { criarMedidor } from '@/lib/db-diag'
@@ -300,7 +300,7 @@ export default async function DespesasPage({
                 nota: saidasNaoOperacionais.length > 0 ? `${saidasNaoOperacionais.length} saída(s), fora do total` : 'nada no período',
               },
             ]}
-            from={params.sfrom ?? `${hojeBrt().slice(0, 8)}01`}
+            from={params.sfrom ?? primeiroDiaDoMesBrt()}
             to={params.sto ?? hojeBrt()}
             hoje={hojeBrt()}
             rotuloSync={syncStatusAtual ? rotuloSyncBrt(syncStatusAtual.ultimaSincronizacao) : 'Ainda não sincronizado'}
