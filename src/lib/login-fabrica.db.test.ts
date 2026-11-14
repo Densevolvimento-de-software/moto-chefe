@@ -25,11 +25,12 @@ class Redirecionou extends Error {
 class NaoEncontrado extends Error {}
 
 let idDaSessao = ''
+let papelNoToken: string | undefined
 let cabecalhos = new Headers()
 let entrouComo: { email: string } | null = null
 const mocks = [
   mock.module('@/lib/supabase/server', { namedExports: { createClient: async () => ({ auth: {
-    getClaims: async () => ({ data: { claims: { sub: idDaSessao } } }),
+    getClaims: async () => ({ data: { claims: { sub: idDaSessao, app_metadata: papelNoToken ? { papel: papelNoToken } : {} } } }),
     signInWithPassword: async ({ email }: { email: string }) => {
       entrouComo = { email }
       return { error: null, data: { user: { user_metadata: {} } } }
@@ -93,7 +94,7 @@ before(async () => {
   geralId = await semearUsuario(db, base, { papel: 'admin_geral', rotulo: 'geral', semLoja: true })
 })
 
-beforeEach(() => { cabecalhos = new Headers(); entrouComo = null })
+beforeEach(() => { cabecalhos = new Headers(); entrouComo = null; papelNoToken = undefined })
 
 after(async () => {
   for (const m of mocks) m.restore()
@@ -181,4 +182,12 @@ test('/admin/usuarios não exclui o login da fábrica, nem o admin_geral: a fras
   idDaSessao = geralId
   assert.deepEqual(await excluirUsuarioAction(alvo), { ok: false, erro: 'Usuário não encontrado' })
   assert.equal((await linhas(sql`select 1 from usuarios where id = ${alvo}`)).length, 1)
+})
+
+test('token de fábrica com a linha em outro papel, ou sem linha: vai para a tela de acesso indisponível, sem laço', async () => {
+  papelNoToken = PAPEL_FABRICA
+  idDaSessao = await semearUsuario(db, base, { papel: 'vendedor', rotulo: 'vendedor-token-fabrica' })
+  assert.equal(await redirecionaPara(() => getUsuarioLogado()), '/conta-desativada')
+  idDaSessao = '00000000-0000-4000-8000-000000000901'
+  assert.equal(await redirecionaPara(() => getUsuarioLogado()), '/conta-desativada')
 })
