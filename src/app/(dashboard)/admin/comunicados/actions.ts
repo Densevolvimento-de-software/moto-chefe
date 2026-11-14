@@ -95,11 +95,20 @@ export async function excluirComunicadoAction(id: string) {
   revalidatePath('/', 'layout')
 }
 
+// Só comunicado do grupo ativo, o mesmo grupo da lista que a janela mostra. Fora do alcance e
+// inexistente terminam iguais, sem erro e sem gravar, para não revelar o que existe em outra Conta.
 export async function marcarComoLidoAction(comunicadoId: string) {
   const u = await getUsuarioLogado()
+  const grupo = await getGrupoAtivo(u)
+  const [doGrupo] = await db
+    .select({ id: comunicados.id })
+    .from(comunicados)
+    .where(and(eq(comunicados.id, comunicadoId), eq(comunicados.grupoId, grupo.id)))
+    .limit(1)
+  if (!doGrupo) return
   await db
     .insert(comunicadosLidos)
-    .values({ comunicadoId, usuarioId: u.id })
+    .values({ comunicadoId: doGrupo.id, usuarioId: u.id })
     .onConflictDoNothing()
   revalidatePath('/', 'layout')
 }
