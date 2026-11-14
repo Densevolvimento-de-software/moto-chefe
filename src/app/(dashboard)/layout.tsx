@@ -10,6 +10,8 @@ import { BotaoVoltar } from '@/components/layout/botao-voltar'
 import { GroupSelector } from '@/components/layout/group-selector'
 import { Providers } from '@/lib/providers'
 import { getUsuarioLogado } from '@/lib/auth'
+import { PAPEL_FABRICA } from '@/lib/login-fabrica'
+import { ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
 import { registrarSePrimeiroAcesso } from '@/lib/primeiro-acesso'
 import { origemDaRequisicao, registrarSemFalhar } from '@/lib/log-acoes'
 import { grupoAtivoDaRequisicao, gruposVisiveisDaRequisicao } from '@/lib/grupo'
@@ -39,6 +41,8 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const usuario = await getUsuarioLogado()
+  // Login da fábrica não usa o sistema: só o painel dela, sem menu (o middleware já leva).
+  if (usuario.papel === PAPEL_FABRICA) redirect(ROTA_PAINEL_FABRICA)
 
   // Ninguém usa o sistema sem CPF, chave PIX e nascimento preenchidos.
   // admin_geral fica de fora de propósito: esta trava roda em toda página para

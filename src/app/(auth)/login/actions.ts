@@ -8,6 +8,8 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { origemDaRequisicao, registrarSemFalhar } from '@/lib/log-acoes'
 import { getGrupoAtivo } from '@/lib/grupo'
+import { PAPEL_FABRICA } from '@/lib/login-fabrica'
+import { ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
 
 export async function loginAction(formData: FormData) {
   const supabase = await createClient()
@@ -45,8 +47,10 @@ export async function loginAction(formData: FormData) {
   }
 
   // Grupo em que a pessoa cai (cookie ou padrão); a Conta é a do grupo, como nas outras linhas.
+  const ehFabrica = usuario?.papel === PAPEL_FABRICA
   if (usuario) {
-    const grupo = await getGrupoAtivo(usuario).catch(() => null)
+    // Login da fábrica não tem grupo nem Conta: o log fica só com o usuário.
+    const grupo = ehFabrica ? null : await getGrupoAtivo(usuario).catch(() => null)
     await registrarSemFalhar({
       tipo: 'login', usuarioId: usuario.id, contaId: grupo?.contaId ?? usuario.contaId, grupoId: grupo?.id ?? null,
       ...origemDaRequisicao(await headers()),
@@ -55,6 +59,7 @@ export async function loginAction(formData: FormData) {
 
   // Senha provisória: vai direto para a troca. O middleware também leva, mas só na navegação
   // seguinte; sem isto a pessoa via o dashboard uma vez antes.
+  if (ehFabrica) redirect(ROTA_PAINEL_FABRICA)
   redirect(deveTrocarSenha ? '/trocar-senha' : '/dashboard')
 }
 

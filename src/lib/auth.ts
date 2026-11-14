@@ -4,10 +4,12 @@ import { usuarios } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { redirect } from 'next/navigation'
 import { cache } from 'react'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { cargoDoUsuario } from '@/lib/cargos'
 import { usuarioComCargo } from '@/lib/usuario-com-cargo'
 import { gruposLiberadosVivos, usuarioDaRede } from '@/lib/grupos-liberados'
+import { PAPEL_FABRICA, ROTA_CONTA_DESATIVADA, ehPedidoDeAcao } from '@/lib/login-fabrica'
+import { ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
 
 // getUsuarioLogado roda PRIMEIRO em toda página (layout e página). Se a query de
 // usuário fica esperando uma conexão do pool (instância do Fluid com conexões
@@ -67,7 +69,11 @@ export const getUsuarioLogado = cache(async () => {
   // admin_geral, não um estado em que alguém cai sozinho. Se um admin_geral
   // for desativado por engano, a saída é pelo banco (UPDATE usuarios SET
   // ativo = true), não por uma exceção de papel no código.
-  if (!usuario.ativo) redirect('/conta-desativada')
+  if (!usuario.ativo) redirect(ROTA_CONTA_DESATIVADA)
+
+  // Login da fábrica só lê (@/lib/login-fabrica). O middleware já recusa; isto vale quando ele
+  // seguiu sem validar (fail-open) e nas rotas fora do matcher (/api, /assinar, /adesao).
+  if (usuario.papel === PAPEL_FABRICA && ehPedidoDeAcao(await headers())) redirect(ROTA_PAINEL_FABRICA)
 
   // Lido a cada requisição: editar o cargo vale na hora para todos os usuários dele.
   const cargo = await withTimeout(cargoDoUsuario(db, usuario), 8000, 'cargo do usuário no banco')
