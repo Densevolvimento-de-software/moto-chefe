@@ -43,6 +43,7 @@ const mocks = [
     notFound: () => { throw new NaoEncontrado() },
   } }),
   mock.module('next/cache', { namedExports: { revalidatePath: () => {} } }),
+  mock.module('@/lib/supabase/admin', { namedExports: { clienteSupabaseAdmin: () => ({ auth: { admin: { deleteUser: async () => ({ error: null }) } } }) } }),
 ]
 
 type Db = typeof import('@/lib/db')
@@ -50,6 +51,7 @@ let db: Db['db']
 let marcarComoLidoAction: typeof import('@/app/(dashboard)/admin/comunicados/actions')['marcarComoLidoAction']
 let loginAction: typeof import('@/app/(auth)/login/actions')['loginAction']
 let getUsuarioLogado: typeof import('@/lib/auth')['getUsuarioLogado']
+let excluirUsuarioAction: typeof import('@/app/(dashboard)/admin/usuarios/actions')['excluirUsuarioAction']
 let ImprimirDemandaPage: typeof import('@/app/(print)/demandas/[id]/imprimir/page')['default']
 let ROTA_PAINEL_FABRICA: string
 let PAPEL_FABRICA: string
@@ -80,6 +82,7 @@ before(async () => {
   ;({ marcarComoLidoAction } = await import('@/app/(dashboard)/admin/comunicados/actions'))
   ;({ loginAction } = await import('@/app/(auth)/login/actions'))
   ;({ getUsuarioLogado } = await import('@/lib/auth'))
+  ;({ excluirUsuarioAction } = await import('@/app/(dashboard)/admin/usuarios/actions'))
   ;({ default: ImprimirDemandaPage } = await import('@/app/(print)/demandas/[id]/imprimir/page'))
   ;({ ROTA_PAINEL_FABRICA } = await import('@/lib/painel-fabrica'))
   ;({ PAPEL_FABRICA } = await import('@/lib/login-fabrica'))
@@ -159,4 +162,11 @@ test('login da fábrica desativado vai para a tela de conta desativada', async (
   idDaSessao = await semearUsuario(db, base, { papel: PAPEL_FABRICA, rotulo: 'fabrica-desativada', semLoja: true })
   await db.execute(sql`update usuarios set ativo = false where id = ${idDaSessao}`)
   assert.equal(await redirecionaPara(() => getUsuarioLogado()), '/conta-desativada')
+})
+
+test('/admin/usuarios não exclui o login da fábrica, nem o admin_geral: a frase é a de id inexistente', async () => {
+  const alvo = await semearUsuario(db, base, { papel: PAPEL_FABRICA, rotulo: 'fabrica-excluir', semLoja: true })
+  idDaSessao = geralId
+  assert.deepEqual(await excluirUsuarioAction(alvo), { ok: false, erro: 'Usuário não encontrado' })
+  assert.equal((await linhas(sql`select 1 from usuarios where id = ${alvo}`)).length, 1)
 })

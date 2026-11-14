@@ -1,7 +1,7 @@
 'use server'
 import { db } from '@/lib/db'
 import { usuarios, grupos, gruposLiberados } from '@/lib/db/schema'
-import { eq, sql, inArray, or } from 'drizzle-orm'
+import { and, eq, sql, inArray, ne, or } from 'drizzle-orm'
 import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
 import { getGrupoIdDaLoja } from '@/lib/grupo'
 import { gestorDaSessao } from '@/lib/gestor-da-sessao'
@@ -12,6 +12,7 @@ import { guardaAcessoAGrupos, guardaAprovacao, papelDasListas } from '@/lib/list
 import { aprovacoesForaDoAlcance, sincronizarGruposLiberados, type MudancaLiberacao } from '@/lib/grupos-liberados-admin'
 import { camposDePermissaoAlterados, detalheDaMudancaDePermissao, permissoesDe, registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
 import { ITENS } from '@/lib/navegacao'
+import { PAPEL_FABRICA } from '@/lib/login-fabrica'
 import { revalidatePath } from 'next/cache'
 
 // Item só do admin_geral não se libera individualmente: gravar seria liberação sem efeito.
@@ -345,7 +346,9 @@ export async function excluirUsuarioAction(id: string): Promise<Resultado> {
     let alvo: Alvo | undefined
     try {
       await db.transaction(async tx => {
-        ;[alvo] = await tx.delete(usuarios).where(eq(usuarios.id, id)).returning(colunasAlvo)
+        ;[alvo] = await tx.delete(usuarios)
+          // Login da fábrica só se cuida na tela de acessos dela: aqui, mesma frase de id inexistente.
+          .where(and(eq(usuarios.id, id), ne(usuarios.papel, PAPEL_FABRICA))).returning(colunasAlvo)
         if (!alvo) throw new Recusa('Usuário não encontrado')
         const { error } = await clienteSupabaseAdmin().auth.admin.deleteUser(id)
         if (error) throw new Error(error.message)
