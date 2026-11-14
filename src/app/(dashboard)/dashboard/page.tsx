@@ -419,7 +419,7 @@ export default async function DashboardPage({
   const isAuxAdm = usuario.papel === 'aux_adm'
 
   const deDefault = primeiroDiaDoMesBrt()
-  const ateDefault = hojeBrt()
+  const ateDefault = hoje
   const dataInicio = params.de ?? deDefault
   const dataFim = params.ate ?? ateDefault
   const { inicio: dataInicioAnt, fim: dataFimAnt } = periodoAnterior(dataInicio, dataFim)

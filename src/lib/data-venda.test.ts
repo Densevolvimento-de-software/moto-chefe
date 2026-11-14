@@ -176,3 +176,9 @@ test('periodoDoMesBrt: mês 13 na URL cai no padrão, sem quebrar a página', ()
     { de: '2026-11-01', ate: '2026-11-14' },
   )
 })
+
+test('periodoDoMesBrt: 29/02 de ano bissexto é dia válido; só o fim na URL completa o início com o dia 1º', () => {
+  const agora = new Date('2026-11-14T15:00:00.000Z')
+  assert.deepEqual(periodoDoMesBrt({ de: '2024-02-29', ate: '2024-03-10' }, agora), { de: '2024-02-29', ate: '2024-03-10' })
+  assert.deepEqual(periodoDoMesBrt({ ate: '2026-11-10' }, agora), { de: '2026-11-01', ate: '2026-11-10' })
+})
