@@ -51,7 +51,9 @@ export function primeiroDiaDoMesBrt(agora: Date = new Date()): string {
 /** "YYYY-MM-DD" que existe no calendário: o formato do <input type="date"> e da URL deixa passar 2026-02-30 e mês 13. */
 export function diaValido(v: string | undefined): v is string {
   if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
-  return parseDataInput(v).toISOString().slice(0, 10) === v
+  // Mês 13 vira data inválida (toISOString lançaria); 30/02 vira 02/03 e a volta não bate.
+  const d = parseDataInput(v)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v
 }
 
 /** Período de tela em dias de Brasília. Padrão: do dia 1º do mês corrente até hoje; dia inválido volta ao padrão. */

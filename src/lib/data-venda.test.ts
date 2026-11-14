@@ -169,3 +169,10 @@ test('periodoDoMesBrt: dia que não existe ou formato torto cai no padrão', () 
   assert.deepEqual(periodoDoMesBrt({ de: '2026-02-30', ate: '2026-04-31' }, agora), padrao)
   assert.deepEqual(periodoDoMesBrt({ de: '2026-1-5', ate: 'lixo' }, agora), padrao)
 })
+
+test('periodoDoMesBrt: mês 13 na URL cai no padrão, sem quebrar a página', () => {
+  assert.deepEqual(
+    periodoDoMesBrt({ de: '2026-13-01', ate: '2026-00-10' }, new Date('2026-11-14T15:00:00.000Z')),
+    { de: '2026-11-01', ate: '2026-11-14' },
+  )
+})
