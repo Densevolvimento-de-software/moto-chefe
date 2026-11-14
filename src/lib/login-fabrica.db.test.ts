@@ -154,3 +154,9 @@ test('login da fábrica com loja na linha não abre o impresso de um registro da
   idDaSessao = await semearUsuario(db, base, { papel: PAPEL_FABRICA, rotulo: 'fabrica-loja-impresso' })
   await assert.rejects(abrir(), NaoEncontrado)
 })
+
+test('login da fábrica desativado vai para a tela de conta desativada', async () => {
+  idDaSessao = await semearUsuario(db, base, { papel: PAPEL_FABRICA, rotulo: 'fabrica-desativada', semLoja: true })
+  await db.execute(sql`update usuarios set ativo = false where id = ${idDaSessao}`)
+  assert.equal(await redirecionaPara(() => getUsuarioLogado()), '/conta-desativada')
+})
