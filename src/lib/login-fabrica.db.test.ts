@@ -138,6 +138,16 @@ test('login da fábrica entra direto no painel, e o log do login fica sem grupo'
   assert.equal(log[0].grupo_id, null)
 })
 
+test('login da fábrica com Conta gravada na linha: o log do login fica sem Conta e sem grupo', async () => {
+  const id = await semearUsuario(db, base, { papel: PAPEL_FABRICA, rotulo: 'fabrica-login-conta', comConta: true })
+  const form = new FormData()
+  form.set('email', emailDeTeste(P, 'Rede', 'fabrica-login-conta'))
+  form.set('password', 'qualquer')
+  assert.equal(await redirecionaPara(() => loginAction(form)), ROTA_PAINEL_FABRICA)
+  const log = await linhas(sql`select conta_id, grupo_id from log_acoes where usuario_id = ${id} and tipo = 'login'`)
+  assert.deepEqual(log, [{ conta_id: null, grupo_id: null }])
+})
+
 // Linha fabrica que alguém gravou com loja e Conta (o ticket D não deixa, mas o banco aceita):
 // o servidor não confia nela, e o login da fábrica continua sem loja e sem Conta.
 test('login da fábrica com loja e Conta na linha: a sessão sai sem as duas', async () => {

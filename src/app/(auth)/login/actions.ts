@@ -49,10 +49,11 @@ export async function loginAction(formData: FormData) {
   // Grupo em que a pessoa cai (cookie ou padrão); a Conta é a do grupo, como nas outras linhas.
   const ehFabrica = usuario?.papel === PAPEL_FABRICA
   if (usuario) {
-    // Login da fábrica não tem grupo nem Conta: o log fica só com o usuário.
+    // Login da fábrica não tem grupo nem Conta, mesmo que a linha traga uma (o servidor não confia
+    // nela, como no getUsuarioLogado): o log fica só com o usuário.
     const grupo = ehFabrica ? null : await getGrupoAtivo(usuario).catch(() => null)
     await registrarSemFalhar({
-      tipo: 'login', usuarioId: usuario.id, contaId: grupo?.contaId ?? usuario.contaId, grupoId: grupo?.id ?? null,
+      tipo: 'login', usuarioId: usuario.id, contaId: ehFabrica ? null : grupo?.contaId ?? usuario.contaId, grupoId: grupo?.id ?? null,
       ...origemDaRequisicao(await headers()),
     })
   }
