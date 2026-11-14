@@ -1,9 +1,10 @@
 // Teste de banco: Postgres descartável, como src/lib/cliente-da-os.db.test.ts.
-// Criar e editar cliente gravam só os campos do formulário de cliente (#404).
+// Criar e editar cliente gravam só os campos do formulário de cliente e recusam CPF repetido na Conta (#404).
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
 import { semearContaVazia } from '@/test/semear-conta'
+import { acao } from '@/lib/resultado-action'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -111,5 +112,48 @@ test('Conta B editando cliente da Conta A recebe a mesma frase que id inexistent
     assert.equal(await recusa(id), 'Cliente não encontrado')
     assert.equal(await recusa('00000000-0000-0000-0000-000000000000'), 'Cliente não encontrado')
     assert.deepEqual((await doCliente(tx, id)).map(l => l.nome), ['Ana'])
+  })
+})
+
+// A recusa por CPF repetido nasce de um erro do Postgres, que aborta a transação do teste.
+// Num savepoint a transação segue viva, e acao() devolve a recusa como valor para conferir.
+const noSavepoint = <T>(tx: Tx, fn: (sp: Tx) => Promise<T>) => acao(() => tx.transaction(fn))
+
+const CPF = '52998224725'
+const OUTRO_CPF = '11144477735'
+const cliente = (nome: string, cpfCnpj: string) => ({ nome, tipoPessoa: 'fisica' as const, sexo: 'nao_identificado' as const, cpfCnpj })
+const idsDoCpf = async (tx: Tx, contaId: string, cpf: string) =>
+  (await linhas(tx, sql`select id from clientes where conta_id = ${contaId} and cpf_cnpj = ${cpf}`)).map(l => l.id)
+
+test('o mesmo CPF de novo na Conta é recusado com a frase e fica 1 linha só', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const { a } = await contas(tx)
+    const primeiro = await noSavepoint(tx, sp => mod.cadastrarCliente(sp, { contaId: a }, cliente('Ana', CPF)))
+    assert.ok(primeiro.ok)
+    const repetido = await noSavepoint(tx, sp => mod.cadastrarCliente(sp, { contaId: a }, cliente('Ana de novo', CPF)))
+    assert.deepEqual(repetido, { ok: false, erro: 'CPF/CNPJ já cadastrado' })
+    assert.deepEqual(await idsDoCpf(tx, a, CPF), [primeiro.dados])
+  })
+})
+
+test('Conta B cadastra o mesmo CPF da Conta A: a trava é por Conta, cada uma com a sua linha', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const { a, b } = await contas(tx)
+    assert.ok((await noSavepoint(tx, sp => mod.cadastrarCliente(sp, { contaId: a }, cliente('Ana', CPF)))).ok)
+    assert.ok((await noSavepoint(tx, sp => mod.cadastrarCliente(sp, { contaId: b }, cliente('Ana na B', CPF)))).ok)
+    assert.equal((await idsDoCpf(tx, a, CPF)).length, 1)
+    assert.equal((await idsDoCpf(tx, b, CPF)).length, 1)
+  })
+})
+
+test('editar pondo o CPF de outro cliente da Conta é recusado com a frase, e o CPF original fica', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const { a } = await contas(tx)
+    assert.ok((await noSavepoint(tx, sp => mod.cadastrarCliente(sp, { contaId: a }, cliente('Ana', CPF)))).ok)
+    const bia = await noSavepoint(tx, sp => mod.cadastrarCliente(sp, { contaId: a }, cliente('Bia', OUTRO_CPF)))
+    assert.ok(bia.ok)
+    const recusa = await noSavepoint(tx, sp => mod.atualizarCliente(sp, { contaId: a }, bia.dados, { cpfCnpj: CPF }))
+    assert.deepEqual(recusa, { ok: false, erro: 'CPF/CNPJ já cadastrado' })
+    assert.deepEqual(await idsDoCpf(tx, a, OUTRO_CPF), [bia.dados])
   })
 })
