@@ -9,8 +9,8 @@ import { and, eq, gte, isNull, lte, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { contas, grupos, lojas, modelos, motos, vendas } from '@/lib/db/schema'
 import { motoNoShowroom } from '@/lib/queries/showroom'
-import { fimDoDiaBrt, inicioDoDiaBrt, periodoDoMesBrt } from '@/lib/data-venda'
-import type { LinhaEstoquePainel, LojaPainel, VendaPainel } from '@/lib/painel-fabrica'
+import { fimDoDiaBrt, inicioDoDiaBrt } from '@/lib/data-venda'
+import { periodoDoPainel, type LinhaEstoquePainel, type LojaPainel, type VendaPainel } from '@/lib/painel-fabrica'
 
 // Mesma chave de ehMarcaDoPainel (@/lib/painel-fabrica): só letras, minúsculas. O
 // translate cobre o acento que o regexp sozinho apagaria ("Motochéfe" → "motochfe").
@@ -73,9 +73,10 @@ export async function vendasDoPainel(de: string, ate: string): Promise<VendaPain
 }
 
 export async function carregarPainelFabrica(deRaw?: string, ateRaw?: string) {
-  const { de, ate } = periodoDoMesBrt({ de: deRaw, ate: ateRaw })
+  // O teto vale aqui, no servidor: a URL não traz mais que 92 dias de vendas.
+  const { de, ate, limitado } = periodoDoPainel({ de: deRaw, ate: ateRaw })
   const [lojasPainel, estoque, vendidas] = await Promise.all([
     listarLojasDoPainel(), estoqueDoPainel(), vendasDoPainel(de, ate),
   ])
-  return { de, ate, lojas: lojasPainel, estoque, vendas: vendidas }
+  return { de, ate, limitado, lojas: lojasPainel, estoque, vendas: vendidas }
 }

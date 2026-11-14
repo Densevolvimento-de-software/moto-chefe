@@ -3,7 +3,7 @@ import { exigirAcessoPagina } from '../components/admin-guard'
 import { carregarPainelFabrica } from '@/lib/queries/painel-fabrica'
 import {
   abaDaUrl, filtroDaUrl, filtrarEstoque, filtrarVendas, opcoesDoPainel, paraCsv, planilhaDoPainel, rotuloDaAba, urlDoFiltro,
-  ABAS_PAINEL, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, type ParamsPainel,
+  ABAS_PAINEL, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, type ParamsPainel,
 } from '@/lib/painel-fabrica'
 import { hojeBrt } from '@/lib/data-venda'
 import { periodoBr } from '@/lib/notas-emitidas'
@@ -18,7 +18,7 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
 
   const params = await searchParams
   const aba = abaDaUrl(params.aba)
-  const { de, ate, lojas, estoque, vendas } = await carregarPainelFabrica(params.de, params.ate)
+  const { de, ate, limitado, lojas, estoque, vendas } = await carregarPainelFabrica(params.de, params.ate)
   const filtro = filtroDaUrl(params)
   const { modelos, cores } = opcoesDoPainel(estoque, vendas)
   const estoqueFiltrado = filtrarEstoque(estoque, filtro)
@@ -59,6 +59,7 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
       </nav>
 
       <FiltrosPainel aba={aba} lojas={lojas} modelos={modelos} cores={cores} filtro={filtro} de={de} ate={ate} />
+      {aba === 'vendas' && limitado && <p role="status" className="text-sm text-warning">{AVISO_TETO_PERIODO}</p>}
 
       {aba === 'estoque'
         ? <TabelaEstoque lojas={lojas} estoque={estoqueFiltrado} />

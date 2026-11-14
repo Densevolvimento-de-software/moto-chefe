@@ -3,7 +3,7 @@ import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { carregarPainelFabrica } from '@/lib/queries/painel-fabrica'
 import {
-  abaDaUrl, filtroDaUrl, filtrarEstoque, filtrarVendas, nomeDaLoja, rotuloDaAba, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, type ParamsPainel,
+  abaDaUrl, filtroDaUrl, filtrarEstoque, filtrarVendas, nomeDaLoja, rotuloDaAba, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, type ParamsPainel,
 } from '@/lib/painel-fabrica'
 import { dataEHoraBrt } from '@/lib/data-venda'
 import { periodoBr } from '@/lib/notas-emitidas'
@@ -17,7 +17,7 @@ export default async function PainelFabricaImprimirPage({ searchParams }: { sear
 
   const params = await searchParams
   const aba = abaDaUrl(params.aba)
-  const { de, ate, lojas, estoque, vendas } = await carregarPainelFabrica(params.de, params.ate)
+  const { de, ate, limitado, lojas, estoque, vendas } = await carregarPainelFabrica(params.de, params.ate)
   const filtro = filtroDaUrl(params)
   const nomesLojas = filtro.lojas.map(nomeDaLoja(lojas)).filter(Boolean)
   const periodo = periodoBr(de, ate)
@@ -25,7 +25,7 @@ export default async function PainelFabricaImprimirPage({ searchParams }: { sear
     `Lojas: ${nomesLojas.length ? nomesLojas.join(', ') : 'todas'}`,
     `Modelos: ${filtro.modelos.length ? filtro.modelos.join(', ') : 'todos'}`,
     `Cores: ${filtro.cores.length ? filtro.cores.join(', ') : 'todas'}`,
-    ...(aba === 'vendas' ? [`Período: ${periodo}`] : []),
+    ...(aba === 'vendas' ? [`Período: ${periodo}`, ...(limitado ? [AVISO_TETO_PERIODO] : [])] : []),
   ]
 
   return (
