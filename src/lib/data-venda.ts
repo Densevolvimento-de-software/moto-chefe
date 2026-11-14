@@ -43,6 +43,11 @@ export function mesBrt(agora: Date = new Date()): string {
   return hojeBrt(agora).slice(0, 7)
 }
 
+/** Dia 1º do mês corrente de Brasília, como "YYYY-MM-01": início padrão de período do mês. */
+export function primeiroDiaDoMesBrt(agora: Date = new Date()): string {
+  return `${mesBrt(agora)}-01`
+}
+
 const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
 /** 'AAAA-MM' como "out/2026". Pelo texto, sem Date, para o fuso não mudar o mês. */

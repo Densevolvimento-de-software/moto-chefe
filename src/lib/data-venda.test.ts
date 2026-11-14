@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dataBrParaIso, dataPuraBr, dataEHoraBrt, diaBrt, diaCurtoBrt, diaEHoraBrt, fimDoDiaBrt, hojeBrt, inicioDoDiaBrt, mesBrt, parseDataInput, rotuloMesCurto, rotuloMesCurtoAA } from './data-venda'
+import { dataBrParaIso, dataPuraBr, dataEHoraBrt, diaBrt, diaCurtoBrt, diaEHoraBrt, fimDoDiaBrt, hojeBrt, inicioDoDiaBrt, mesBrt, parseDataInput, primeiroDiaDoMesBrt, rotuloMesCurto, rotuloMesCurtoAA } from './data-venda'
 
 test('mesBrt: virada de mês à noite NÃO pula pro mês seguinte', () => {
   // 01/08 02:00Z = 31/07 23:00 em Brasília — ainda é julho.
@@ -127,4 +127,10 @@ test('dataPuraBr: competência AAAA-MM vira MM/AAAA', () => {
 
 test('dataPuraBr: texto sem hífen (o "—" das telas) sai igual', () => {
   assert.equal(dataPuraBr('—'), '—')
+})
+
+test('primeiroDiaDoMesBrt: 22h do último dia do mês ainda é o mês de Brasília', () => {
+  // 2026-11-01T01:00Z = 31/10 às 22h em Brasília
+  assert.equal(primeiroDiaDoMesBrt(new Date('2026-11-01T01:00:00.000Z')), '2026-10-01')
+  assert.equal(primeiroDiaDoMesBrt(new Date('2026-11-14T15:00:00.000Z')), '2026-11-01')
 })
