@@ -78,8 +78,9 @@ export const getUsuarioLogado = cache(async () => {
   // ativo = true), não por uma exceção de papel no código.
   if (!usuario.ativo) redirect(ROTA_CONTA_DESATIVADA)
 
-  // Login da fábrica só lê (@/lib/login-fabrica). O middleware já recusa; isto vale quando ele
-  // seguiu sem validar (fail-open) e nas rotas fora do matcher (/api, /assinar, /adesao).
+  // Login da fábrica só lê (@/lib/login-fabrica). Para Server Action, esta é a barreira principal,
+  // não uma rede de proteção: o middleware não roda em todo caminho (ver o matcher dele) e uma
+  // action pode ser chamada em qualquer página pelo id. O middleware só poupa a ida ao servidor.
   if (usuario.papel === PAPEL_FABRICA && ehPedidoDeAcao(await headers())) redirect(ROTA_PAINEL_FABRICA)
 
   // Lido a cada requisição: editar o cargo vale na hora para todos os usuários dele.

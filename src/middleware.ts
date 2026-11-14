@@ -64,8 +64,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Login da fábrica: só lê o painel e sai (@/lib/login-fabrica). O papel vem do app_metadata,
-  // que só a service role grava. Sem este bloco (fail-open acima, ou rota fora do matcher),
-  // getUsuarioLogado e o layout do sistema seguram.
+  // que só a service role grava. Este bloco prende a navegação e poupa a ida ao servidor, mas não
+  // roda em todo caminho (matcher abaixo): contra Server Action, a barreira é o getUsuarioLogado.
   if (user?.app_metadata?.papel === PAPEL_FABRICA) {
     const decisao = decisaoDoLoginFabrica({ caminho: request.nextUrl.pathname, metodo: request.method })
     switch (decisao.tipo) {
