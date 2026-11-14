@@ -237,7 +237,35 @@ test('Conta B não efetiva o pedido com frete da Conta A: mesma frase, frete da 
   assert.deepEqual(await vendasDaMoto(a.motoId), [])
 })
 
-// O item moto do pedido (#774) guarda só a moto: o frete fica na Entrega e no total da venda (#726, 4b; #779 decide item "frete").
+// Pedido forjado (#779): campos a mais na Entrega, frete na retirada e a moto ou o grupo de outra Conta.
+async function entregaForjada(a: Awaited<ReturnType<typeof semearConta>>) {
+  const [grupoA] = await execRows(sql`select l.grupo_id from motos m join lojas l on l.id = m.loja_id where m.id = ${a.motoId}`)
+  return { ...COM_FRETE, endereco: { ...COM_FRETE.endereco, grupoId: grupoA.grupo_id }, grupoId: grupoA.grupo_id, lojaId: a.aux.lojaId, valor: 1 }
+}
+
+test('pedido forjado (#779): a Entrega com campos a mais grava só os campos conhecidos', async () => {
+  const a = await semearConta()
+  usuario = a.vendedor
+  assert.deepEqual(await criarPedidoVendaAction(a.motoId, '', await entregaForjada(a)), { ok: true, dados: undefined })
+  assert.deepEqual((await pedidosDaMoto(a.motoId))[0].entrega, COM_FRETE)
+})
+
+test('pedido forjado (#779): retirada com frete grava a retirada sem frete', async () => {
+  const a = await semearConta()
+  usuario = a.vendedor
+  assert.deepEqual(await criarPedidoVendaAction(a.motoId, '', { ...RETIRA, frete: 350 }), { ok: true, dados: undefined })
+  assert.deepEqual((await pedidosDaMoto(a.motoId))[0].entrega, RETIRA)
+})
+
+test('pedido forjado (#779): Conta B com a moto e o grupo da Conta A recebe a frase de moto inexistente, nada gravado', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  usuario = b.vendedor
+  assert.deepEqual(await criarPedidoVendaAction(a.motoId, '', await entregaForjada(a)), { ok: false, erro: 'Moto não encontrada' })
+  assert.deepEqual(await pedidosDaMoto(a.motoId), [])
+})
+
+// O item moto do pedido (#774) guarda só a moto: o frete mora só na Entrega e soma no total da venda (#726, 4b; #779).
 const itemDaMoto = (motoId: string) => execRows(sql`select i.valor_unitario from pedidos_venda_itens i join pedidos_venda p on p.id = i.pedido_venda_id
   where p.moto_id = ${motoId} and i.tipo = 'moto'`)
 

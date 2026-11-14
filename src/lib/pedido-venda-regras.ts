@@ -1,4 +1,5 @@
 import { centavos } from '@/lib/numero-br'
+import { freteDaVenda, type EntregaVenda } from '@/lib/notagateway/entrega'
 
 // Regras puras do pedido de venda, sem banco: usadas pela action (servidor) e pelo
 // cartão do pedido (cliente), para a tela e o servidor não divergirem de novo (#181:
@@ -29,8 +30,8 @@ export function podeCancelarPedido(usuario: QuemCancela, pedido: PedidoParaCance
   return false
 }
 
-/** Tipos de item do pedido de venda (#770). O check da migração 0178 repete esta lista. */
-export const TIPOS_ITEM_PEDIDO = ['moto', 'brinde', 'acessorio', 'frete'] as const
+/** Tipos de item do pedido de venda (#770). O check da migração 0189 repete esta lista; o frete mora na Entrega (#779). */
+export const TIPOS_ITEM_PEDIDO = ['moto', 'brinde', 'acessorio'] as const
 export type TipoItemPedido = (typeof TIPOS_ITEM_PEDIDO)[number]
 
 export type MotoParaPedido = { status: string; disponibilidade: string | null }
@@ -59,3 +60,18 @@ export function valorDaPecaNoPedido(p: PecaDoPedidoInput, precoDoCatalogo: strin
 export function totalDasPecas(itens: readonly { quantidade: number | string; valorUnitario: number | string | null }[]): number {
   return centavos(itens.reduce((s, i) => s + Number(i.quantidade) * Number(i.valorUnitario ?? 0), 0))
 }
+
+type PecasDoTotal = Parameters<typeof totalDasPecas>[0]
+
+/**
+ * O que o cliente paga além da moto: acessórios e o frete gravado na Entrega, lido por `freteDaVenda`, o mesmo
+ * de `vendas.valor`, da NF e dos relatórios. Não reconfere a modalidade: quem paga se decide na gravação
+ * (`conferirEntrega` só aceita valor com a loja levando ou contratando), e FOB ou frete por conta da loja ficam
+ * sem valor (#779). Também é o que não paga desconto da moto (#776).
+ */
+export const foraDaMoto = (entrega: EntregaVenda | null, pecas: PecasDoTotal): number =>
+  centavos(freteDaVenda(entrega) + totalDasPecas(pecas))
+
+/** Total do pedido que os pagamentos fecham: moto + frete cobrado + acessórios. */
+export const totalDoPedido = (moto: number, entrega: EntregaVenda | null, pecas: PecasDoTotal): number =>
+  centavos(moto + foraDaMoto(entrega, pecas))

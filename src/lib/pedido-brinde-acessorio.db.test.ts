@@ -6,6 +6,8 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { entregarSintetico } from '@/test/entrega-sintetica'
+import { hojeBrt } from '@/lib/data-venda'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -62,9 +64,9 @@ async function semearConta() {
 type Conta = Awaited<ReturnType<typeof semearConta>>
 type PecaDoPedido = { tipo: 'brinde' | 'acessorio'; pecaId: string; quantidade: number; valorUnitario?: number }
 
-async function criarPedido(c: Conta, pecas: PecaDoPedido[], quem = c.vendedor) {
+async function criarPedido(c: Conta, pecas: PecaDoPedido[], quem = c.vendedor, entrega: unknown = RETIRA) {
   usuario = quem
-  const r = await actions.criarPedidoVendaAction(c.motoId, '', RETIRA, pecas)
+  const r = await actions.criarPedidoVendaAction(c.motoId, '', entrega, pecas)
   const [p] = await execRows(sql`select id from pedidos_venda where moto_id = ${c.motoId} and status = 'pendente'`)
   return { r, pedidoId: p?.id as string | undefined }
 }
@@ -150,11 +152,28 @@ test('B7: folha: o acessório entra na base de peças do vendedor do pedido e da
   const { pedidoId } = await criarPedido(a, BRINDE_E_ACESSORIO(a), a.aux)
   await efetivar(a, pedidoId!, 10000, [{ tipo: 'pix', valor: 10400 }])
   const { buscarDadosFolha } = await import('@/lib/queries/folha')
-  const mes = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }).slice(0, 7)
+  const mes = hojeBrt().slice(0, 7)
   const dados = await buscarDadosFolha({ mes, lojaIds: [a.lojaId], grupoId: a.grupoId })
   assert.deepEqual(dados.pecasPorVendedor.map(v => [v.vendedorId, Number(v.total)]), [[a.aux.id, 400]])
   assert.deepEqual(dados.pecasPorLoja.map(l => [l.lojaId, Number(l.total)]), [[a.lojaId, 400]])
   assert.deepEqual(dados.vendasPorVendedor.map(v => [v.vendedorId, Number(v.total)]), [[a.aux.id, 10000]])
+})
+
+test('B7c (#779): pedido com frete cobrado e acessório: pagamentos fecham moto + frete + acessório; o frete fica fora das bases da folha', async () => {
+  const a = await semearConta()
+  const { pedidoId } = await criarPedido(a, BRINDE_E_ACESSORIO(a), a.aux, entregarSintetico(350))
+  assert.deepEqual(await efetivar(a, pedidoId!, 10000, [{ tipo: 'pix', valor: 10749 }]),
+    { ok: false, erro: 'Somatório das formas de pagamento difere do valor da venda' })
+  assert.deepEqual(await efetivar(a, pedidoId!, 10000, [{ tipo: 'pix', valor: 10750 }]), { ok: true, dados: undefined })
+  const [venda] = await execRows(sql`select valor, entrega->'frete' as frete from vendas where pedido_venda_id = ${pedidoId}`)
+  assert.deepEqual([venda.valor, venda.frete], ['10350.00', 350])
+
+  const { buscarDadosFolha } = await import('@/lib/queries/folha')
+  const mes = hojeBrt().slice(0, 7)
+  const dados = await buscarDadosFolha({ mes, lojaIds: [a.lojaId], grupoId: a.grupoId })
+  const bases = (linhas: { total: string }[]) => linhas.map(l => Number(l.total))
+  assert.deepEqual([bases(dados.vendasPorVendedor), bases(dados.motosPorLoja)], [[10000], [10000]])
+  assert.deepEqual([bases(dados.pecasPorVendedor), bases(dados.pecasPorLoja)], [[400], [400]])
 })
 
 test('B7b: pedido só com brinde: venda de peça de R$ 0, base de peças não muda', async () => {

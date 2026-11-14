@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { entregarSintetico } from '@/test/entrega-sintetica'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -184,9 +185,7 @@ test('D8: aprovador da Conta B não vê, não aprova nem recusa o pedido da Cont
 
 test('D9: com frete, o mínimo compara o líquido sem o frete; a aprovação guarda o valor da moto e o frete, e a venda sai com o total', async () => {
   const a = await semearConta()
-  const entrega = { modo: 'entregar', modalidade: 'TransporteProprioPorContaDoRemetente', recebe: null, frete: 150,
-    endereco: { cep: '01001000', logradouro: 'Rua Sintética', numero: '1', complemento: '', bairro: 'Centro', cidade: '3550308', nomeCidade: 'São Paulo', uf: 'SP' } }
-  await execRows(sql`update pedidos_venda set entrega = ${JSON.stringify(entrega)}::jsonb where id = ${a.pedidoId}`)
+  await execRows(sql`update pedidos_venda set entrega = ${JSON.stringify(entregarSintetico(150))}::jsonb where id = ${a.pedidoId}`)
   usuario = a.aux
   // Moto 11.900 + frete 150 = 12.050: o total passa do mínimo de 12.000, a moto não.
   const r = await actions.efetivarVendaAction(a.pedidoId, 'Cliente sintético', CPF, '11900', [{ tipo: 'pix', valor: 12050 }], undefined, a.origemId, undefined, 'Cliente fiel')
@@ -200,8 +199,7 @@ test('D9: com frete, o mínimo compara o líquido sem o frete; a aprovação gua
 
 test('D10: com frete e a moto no mínimo, efetiva direto', async () => {
   const a = await semearConta()
-  await execRows(sql`update pedidos_venda set entrega = ${JSON.stringify({ modo: 'entregar', modalidade: 'TransporteProprioPorContaDoRemetente', recebe: null, frete: 150,
-    endereco: { cep: '01001000', logradouro: 'Rua Sintética', numero: '1', complemento: '', bairro: 'Centro', cidade: '3550308', nomeCidade: 'São Paulo', uf: 'SP' } })}::jsonb where id = ${a.pedidoId}`)
+  await execRows(sql`update pedidos_venda set entrega = ${JSON.stringify(entregarSintetico(150))}::jsonb where id = ${a.pedidoId}`)
   usuario = a.aux
   assert.deepEqual(await actions.efetivarVendaAction(a.pedidoId, 'Cliente sintético', CPF, String(MINIMO), [{ tipo: 'pix', valor: MINIMO + 150 }], undefined, a.origemId), { ok: true, dados: undefined })
   assert.deepEqual(await aprovacoes(a), [])

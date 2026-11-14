@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { entregarSintetico } from '@/test/entrega-sintetica'
 import { SOMA_PAGAMENTOS_DIFERE } from '@/lib/pagamentos-entrada'
 import { contaDaAprovacao } from '@/lib/aprovacao-venda'
 import { freteDaVenda, motoNaNota, pendenciasDaEntrega } from '@/lib/notagateway/entrega'
@@ -49,10 +50,7 @@ after(async () => {
 const idDe = async (q: ReturnType<typeof sql>) => (await execRows(q))[0].id as string
 const MINIMO = 12000
 const FRETE = 150
-const ENTREGAR = {
-  modo: 'entregar', modalidade: 'TransporteProprioPorContaDoRemetente', recebe: null, frete: FRETE,
-  endereco: { cep: '01001000', logradouro: 'Rua Sintética', numero: '1', complemento: '', bairro: 'Centro', cidade: '3550308', nomeCidade: 'São Paulo', uf: 'SP' },
-}
+const ENTREGAR = entregarSintetico(FRETE)
 
 async function semearConta() {
   const sufixo = randomUUID()

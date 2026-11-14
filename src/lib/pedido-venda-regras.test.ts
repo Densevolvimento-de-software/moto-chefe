@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { motivoBloqueioCriarPedido, podeCancelarPedido, podeCriarPedido, podeEfetivarPedido, totalDasPecas, valorDaPecaNoPedido } from './pedido-venda-regras'
+import { motivoBloqueioCriarPedido, podeCancelarPedido, podeCriarPedido, podeEfetivarPedido, totalDasPecas, totalDoPedido, valorDaPecaNoPedido } from './pedido-venda-regras'
+import { entregarSintetico } from '@/test/entrega-sintetica'
 
 const pedido = { status: 'pendente', lojaId: 'loja-a', vendedorId: 'vend-1' }
 
@@ -62,4 +63,28 @@ test('totalDasPecas: soma quantidade × valor em centavos; brinde (R$ 0) não mu
   assert.equal(totalDasPecas([{ quantidade: '2.00', valorUnitario: '200.10' }, { quantidade: '1.00', valorUnitario: '0.00' }]), 400.2)
   assert.equal(totalDasPecas([{ quantidade: 3, valorUnitario: 0.1 }]), 0.3)
   assert.equal(totalDasPecas([]), 0)
+})
+
+// Quem paga o frete se decide na gravação: `conferirEntrega` só aceita valor com a loja levando ou contratando.
+// Aqui, cada caso com a Entrega como ela fica gravada; o total soma o frete gravado, sem reconferir a modalidade.
+describe('totalDoPedido: a Entrega gravada de cada caso de quem paga dá o total (#779)', () => {
+  const acessorios = [{ quantidade: '2.00', valorUnitario: '150.00' }, { quantidade: '1.00', valorUnitario: '0.00' }]
+
+  test('cliente paga a loja (a loja leva ou contrata, frete gravado): moto + frete + acessórios', () => {
+    assert.equal(totalDoPedido(10000, entregarSintetico(350), acessorios), 10650)
+    assert.equal(totalDoPedido(10000, entregarSintetico(350, 'ContratacaoPorContaDoRemetente'), []), 10350)
+  })
+
+  test('cliente paga a transportadora (FOB, gravada sem frete): só a moto e os acessórios', () => {
+    assert.equal(totalDoPedido(10000, entregarSintetico(undefined, 'ContratacaoPorContaDoDestinatario'), acessorios), 10300)
+  })
+
+  test('loja paga sem cobrar (a loja leva ou contrata, gravada sem frete): só a moto e os acessórios', () => {
+    assert.equal(totalDoPedido(10000, entregarSintetico(undefined, 'ContratacaoPorContaDoRemetente'), acessorios), 10300)
+  })
+
+  test('retirada ou pedido sem Entrega: sem frete; soma em centavos, sem resto de float', () => {
+    assert.equal(totalDoPedido(10000, { modo: 'retira', modalidade: '' }, []), 10000)
+    assert.equal(totalDoPedido(0.1, null, [{ quantidade: 1, valorUnitario: 0.2 }]), 0.3)
+  })
 })

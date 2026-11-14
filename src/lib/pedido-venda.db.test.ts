@@ -400,7 +400,7 @@ describe('itens do pedido (#774)', () => {
     })
   })
 
-  test('I5: o banco recusa item incoerente (moto sem moto, peça sem peça, frete com moto ou peça, moto 2x ou com quantidade 2)', async () => {
+  test('I5: o banco recusa item incoerente (moto sem moto, peça sem peça, frete (mora na Entrega), moto 2x ou com quantidade 2)', async () => {
     await emTransacaoDesfeita(async tx => {
       const s = await semear(tx)
       const peca = await s.linha(sql`insert into pecas_catalogo (nome, valor, conta_id) select 'Capacete', 300, conta_id from grupos where id = ${s.grupoId} returning id`)
@@ -416,18 +416,17 @@ describe('itens do pedido (#774)', () => {
       const casos: [ReturnType<typeof sql>, string][] = [
         [inserir('moto', null, null), 'pedidos_venda_itens_moto_ck'],
         [inserir('acessorio', s.motoId, peca.id), 'pedidos_venda_itens_moto_ck'],
-        [inserir('frete', s.motoId, null), 'pedidos_venda_itens_moto_ck'],
         [inserir('brinde', null, null), 'pedidos_venda_itens_peca_ck'],
         [inserir('moto', s.motoId, peca.id), 'pedidos_venda_itens_peca_ck'],
-        [inserir('frete', null, peca.id), 'pedidos_venda_itens_peca_ck'],
         [inserir('moto', s.motoId, null, 2), 'pedidos_venda_itens_quantidade_ck'],
         [inserir('acessorio', null, peca.id, 0), 'pedidos_venda_itens_quantidade_ck'],
         [inserir('servico', null, null), 'pedidos_venda_itens_tipo_ck'],
+        // O frete mora só na Entrega do pedido (0189, #779).
+        [inserir('frete', null, null), 'pedidos_venda_itens_tipo_ck'],
       ]
       for (const [q, regra] of casos) await recusaPor(q, regra)
       await tx.execute(inserir('moto', s.motoId, null))
       await tx.execute(inserir('brinde', null, peca.id, 2))
-      await tx.execute(inserir('frete', null, null))
       await recusaPor(inserir('moto', s.motoId, null), 'pedidos_venda_itens_moto_key')
     })
   })

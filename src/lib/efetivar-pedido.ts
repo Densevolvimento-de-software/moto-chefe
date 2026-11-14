@@ -8,8 +8,7 @@ import { formaPagamentoDaVenda, pagamentosFecham, pagamentosIncompletos, PAGAMEN
 import { clientesDoEscopo, contaDaLoja } from '@/lib/conta'
 import { RecusaUsuario } from '@/lib/resultado-action'
 import { gravarMotoDoPedido } from '@/lib/pedido-venda'
-import { totalDasPecas } from '@/lib/pedido-venda-regras'
-import { centavos } from '@/lib/numero-br'
+import { totalDasPecas, totalDoPedido } from '@/lib/pedido-venda-regras'
 import { aplicarVendaPeca } from '@/lib/venda-peca'
 import { lerDocumentoCliente } from '@/lib/documento'
 import { freteDaVenda, PEDIDO_EM_APROVACAO_PARA_ALTERAR, totalComFrete, type EntregaVenda } from '@/lib/notagateway/entrega'
@@ -115,7 +114,7 @@ type PecasDoPedido = Awaited<ReturnType<typeof pecasDoPedido>>
 
 /** Confere as formas contra o total do pedido (moto + frete + acessórios) e as maquininhas da loja; devolve o total. */
 async function conferirPagamentos(tx: Tx, pedido: { lojaId: string; entrega: EntregaVenda | null }, pecas: PecasDoPedido, d: Pick<DadosEfetivarPedido, 'valor' | 'pagamentos'>) {
-  const total = centavos(totalComFrete(d.valor, freteDaVenda(pedido.entrega)) + totalDasPecas(pecas))
+  const total = totalDoPedido(d.valor, pedido.entrega, pecas)
   // Aqui e não na action: o frete que entra no total só se conhece lendo o pedido.
   if (pagamentosIncompletos(d.pagamentos)) throw new RecusaUsuario(PAGAMENTO_INCOMPLETO)
   if (!pagamentosFecham(d.pagamentos, total)) throw new RecusaUsuario(SOMA_PAGAMENTOS_DIFERE)
@@ -166,7 +165,7 @@ export async function efetivarPedidoTx(tx: Tx, d: DadosEfetivarPedido): Promise<
     // A Entrega vem do pedido, lido aqui sob a trava: a efetivação não a recebe do navegador.
     entrega: pedido.entrega,
   }).returning({ id: vendas.id })
-  // O item moto guarda só a moto: o frete fica na Entrega e no total da venda (#726; a #779 decide um item "frete").
+  // O item moto guarda só a moto: o frete mora só na Entrega e soma no total da venda (#726, #779).
   await gravarMotoDoPedido(tx, { pedidoId: d.pedidoId, motoId: pedido.motoId, valor: d.valor.toFixed(2) })
 
   if (reservaAtiva) {

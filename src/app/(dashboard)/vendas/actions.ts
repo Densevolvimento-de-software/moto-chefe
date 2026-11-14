@@ -29,7 +29,7 @@ import { lerContribuinteIcms, tipoPessoaDoDocumento } from '@/lib/documento'
 import { STATUS_MORTOS } from '@/lib/notagateway/status'
 import { notasParaTravaDaVenda, vendaTemNfViva } from '@/lib/notagateway/nf-viva'
 import { travaDoCancelamentoDaVendaAction } from './nfe-propria-actions'
-import { podeCriarPedido, podeEfetivarPedido, totalDasPecas, type PecaDoPedidoInput } from '@/lib/pedido-venda-regras'
+import { podeCriarPedido, podeEfetivarPedido, foraDaMoto, type PecaDoPedidoInput } from '@/lib/pedido-venda-regras'
 import { podeGerirPecas } from '../pecas/papeis'
 import { PAPEIS_QUE_CANCELAM_VENDA, travaDoPapel } from '@/lib/cancelar-venda'
 import { alterarEntregaDoPedidoTx, efetivarPedidoTx, pecasDoPedido, pedirAprovacaoDoPedidoTx, type PedidoEmAprovacao } from '@/lib/efetivar-pedido'
@@ -251,8 +251,8 @@ async function efetivarVenda(
   const [moto] = await db.select({ modeloId: motos.modeloId }).from(motos).where(eq(motos.id, pedido.motoId)).limit(1)
   const prec = moto ? await buscarPrecificacao(moto.modeloId, pedido.lojaId) : null
   // Frete e acessórios (#778) ficam fora do preço da moto: não pagam desconto dela.
-  const foraDaMoto = freteDaVenda(pedido.entrega) + totalDasPecas(await pecasDoPedido(db, pedidoId))
-  const preco = prec && { liquido: liquidoDaMoto(pagamentos, prec.taxas, foraDaMoto), minimo: prec.valorMinimoPix }
+  const pecas = await pecasDoPedido(db, pedidoId)
+  const preco = prec && { liquido: liquidoDaMoto(pagamentos, prec.taxas, foraDaMoto(pedido.entrega, pecas)), minimo: prec.valorMinimoPix }
   const tipo = aprovacaoNecessaria({
     sensivelSemPermissao: temPagamentoSensivel(pagamentos) && !(await podeAprovarPagamentoSensivelNaLoja(usuario, pedido.lojaId)),
     preco,
