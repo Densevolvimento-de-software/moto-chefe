@@ -11,6 +11,7 @@ import { NfSaidaProvider, NfSaidaGatilhoLinha } from './nf-saida-contexto'
 import { MontarButton } from './montar-button'
 import { CancelarReservaButton } from './cancelar-reserva-button'
 import { podeVendedorReservarForaDaLoja } from '@/lib/loja-galpao'
+import { motivoParaNaoVender } from '@/lib/estado-moto'
 import type { MotoComDetalhes } from '@/lib/queries/motos'
 import type { DemandaCompativel } from '@/lib/queries/demandas'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
@@ -160,7 +161,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                             {podeVenderAqui && podeVender.has(papel) && (
                               <>
                                 {/* Montada/Garantia disponível: venda + reserva */}
-                                {moto.status !== 'caixa' && moto.disponibilidade !== 'reservada' && moto.disponibilidade !== 'aguardando_aprovacao' && (moto.disponibilidade === 'disponivel' || moto.status === 'em_garantia') && (
+                                {motivoParaNaoVender(moto.status) === null && moto.disponibilidade !== 'reservada' && moto.disponibilidade !== 'aguardando_aprovacao' && (moto.disponibilidade === 'disponivel' || moto.status === 'em_garantia') && (
                                   <VenderButton
                                     key={`vender-acao-${moto.id}`}
                                     motoId={moto.id}

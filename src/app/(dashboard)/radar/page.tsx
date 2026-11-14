@@ -8,7 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { buttonVariants } from '@/components/ui/button'
 import { Archive, Eye, Search } from 'lucide-react'
 import Link from 'next/link'
-import { statusLabel_legado, disponibilidadeLabel } from '@/lib/estado-moto'
+import { disponibilidadeLabel } from '@/lib/estado-moto'
+import { rotuloDoStatus } from '@/lib/status-moto'
 import { diaBrt } from '@/lib/data-venda'
 import { idsQuePodeDesarquivar } from '@/lib/arquivar-motos'
 import { DesarquivarMoto } from './components/desarquivar-moto'
@@ -93,7 +94,7 @@ export default async function RadarPage({
                 </div>
                 <p className="text-muted-foreground mt-0.5 text-sm">{[moto.cor, moto.lojaNome].filter(Boolean).join(' · ')}</p>
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  <Badge variant="outline">{statusLabel_legado[moto.status] ?? moto.status}</Badge>
+                  <Badge variant="outline">{rotuloDoStatus(moto.status)}</Badge>
                   {moto.disponibilidade && <Badge variant="secondary">{disponibilidadeLabel[moto.disponibilidade] ?? moto.disponibilidade}</Badge>}
                 </div>
               </div>
@@ -134,7 +135,7 @@ export default async function RadarPage({
                   <TableCell>{moto.lojaNome}</TableCell>
                   <TableCell>
                     <Badge variant="outline">
-                      {statusLabel_legado[moto.status] ?? moto.status}
+                      {rotuloDoStatus(moto.status)}
                     </Badge>
                   </TableCell>
                   <TableCell>

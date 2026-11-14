@@ -22,3 +22,9 @@ test('selo de cada status: texto, cor e ícone de hoje', () => {
     assert.equal(html.match(/<svg[^>]*class="([^"]*)"/)?.[1], c.svg, `${c.status}: ícone`)
   }
 })
+
+test('status fora da lista não vira "Caixa": mostra o próprio valor, sem o ícone da caixa', () => {
+  const html = selo('xyz')
+  assert.equal(texto(html), 'xyz')
+  assert.ok(!html.includes('lucide-package'))
+})

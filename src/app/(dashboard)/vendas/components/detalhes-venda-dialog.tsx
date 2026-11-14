@@ -16,6 +16,7 @@ import { PainelAssinatura } from './painel-assinatura'
 import { rotuloDocumento, tipoPessoaDoDocumento } from '@/lib/documento'
 import { NfSaidaButton } from '../../estoque/components/nf-saida-button'
 import { podeOperarNfSaida } from '../papeis-nf-saida'
+import { rotuloDoStatus } from '@/lib/status-moto'
 
 const formatCurrency = (v: string | number) =>
   Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -37,11 +38,6 @@ const tipoLabel: Record<string, string> = {
   financiamento: 'Financiamento',
   link_pagamento: 'Link de Pagamento',
   transferencia: 'Transferência Bancária',
-}
-
-const statusLabel: Record<string, string> = {
-  caixa: 'Caixa', montada: 'Montada', em_garantia: 'Garantia',
-  faturada: 'Caixa', disponivel: 'Disponível', reservada: 'Reservada', vendida: 'Vendida',
 }
 
 const historicoTipoLabel: Record<string, string> = {
@@ -254,7 +250,7 @@ export function DetalhesVendaDialog({ venda: v, papel, desconto, gatilho }: Prop
                             <p className="font-medium">{historicoTipoLabel[h.tipo] ?? h.tipo}</p>
                             {h.statusAnterior && h.statusNovo && (
                               <p className="text-xs text-muted-foreground">
-                                {statusLabel[h.statusAnterior] ?? h.statusAnterior} → {statusLabel[h.statusNovo] ?? h.statusNovo}
+                                {rotuloDoStatus(h.statusAnterior)} → {rotuloDoStatus(h.statusNovo)}
                               </p>
                             )}
                             {h.observacao && <p className="mt-1 text-xs whitespace-pre-wrap text-muted-foreground">{h.observacao}</p>}
