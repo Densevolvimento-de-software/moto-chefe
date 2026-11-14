@@ -8,6 +8,7 @@
 // par com mais grupos e entraria por ele.
 
 import { ITENS, acessaModulo, liberavelPara, type UsuarioNav } from '@/lib/navegacao'
+import { PAPEL_FABRICA } from '@/lib/login-fabrica'
 
 export type Gestor = {
   id: string
@@ -78,6 +79,8 @@ export function papelAcimaDoSocio(papel: string): boolean {
 }
 
 export function podeGerenciar(gestor: Pick<Gestor, 'papel' | 'gruposVisiveis'>, alvo: AlvoGestao): boolean {
+  // Login da fábrica só se cuida na tela de acessos da fábrica: some desta lista e do formulário.
+  if (alvo.papel === PAPEL_FABRICA) return false
   if (gestor.papel === 'admin_geral') return true
   if (gestor.papel !== 'admin_socio') return false
   if (papelAcimaDoSocio(alvo.papel)) return false
@@ -91,6 +94,8 @@ export function recusaDaGravacao(
   antes: (CadastroGestao & { id: string }) | null,
   depois: CadastroGestao,
 ): string | null {
+  // Nem dar nem tirar o papel fabrica por aqui; mesma frase de id inexistente.
+  if (antes?.papel === PAPEL_FABRICA || depois.papel === PAPEL_FABRICA) return 'Usuário não encontrado'
   // Tela liberável só para certos papéis (Entrada: só aux_adm, #488): vale até para o admin_geral.
   const naoLiberavel = depois.modulosExtras.map(id => ITENS.find(i => i.id === id)).find(i => i && !liberavelPara(i, depois.papel))
   if (naoLiberavel) return `${naoLiberavel.label} não pode ser liberada para esta função`
