@@ -180,7 +180,9 @@ test('login da fábrica desativado vai para a tela de conta desativada', async (
 test('/admin/usuarios não exclui o login da fábrica, nem o admin_geral: a frase é a de id inexistente', async () => {
   const alvo = await semearUsuario(db, base, { papel: PAPEL_FABRICA, rotulo: 'fabrica-excluir', semLoja: true })
   idDaSessao = geralId
-  assert.deepEqual(await excluirUsuarioAction(alvo), { ok: false, erro: 'Usuário não encontrado' })
+  const recusa = await excluirUsuarioAction(alvo)
+  assert.deepEqual(recusa, await excluirUsuarioAction('00000000-0000-4000-8000-000000000902'), 'mesma resposta de id inexistente')
+  assert.deepEqual(recusa, { ok: false, erro: 'Usuário não encontrado' })
   assert.equal((await linhas(sql`select 1 from usuarios where id = ${alvo}`)).length, 1)
 })
 
