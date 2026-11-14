@@ -1,5 +1,5 @@
 import { Suspense, cache } from 'react'
-import { hojeBrt } from '@/lib/data-venda'
+import { hojeBrt, primeiroDiaDoMesBrt } from '@/lib/data-venda'
 import { db } from '@/lib/db'
 import { usuarios, premiacaoFaixas, funcionariosConfig, vendas } from '@/lib/db/schema'
 import { eq, or, sql, count, lt, inArray } from 'drizzle-orm'
@@ -392,11 +392,6 @@ function hojeISO() {
   return hojeBrt()
 }
 
-// Mês de Brasília: no servidor (UTC), das 21h à meia-noite do último dia o relógio já
-// está no mês seguinte e o período padrão ficaria com o início depois do fim (#283).
-function inicioMesAtualISO() {
-  return `${hojeBrt().slice(0, 7)}-01`
-}
 
 // Período de comparação: mesma duração do período selecionado, terminando um dia antes dele.
 function periodoAnterior(dataInicio: string, dataFim: string) {
@@ -428,7 +423,7 @@ export default async function DashboardPage({
   const isVendedor = temPapel(usuario, 'vendedor')
   const isAuxAdm = usuario.papel === 'aux_adm'
 
-  const deDefault = inicioMesAtualISO()
+  const deDefault = primeiroDiaDoMesBrt()
   const ateDefault = hojeISO()
   const dataInicio = params.de ?? deDefault
   const dataFim = params.ate ?? ateDefault
