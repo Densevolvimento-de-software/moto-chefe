@@ -15,29 +15,31 @@ const pedir = async (metodo: string, caminho: string) => {
   return middleware(new NextRequest(`http://localhost:3000${caminho}`, { method: metodo }))
 }
 const destino = (r: Response) => (r.headers.get('location') ? new URL(r.headers.get('location')!).pathname : null)
+/** Seguiu para a página: 200 e sem redirecionar (um 403 também não tem location). */
+const seguiu = (r: Response) => r.status === 200 && destino(r) === null
 
 test('login da fábrica: lê o painel; outro endereço volta ao painel; POST fora do sair é recusado', async () => {
   claims = fabrica()
-  assert.equal(destino(await pedir('GET', '/fabrica')), null)
+  assert.ok(seguiu(await pedir('GET', '/fabrica')))
   assert.equal(destino(await pedir('GET', '/dashboard')), '/fabrica')
   assert.equal((await pedir('POST', '/fabrica')).status, 403)
-  assert.equal(destino(await pedir('POST', '/sair')), null)
+  assert.ok(seguiu(await pedir('POST', '/sair')))
 })
 
-test('login da fábrica com senha provisória não vai à troca de senha: volta ao painel (a fábrica não troca a própria)', async () => {
+test('login da fábrica com senha provisória: /trocar-senha volta ao painel, e o painel abre', async () => {
   claims = fabrica({ user_metadata: { must_change_password: true } })
   assert.equal(destino(await pedir('GET', '/trocar-senha')), '/fabrica')
-  assert.equal(destino(await pedir('GET', '/fabrica')), null)
+  assert.ok(seguiu(await pedir('GET', '/fabrica')))
 })
 
 test('outro papel com senha provisória ainda consegue sair por POST', async () => {
   claims = { sub: 'u2', app_metadata: {}, user_metadata: { must_change_password: true } }
   assert.equal(destino(await pedir('GET', '/dashboard')), '/trocar-senha')
-  assert.equal(destino(await pedir('POST', '/sair')), null)
+  assert.ok(seguiu(await pedir('POST', '/sair')))
 })
 
 test('sem o papel de fábrica no token, o middleware não prende em /fabrica', async () => {
   claims = { sub: 'u3', app_metadata: {} }
-  assert.equal(destino(await pedir('GET', '/dashboard')), null)
-  assert.equal((await pedir('POST', '/dashboard')).status, 200)
+  assert.ok(seguiu(await pedir('GET', '/dashboard')))
+  assert.ok(seguiu(await pedir('POST', '/dashboard')))
 })
