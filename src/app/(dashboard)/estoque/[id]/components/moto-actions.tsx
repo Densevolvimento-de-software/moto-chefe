@@ -90,7 +90,7 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
   const isAdmin = ADMINS.has(papel)
   const abrirVenda = useSearchParams().get('vender') === '1'
   // Guardado no primeiro render: o replace abaixo tira o ?vender=1 da URL logo em seguida.
-  const [vendaBarradaPorCaixa] = useState(() => abrirVenda && moto.status === 'caixa')
+  const [vendaBarradaPorCaixa] = useState(() => abrirVenda && motivoParaNaoVender(moto.status) !== null)
   const router = useRouter()
   const pathname = usePathname()
   // O VenderButton já leu o pedido ao montar; sem limpar, recarregar a página reabriria a venda.
