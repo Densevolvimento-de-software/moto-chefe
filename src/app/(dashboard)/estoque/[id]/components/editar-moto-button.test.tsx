@@ -43,8 +43,9 @@ async function montar(status: string) {
   const clicar = async (el: Element) => { await disparar(el, 'pointerdown'); await disparar(el, 'mousedown'); await disparar(el, 'pointerup'); await disparar(el, 'mouseup'); await disparar(el, 'click') }
   const botao = (texto: string) => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === texto)!
   await clicar(botao('Editar'))
-  // Os dois primeiros selects do diálogo são Modelo e Loja; o terceiro é Status.
-  const gatilhoStatus = () => [...document.querySelectorAll('[role=dialog] [role=combobox]')][2]
+  // O select que fica no mesmo bloco do rótulo "Status".
+  const gatilhoStatus = () => [...document.querySelectorAll('[role=dialog] label')]
+    .find(l => l.textContent?.trim() === 'Status')?.parentElement?.querySelector('[role=combobox]')
   return { clicar, botao, gatilhoStatus }
 }
 
