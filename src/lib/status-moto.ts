@@ -52,6 +52,8 @@ export function statusDaLista(valor: string) {
   return STATUS_MOTO.find(s => s.valor === valor) ?? null
 }
 
+const CARDS = Object.fromEntries(STATUS_DE_ESTOQUE.map(s => [s.valor, s.card])) as Record<StatusDeEstoque, Card>
+
 export function cardDoStatus(valor: StatusDeEstoque): Card {
-  return STATUS_DE_ESTOQUE.find(s => s.valor === valor)!.card
+  return CARDS[valor]
 }
