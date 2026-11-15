@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classificarNota, colunaMotivoVisivel, linkDaVenda, motivoDaSefaz, nomeDoArquivo, notasDoLote, periodoEmissao, marcarNota, recusaSemVenda, selecaoDaPagina, vendaNaDescricao, vendaQueNaoExisteMais } from './notas-emitidas'
+import { classificarNota, colunaMotivoVisivel, linkDaVenda, motivoDaSefaz, nomeDoArquivo, notasDoLote, marcarNota, recusaSemVenda, selecaoDaPagina, vendaNaDescricao, vendaQueNaoExisteMais } from './notas-emitidas'
 
 test('classificarNota agrupa os status da Nota Gateway nos filtros da tela', () => {
   assert.equal(classificarNota('Autorizada'), 'autorizada')
@@ -34,14 +34,6 @@ test('recusaSemVenda: a ação que precisa da venda diz que ela não existe mais
 test('vendaNaDescricao: complemento de "Nota 974, série 1" com e sem a venda (#690)', () => {
   assert.equal(vendaNaDescricao({ vendaId: 'v1', vendaNumero: 31601 }), ', venda #31601')
   assert.equal(vendaNaDescricao({ vendaId: null, vendaNumero: 31601 }), '. Venda #31601 (não existe mais)')
-})
-
-test('periodoEmissao: padrão é o mês corrente em Brasília; data inválida volta ao padrão', () => {
-  // 22h de 31/10 em Brasília (01h de 01/11 em UTC): ainda é outubro aqui.
-  const agora = new Date('2026-11-01T01:00:00.000Z')
-  assert.deepEqual(periodoEmissao({}, agora), { de: '2026-10-01', ate: '2026-10-31' })
-  assert.deepEqual(periodoEmissao({ de: '2026-09-15', ate: '2026-09-20' }, agora), { de: '2026-09-15', ate: '2026-09-20' })
-  assert.deepEqual(periodoEmissao({ de: '2026-02-30', ate: 'lixo' }, agora), { de: '2026-10-01', ate: '2026-10-31' })
 })
 
 test('nomeDoArquivo identifica a nota pelo número e pela série, e cai no id quando ainda não há número', () => {

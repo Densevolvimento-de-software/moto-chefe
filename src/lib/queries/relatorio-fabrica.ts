@@ -1,5 +1,5 @@
 import { listarLojaIdsDoGrupoAtivo, getGrupoAtivo } from '@/lib/grupo'
-import { hojeBrt } from '../data-venda'
+import { periodoDoMesBrt } from '@/lib/data-venda'
 import { db } from '@/lib/db'
 import { valorDaMotoNosRelatoriosExpr } from './valor-liquido'
 import { vendas, motos, modelos, lojas } from '@/lib/db/schema'
@@ -13,14 +13,6 @@ import type { getUsuarioLogado } from '@/lib/auth'
 
 type UsuarioLogado = Awaited<ReturnType<typeof getUsuarioLogado>>
 
-function primeiroDiaDoMes(): string {
-  const h = new Date()
-  return `${h.getUTCFullYear()}-${String(h.getUTCMonth() + 1).padStart(2, '0')}-01`
-}
-function hoje(): string {
-  return hojeBrt()
-}
-
 // Limites em UTC, de propósito: é a mesma convenção de /financeiro e da Folha de
 // Pagamento, então os números batem quando o Cesar confere um contra o outro.
 function inicioDoDia(yyyyMmDd: string): Date {
@@ -30,14 +22,6 @@ function diaSeguinte(yyyyMmDd: string): Date {
   const d = new Date(`${yyyyMmDd}T00:00:00.000Z`)
   d.setUTCDate(d.getUTCDate() + 1)
   return d
-}
-
-/** Normaliza os parâmetros de período, caindo no mês corrente quando faltam. */
-export function normalizarPeriodo(de?: string, ate?: string): { de: string; ate: string } {
-  return {
-    de: /^\d{4}-\d{2}-\d{2}$/.test(de ?? '') ? de! : primeiroDiaDoMes(),
-    ate: /^\d{4}-\d{2}-\d{2}$/.test(ate ?? '') ? ate! : hoje(),
-  }
 }
 
 /**
@@ -50,7 +34,7 @@ export async function carregarRelatorioFabrica(
   deRaw?: string,
   ateRaw?: string,
 ) {
-  const { de, ate } = normalizarPeriodo(deRaw, ateRaw)
+  const { de, ate } = periodoDoMesBrt({ de: deRaw, ate: ateRaw })
 
   const grupo = await getGrupoAtivo(usuario)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
