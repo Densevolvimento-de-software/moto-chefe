@@ -119,12 +119,14 @@ test('login da fábrica: formulário enviado sem o cabeçalho (multipart ou urle
   }
 })
 
-test('controle: a mesma action, pela sessão do admin_geral, grava', async () => {
-  idDaSessao = geralId
+// A action só marca comunicado do grupo ativo (#940): o controle é um aux_adm da loja do comunicado.
+test('controle: a mesma action, pela sessão de um aux_adm do grupo do comunicado, grava', async () => {
+  const aux = await semearUsuario(db, base, { papel: 'aux_adm', rotulo: 'aux-controle' })
+  idDaSessao = aux
   cabecalhos = new Headers({ 'next-action': 'id-qualquer' })
   const comunicadoId = await novoComunicado()
   assert.equal(await redirecionaPara(() => marcarComoLidoAction(comunicadoId)), null)
-  assert.equal(await lidos(comunicadoId, geralId), 1)
+  assert.equal(await lidos(comunicadoId, aux), 1)
 })
 
 test('login da fábrica entra direto no painel, e o log do login fica sem grupo', async () => {
