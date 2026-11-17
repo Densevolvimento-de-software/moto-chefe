@@ -2,6 +2,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { fetchResiliente } from '@/lib/supabase/fetch-resiliente'
+import { PAPEL_FABRICA, ROTA_SAIR, decisaoDoLoginFabrica } from '@/lib/login-fabrica'
 
 // O middleware roda ANTES de toda página e valida a sessão. Usa getClaims(), que
 // confere a assinatura ES256 do JWT localmente (WebCrypto, JWKS cacheado) — sem
@@ -16,6 +17,19 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
     p,
     new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`Timeout ${ms}ms no auth do middleware`)), ms)),
   ])
+}
+
+// Leitura não tem corpo. No redirect de uma Server Action (o login), o Next busca a página num GET
+// interno com os cabeçalhos do POST, inclusive o content-type do formulário; o getUsuarioLogado
+// tomaria essa leitura por action do login da fábrica e mandaria de volta ao painel, sem fim.
+// O POST segue com o cabeçalho: fora do middleware, a trava do servidor continua valendo.
+function leituraSemCorpo(request: NextRequest, resposta: NextResponse): NextResponse {
+  if (!['GET', 'HEAD'].includes(request.method) || !request.headers.has('content-type')) return resposta
+  const headers = new Headers(request.headers)
+  headers.delete('content-type')
+  const semCorpo = NextResponse.next({ request: { headers } })
+  for (const cookie of resposta.cookies.getAll()) semCorpo.cookies.set(cookie)
+  return semCorpo
 }
 
 export async function middleware(request: NextRequest) {
@@ -62,6 +76,18 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
+  // Login da fábrica: só lê o painel e sai (@/lib/login-fabrica). O papel vem do app_metadata,
+  // que só a service role grava. Este bloco prende a navegação e poupa a ida ao servidor, mas não
+  // roda em todo caminho (matcher abaixo): contra Server Action, a barreira é o getUsuarioLogado.
+  if (user?.app_metadata?.papel === PAPEL_FABRICA) {
+    const decisao = decisaoDoLoginFabrica({ caminho: request.nextUrl.pathname, metodo: request.method })
+    switch (decisao.tipo) {
+      case 'recusar': return new NextResponse('Sem permissão', { status: 403 })
+      case 'redirecionar': return NextResponse.redirect(new URL(decisao.para, request.url))
+      case 'seguir': return leituraSemCorpo(request, supabaseResponse)
+    }
+  }
+
   if (!user && !request.nextUrl.pathname.startsWith('/login')) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
@@ -71,7 +97,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user?.user_metadata?.must_change_password === true) {
-    if (!request.nextUrl.pathname.startsWith('/trocar-senha')) {
+    // Sair também: com a senha provisória, o POST de sair voltava para a troca e não saía.
+    const saindo = request.method === 'POST' && request.nextUrl.pathname === ROTA_SAIR
+    if (!request.nextUrl.pathname.startsWith('/trocar-senha') && !saindo) {
       return NextResponse.redirect(new URL('/trocar-senha', request.url))
     }
   }

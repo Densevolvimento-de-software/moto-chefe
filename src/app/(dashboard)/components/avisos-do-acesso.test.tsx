@@ -118,12 +118,15 @@ test('Entendi grava o cookie da pessoa com a versão e passa aos comunicados, se
 })
 
 test('no próximo acesso, a regra com o cookie gravado não mostra mais para a pessoa, e a outra continua vendo', async () => {
-  const t = await montarAvisos(NOVIDADES_DA_VERSAO[0], 'pessoa-a')
+  // A janela mostra a versão mais nova da lista, não a primeira: a ordem da lista não importa.
+  const atual = novidadeParaMostrar(NOVIDADES_DA_VERSAO, 'aux_adm', null)
+  assert.ok(atual)
+  const t = await montarAvisos(atual, 'pessoa-a')
   await t.clique('Entendi')
   const cookies = cookiesDoNavegador()
   const versaoVista = (usuarioId: string) => cookies[`novidade-vista-${usuarioId}`] ?? null
   assert.equal(novidadeParaMostrar(NOVIDADES_DA_VERSAO, 'aux_adm', versaoVista('pessoa-a')), null)
-  assert.equal(novidadeParaMostrar(NOVIDADES_DA_VERSAO, 'aux_adm', versaoVista('pessoa-b'))?.versao, NOVIDADES_DA_VERSAO[0].versao)
+  assert.equal(novidadeParaMostrar(NOVIDADES_DA_VERSAO, 'aux_adm', versaoVista('pessoa-b'))?.versao, atual.versao)
 })
 
 test('novidade: Esc e clique fora não fecham', async () => {

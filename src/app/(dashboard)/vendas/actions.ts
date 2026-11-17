@@ -20,7 +20,7 @@ import { aplicarVendaPeca, type DadosVendaPeca } from '@/lib/venda-peca'
 import { virarLeadKommo, type ResultadoVirarLead } from '@/lib/kommo'
 import { notificarVendaWhatsapp, type ResultadoAvisoVenda } from '@/lib/whatsapp/venda'
 import { parseDataInput, hojeBrt } from '@/lib/data-venda'
-import { motivoBloqueioCancelarReserva, motivoBloqueioPedidoAprovacao } from '@/lib/estado-moto'
+import { disponibilidadeAposCancelarReserva, motivoBloqueioCancelarReserva, motivoBloqueioPedidoAprovacao, motivoParaNaoVender } from '@/lib/estado-moto'
 import { validarOrigemVenda, normalizarDetalhe } from '@/lib/origem-venda'
 import { buscarOrigemParaValidar } from '@/lib/queries/origens-venda'
 import { situacaoNfDaVenda } from '@/lib/assinatura/consulta'
@@ -571,9 +571,8 @@ async function registrarVendaCompleta(data: DadosVendaCompleta) {
 
   const moto = await motoDoUsuario(usuario, data.motoId)
   if (!moto) throw new RecusaUsuario('Moto não encontrada')
-  if (moto.status === 'caixa') {
-    throw new RecusaUsuario('Moto ainda não foi montada. Não pode ser vendida.')
-  }
+  const naoVende = motivoParaNaoVender(moto.status)
+  if (naoVende) throw new RecusaUsuario(naoVende)
   if (moto.status === 'vendida') {
     throw new RecusaUsuario('Moto já foi vendida')
   }
@@ -1353,9 +1352,7 @@ async function cancelarReserva(reservaId: string, motivo: string) {
     // ou já 'disponivel' (reserva duplicada) fica como está.
     if (!outraAtiva && moto.disponibilidade === 'reservada') {
       await tx.update(motos)
-        // Moto ainda na caixa volta para disponibilidade nula — é o estado de
-        // quem não foi montada; 'disponivel' a colocaria à venda sem montagem.
-        .set({ disponibilidade: moto.status === 'caixa' ? null : 'disponivel' })
+        .set({ disponibilidade: disponibilidadeAposCancelarReserva(moto.status) })
         .where(eq(motos.id, reserva.motoId))
     }
 

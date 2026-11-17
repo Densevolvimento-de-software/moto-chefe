@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ehMarcaDoPainel, filtroDaUrl, urlDoFiltro, abaDaUrl, opcoesDoPainel, filtrarEstoque, filtrarVendas, resumirEstoque, resumirVendas,
-  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, FILTRO_VAZIO,
+  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, periodoDoPainel, FILTRO_VAZIO,
   type LinhaEstoquePainel, type LojaPainel, type VendaPainel,
 } from './painel-fabrica'
 
@@ -131,4 +131,29 @@ test('CSV abre no Excel pt-BR e não executa fórmula', () => {
   assert.ok(csv.includes('"Loja; Centro";3\r\n'))
   assert.ok(csv.includes(`"'=HYPERLINK(""x"")";1\r\n`))
   assert.ok(csv.includes('"Diz ""oi""";0\r\n'))
+})
+
+// Teto de 92 dias da aba Vendas (#901). 14/11/2026 às 12h de Brasília.
+const AGORA = new Date('2026-11-14T15:00:00.000Z')
+
+test('período até 92 dias, contando o primeiro e o último dia, vem como pedido', () => {
+  assert.deepEqual(periodoDoPainel({ de: '2026-08-15', ate: '2026-11-14' }, AGORA), { de: '2026-08-15', ate: '2026-11-14', limitado: false })
+})
+
+test('período de 93 dias ou mais: o início é cortado para os 92 dias que terminam no fim pedido', () => {
+  assert.deepEqual(periodoDoPainel({ de: '2026-08-14', ate: '2026-11-14' }, AGORA), { de: '2026-08-15', ate: '2026-11-14', limitado: true })
+  assert.deepEqual(periodoDoPainel({ de: '2020-01-01', ate: '2026-03-31' }, AGORA), { de: '2025-12-30', ate: '2026-03-31', limitado: true })
+})
+
+test('início depois do fim cai no mês corrente', () => {
+  assert.deepEqual(periodoDoPainel({ de: '2026-10-20', ate: '2026-10-10' }, AGORA), { de: '2026-11-01', ate: '2026-11-14', limitado: false })
+})
+
+test('sem período, ou com data inválida, é o mês corrente de Brasília', () => {
+  assert.deepEqual(periodoDoPainel({}, AGORA), { de: '2026-11-01', ate: '2026-11-14', limitado: false })
+  assert.deepEqual(periodoDoPainel({ de: '2026-02-30' }, AGORA), { de: '2026-11-01', ate: '2026-11-14', limitado: false })
+})
+
+test('só o início muito antigo na URL: corta para 92 dias até hoje', () => {
+  assert.deepEqual(periodoDoPainel({ de: '2025-01-01' }, AGORA), { de: '2026-08-15', ate: '2026-11-14', limitado: true })
 })

@@ -1,5 +1,5 @@
 // Tabelas do Painel da Fábrica. Sem estado nem 'use client': a tela e o impresso
-// (src/app/(print)/admin/painel-fabrica/imprimir) mostram exatamente o mesmo.
+// (src/app/(print)/fabrica/imprimir) mostram exatamente o mesmo.
 import Link from 'next/link'
 import {
   celulasDaVenda, nomeDaLoja, resumirEstoque, resumirVendas, urlDoFiltro, COLUNAS_VENDAS, ROTA_PAINEL_FABRICA,

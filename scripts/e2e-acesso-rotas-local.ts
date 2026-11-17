@@ -17,7 +17,7 @@ import { randomBytes } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import postgres from 'postgres'
 import { escolherUsuarios, motivoRecusaMatrizLocal, type Candidato } from './lib/matriz-local'
-import { USUARIOS_MATRIZ } from './lib/acesso-rotas'
+import { PAPEIS_MATRIZ_LOCAL } from './lib/acesso-rotas'
 
 const databaseUrl = process.env.DATABASE_URL
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '')
@@ -45,7 +45,7 @@ async function main() {
         u.loja_id is not null as "temLoja"
       from usuarios u
       join auth.users a on a.id = u.id
-      where u.ativo and u.papel::text in ${sql(USUARIOS_MATRIZ.map(u => u.papel))}
+      where u.ativo and u.papel::text in ${sql(PAPEIS_MATRIZ_LOCAL)}
       order by a.last_sign_in_at desc nulls last`
   } finally {
     await sql.end()
