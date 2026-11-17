@@ -12,7 +12,7 @@ import { textoDaModalidade } from '@/lib/notagateway/transporte'
 import { textoDaEntrega } from '@/lib/notagateway/entrega'
 import { brl } from '@/lib/dashboard-painel'
 import { centavos } from '@/lib/numero-br'
-import { motosDoEnvio, totalDasMotos, type MotoDisponivel, type MotoNoPedido } from '@/lib/novo-pedido'
+import { detalheDaMoto, motosDoEnvio, totalDasMotos, type MotoDisponivel, type MotoNoPedido } from '@/lib/novo-pedido'
 import { EntregaEModalidade, ENTREGA_DO_FORMULARIO_INICIAL, FreteCobrado, entregaDoFormulario, freteDoFormulario, quemRecebeInvalido, type EntregaDoFormulario } from './entrega-campos'
 import { AdicionarMotoPainel } from './adicionar-moto-painel'
 
@@ -157,7 +157,7 @@ function ItemMoto({ moto, minimo, invalido, onValor, onTirar }: {
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="font-medium">{nome}</p>
-            <p className="text-xs text-muted-foreground">Chassi final {moto.chassi.slice(-4)}, {moto.cor.toLowerCase()}</p>
+            <p className="text-xs text-muted-foreground">{detalheDaMoto(moto)}</p>
           </div>
           <Button variant="ghost" size="icon" aria-label={`Tirar a ${nome} do pedido`} onClick={onTirar}><Trash2 aria-hidden /></Button>
         </div>

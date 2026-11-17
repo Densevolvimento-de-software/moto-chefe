@@ -1,11 +1,14 @@
 import { filtrarPecas } from './busca-peca'
 import { centavos } from './numero-br'
+import { finalDoChassi } from './painel-fabrica'
 import { valorDeMotoInvalido, type MotoDoPedidoInput } from './pedido-venda-regras'
 
 /** Moto disponível que o Novo pedido oferece (#24). */
 export type MotoDisponivel = { id: string; chassi: string; marca: string; modelo: string; cor: string; lojaId: string; lojaNome: string }
 /** Moto já no pedido; `valor` é o texto do campo de dinheiro ("9490.00"), vazio = sem valor (D-E2 da #20). */
 export type MotoNoPedido = MotoDisponivel & { valor: string }
+
+export const detalheDaMoto = (m: MotoDisponivel) => `Chassi final ${finalDoChassi(m.chassi)}, ${m.cor.toLowerCase()}`
 
 /**
  * O que o painel "Adicionar moto" lista: da loja do pedido (a da 1ª moto; o servidor recusa outra, D-H), fora as que já

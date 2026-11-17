@@ -4,7 +4,7 @@ import { Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { motosParaAdicionar, type MotoDisponivel } from '@/lib/novo-pedido'
+import { detalheDaMoto, motosParaAdicionar, type MotoDisponivel } from '@/lib/novo-pedido'
 
 type Props = {
   aberto: boolean
@@ -15,8 +15,6 @@ type Props = {
   noPedido: readonly string[]
   onAdicionar: (motos: MotoDisponivel[]) => void
 }
-
-const plural = (n: number) => (n === 1 ? '1 moto' : `${n} motos`)
 
 /** Painel lateral do Novo pedido (#24, V3): marca várias motos disponíveis da loja e adiciona de uma vez. */
 export function AdicionarMotoPainel({ aberto, onAbertoChange, disponiveis, lojaId, noPedido, onAdicionar }: Props) {
@@ -59,7 +57,7 @@ export function AdicionarMotoPainel({ aberto, onAbertoChange, disponiveis, lojaI
                         <div className="min-w-0 flex-1">
                           <span className="block font-medium">{m.marca} {m.modelo}</span>
                           <span className="block text-xs text-muted-foreground">
-                            Chassi final {m.chassi.slice(-4)}, {m.cor.toLowerCase()}{loja ? '' : `, ${m.lojaNome}`}
+                            {detalheDaMoto(m)}{loja ? '' : `, ${m.lojaNome}`}
                           </span>
                         </div>
                       </label>
@@ -75,7 +73,7 @@ export function AdicionarMotoPainel({ aberto, onAbertoChange, disponiveis, lojaI
         <SheetFooter className="flex-row items-center justify-between border-t border-border">
           <span className="text-sm text-muted-foreground">{marcadas.length === 1 ? '1 moto marcada' : `${marcadas.length} motos marcadas`}</span>
           <Button className="h-11" disabled={marcadas.length === 0} onClick={() => { onAdicionar(marcadas); fechar(false) }}>
-            Adicionar {plural(marcadas.length)}
+            Adicionar {marcadas.length === 1 ? '1 moto' : `${marcadas.length} motos`}
           </Button>
         </SheetFooter>
       </SheetContent>

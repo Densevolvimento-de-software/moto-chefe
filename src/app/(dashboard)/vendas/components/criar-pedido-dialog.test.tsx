@@ -387,7 +387,6 @@ test('recusa do servidor aparece dentro do diálogo, sem fechar nem apagar o que
   assert.doesNotMatch(textoDaTela(), new RegExp(frase.replace(/\./g, '\\.')))
 })
 
-// Várias motos (#24, 24a): painel lateral "Adicionar moto" (V3) e a lista do pedido com o valor de cada uma.
 test('marca 2 motos no painel; entram na ordem marcada, a 1ª com valor e a 2ª sem (D-E2); o resumo soma só o preenchido', async () => {
   minimo = { valorMinimoPix: 9000 }
   const t = await montar([MOTO, PITICA])
