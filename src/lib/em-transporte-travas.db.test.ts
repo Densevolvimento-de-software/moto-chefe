@@ -2,6 +2,7 @@
 // como faria quem abre o DevTools. Moto em transporte não vende, não pede aprovação, não vira pedido
 // nem transferência; só o admin a põe nesse status, pelo Editar moto; status fora da lista é recusado;
 // a Conta B recebe "Moto não encontrada", igual a um id inexistente, e nada grava na Conta A.
+// Botão Chegou (#11): a chegada leva só para Caixa, guarda quem marcou e mantém a reserva.
 // Fronteira de fora mockada: sessão, next/cache, Kommo e WhatsApp.
 import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -29,7 +30,7 @@ const mocks = [
 ]
 
 type Sessao = Record<string, unknown>
-const sessoes = { socioA: {} as Sessao, auxA: {} as Sessao, socioB: {} as Sessao }
+const sessoes = { socioA: {} as Sessao, auxA: {} as Sessao, socioB: {} as Sessao, vendedorA: {} as Sessao, auxOutraLojaA: {} as Sessao, redeA: {} as Sessao }
 const semente = { contaA: '', grupoA: '', lojaA: '', destinoA: '', contaB: '', grupoB: '', modeloId: '', origemId: '' }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,6 +50,14 @@ before(async () => {
   sessoes.socioA = { id: socioA, papel: 'admin_socio', lojaId: null, gruposAcesso: [a.grupoId], contaId: a.contaId, grupoLiberado: null }
   sessoes.auxA = { id: auxA, papel: 'aux_adm', lojaId: a.lojaId, gruposAcesso: [], contaId: a.contaId, grupoLiberado: null }
   sessoes.socioB = { id: socioB, papel: 'admin_socio', lojaId: null, gruposAcesso: [b.grupoId], contaId: b.contaId, grupoLiberado: null }
+  const vendedorA = await semearUsuario(db, a, { papel: 'vendedor', rotulo: 'vendedor' })
+  const auxOutraLojaA = await semearUsuario(db, { ...a, lojaId: destino.id }, { papel: 'aux_adm', rotulo: 'auxdestino' })
+  sessoes.vendedorA = { id: vendedorA, papel: 'vendedor', lojaId: a.lojaId, gruposAcesso: [], contaId: a.contaId, grupoLiberado: null }
+  sessoes.auxOutraLojaA = { id: auxOutraLojaA, papel: 'aux_adm', lojaId: destino.id, gruposAcesso: [], contaId: a.contaId, grupoLiberado: null }
+  // A sessão do admin_rede sai da mesma função que o getUsuarioLogado usa: ele chega como admin_socio.
+  const redeA = await semearUsuario(db, a, { papel: 'admin_rede', rotulo: 'rede', semLoja: true, comGrupo: true })
+  const { usuarioDaRede } = await import('@/lib/grupos-liberados')
+  sessoes.redeA = { id: redeA, ...usuarioDaRede({ papel: 'admin_rede', lojaId: null, gruposAcesso: [a.grupoId], gruposAprovacao: [], contaId: a.contaId }, [], null) }
   usuarioDaSessao = sessoes.socioA
 })
 
@@ -300,4 +309,105 @@ test('abrir garantia de moto em transporte ou na caixa, pela action: recusa com 
     const [{ garantias }] = await linhas(sql`select count(*)::int as garantias from garantias where moto_id = ${moto}`)
     assert.deepEqual({ garantias, status: (await estadoDa(moto)).status }, { garantias: 0, status }, status)
   }
+})
+
+// Botão Chegou (#11, P3/P5): a chegada é Em transporte → Caixa, por aux_adm da loja da moto e pelos admins.
+const JA_CHEGOU = 'Esta moto não está mais em transporte.'
+const SEM_PERMISSAO_CHEGADA = 'Sem permissão para marcar a chegada desta moto.'
+const historicoDa = (motoId: string) =>
+  linhas(sql`select status_anterior, status_novo, usuario_id, observacao from historico_estoque where moto_id = ${motoId}`)
+const chegada = (quem: Sessao) =>
+  [{ status_anterior: 'em_transporte', status_novo: 'caixa', usuario_id: quem.id, observacao: 'Chegada marcada' }]
+
+test('aux_adm da loja e sócio marcam a chegada: a moto vai para Caixa e o histórico guarda quem marcou', async () => {
+  const { marcarChegadaAction } = await estoque()
+  for (const [rotulo, sessao] of [['CHGAUX', sessoes.auxA], ['CHGSOC', sessoes.socioA]] as const) {
+    usuarioDaSessao = sessao
+    const moto = await novaMoto(rotulo, 'em_transporte')
+    assert.deepEqual(await marcarChegadaAction(moto), { ok: true, dados: undefined }, rotulo)
+    assert.deepEqual(await estadoDa(moto), intacta('caixa', null), rotulo)
+    assert.deepEqual(await historicoDa(moto), chegada(sessao), rotulo)
+  }
+})
+
+test('a troca de status genérica não marca a chegada: Em transporte → Caixa só pelo botão Chegou', async () => {
+  const { alterarStatusAction } = await estoque()
+  for (const [rotulo, sessao] of [['CHGALTAUX', sessoes.auxA], ['CHGALTSOC', sessoes.socioA]] as const) {
+    usuarioDaSessao = sessao
+    const moto = await novaMoto(rotulo, 'em_transporte')
+    await assert.rejects(alterarStatusAction(moto, 'caixa'), { message: 'Transição em_transporte → caixa não permitida' }, rotulo)
+    assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null), rotulo)
+    assert.deepEqual(await historicoDa(moto), [], rotulo)
+  }
+})
+
+test('marcar a chegada de moto reservada: vai para Caixa e a reserva continua', async () => {
+  usuarioDaSessao = sessoes.auxA
+  const moto = await novaMoto('CHGRES', 'em_transporte')
+  assert.equal((await (await vendas()).registrarReservaAction(reserva(moto))).ok, true)
+  assert.deepEqual(await (await estoque()).marcarChegadaAction(moto), { ok: true, dados: undefined })
+  const [{ ativas }] = await linhas(sql`select count(*)::int as ativas from reservas where moto_id = ${moto} and status = 'ativa'`)
+  assert.deepEqual({ ativas, ...(await estadoDa(moto)) }, { ativas: 1, ...intacta('caixa', 'reservada') })
+})
+
+test('marcar de novo a chegada (clique duplo, ou outra pessoa já marcou): recusa; nada muda', async () => {
+  usuarioDaSessao = sessoes.auxA
+  const moto = await novaMoto('CHGDUP', 'em_transporte')
+  const { marcarChegadaAction } = await estoque()
+  assert.equal((await marcarChegadaAction(moto)).ok, true)
+  assert.deepEqual(await marcarChegadaAction(moto), { ok: false, erro: JA_CHEGOU })
+  assert.deepEqual(await historicoDa(moto), chegada(sessoes.auxA))
+})
+
+test('vendedor da loja não marca a chegada: recusa sem permissão; nada muda', async () => {
+  usuarioDaSessao = sessoes.vendedorA
+  const moto = await novaMoto('CHGVEN', 'em_transporte')
+  assert.deepEqual(await (await estoque()).marcarChegadaAction(moto), { ok: false, erro: SEM_PERMISSAO_CHEGADA })
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+  assert.deepEqual(await historicoDa(moto), [])
+})
+
+// D2 do #11: admin_rede sem o botão, embora opere como sócio no resto do app (Montar inclusive).
+test('admin_rede não marca a chegada: recusa sem permissão; nada muda', async () => {
+  usuarioDaSessao = sessoes.redeA
+  const moto = await novaMoto('CHGRED', 'em_transporte')
+  assert.deepEqual(await (await estoque()).marcarChegadaAction(moto), { ok: false, erro: SEM_PERMISSAO_CHEGADA })
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+  assert.deepEqual(await historicoDa(moto), [])
+})
+
+test('aux_adm de outra loja da mesma Conta não marca a chegada; nada muda', async () => {
+  usuarioDaSessao = sessoes.auxOutraLojaA
+  const moto = await novaMoto('CHGOUT', 'em_transporte')
+  assert.deepEqual(await (await estoque()).marcarChegadaAction(moto), { ok: false, erro: 'Moto não encontrada' })
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+})
+
+test('Conta B não marca a chegada de moto da Conta A: a mesma frase do id inexistente; nada muda na A', async () => {
+  usuarioDaSessao = sessoes.socioB
+  const moto = await novaMoto('CHGCTB', 'em_transporte')
+  const { marcarChegadaAction } = await estoque()
+  for (const id of [moto, '00000000-0000-4000-8000-000000000011']) {
+    assert.deepEqual(await marcarChegadaAction(id), { ok: false, erro: 'Moto não encontrada' }, id)
+  }
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+  assert.deepEqual(await historicoDa(moto), [])
+})
+
+test('moto arquivada em transporte: marcar a chegada recusa com a frase de desarquivar; nada muda', async () => {
+  usuarioDaSessao = sessoes.auxA
+  const moto = await novaMoto('CHGARQ', 'em_transporte')
+  await db.execute(sql`update motos set arquivada_em = now(), arquivada_por = ${sessoes.socioA.id}, motivo_arquivo = 'teste' where id = ${moto}`)
+  const { MOTO_ARQUIVADA } = await import('@/lib/arquivar-moto-regras')
+  assert.deepEqual(await (await estoque()).marcarChegadaAction(moto), { ok: false, erro: MOTO_ARQUIVADA })
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+})
+
+test('pedido forjado com argumentos a mais: a chegada só leva para Caixa', async () => {
+  usuarioDaSessao = sessoes.auxA
+  const moto = await novaMoto('CHGFRJ', 'em_transporte')
+  const forjada = (await estoque()).marcarChegadaAction as unknown as (...a: unknown[]) => Promise<unknown>
+  assert.deepEqual(await forjada(moto, 'montada', { status: 'vendida', usuarioId: sessoes.socioA.id }), { ok: true, dados: undefined })
+  assert.deepEqual(await estadoDa(moto), intacta('caixa', null))
+  assert.deepEqual(await historicoDa(moto), chegada(sessoes.auxA))
 })

@@ -1,6 +1,7 @@
 // src/lib/estado-moto.ts
 import { STATUS_DE_ESTOQUE, type StatusDeEstoque } from './status-moto'
 import type { PapelDoBanco } from '@/lib/rotulo-do-papel'
+import { MOTO_ARQUIVADA } from './arquivar-moto-regras'
 
 export type Status = StatusDeEstoque
 export type Disponibilidade = 'disponivel' | 'reservada' | 'vendida' | 'aguardando_aprovacao'
@@ -10,7 +11,11 @@ type Papel = PapelDoBanco
 
 const isAdmin = (p: Papel) => p === 'admin_geral' || p === 'admin_socio'
 
-// Transições de status físico (Aux Adm + Admin)
+// Quem mexe no status físico da moto: admin em qualquer loja que vê, aux_adm só na própria.
+const mudaStatusFisico = (papel: Papel, isMinhaLoja: boolean) => isAdmin(papel) || (papel === 'aux_adm' && isMinhaLoja)
+
+// Transições de status físico (Aux Adm + Admin). Em transporte → Caixa fica fora: a chegada tem um caminho
+// só, o botão Chegou (motivoParaNaoMarcarChegada + marcarChegadaAction), que trava a moto e recusa a arquivada.
 const transicoesNormais: Partial<Record<Status, Status[]>> = {
   caixa:       ['montada'],
   montada:     ['em_garantia'],
@@ -27,20 +32,23 @@ export function getTransicoesStatusPermitidas(
   papel: Papel,
   isMinhaLoja: boolean
 ): Status[] {
-  if (!isMinhaLoja && !isAdmin(papel)) return []
+  if (!mudaStatusFisico(papel, isMinhaLoja)) return []
+  return [
+    ...(transicoesNormais[statusAtual] ?? []),
+    ...(isAdmin(papel) ? transicoesCorrecao[statusAtual] ?? [] : []),
+  ]
+}
 
-  if (isAdmin(papel)) {
-    return [
-      ...(transicoesNormais[statusAtual] ?? []),
-      ...(transicoesCorrecao[statusAtual] ?? []),
-    ]
-  }
-
-  if (papel === 'aux_adm') {
-    return transicoesNormais[statusAtual] ?? []
-  }
-
-  return []
+/**
+ * Motivo pelo qual a pessoa não pode marcar a chegada desta moto (botão Chegou), ou null. A tela (mostra o
+ * botão) e a action (grava) passam por aqui com o usuário da sessão. A correção montada → caixa do admin não é chegada.
+ */
+export function motivoParaNaoMarcarChegada(moto: { status: string; arquivada: boolean }, quem: { papel: Papel; papelReal: Papel }, isMinhaLoja: boolean): string | null {
+  if (moto.arquivada) return MOTO_ARQUIVADA
+  if (moto.status !== 'em_transporte') return 'Esta moto não está mais em transporte.'
+  // A sessão entrega o admin_rede como admin_socio (usuarioDaRede); a chegada olha o papel real (D2 do #11).
+  if (quem.papelReal === 'admin_rede' || !mudaStatusFisico(quem.papel, isMinhaLoja)) return 'Sem permissão para marcar a chegada desta moto.'
+  return null
 }
 
 // Transições de disponibilidade (Aux Adm + Admin, apenas motos montadas)

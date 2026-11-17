@@ -19,6 +19,7 @@ import { statusDaLista } from '@/lib/status-moto'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MotoActions } from './components/moto-actions'
+import { FaixaEmTransporte } from './components/faixa-em-transporte'
 import { AcoesOuArquivada } from '../components/acoes-ou-arquivada'
 import { AprovacaoVendaCard } from './components/aprovacao-venda-card'
 import { EditarMotoButton } from './components/editar-moto-button'
@@ -30,7 +31,7 @@ import { listarOrigensAtivasDoGrupo } from '@/lib/queries/origens-venda'
 import { OSTab } from './components/os-tab'
 import { GarantiasTab } from './components/garantias-tab'
 import { potenciaNaTela } from '@/lib/gestao-modelos'
-import { statusLabel, disponibilidadeLabel, type Status, type Disponibilidade } from '@/lib/estado-moto'
+import { statusLabel, disponibilidadeLabel, motivoParaNaoMarcarChegada, type Status, type Disponibilidade } from '@/lib/estado-moto'
 import { dataPuraBr } from '@/lib/data-venda'
 
 export default async function MotoDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -97,6 +98,13 @@ export default async function MotoDetailPage({ params }: { params: Promise<{ id:
           <h1 className="text-2xl font-bold">{moto.marca} {moto.modelo}</h1>
         </div>
       </div>
+
+      {moto.status === 'em_transporte' && (
+        <FaixaEmTransporte
+          moto={{ id: moto.id, modelo: moto.modelo, chassi: moto.chassi, disponibilidade: moto.disponibilidade }}
+          podeMarcar={motivoParaNaoMarcarChegada({ status: moto.status, arquivada: moto.arquivadaEm !== null }, usuario, usuario.lojaId === moto.lojaId) === null}
+        />
+      )}
 
       {/* Celular: os cards empilham; lado a lado só do md para cima (#688). */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
