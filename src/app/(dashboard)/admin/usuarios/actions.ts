@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { usuarios, grupos, gruposLiberados } from '@/lib/db/schema'
 import { and, eq, sql, inArray, ne, or } from 'drizzle-orm'
 import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
+import { LOGIN_NAO_CRIADO, criarLoginComCadastro } from '@/lib/supabase/criar-login'
 import { getGrupoIdDaLoja } from '@/lib/grupo'
 import { gestorDaSessao } from '@/lib/gestor-da-sessao'
 import { COM_HISTORICO, podeExcluir, recusaDaGravacao } from '@/lib/gestao-usuarios'
@@ -183,39 +184,37 @@ export async function criarUsuarioAction(dados: {
     await exigirGruposDaConta(dados.papel, contaId, acesso.gruposAcesso)
     // Usuário novo ainda não tem grupo liberado: aprovação só na própria Conta.
     if ((await aprovacoesForaDoAlcance(db, { id: null, papel: dados.papel, contaId }, aprovacao.gruposAprovacao)).length) throw new Recusa(GRUPO_INVALIDO)
-    const supabase = clienteSupabaseAdmin()
-
-    const { data, error } = await supabase.auth.admin.createUser({
+    const novoId = await criarLoginComCadastro(clienteSupabaseAdmin().auth.admin, {
       email: dados.email,
-      password: dados.senha,
-      email_confirm: true,
+      senha: dados.senha,
       // Senha definida pelo sócio: o usuário troca no 1º login (/trocar-senha).
-      ...(admin.papel === 'admin_socio' ? { user_metadata: { must_change_password: true } } : {}),
+      ...(admin.papel === 'admin_socio' ? { userMetadata: { must_change_password: true } } : {}),
+    }, async (idNovo) => {
+      await db.insert(usuarios).values({
+        id: idNovo,
+        nome: dados.nome,
+        email: dados.email,
+        papel: dados.papel as any,
+        lojaId: dados.lojaId,
+        contaId,
+        conecta,
+        gruposAprovacao:         aprovacao.gruposAprovacao,
+        aprovaPagamentoSensivel: aprovacao.aprovaPagamentoSensivel,
+        gruposAcesso:            acesso.gruposAcesso,
+        modulosExtras:     filtrarIdsValidos(dados.modulosExtras),
+        modulosBloqueados: filtrarIdsValidos(dados.modulosBloqueados),
+        cargoId: cargo.cargoId,
+      })
     })
     // E-mail já usado (em qualquer Conta) ou recusado pelo Auth: frase neutra no diálogo.
-    if (error) throw new Recusa('Não foi possível criar o login com este e-mail. Confira o endereço ou use outro.')
+    if (!novoId) throw new Recusa(LOGIN_NAO_CRIADO)
 
-    await db.insert(usuarios).values({
-      id: data.user.id,
-      nome: dados.nome,
-      email: dados.email,
-      papel: dados.papel as any,
-      lojaId: dados.lojaId,
-      contaId,
-      conecta,
-      gruposAprovacao:         aprovacao.gruposAprovacao,
-      aprovaPagamentoSensivel: aprovacao.aprovaPagamentoSensivel,
-      gruposAcesso:            acesso.gruposAcesso,
-      modulosExtras:     filtrarIdsValidos(dados.modulosExtras),
-      modulosBloqueados: filtrarIdsValidos(dados.modulosBloqueados),
-      cargoId: cargo.cargoId,
-    })
-    await registrarPermissao(admin.id, { id: data.user.id, nome: dados.nome, lojaId: dados.lojaId, contaId }, {
+    await registrarPermissao(admin.id, { id: novoId, nome: dados.nome, lojaId: dados.lojaId, contaId }, {
       acao: 'criado', papel: dados.papel,
       // O nome sai só das Contas do usuário criado (cargoParaGravar já exigiu que o cargo é dela).
       ...(cargo.cargoId ? { cargo: (await nomesDosCargos(db, [contaId], [cargo.cargoId]))[cargo.cargoId] } : {}),
     })
-    id = data.user.id
+    id = novoId
 
     revalidatePath('/admin/usuarios')
   })
