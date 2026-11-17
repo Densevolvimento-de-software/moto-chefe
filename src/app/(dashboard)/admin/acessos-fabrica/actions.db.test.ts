@@ -181,10 +181,10 @@ test('trocar senha: pelo Auth, com log; senha curta recusada sem chamar o Auth',
   assert.deepEqual((await logsDe(id)).map(l => l.acao), ['criado', 'senha_redefinida'])
 })
 
-test('id de usuário de uma Conta (A ou B) e id inexistente: mesma frase, nada muda e o Auth não é chamado', async () => {
+test('id de usuário de uma Conta (A ou B), do próprio admin_geral e id inexistente: mesma frase, nada muda e o Auth não é chamado', async () => {
   sessao = pessoas.geral
   const NAO_ENCONTRADO = { ok: false, erro: 'Acesso não encontrado' }
-  for (const id of [pessoas.auxA.id, pessoas.vendedorB.id, crypto.randomUUID(), 'nem-uuid']) {
+  for (const id of [pessoas.auxA.id, pessoas.vendedorB.id, pessoas.geral.id, crypto.randomUUID(), 'nem-uuid']) {
     assert.deepEqual(await acoes.alternarAcessoFabricaAction(id, false), NAO_ENCONTRADO, id)
     assert.deepEqual(await acoes.redefinirSenhaFabricaAction(id, 'nova-senha-1'), NAO_ENCONTRADO, id)
   }
@@ -217,4 +217,21 @@ test('a lista traz só logins da fábrica, nenhum usuário de Conta', async () =
   for (const p of Object.values(pessoas).filter(p => p.papel !== 'fabrica')) assert.ok(!ids.has(p.id), p.papel)
   assert.ok(ids.has(pessoas.fabrica.id))
   assert.deepEqual(Object.keys(lista[0]).sort(), ['ativo', 'email', 'id', 'nome'])
+})
+
+test('reativar com o Auth fora: frase neutra e o login continua desativado', async () => {
+  const id = await criarComoGeral()
+  assert.deepEqual(await acoes.alternarAcessoFabricaAction(id, false), { ok: true, dados: undefined })
+  authRecusa = { atualizar: true }
+  assert.deepEqual(await acoes.alternarAcessoFabricaAction(id, true),
+    { ok: false, erro: 'Não foi possível mudar o acesso agora. Tente de novo.' })
+  assert.equal((await linhaDe(id)).ativo, false)
+})
+
+test('trocar senha com o Auth fora: frase neutra e sem log', async () => {
+  const id = await criarComoGeral()
+  authRecusa = { atualizar: true }
+  assert.deepEqual(await acoes.redefinirSenhaFabricaAction(id, 'nova-senha-1'),
+    { ok: false, erro: 'Não foi possível trocar a senha agora. Tente de novo.' })
+  assert.deepEqual((await logsDe(id)).map(l => l.acao), ['criado'])
 })
