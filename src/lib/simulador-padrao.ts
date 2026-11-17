@@ -71,3 +71,21 @@ export function destaqueAvista12x(valorMinimo: number, valor12x: number | null, 
     },
   }
 }
+
+/** Linha da tabela de parcelas do padrão 'taxas': total cobrado (credito) e valor de cada parcela. */
+export type LinhaDoSimulador = { parcelas: number; credito: number; parcela: number }
+
+/** Uma linha por parcela com taxa cadastrada, sobre o saldo (base menos entrada). */
+export function linhasDoSimulador(taxas: Record<string, number>, base: number, entrada: number): LinhaDoSimulador[] {
+  const saldo = base - entrada
+  return Object.entries(taxas)
+    .filter(([, taxa]) => taxa > 0)
+    .sort(([a], [b]) => parseInt(a) - parseInt(b))
+    .map(([n, taxa]) => {
+      const parcelas = parseInt(n)
+      const credito = saldo * (1 + taxa)
+      const parcela = credito / parcelas
+      return { parcelas, credito, parcela }
+    })
+    .filter(r => r.credito > 0)
+}
