@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { limitesDaTela, podeExcluir, podeGerenciar, recusaDaGravacao } from './gestao-usuarios'
+import { PAPEL_FABRICA } from './login-fabrica'
 
 const VALE = 'grupo-vale'
 const BH = 'grupo-bh'
@@ -221,4 +222,29 @@ test('a regra de gestão não recusa o cargo com base Admin Sócio que edita a s
   const antes = { id: 'eu', ...cadastro({ papel: 'cargo', cargoId: 'c1' }) }
   assert.equal(recusaDaGravacao(eu, antes, cadastro({ papel: 'cargo', cargoId: 'c1', gruposAprovacao: [VALE] })), null)
   assert.equal(recusaDaGravacao(eu, antes, cadastro({ papel: 'vendedor' })), 'Você não pode desativar nem trocar o papel de si mesmo')
+})
+
+// Login da fábrica (#901): só nasce e muda em /admin/acessos-fabrica (ticket D). Em /admin/usuarios
+// some da lista e recusa nos dois sentidos, com a frase de usuário inexistente.
+const geralDaPlataforma = { id: 'geral', papel: 'admin_geral', gruposVisiveis: [], gruposAprovacao: [], itensLiberaveis: [], aprovaPagamentoSensivel: false }
+const loginFabrica = { ...cadastro({ papel: PAPEL_FABRICA, grupoDaLoja: null }), id: 'fabrica-1' }
+
+test('login da fábrica não aparece em /admin/usuarios, nem para o admin_geral', () => {
+  assert.equal(podeGerenciar(geralDaPlataforma, alvo(null, PAPEL_FABRICA)), false)
+  assert.equal(podeGerenciar(socioDoVale, alvo(VALE, PAPEL_FABRICA)), false)
+})
+
+test('/admin/usuarios não dá o papel fabrica a ninguém, nem o admin_geral', () => {
+  assert.equal(recusaDaGravacao(geralDaPlataforma, null, cadastro({ papel: PAPEL_FABRICA, grupoDaLoja: null })), 'Usuário não encontrado')
+  assert.equal(recusaDaGravacao(geralDaPlataforma, { ...cadastro(), id: 'v1' }, cadastro({ papel: PAPEL_FABRICA })), 'Usuário não encontrado')
+  assert.equal(gravar(cadastro({ papel: PAPEL_FABRICA })), 'Usuário não encontrado')
+})
+
+test('/admin/usuarios não edita, não desativa nem troca o papel do login da fábrica', () => {
+  assert.equal(recusaDaGravacao(geralDaPlataforma, loginFabrica, cadastro({ papel: 'vendedor' })), 'Usuário não encontrado')
+  assert.equal(recusaDaGravacao(geralDaPlataforma, loginFabrica, { ...loginFabrica, ativo: false }), 'Usuário não encontrado')
+})
+
+test('a tela de /admin/usuarios não oferece o papel fabrica', () => {
+  assert.equal(limitesDaTela(geralDaPlataforma).papeis.includes(PAPEL_FABRICA), false)
 })

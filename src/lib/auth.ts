@@ -4,10 +4,12 @@ import { usuarios } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { redirect } from 'next/navigation'
 import { cache } from 'react'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { cargoDoUsuario } from '@/lib/cargos'
 import { usuarioComCargo } from '@/lib/usuario-com-cargo'
 import { gruposLiberadosVivos, usuarioDaRede } from '@/lib/grupos-liberados'
+import { PAPEL_FABRICA, ROTA_CONTA_DESATIVADA, ehPedidoDeAcao } from '@/lib/login-fabrica'
+import { ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
 
 // getUsuarioLogado roda PRIMEIRO em toda página (layout e página). Se a query de
 // usuário fica esperando uma conexão do pool (instância do Fluid com conexões
@@ -42,16 +44,23 @@ export const getUsuarioLogado = cache(async () => {
   // respondendo em 150ms quando medido de fora. Ver memória project-auth-getclaims.
   const { data } = await withTimeout(supabase.auth.getClaims(), 8000, 'getClaims do Supabase')
   const userId = data?.claims.sub
+  // O middleware prende em /fabrica quem tem o papel fabrica no token. Se a linha em `usuarios`
+  // some ou diz outro papel, a saída é a tela com Sair: /login e /dashboard voltariam a /fabrica.
+  const tokenDeFabrica = data?.claims.app_metadata?.papel === PAPEL_FABRICA
 
   if (!userId) redirect('/login')
 
-  const [usuario] = await withTimeout(
+  const [linha] = await withTimeout(
     db.select().from(usuarios).where(eq(usuarios.id, userId)).limit(1),
     8000,
     'consulta do usuário no banco',
   )
 
-  if (!usuario) redirect('/login')
+  if (!linha) redirect(tokenDeFabrica ? ROTA_CONTA_DESATIVADA : '/login')
+  if (tokenDeFabrica && linha.papel !== PAPEL_FABRICA) redirect(ROTA_CONTA_DESATIVADA)
+  // O servidor não confia na linha: o login da fábrica não tem loja nem Conta, mesmo que alguém
+  // grave. Com loja, abriria impressos e registros daquela loja (podeAgirNaLoja).
+  const usuario = linha.papel === PAPEL_FABRICA ? { ...linha, lojaId: null, contaId: null } : linha
 
   // Conta desativada (funcionário desligado, conta de teste) não pode
   // continuar usando o sistema, mesmo com a sessão do Supabase ainda válida.
@@ -67,7 +76,12 @@ export const getUsuarioLogado = cache(async () => {
   // admin_geral, não um estado em que alguém cai sozinho. Se um admin_geral
   // for desativado por engano, a saída é pelo banco (UPDATE usuarios SET
   // ativo = true), não por uma exceção de papel no código.
-  if (!usuario.ativo) redirect('/conta-desativada')
+  if (!usuario.ativo) redirect(ROTA_CONTA_DESATIVADA)
+
+  // Login da fábrica só lê (@/lib/login-fabrica). Para Server Action, esta é a barreira principal,
+  // não uma rede de proteção: o middleware não roda em todo caminho (ver o matcher dele) e uma
+  // action pode ser chamada em qualquer página pelo id. O middleware só poupa a ida ao servidor.
+  if (usuario.papel === PAPEL_FABRICA && ehPedidoDeAcao(await headers())) redirect(ROTA_PAINEL_FABRICA)
 
   // Lido a cada requisição: editar o cargo vale na hora para todos os usuários dele.
   const cargo = await withTimeout(cargoDoUsuario(db, usuario), 8000, 'cargo do usuário no banco')

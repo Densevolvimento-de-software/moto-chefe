@@ -13,9 +13,10 @@
 // filtrar pela URL e não aparece na tela, no Excel nem no impresso.
 //
 // Este arquivo é puro (sem banco): filtro, totais e planilha, usados pela tela e testados.
-import { diaBrt } from '@/lib/data-venda'
+import { diaBrt, periodoDoMesBrt } from '@/lib/data-venda'
+import { addDias } from '@/lib/calendario'
 
-export const ROTA_PAINEL_FABRICA = '/admin/painel-fabrica'
+export const ROTA_PAINEL_FABRICA = '/fabrica'
 
 /** Marca da fábrica. Comparada sem caixa, espaço nem acento: "MotoChefe", "MOTO CHEFE". */
 export const MARCA_PAINEL_FABRICA = 'MotoChefe'
@@ -205,4 +206,20 @@ export function paraCsv(cabecalho: string[], linhas: (string | number)[][]): str
     return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   return '﻿' + [cabecalho, ...linhas].map(l => l.map(campo).join(';')).join('\r\n') + '\r\n'
+}
+
+// ─── Período da aba Vendas ────────────────────────────────────────────────────
+// Teto de 92 dias (decisão do Luis, 14/11, #901): o período vai inteiro para a tela, o payload
+// e o Excel a cada carga. Vale para todos, na tela e no servidor.
+export const TETO_PERIODO_DIAS = 92
+export const AVISO_TETO_PERIODO = `Período limitado a ${TETO_PERIODO_DIAS} dias`
+
+export type PeriodoPainel = { de: string; ate: string; limitado: boolean }
+
+/** Período da URL em dias de Brasília. Início depois do fim: o mês corrente. Acima do teto: corta o início. */
+export function periodoDoPainel(params: { de?: string; ate?: string }, agora: Date = new Date()): PeriodoPainel {
+  const pedido = periodoDoMesBrt(params, agora)
+  const { de, ate } = pedido.de <= pedido.ate ? pedido : periodoDoMesBrt({}, agora)
+  const inicioMinimo = addDias(ate, -(TETO_PERIODO_DIAS - 1))
+  return de < inicioMinimo ? { de: inicioMinimo, ate, limitado: true } : { de, ate, limitado: false }
 }

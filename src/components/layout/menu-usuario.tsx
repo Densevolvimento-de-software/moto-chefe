@@ -10,13 +10,9 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuRadioGroup, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { iniciaisDoNome } from '@/lib/texto'
 
 export type UsuarioMenu = { nome: string; email: string; papel: string; cargoNome?: string | null }
-
-function iniciais(nome: string) {
-  const partes = nome.trim().split(/\s+/)
-  return ((partes[0]?.[0] ?? '') + (partes.length > 1 ? partes[partes.length - 1][0] : '')).toUpperCase()
-}
 
 // Claro|Escuro dentro do menu: escolher não fecha o menu, para ver a troca e voltar atrás.
 // RadioItem cru, não o DropdownMenuRadioItem: aquele desenha a lista com o check, aqui é uma pílula.
@@ -51,7 +47,7 @@ function ItemTema() {
 export function MenuUsuario({ usuario, compacto, lado = 'top', comTema }: { usuario: UsuarioMenu; compacto?: boolean; lado?: 'top' | 'bottom'; comTema?: boolean }) {
   const avatar = (
     <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
-      {iniciais(usuario.nome)}
+      {iniciaisDoNome(usuario.nome)}
     </span>
   )
   return (

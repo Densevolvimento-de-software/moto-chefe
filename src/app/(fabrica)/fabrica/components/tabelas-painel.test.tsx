@@ -53,7 +53,7 @@ test('vendas: a linha da tela tem as mesmas células da planilha', () => {
 
 test('vendas: a loja leva ao filtro só dela, na aba de vendas, mantendo modelo, cor e período', () => {
   const html = renderToStaticMarkup(createElement(TabelaVendas, { ...props, vendas, filtro: { lojas: ['loja-a'], modelos: ['X12'], cores: ['PRETO'] } }))
-  assert.ok(html.includes('href="/admin/painel-fabrica?aba=vendas&amp;de=2026-10-01&amp;ate=2026-10-31&amp;loja=loja-b&amp;modelo=X12&amp;cor=PRETO"'))
+  assert.ok(html.includes('href="/fabrica?aba=vendas&amp;de=2026-10-01&amp;ate=2026-10-31&amp;loja=loja-b&amp;modelo=X12&amp;cor=PRETO"'))
 })
 
 test('vendas: no impresso a loja não vira link', () => {
