@@ -131,7 +131,6 @@ function PainelCriar({ enviando, iniciar, onFechar, onCriado }: Envio & { onCria
     <form className="flex h-full flex-col" onSubmit={e => { e.preventDefault(); criar() }}>
       <SheetHeader className="border-b pr-12">
         <SheetTitle>Novo acesso</SheetTitle>
-        <SheetDescription>Login da fábrica MotoChefe. Ela entra direto no painel, sem menu.</SheetDescription>
       </SheetHeader>
       <div className="space-y-3 p-4">
         <div className="space-y-1.5">
@@ -144,8 +143,8 @@ function PainelCriar({ enviando, iniciar, onFechar, onCriado }: Envio & { onCria
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="fab-senha">Senha</Label>
-          <CampoSenha id="fab-senha" value={novo.senha} onChange={e => setNovo(p => ({ ...p, senha: e.target.value }))} autoComplete="new-password" placeholder={`Mínimo ${SENHA_MINIMA} caracteres`} />
-          <p className="text-xs text-muted-foreground">A fábrica não troca a própria senha: quem troca é você.</p>
+          <CampoSenha id="fab-senha" value={novo.senha} onChange={e => setNovo(p => ({ ...p, senha: e.target.value }))} autoComplete="new-password" />
+          <p className="text-xs text-muted-foreground">Pelo menos {SENHA_MINIMA} caracteres. A fábrica não troca a própria senha: quem troca é você.</p>
         </div>
       </div>
       <SheetFooter className="flex-row justify-end border-t">
