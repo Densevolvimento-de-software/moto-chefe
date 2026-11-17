@@ -123,7 +123,7 @@ export const VENDA_DE_PEDIDO_NAO_EDITA = 'Esta venda faz parte de um pedido com 
 
 /** Valor da efetivação: o texto da tela de hoje (1 moto) ou a lista { motoId, valor } refeita campo a campo; null se não serve. */
 export function valorDaEfetivacao(x: unknown): number | MotoComValor[] | null {
-  if (typeof x === 'string') return parseFloat(x) > 0 ? parseFloat(x) : null
+  if (typeof x === 'string') return valorDeMotoInvalido(parseFloat(x)) ? null : parseFloat(x)
   if (!listaDeMotosValida(x) || x.some(m => m.valor === undefined || valorDeMotoInvalido(m.valor))) return null
   return x.map(m => ({ motoId: m.motoId, valor: m.valor! }))
 }
