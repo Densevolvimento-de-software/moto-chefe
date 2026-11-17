@@ -100,3 +100,14 @@ test('frases de 841, 842 e 843 sem travessão (#673)', () => {
   }
   assert.match(fraseDaRecusa('841 - x') ?? '', /tipo de veículo/)
 })
+
+// Motivo no formato "código - texto", com o texto do título do artigo 223093 da base de conhecimento da Nota Gateway.
+const M806 = '806 - Rejeição: Operação com ICMS-ST sem informação do CEST'
+
+test('806 (ICMS-ST sem CEST) abre só a moto, onde o CEST se corrige (#17)', () => {
+  assert.deepEqual(telaDaRecusa({ status: 'Negada', motivoStatus: M806 }), { tipo: 'corrigir', abertos: ['moto'], empresa: false })
+})
+
+test('o "Por quê?" do 806 diz que falta o CEST da moto (#17)', () => {
+  assert.equal(fraseDaRecusa(M806), 'Falta o CEST da moto.')
+})

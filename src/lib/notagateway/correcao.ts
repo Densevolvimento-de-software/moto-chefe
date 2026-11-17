@@ -1,12 +1,12 @@
 import { and, desc, eq } from 'drizzle-orm'
 import type { db } from '@/lib/db'
-import { lojas, motosFiscal, notasFiscaisSaida, vendas } from '@/lib/db/schema'
-import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
+import { motosFiscal, notasFiscaisSaida, vendas } from '@/lib/db/schema'
 import { normalizarCest } from '@/lib/nfe-fiscal'
 import { codigoRecusa, ehDenegada } from '@/lib/notagateway/status'
 import { escolherTentativa } from '@/lib/notagateway/tentativa'
 import { grupoEmissorDaVenda } from '@/lib/notagateway/grupo-emissor'
 import { conferirCompradorDaVenda, gravarCompradorDaVenda, type CompradorVenda } from '@/lib/venda-comprador'
+import { vendaDoUsuarioParaNf } from '@/lib/venda-do-usuario'
 
 /**
  * Correção da nota recusada (#347): grava no cadastro de origem (comprador na
@@ -23,7 +23,7 @@ export type CorrecaoNf = {
 }
 
 type Executor = Pick<typeof db, 'select' | 'insert' | 'update' | 'delete'>
-type Usuario = Parameters<typeof podeAbrirRegistroDaLoja>[0]
+type Usuario = Parameters<typeof vendaDoUsuarioParaNf>[0]
 
 export async function gravarCorrecaoDaNf(
   tx: Executor,
@@ -32,14 +32,12 @@ export async function gravarCorrecaoDaNf(
   ambiente: 'Homologacao' | 'Producao',
   correcao: CorrecaoNf,
 ): Promise<void> {
-  const [venda] = await tx.select({ id: vendas.id, numero: vendas.numero, lojaId: vendas.lojaId, motoId: vendas.motoId, clienteNome: vendas.clienteNome, clienteCpf: vendas.clienteCpf, grupoId: lojas.grupoId })
-    .from(vendas).innerJoin(lojas, eq(lojas.id, vendas.lojaId))
-    .where(eq(vendas.motoId, motoId)).orderBy(desc(vendas.dataVenda)).limit(1)
-  // Mesma regra da edição da venda; venda de outra Conta responde como inexistente.
-  const pode = venda && (usuario.lojaId ? venda.lojaId === usuario.lojaId : await podeAbrirRegistroDaLoja(usuario, venda.lojaId, tx))
-  if (!venda || !pode) throw new Error('Venda não encontrada')
+  // Mesma regra da emissão e da prévia (#17): quem emite corrige. Outra Conta responde como inexistente.
+  const venda = await vendaDoUsuarioParaNf(usuario, eq(vendas.motoId, motoId), tx)
   // Mesmo grupo da montagem da nota: o que comprou a moto, quando é o caso (#552).
-  const grupoId = (await grupoEmissorDaVenda(venda.motoId, venda.lojaId, tx))?.grupoId ?? venda.grupoId
+  const emissor = venda && await grupoEmissorDaVenda(venda.motoId, venda.lojaId, tx)
+  if (!venda || !emissor) throw new Error('Venda não encontrada')
+  const grupoId = emissor.grupoId
 
   const [ultima] = await tx.select({ status: notasFiscaisSaida.status, motivoStatus: notasFiscaisSaida.motivoStatus }).from(notasFiscaisSaida)
     .where(and(eq(notasFiscaisSaida.vendaId, venda.id), eq(notasFiscaisSaida.grupoId, grupoId), eq(notasFiscaisSaida.ambiente, ambiente)))
