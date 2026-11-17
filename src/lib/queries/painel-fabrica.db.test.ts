@@ -27,7 +27,7 @@ const lojas = {} as Record<Chave, string>
 const contas: string[] = []
 const modelos = { mc: '', voi: '' }
 const CNPJS = ['00000000081901', '00000000081902', '00000000081903']
-let numeros = { a15: 0, a31: 0, b20: 0, a01nov: 0, a15jul: 0 }
+let numeros = { a15: 0, a31: 0, b20: 0, a01nov: 0, a15jul: 0, comFrete: 0 }
 let chassis = { a15: '', a31: '', b20: '' }
 
 const linha = async (q: ReturnType<typeof sql>) => (await execRows(q))[0] as { id: string }
@@ -79,13 +79,14 @@ before(async () => {
 
   // Vendas: em 15/10 (dentro), uma Voi (fora pela marca), uma em 01/11 00:30 de Brasília
   // (fora do período de outubro) e uma em cada loja fora do painel.
-  const vender = async (loja: string, modelo: string, quando: string, valor = 1000) => {
+  const vender = async (loja: string, modelo: string, quando: string, valor = 1000, entrega: unknown = null) => {
     const chassi = 'PAINEL819' + seq
     const motoId = await moto(loja, modelo, 'PRETO', { vendida: true })
     const vendedor = await linha(sql`insert into usuarios (id, nome, email, papel, loja_id) values (gen_random_uuid(), 'Vend 819', ${'vend819-' + seq + '@teste.invalid'}, 'vendedor', ${loja}) returning id`)
     const pedido = await linha(sql`insert into pedidos_venda (moto_id, loja_id, vendedor_id) values (${motoId}, ${loja}, ${vendedor.id}) returning id`)
-    await db.execute(sql`insert into vendas (pedido_venda_id, moto_id, loja_id, vendedor_id, efetivado_por, cliente_nome, cliente_cpf, valor, forma_pagamento, data_venda)
-      values (${pedido.id}, ${motoId}, ${loja}, ${vendedor.id}, ${vendedor.id}, 'Cliente', '52998224725', ${valor}, 'pix', ${quando}::timestamptz)`)
+    await db.execute(sql`insert into vendas (pedido_venda_id, moto_id, loja_id, vendedor_id, efetivado_por, cliente_nome, cliente_cpf, valor, forma_pagamento, data_venda, entrega)
+      values (${pedido.id}, ${motoId}, ${loja}, ${vendedor.id}, ${vendedor.id}, 'Cliente', '52998224725', ${valor}, 'pix', ${quando}::timestamptz,
+              ${entrega === null ? null : JSON.stringify(entrega)}::jsonb)`)
     // O número da venda sai do pedido (trigger do banco), não do insert: lê o que ficou gravado.
     const [gravada] = await execRows(sql`select numero from vendas where moto_id = ${motoId}`) as { numero: number }[]
     return { numero: gravada.numero, chassi }
@@ -98,7 +99,11 @@ before(async () => {
   const a01nov = await vender(lojas.a, modelos.mc, '2026-11-01T03:30:00Z') // 00:30 de 01/11 em Brasília: fora
   // 15/07: mais de 92 dias antes de 31/10, fora do teto da aba Vendas (#901).
   const a15jul = await vender(lojas.a, modelos.mc, '2026-07-15T15:00:00Z')
-  numeros = { a15: a15.numero, a31: a31.numero, b20: b20.numero, a01nov: a01nov.numero, a15jul: a15jul.numero }
+  // 10/11: moto de R$ 10.000 com R$ 350 de frete cobrado na Entrega, que a efetivação soma no valor da venda
+  // (#726). Dia que nenhum outro teste consulta.
+  const comFrete = await vender(lojas.a, modelos.mc, '2026-11-10T15:00:00Z', 10350,
+    { modo: 'entregar', modalidade: 'TransporteProprioPorContaDoRemetente', frete: 350 })
+  numeros = { a15: a15.numero, a31: a31.numero, b20: b20.numero, a01nov: a01nov.numero, a15jul: a15jul.numero, comFrete: comFrete.numero }
   chassis = { a15: a15.chassi, a31: a31.chassi, b20: b20.chassi }
   // Fora pela loja: sem portal, inativa e de Conta desativada.
   for (const l of [lojas.semPortal, lojas.inativa, lojas.desativada]) await vender(l, modelos.mc, '2026-10-15T15:00:00Z')
@@ -168,4 +173,11 @@ test('período maior que 92 dias: o servidor corta o início e a venda antiga n�
   const vendidas = nossas(p.vendas).map(v => v.numero).sort((x, y) => x - y)
   assert.deepEqual(vendidas, [numeros.a15, numeros.b20, numeros.a31].sort((x, y) => x - y))
   assert.ok(!vendidas.includes(numeros.a15jul))
+})
+
+// O acessório do pedido não entra no valor da venda: vira venda de peça na efetivação, como provam B4/B5/B6 e B7c
+// de src/lib/pedido-brinde-acessorio.db.test.ts. Aqui fica a parte do painel: o frete sai do valor da moto.
+test('frete cobrado na Entrega: o painel mostra só o valor da moto, sem o frete (#30, #796)', async () => {
+  const v = nossas(await painel.vendasDoPainel('2026-11-10', '2026-11-10'))
+  assert.deepEqual(v.map(l => [l.numero, l.valor]), [[numeros.comFrete, 10000]])
 })

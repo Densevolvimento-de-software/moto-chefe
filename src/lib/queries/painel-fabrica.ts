@@ -8,6 +8,7 @@ import { and, eq, gte, isNull, lte, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { contas, grupos, lojas, modelos, motos, vendas } from '@/lib/db/schema'
 import { motoNoShowroom } from '@/lib/queries/showroom'
+import { valorDaMotoNosRelatoriosExpr } from '@/lib/queries/valor-liquido'
 import { fimDoDiaBrt, inicioDoDiaBrt } from '@/lib/data-venda'
 import { periodoDoPainel, type LinhaEstoquePainel, type LojaPainel, type VendaPainel } from '@/lib/painel-fabrica'
 
@@ -26,10 +27,9 @@ const lojaDoPainel = () => and(
 const modeloExibido = sql<string>`upper(trim(${modelos.modelo}))`
 const corExibida = sql<string>`upper(trim(${motos.cor}))`
 
-// Valor da moto, bruto (#30, decisão do Luis de 17/11): na dev a venda ainda não tem frete nem acessório, então é o
-// valor da venda. Ponto único de propósito: quando o frete do pedido chegar (#796, feature/nf-endereco-entrega), esta
-// linha passa a ler `valorDaMotoNosRelatoriosExpr()`, a mesma base do relatório da fábrica.
-const valorDaMoto = sql<number>`${vendas.valor}::float8`
+// Valor da moto, bruto (#30, decisão do Luis de 17/11): sem o frete cobrado e sem acessório, que vira venda de
+// peça. A mesma base do relatório da fábrica (#796).
+const valorDaMoto = sql<number>`(${valorDaMotoNosRelatoriosExpr()})::float8`
 
 export async function listarLojasDoPainel(): Promise<LojaPainel[]> {
   return db
