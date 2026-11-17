@@ -200,6 +200,14 @@ export function disponibilidadeAposCancelarReserva(status: string): Disponibilid
   return motivoParaNaoVender(status) ? null : 'disponivel'
 }
 
+/**
+ * A moto sem disponibilidade que o status não deixa vender (na caixa, em transporte) só pode ser
+ * reservada: a tela oferece o Reservar no lugar do Vender. A lista do Showroom e o detalhe passam por aqui.
+ */
+export function soPodeReservar(moto: { status: string; disponibilidade: string | null }): boolean {
+  return moto.disponibilidade === null && motivoParaNaoVender(moto.status) !== null
+}
+
 export const statusLabel = Object.fromEntries(STATUS_DE_ESTOQUE.map(s => [s.valor, s.rotulo])) as Record<Status, string>
 
 export const disponibilidadeLabel: Record<Disponibilidade, string> = {

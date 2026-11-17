@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, avisoVendaBarrada, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
+import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, avisoVendaBarrada, disponibilidadeAposCancelarReserva, soPodeReservar, statusLabel, type VendaVinculada } from './estado-moto'
 
 // A venda que estragou a LYDAE3936T1207627: efetivada em 20/08 e já faturada.
 const VENDA_FATURADA: VendaVinculada = { numero: 31118, notaFiscalSaida: '2263' }
@@ -150,4 +150,16 @@ test('disponibilidade depois de cancelar a reserva: nula na caixa e em transport
 
 test('statusLabel: os rótulos dos status de estoque', () => {
   assert.deepEqual(statusLabel, { em_transporte: 'Em transporte', caixa: 'Caixa', montada: 'Montada', em_garantia: 'Garantia' })
+})
+
+test('soPodeReservar: moto sem disponibilidade na caixa ou em transporte só reserva; a que vende, a já reservada e a vendida, não', () => {
+  const moto = (status: string, disponibilidade: string | null = null) => ({ status, disponibilidade })
+  assert.deepEqual(
+    [
+      moto('em_transporte'), moto('caixa'),
+      moto('em_transporte', 'reservada'), moto('caixa', 'reservada'), moto('caixa', 'disponivel'),
+      moto('montada'), moto('montada', 'disponivel'), moto('em_garantia'), moto('vendida'),
+    ].map(soPodeReservar),
+    [true, true, false, false, false, false, false, false, false],
+  )
 })
