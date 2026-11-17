@@ -466,6 +466,9 @@ test('D11: aux_adm efetiva 3 motos, a 1ª e a 3ª de outro CNPJ: uma venda por m
     { moto_id: m3, valor: '8000.00', forma_pagamento: 'pedido', pagamentos: [], numero_do_pedido: false },
   ]))
   assert.equal(new Set(vendas.map(v => v.numero).filter(n => n != null)).size, 3)
+  // Frete na Entrega só onde ele está somado no valor: relatórios e NF tiram da venda o frete que a Entrega diz (#796).
+  assert.deepEqual(await execRows(sql`select moto_id, entrega->>'modo' as modo, entrega->>'frete' as frete from vendas where pedido_venda_id = ${pedidoId} order by moto_id`),
+    porMoto([{ moto_id: m1, modo: 'entregar', frete: null }, { moto_id: m2, modo: 'entregar', frete: '300' }, { moto_id: m3, modo: 'entregar', frete: null }]))
   assert.deepEqual(await execRows(sql`select l.valor, v.moto_id from lancamentos_caixa l join vendas v on v.id = l.venda_id where v.pedido_venda_id = ${pedidoId}`),
     [{ valor: '2300.00', moto_id: m2 }])
   assert.deepEqual(await motosDoPedidoNoBanco(pedidoId), porMoto([

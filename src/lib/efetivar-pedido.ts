@@ -160,8 +160,9 @@ async function venderMotoDoPedidoTx(tx: Tx, d: DadosEfetivarPedido, v: {
     dataVenda: v.agora,
     origemId: d.origem.origemId,
     origemDetalhe: d.origem.origemDetalhe,
-    // A Entrega vem do pedido, lido aqui sob a trava: a efetivação não a recebe do navegador.
-    entrega: pedido.entrega,
+    // A Entrega vem do pedido, lido aqui sob a trava: a efetivação não a recebe do navegador. O frete fica só na venda
+    // que o soma no valor (D-A); nas outras, relatórios e NF tirariam da moto um frete que a venda não tem (#796).
+    entrega: v.comPagamento || pedido.entrega?.modo !== 'entregar' ? pedido.entrega : { ...pedido.entrega, frete: undefined },
   }).returning({ id: vendas.id })
   // O item moto guarda só a moto: o frete mora só na Entrega e soma no total da venda (#726, #779).
   await gravarMotoDoPedido(tx, { pedidoId: d.pedidoId, motoId: moto.motoId, valor: moto.valor.toFixed(2) })
