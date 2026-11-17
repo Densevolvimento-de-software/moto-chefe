@@ -7,9 +7,10 @@ import { conferirMaquininhas } from '@/lib/maquininhas'
 import { formaPagamentoDaVenda, pagamentosFecham, pagamentosIncompletos, PAGAMENTO_INCOMPLETO, projetarPagamentos, SOMA_PAGAMENTOS_DIFERE, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
 import { clientesDoEscopo, contaDaLoja } from '@/lib/conta'
 import { RecusaUsuario } from '@/lib/resultado-action'
-import { gravarMotoDoPedido, motosDoPedidoTx } from '@/lib/pedido-venda'
-import { totalDasPecas, totalDoPedido } from '@/lib/pedido-venda-regras'
-import { aplicarVendaPeca } from '@/lib/venda-peca'
+import { gravarMotoDoPedido, motosDoPedidoTx, travarMotos } from '@/lib/pedido-venda'
+import { ITENS_DO_PEDIDO_MUDARAM, totalDasPecas, totalDoPedido, valoresDaEfetivacao, vendaDoPagamento, type MotoComValor } from '@/lib/pedido-venda-regras'
+import { aplicarVendaPeca, FORMA_PAGAMENTO_DO_PEDIDO } from '@/lib/venda-peca'
+import { grupoEmissorDaVenda } from '@/lib/notagateway/grupo-emissor'
 import { lerDocumentoCliente } from '@/lib/documento'
 import { freteDaVenda, PEDIDO_EM_APROVACAO_PARA_ALTERAR, totalComFrete, type EntregaVenda } from '@/lib/notagateway/entrega'
 import { motivoBloqueioPedidoAprovacao, motivoParaNaoVender } from '@/lib/estado-moto'
@@ -26,8 +27,8 @@ export type DadosEfetivarPedido = {
   clienteId: string | null
   clienteNome: string
   clienteCpf: string
-  /** Valor da moto digitado na efetivação; o frete cobrado vem do pedido e se soma aqui (#726). */
-  valor: number
+  /** Valor de cada moto (#20; número no pedido de 1 moto); o frete cobrado vem do pedido e se soma aqui (#726). */
+  valor: number | MotoComValor[]
   /** Pagamento do pedido inteiro (#775): as formas somam moto + frete. */
   pagamentos: PagamentoEntrada[]
   origem: { origemId: string; origemDetalhe: string | null }
@@ -44,7 +45,8 @@ export type PedidoEmAprovacao = Omit<DadosEfetivarPedido, 'efetivadoPor' | 'daAp
   frete: number
 }
 
-async function travarPedidoEMoto(tx: Tx, pedidoId: string, daAprovacao: boolean) {
+/** Trava o pedido pendente e todas as motos dele, em ordem de id como a troca de motos (#20). */
+async function travarPedidoEMotos(tx: Tx, pedidoId: string, daAprovacao: boolean) {
   const [pedido] = await tx
     .select({ motoId: pedidosVenda.motoId, lojaId: pedidosVenda.lojaId, vendedorId: pedidosVenda.vendedorId, status: pedidosVenda.status, entrega: pedidosVenda.entrega })
     .from(pedidosVenda)
@@ -55,20 +57,14 @@ async function travarPedidoEMoto(tx: Tx, pedidoId: string, daAprovacao: boolean)
     throw new RecusaUsuario('Este pedido não está mais pendente. Recarregue a página.')
   }
 
-  const [moto] = await tx
-    .select({ status: motos.status, disponibilidade: motos.disponibilidade })
-    .from(motos)
-    .where(eq(motos.id, pedido.motoId))
-    .for('update')
-  if (!moto) throw new RecusaUsuario('Moto não encontrada')
-  if (moto.status === 'vendida') throw new RecusaUsuario('Moto já foi vendida')
-  if (!daAprovacao && moto.disponibilidade === 'aguardando_aprovacao') throw new RecusaUsuario(motivoBloqueioPedidoAprovacao(moto)!)
-  return { pedido, moto }
-}
-
-/** Enquanto a efetivação cria uma venda só (#20 em andamento), o pedido com 2+ motos não efetiva: venderia só a do `moto_id`. */
-async function recusarVariasMotos(tx: Tx, pedidoId: string, motoId: string) {
-  if ((await motosDoPedidoTx(tx, pedidoId, motoId)).length > 1) throw new RecusaUsuario('Pedido com várias motos ainda não pode ser efetivado.')
+  const motoIds = await motosDoPedidoTx(tx, pedidoId, pedido.motoId)
+  const travadas = await travarMotos(tx, motoIds)
+  for (const moto of motoIds.map(id => travadas.get(id))) {
+    if (!moto) throw new RecusaUsuario('Moto não encontrada')
+    if (moto.status === 'vendida') throw new RecusaUsuario('Moto já foi vendida')
+    if (!daAprovacao && moto.disponibilidade === 'aguardando_aprovacao') throw new RecusaUsuario(motivoBloqueioPedidoAprovacao(moto)!)
+  }
+  return { pedido, motoIds, travadas }
 }
 
 /**
@@ -77,8 +73,8 @@ async function recusarVariasMotos(tx: Tx, pedidoId: string, motoId: string) {
  */
 export async function alterarEntregaDoPedidoTx(tx: Tx, pedidoId: string, entrega: EntregaVenda): Promise<EntregaVenda | null> {
   // `true` deixa passar o "aguardando aprovação", recusado logo abaixo com a frase do Alterar; "vendida" continua barrando.
-  const { pedido, moto } = await travarPedidoEMoto(tx, pedidoId, true)
-  if (moto.disponibilidade === 'aguardando_aprovacao') throw new RecusaUsuario(PEDIDO_EM_APROVACAO_PARA_ALTERAR)
+  const { pedido, travadas } = await travarPedidoEMotos(tx, pedidoId, true)
+  if (travadas.get(pedido.motoId)?.disponibilidade === 'aguardando_aprovacao') throw new RecusaUsuario(PEDIDO_EM_APROVACAO_PARA_ALTERAR)
   await tx.update(pedidosVenda).set({ entrega, dataAtualizacao: new Date() }).where(eq(pedidosVenda.id, pedidoId))
   return pedido.entrega
 }
@@ -118,13 +114,77 @@ export async function pecasDoPedido(exec: Pick<Tx, 'select'>, pedidoId: string) 
 type PecasDoPedido = Awaited<ReturnType<typeof pecasDoPedido>>
 
 /** Confere as formas contra o total do pedido (moto + frete + acessórios) e as maquininhas da loja; devolve o total. */
-async function conferirPagamentos(tx: Tx, pedido: { lojaId: string; entrega: EntregaVenda | null }, pecas: PecasDoPedido, d: Pick<DadosEfetivarPedido, 'valor' | 'pagamentos'>) {
-  const total = totalDoPedido(d.valor, pedido.entrega, pecas)
+async function conferirPagamentos(tx: Tx, pedido: { lojaId: string; entrega: EntregaVenda | null }, pecas: PecasDoPedido, motos: readonly MotoComValor[], d: Pick<DadosEfetivarPedido, 'pagamentos'>) {
+  const total = totalDoPedido(motos.reduce((s, m) => s + m.valor, 0), pedido.entrega, pecas)
   // Aqui e não na action: o frete que entra no total só se conhece lendo o pedido.
   if (pagamentosIncompletos(d.pagamentos)) throw new RecusaUsuario(PAGAMENTO_INCOMPLETO)
   if (!pagamentosFecham(d.pagamentos, total)) throw new RecusaUsuario(SOMA_PAGAMENTOS_DIFERE)
   await conferirMaquininhas(tx, pedido.lojaId, d.pagamentos)
   return total
+}
+
+type Pedido = Awaited<ReturnType<typeof travarPedidoEMotos>>['pedido']
+
+/** Venda de uma moto do pedido: só a do pagamento leva frete, formas e caixa (D-A); as outras, pagas pelo pedido, sem. */
+async function venderMotoDoPedidoTx(tx: Tx, d: DadosEfetivarPedido, v: {
+  pedido: Pedido; doCadastro: Awaited<ReturnType<typeof clienteDoCadastro>>; moto: MotoComValor; comPagamento: boolean; frete: number; agora: Date
+}): Promise<string> {
+  const { pedido, moto } = v
+  const [reservaAtiva] = await tx
+    .select({ id: reservas.id })
+    .from(reservas)
+    .where(and(eq(reservas.motoId, moto.motoId), eq(reservas.status, 'ativa')))
+    .limit(1)
+
+  // A venda da moto vale moto + frete (a folha lê só a moto, #796); os pagamentos são os do pedido inteiro,
+  // que com acessório ou outras motos somam mais que ela (decisão do Luis, #778 e #20; o Editar venda recusa até o #23).
+  const valor = totalComFrete(moto.valor, v.comPagamento ? v.frete : 0).toFixed(2)
+  const [venda] = await tx.insert(vendas).values({
+    pedidoVendaId: d.pedidoId,
+    motoId: moto.motoId,
+    lojaId: pedido.lojaId,
+    vendedorId: pedido.vendedorId,
+    efetivadoPor: d.efetivadoPor,
+    clienteId: d.clienteId,
+    ...v.doCadastro,
+    clienteNome: d.clienteNome,
+    clienteCpf: d.clienteCpf,
+    valor,
+    formaPagamento: v.comPagamento ? formaPagamentoDaVenda(d.pagamentos) : FORMA_PAGAMENTO_DO_PEDIDO,
+    pagamentos: v.comPagamento ? projetarPagamentos(d.pagamentos) : [],
+    reservaId: reservaAtiva?.id ?? null,
+    dataVenda: v.agora,
+    origemId: d.origem.origemId,
+    origemDetalhe: d.origem.origemDetalhe,
+    // A Entrega vem do pedido, lido aqui sob a trava: a efetivação não a recebe do navegador.
+    entrega: pedido.entrega,
+  }).returning({ id: vendas.id })
+  // O item moto guarda só a moto: o frete mora só na Entrega e soma no total da venda (#726, #779).
+  await gravarMotoDoPedido(tx, { pedidoId: d.pedidoId, motoId: moto.motoId, valor: moto.valor.toFixed(2) })
+
+  if (reservaAtiva) {
+    await tx.update(reservas).set({ status: 'convertida' }).where(eq(reservas.id, reservaAtiva.id))
+  }
+
+  await tx.update(motos)
+    .set({ status: 'vendida' as any, disponibilidade: null })
+    .where(eq(motos.id, moto.motoId))
+
+  await tx.insert(historicoEstoque).values({
+    motoId: moto.motoId,
+    lojaOrigemId: pedido.lojaId,
+    usuarioId: d.efetivadoPor,
+    tipo: 'saida',
+    referenciaTipo: 'pedido_venda',
+    referenciaId: d.pedidoId,
+    observacao: `Venda (pedido efetivado) — Cliente: ${d.clienteNome} — Total: R$ ${valor}`,
+  })
+
+  const caixa = v.comPagamento ? lancamentosDinheiroDaVenda(d.pagamentos, {
+    lojaId: pedido.lojaId, usuarioId: d.efetivadoPor, vendaId: venda.id, descricao: `Venda dinheiro — ${d.clienteNome}`, data: hojeBrt(),
+  }) : []
+  if (caixa.length > 0) await tx.insert(lancamentosCaixa).values(caixa)
+  return venda.id
 }
 
 /**
@@ -134,75 +194,31 @@ async function conferirPagamentos(tx: Tx, pedido: { lojaId: string; entrega: Ent
  * cifrados, enquanto o resto do sistema lê texto puro (#181).
  */
 export async function efetivarPedidoTx(tx: Tx, d: DadosEfetivarPedido): Promise<{ vendaId: string }> {
-  const { pedido, moto } = await travarPedidoEMoto(tx, d.pedidoId, !!d.daAprovacao)
-  await recusarVariasMotos(tx, d.pedidoId, pedido.motoId)
-  // O status pode ter mudado depois do pedido (Editar moto); confere na linha travada.
-  const naoVende = motivoParaNaoVender(moto.status)
+  const { pedido, motoIds, travadas } = await travarPedidoEMotos(tx, d.pedidoId, !!d.daAprovacao)
+  const lista = valoresDaEfetivacao(motoIds, d.valor)
+  if (!lista) throw new RecusaUsuario(ITENS_DO_PEDIDO_MUDARAM)
+  // O status pode ter mudado depois do pedido (Editar moto); confere cada moto travada antes de vender qualquer uma.
+  const naoVende = motoIds.map(id => motivoParaNaoVender(travadas.get(id)!.status)).find(m => m != null)
   if (naoVende) throw new RecusaUsuario(naoVende)
   const doCadastro = await clienteDoCadastro(tx, pedido.lojaId, d)
 
-  const [reservaAtiva] = await tx
-    .select({ id: reservas.id })
-    .from(reservas)
-    .where(and(eq(reservas.motoId, pedido.motoId), eq(reservas.status, 'ativa')))
-    .limit(1)
-
   const pecas = await pecasDoPedido(tx, d.pedidoId)
-  await conferirPagamentos(tx, pedido, pecas, d)
+  await conferirPagamentos(tx, pedido, pecas, lista, d)
 
+  const frete = freteDaVenda(pedido.entrega)
+  // Só com frete e 2+ motos importa por qual CNPJ sai a NF de cada uma (D2 do #779).
+  const emissores = frete > 0 && lista.length > 1 ? await Promise.all(lista.map(m => grupoEmissorDaVenda(m.motoId, pedido.lojaId, tx))) : []
+  const doPagamento = vendaDoPagamento(emissores.map(e => ({ outroCnpj: !!e?.outroCnpj })), frete)
   const agora = new Date()
-  // A venda da moto vale moto + frete (a folha lê só a moto, #796); os pagamentos são os do pedido inteiro,
-  // que com acessório somam mais que ela (decisão do Luis, #778; o Editar venda recusa até o #782).
-  const valor = totalComFrete(d.valor, freteDaVenda(pedido.entrega)).toFixed(2)
-  const [venda] = await tx.insert(vendas).values({
-    pedidoVendaId: d.pedidoId,
-    motoId: pedido.motoId,
-    lojaId: pedido.lojaId,
-    vendedorId: pedido.vendedorId,
-    efetivadoPor: d.efetivadoPor,
-    clienteId: d.clienteId,
-    ...doCadastro,
-    clienteNome: d.clienteNome,
-    clienteCpf: d.clienteCpf,
-    valor,
-    formaPagamento: formaPagamentoDaVenda(d.pagamentos),
-    pagamentos: projetarPagamentos(d.pagamentos),
-    reservaId: reservaAtiva?.id ?? null,
-    dataVenda: agora,
-    origemId: d.origem.origemId,
-    origemDetalhe: d.origem.origemDetalhe,
-    // A Entrega vem do pedido, lido aqui sob a trava: a efetivação não a recebe do navegador.
-    entrega: pedido.entrega,
-  }).returning({ id: vendas.id })
-  // O item moto guarda só a moto: o frete mora só na Entrega e soma no total da venda (#726, #779).
-  await gravarMotoDoPedido(tx, { pedidoId: d.pedidoId, motoId: pedido.motoId, valor: d.valor.toFixed(2) })
-
-  if (reservaAtiva) {
-    await tx.update(reservas).set({ status: 'convertida' }).where(eq(reservas.id, reservaAtiva.id))
+  // Uma venda por moto, todas ou nenhuma (#20), uma por vez: a 1ª herda o número do pedido, as outras a sequência (0193).
+  const vendaIds: string[] = []
+  for (const [i, moto] of lista.entries()) {
+    vendaIds.push(await venderMotoDoPedidoTx(tx, d, { pedido, doCadastro, moto, comPagamento: i === doPagamento, frete, agora }))
   }
 
   await tx.update(pedidosVenda)
     .set({ status: 'efetivado', dataAtualizacao: agora })
     .where(eq(pedidosVenda.id, d.pedidoId))
-
-  await tx.update(motos)
-    .set({ status: 'vendida' as any, disponibilidade: null })
-    .where(eq(motos.id, pedido.motoId))
-
-  await tx.insert(historicoEstoque).values({
-    motoId: pedido.motoId,
-    lojaOrigemId: pedido.lojaId,
-    usuarioId: d.efetivadoPor,
-    tipo: 'saida',
-    referenciaTipo: 'pedido_venda',
-    referenciaId: d.pedidoId,
-    observacao: `Venda (pedido efetivado) — Cliente: ${d.clienteNome} — Total: R$ ${valor}`,
-  })
-
-  const caixa = lancamentosDinheiroDaVenda(d.pagamentos, {
-    lojaId: pedido.lojaId, usuarioId: d.efetivadoPor, vendaId: venda.id, descricao: `Venda dinheiro — ${d.clienteNome}`, data: hojeBrt(),
-  })
-  if (caixa.length > 0) await tx.insert(lancamentosCaixa).values(caixa)
 
   // Brinde e acessório viram a venda de peça do pedido (#778): baixa o estoque (pode ficar negativo), entra na
   // base de peças da folha e aparece em Peças; sem pagamento nem caixa próprios, que estão na venda da moto.
@@ -218,7 +234,7 @@ export async function efetivarPedidoTx(tx: Tx, d: DadosEfetivarPedido): Promise<
     }, { pedidoVendaId: d.pedidoId, valorTotal: totalDasPecas(pecas) })
   }
 
-  return { vendaId: venda.id }
+  return { vendaId: vendaIds[doPagamento] }
 }
 
 /**
@@ -232,19 +248,23 @@ export async function pedirAprovacaoDoPedidoTx(tx: Tx, d: DadosEfetivarPedido & 
   motivo: string
   snapshot: { valorMinimo: number; liquido: number } | null
 }) {
-  const { pedido, moto } = await travarPedidoEMoto(tx, d.pedidoId, false)
-  await recusarVariasMotos(tx, d.pedidoId, pedido.motoId)
+  const { pedido, motoIds, travadas } = await travarPedidoEMotos(tx, d.pedidoId, false)
+  // A aprovação com várias motos é o PR B2 do #20: até lá, o pedido de 2+ motos que precisa dela não vai.
+  if (motoIds.length > 1) throw new RecusaUsuario('Pedido com várias motos ainda não pode ir para aprovação.')
+  const lista = valoresDaEfetivacao(motoIds, d.valor)
+  if (!lista) throw new RecusaUsuario(ITENS_DO_PEDIDO_MUDARAM)
+  const [{ valor }] = lista
   await clienteDoCadastro(tx, pedido.lojaId, d)
-  const total = await conferirPagamentos(tx, pedido, await pecasDoPedido(tx, d.pedidoId), d)
+  const total = await conferirPagamentos(tx, pedido, await pecasDoPedido(tx, d.pedidoId), lista, d)
   const guardado: PedidoEmAprovacao = {
     pedidoId: d.pedidoId, numero: d.numero, lojaId: pedido.lojaId, clienteId: d.clienteId, clienteNome: d.clienteNome,
-    clienteCpf: d.clienteCpf, valor: d.valor, frete: freteDaVenda(pedido.entrega), pagamentos: projetarPagamentos(d.pagamentos),
+    clienteCpf: d.clienteCpf, valor, frete: freteDaVenda(pedido.entrega), pagamentos: projetarPagamentos(d.pagamentos),
     origem: d.origem, grupoLiberado: d.grupoLiberado,
   }
   await gravarPedidoDeAprovacaoTx(tx, {
-    origem: 'pedido', moto: { id: pedido.motoId, lojaId: pedido.lojaId, disponibilidade: moto.disponibilidade },
+    origem: 'pedido', moto: { id: pedido.motoId, lojaId: pedido.lojaId, disponibilidade: travadas.get(pedido.motoId)!.disponibilidade },
     // Valor da moto, sem o frete (#796): desconto, quadro do #878 e relatório seguem sobre a moto; o frete fica em dados_venda.
-    vendedorId: pedido.vendedorId, solicitadoPor: d.efetivadoPor, valor: d.valor.toFixed(2), dadosVenda: guardado,
+    vendedorId: pedido.vendedorId, solicitadoPor: d.efetivadoPor, valor: valor.toFixed(2), dadosVenda: guardado,
     tipo: d.tipo, motivo: d.motivo, snapshot: d.snapshot,
     observacao: `Pedido #${d.numero} em aprovação — Cliente: ${d.clienteNome} — Total: R$ ${total.toFixed(2)} — Motivo: ${d.motivo}`,
   })
