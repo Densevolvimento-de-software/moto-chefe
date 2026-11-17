@@ -1,7 +1,9 @@
 'use server'
 // Logins da fábrica MotoChefe (papel `fabrica`, #3): só o admin_geral cria, desativa/reativa e
 // troca a senha. O papel vai também no app_metadata do Auth (só a chave de serviço grava), que é
-// o que o middleware lê para prender o login em /fabrica. Linha e Auth andam juntos.
+// o que o middleware lê para prender o login em /fabrica. Linha e Auth andam juntos: o papel nasce
+// nos dois só aqui (criar), e o /admin/usuarios não dá nem tira o papel fabrica (gestao-usuarios.ts),
+// então o sentido inverso não existe por outro caminho.
 import { revalidatePath } from 'next/cache'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
