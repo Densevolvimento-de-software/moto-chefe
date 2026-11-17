@@ -8,13 +8,14 @@
 // loja à fábrica; sem ele a loja não compra da MotoChefe. A regra de SQL mora em
 // @/lib/queries/painel-fabrica, e as duas pontas (marca e loja) num lugar só.
 //
-// O que a fábrica vê de cada venda (decisão do Luis, #892): só data, número, loja,
-// modelo, cor e chassi. Os tipos abaixo só têm isso; o id da loja serve só para
-// filtrar pela URL e não aparece na tela, no Excel nem no impresso.
+// O que a fábrica vê de cada venda (decisão do Luis, #892, revista em 17/11 no #30): só data,
+// número, loja, modelo, cor, chassi e o valor da moto. Os tipos abaixo só têm isso; o id da
+// loja serve só para filtrar pela URL e não aparece na tela, no Excel nem no impresso.
 //
 // Este arquivo é puro (sem banco): filtro, totais e planilha, usados pela tela e testados.
 import { diaBrt, periodoDoMesBrt } from '@/lib/data-venda'
 import { addDias } from '@/lib/calendario'
+import { centavos } from '@/lib/centavos'
 
 export const ROTA_PAINEL_FABRICA = '/fabrica'
 
@@ -46,6 +47,8 @@ export type VendaPainel = {
   modelo: string
   cor: string
   chassi: string
+  /** Valor da moto em reais, bruto (sem descontar taxa de cartão): a base do faturamento. */
+  valor: number
 }
 
 /** Abas do painel, na ordem da tela; a 1ª é a padrão. */
@@ -55,7 +58,7 @@ export const abaDaUrl = (v: unknown): Aba => ABAS_PAINEL.find(a => a.id === v)?.
 export const rotuloDaAba = (aba: Aba) => ABAS_PAINEL.find(a => a.id === aba)?.rotulo ?? aba
 
 /** Colunas da lista de vendas: as mesmas na tela, no impresso e no Excel. */
-export const COLUNAS_VENDAS = ['Data', 'Venda', 'Loja', 'Modelo', 'Cor', 'Chassi'] as const
+export const COLUNAS_VENDAS = ['Data', 'Venda', 'Loja', 'Modelo', 'Cor', 'Chassi', 'Valor da moto'] as const
 
 /** Nome da loja pelo id; vazio se a loja não está na lista. */
 export function nomeDaLoja(lojas: LojaPainel[]): (lojaId: string) => string {
@@ -69,8 +72,11 @@ export function nomeDaLoja(lojas: LojaPainel[]): (lojaId: string) => string {
  * mostraria 09:00 em quase todas (decisão do Luis, #899).
  */
 export function celulasDaVenda(v: VendaPainel, nomeLoja: (lojaId: string) => string): (string | number)[] {
-  return [diaBrt(v.data), v.numero, nomeLoja(v.lojaId), v.modelo, v.cor, v.chassi]
+  return [diaBrt(v.data), v.numero, nomeLoja(v.lojaId), v.modelo, v.cor, v.chassi, v.valor]
 }
+
+/** "0001": o fim do chassi, que basta para achar a moto na lista do celular. */
+export const finalDoChassi = (chassi: string): string => chassi.slice(-4)
 
 /** Lista vazia = sem filtro (tudo). */
 export type FiltroPainel = { lojas: string[]; modelos: string[]; cores: string[] }
@@ -146,10 +152,15 @@ export function resumirEstoque(linhas: LinhaEstoquePainel[]) {
   }
 }
 
-const contarPor = <T>(itens: T[], chave: (i: T) => string) =>
-  new Map([...Map.groupBy(itens, chave)].map(([k, grupo]) => [k, grupo.length]))
+const resumirPor = <T, R>(itens: T[], chave: (i: T) => string, resumo: (grupo: T[]) => R) =>
+  new Map([...Map.groupBy(itens, chave)].map(([k, grupo]) => [k, resumo(grupo)]))
+const contarPor = <T>(itens: T[], chave: (i: T) => string) => resumirPor(itens, chave, grupo => grupo.length)
+const somarValores = (vendas: VendaPainel[]) => centavos(vendas.reduce((soma, v) => soma + v.valor, 0))
 
-/** Matriz loja × modelo a partir das vendas uma a uma: a soma sempre bate com a lista. */
+/**
+ * Matriz loja × modelo e faturamento a partir das vendas uma a uma: a soma sempre bate com a
+ * lista, e o filtro vale para os totais porque eles somam só as vendas que chegam.
+ */
 export function resumirVendas(vendas: VendaPainel[]) {
   const celulas = contarPor(vendas, v => `${v.lojaId}\u0000${v.modelo}`)
   const porModelo = contarPor(vendas, v => v.modelo)
@@ -159,6 +170,8 @@ export function resumirVendas(vendas: VendaPainel[]) {
     porModelo,
     modelos: [...porModelo.keys()].sort(ordemPt),
     total: vendas.length,
+    valorPorLoja: resumirPor(vendas, v => v.lojaId, somarValores),
+    valor: somarValores(vendas),
   }
 }
 
@@ -195,13 +208,13 @@ export function planilhaDoPainel(aba: Aba, d: {
 }
 
 /**
- * CSV que o Excel em português abre direto: separador `;`, BOM UTF-8 e aspas em todo
- * campo com `;`, aspas ou quebra de linha. Campo que começa com = + - @ ganha um
- * apóstrofo, para o Excel não executar fórmula vinda de nome de loja ou modelo.
+ * CSV que o Excel em português abre direto: separador `;`, BOM UTF-8, número com vírgula
+ * decimal e aspas em todo campo com `;`, aspas ou quebra de linha. Campo que começa com
+ * = + - @ ganha um apóstrofo, para o Excel não executar fórmula vinda de nome de loja ou modelo.
  */
 export function paraCsv(cabecalho: string[], linhas: (string | number)[][]): string {
   const campo = (v: string | number) => {
-    if (typeof v === 'number') return String(v)
+    if (typeof v === 'number') return String(v).replace('.', ',')
     const s = /^[=+\-@]/.test(v) ? `'${v}` : v
     return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }

@@ -79,20 +79,21 @@ before(async () => {
 
   // Vendas: em 15/10 (dentro), uma Voi (fora pela marca), uma em 01/11 00:30 de Brasília
   // (fora do período de outubro) e uma em cada loja fora do painel.
-  const vender = async (loja: string, modelo: string, quando: string) => {
+  const vender = async (loja: string, modelo: string, quando: string, valor = 1000) => {
     const chassi = 'PAINEL819' + seq
     const motoId = await moto(loja, modelo, 'PRETO', { vendida: true })
     const vendedor = await linha(sql`insert into usuarios (id, nome, email, papel, loja_id) values (gen_random_uuid(), 'Vend 819', ${'vend819-' + seq + '@teste.invalid'}, 'vendedor', ${loja}) returning id`)
     const pedido = await linha(sql`insert into pedidos_venda (moto_id, loja_id, vendedor_id) values (${motoId}, ${loja}, ${vendedor.id}) returning id`)
     await db.execute(sql`insert into vendas (pedido_venda_id, moto_id, loja_id, vendedor_id, efetivado_por, cliente_nome, cliente_cpf, valor, forma_pagamento, data_venda)
-      values (${pedido.id}, ${motoId}, ${loja}, ${vendedor.id}, ${vendedor.id}, 'Cliente', '52998224725', 1000, 'pix', ${quando}::timestamptz)`)
+      values (${pedido.id}, ${motoId}, ${loja}, ${vendedor.id}, ${vendedor.id}, 'Cliente', '52998224725', ${valor}, 'pix', ${quando}::timestamptz)`)
     // O número da venda sai do pedido (trigger do banco), não do insert: lê o que ficou gravado.
     const [gravada] = await execRows(sql`select numero from vendas where moto_id = ${motoId}`) as { numero: number }[]
     return { numero: gravada.numero, chassi }
   }
-  const a15 = await vender(lojas.a, modelos.mc, '2026-10-15T15:00:00Z')
-  const a31 = await vender(lojas.a, modelos.mc, '2026-10-31T23:00:00Z') // 20h de 31/10 em Brasília: dentro
-  const b20 = await vender(lojas.b, modelos.mc, '2026-10-20T15:00:00Z')
+  // Valores distintos, com centavos: cada venda tem de trazer o seu.
+  const a15 = await vender(lojas.a, modelos.mc, '2026-10-15T15:00:00Z', 13490.5)
+  const a31 = await vender(lojas.a, modelos.mc, '2026-10-31T23:00:00Z', 9990) // 20h de 31/10 em Brasília: dentro
+  const b20 = await vender(lojas.b, modelos.mc, '2026-10-20T15:00:00Z', 16900.25)
   await vender(lojas.a, modelos.voi, '2026-10-15T15:00:00Z')
   const a01nov = await vender(lojas.a, modelos.mc, '2026-11-01T03:30:00Z') // 00:30 de 01/11 em Brasília: fora
   // 15/07: mais de 92 dias antes de 31/10, fora do teto da aba Vendas (#901).
@@ -148,10 +149,17 @@ test('vendas: uma linha por venda, com número, cor e chassi; dias de Brasília,
   assert.deepEqual(nov.map(l => l.numero), [numeros.a01nov])
 })
 
-test('vendas: cada linha leva só data, número, loja, modelo, cor e chassi (sem id da venda, cliente nem valor)', async () => {
+test('vendas: cada linha leva só data, número, loja, modelo, cor, chassi e valor da moto (sem id da venda nem cliente)', async () => {
+  // O valor da moto entra pela decisão do Luis de 17/11 (#30), que revê a I1.
   const v = nossas(await painel.vendasDoPainel('2026-10-01', '2026-10-31'))
   assert.equal(v.length, 3)
-  for (const l of v) assert.deepEqual(Object.keys(l).sort(), ['chassi', 'cor', 'data', 'lojaId', 'modelo', 'numero'])
+  for (const l of v) assert.deepEqual(Object.keys(l).sort(), ['chassi', 'cor', 'data', 'lojaId', 'modelo', 'numero', 'valor'])
+})
+
+test('vendas: cada venda traz o valor da moto gravado na venda, como número em reais', async () => {
+  const v = nossas(await painel.vendasDoPainel('2026-10-01', '2026-10-31'))
+  const porNumero = Object.fromEntries(v.map(l => [l.numero, l.valor]))
+  assert.deepEqual(porNumero, { [numeros.a15]: 13490.5, [numeros.a31]: 9990, [numeros.b20]: 16900.25 })
 })
 
 test('período maior que 92 dias: o servidor corta o início e a venda antiga não vem (#901)', async () => {

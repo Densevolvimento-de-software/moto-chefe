@@ -2,7 +2,7 @@
 //
 // Lê TODAS as Contas de propósito: é tela da plataforma, do login da fábrica e do admin_geral
 // (item `painel-fabrica` em @/lib/navegacao). Quem chama confere o acesso antes. O select é a fronteira do que a fábrica pode ver (#892): da loja, só o nome;
-// da venda, só data, número, modelo, cor e chassi. O que não é lido aqui não chega
+// da venda, só data, número, modelo, cor, chassi e o valor da moto (#30). O que não é lido aqui não chega
 // à tela, ao Excel nem ao navegador.
 import { and, eq, gte, isNull, lte, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
@@ -25,6 +25,11 @@ const lojaDoPainel = () => and(
 
 const modeloExibido = sql<string>`upper(trim(${modelos.modelo}))`
 const corExibida = sql<string>`upper(trim(${motos.cor}))`
+
+// Valor da moto, bruto (#30, decisão do Luis de 17/11): na dev a venda ainda não tem frete nem acessório, então é o
+// valor da venda. Ponto único de propósito: quando o frete do pedido chegar (#796, feature/nf-endereco-entrega), esta
+// linha passa a ler `valorDaMotoNosRelatoriosExpr()`, a mesma base do relatório da fábrica.
+const valorDaMoto = sql<number>`${vendas.valor}::float8`
 
 export async function listarLojasDoPainel(): Promise<LojaPainel[]> {
   return db
@@ -54,7 +59,7 @@ export async function vendasDoPainel(de: string, ate: string): Promise<VendaPain
   const linhas = await db
     .select({
       data: vendas.dataVenda, numero: vendas.numero,
-      lojaId: lojas.id, modelo: modeloExibido, cor: corExibida, chassi: motos.chassi,
+      lojaId: lojas.id, modelo: modeloExibido, cor: corExibida, chassi: motos.chassi, valor: valorDaMoto,
     })
     .from(vendas)
     .innerJoin(motos, eq(vendas.motoId, motos.id))

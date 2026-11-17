@@ -3,7 +3,10 @@ import assert from 'node:assert/strict'
 import { createElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { COLUNAS_VENDAS, celulasDaVenda, nomeDaLoja, type LinhaEstoquePainel, type LojaPainel, type VendaPainel } from '@/lib/painel-fabrica'
+import { montarDom } from '@/test/montar-dom'
 
+const { desmontar } = montarDom()
+after(desmontar)
 const link = mock.module('next/link', { defaultExport: ({ href, children }: { href: string; children: ReactNode }) => createElement('a', { href }, children) })
 after(() => link.restore())
 type Tabelas = typeof import('./tabelas-painel')
@@ -13,8 +16,8 @@ before(async () => { ({ TabelaEstoque, TabelaVendas } = await import('./tabelas-
 
 const lojas: LojaPainel[] = [{ lojaId: 'loja-a', lojaNome: 'Loja Centro' }, { lojaId: 'loja-b', lojaNome: 'Loja Norte' }]
 const vendas: VendaPainel[] = [
-  { numero: 201, data: '2026-11-01T01:30:00.000Z', lojaId: 'loja-b', modelo: 'X12', cor: 'PRETO', chassi: 'CHASSI201' },
-  { numero: 101, data: '2026-10-02T15:00:00.000Z', lojaId: 'loja-a', modelo: 'JETMAX', cor: 'AZUL', chassi: 'CHASSI101' },
+  { numero: 201, data: '2026-11-01T01:30:00.000Z', lojaId: 'loja-b', modelo: 'X12', cor: 'PRETO', chassi: 'LA9EXEMPLO0000201', valor: 13490.5 },
+  { numero: 101, data: '2026-10-02T15:00:00.000Z', lojaId: 'loja-a', modelo: 'JETMAX', cor: 'AZUL', chassi: 'LA9EXEMPLO0000101', valor: 9990 },
 ]
 const estoque: LinhaEstoquePainel[] = [
   { lojaId: 'loja-a', modelo: 'X12', cor: 'PRETO', quantidade: 3 },
@@ -24,8 +27,8 @@ const filtro = { lojas: [], modelos: [], cores: [] }
 const props = { lojas, periodo: '01/10/2026 a 31/10/2026', filtro, de: '2026-10-01', ate: '2026-10-31' }
 const TRAVESSAO = '—'
 
-/** Texto que a pessoa lê: o HTML sem as tags (o id da loja pode estar só no href). */
-const textoVisivel = (html: string) => html.replace(/<[^>]*>/g, ' ')
+/** Texto que a pessoa lê: o HTML sem as tags (o id da loja pode estar só no href); o espaço fixo do R$ vira espaço. */
+const textoVisivel = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\u00a0|&nbsp;/g, ' ')
 /** Textos das células de cada linha (`<tr>`) da tabela, sem as tags. */
 const linhas = (html: string) =>
   [...html.matchAll(/<tr[^>]*>(.*?)<\/tr>/g)].map(tr => [...tr[1].matchAll(/<t[dh][^>]*>(.*?)<\/t[dh]>/g)].map(c => textoVisivel(c[1]).trim()))
@@ -34,8 +37,8 @@ const linhaQueComecaCom = (html: string, inicio: string) => linhas(html).find(l 
 test('vendas: cada venda numa linha com a data (dia de Brasília, sem hora), número, loja, modelo, cor e chassi', () => {
   const html = renderToStaticMarkup(createElement(TabelaVendas, { ...props, vendas }))
   // 01:30 UTC de 01/11 ainda é 31/10 em Brasília. Sem hora: a data da venda é digitada sem hora.
-  assert.deepEqual(linhaQueComecaCom(html, '31/10/2026'), ['31/10/2026', '201', 'Loja Norte', 'X12', 'PRETO', 'CHASSI201'])
-  assert.deepEqual(linhaQueComecaCom(html, '02/10/2026'), ['02/10/2026', '101', 'Loja Centro', 'JETMAX', 'AZUL', 'CHASSI101'])
+  assert.deepEqual(linhaQueComecaCom(html, '31/10/2026'), ['31/10/2026', '201', 'Loja Norte', 'X12', 'PRETO', 'LA9EXEMPLO0000201', 'R$ 13.490,50'])
+  assert.deepEqual(linhaQueComecaCom(html, '02/10/2026'), ['02/10/2026', '101', 'Loja Centro', 'JETMAX', 'AZUL', 'LA9EXEMPLO0000101', 'R$ 9.990,00'])
 })
 
 test('vendas: a lista tem as colunas da planilha, na mesma ordem', () => {
@@ -43,11 +46,13 @@ test('vendas: a lista tem as colunas da planilha, na mesma ordem', () => {
   assert.ok(linhas(html).some(l => l.join('|') === COLUNAS_VENDAS.join('|')))
 })
 
-test('vendas: a linha da tela tem as mesmas células da planilha', () => {
+test('vendas: a linha da tela tem as mesmas células da planilha; o valor, em reais', () => {
   const html = renderToStaticMarkup(createElement(TabelaVendas, { ...props, vendas }))
   for (const v of vendas) {
-    const celulas = celulasDaVenda(v, nomeDaLoja(lojas)).map(String)
-    assert.deepEqual(linhaQueComecaCom(html, celulas[0]), celulas)
+    const celulas = celulasDaVenda(v, nomeDaLoja(lojas))
+    const linha = linhaQueComecaCom(html, String(celulas[0]))
+    assert.deepEqual(linha?.slice(0, -1), celulas.slice(0, -1).map(String))
+    assert.equal(celulas.at(-1), v.valor)
   }
 })
 
@@ -89,4 +94,90 @@ test('o id da loja não aparece como texto em nenhuma tabela', () => {
     + renderToStaticMarkup(createElement(TabelaEstoque, { lojas, estoque })))
   assert.ok(!texto.includes('loja-a'))
   assert.ok(!texto.includes('loja-b'))
+})
+
+// ─── Valor e faturamento (#30) ────────────────────────────────────────────────
+/** Monta o HTML no documento do montarDom, para ler por seletor. */
+const montar = (el: ReturnType<typeof createElement>) => {
+  document.body.innerHTML = renderToStaticMarkup(el)
+  return document.body
+}
+const texto = (el: Element | null | undefined) => textoVisivel(el?.innerHTML ?? '').replace(/\s+/g, ' ').trim()
+const porRotulo = (raiz: Element, rotulo: string) => raiz.querySelector(`[aria-label="${rotulo}"]`)
+const telaVendas = (extra: Partial<Parameters<typeof TabelaVendas>[0]> = {}) => montar(createElement(TabelaVendas, { ...props, vendas, ...extra }))
+
+test('faixa: faturamento do período, motos e lojas, e que é o valor da moto sem frete nem acessório', () => {
+  const faixa = porRotulo(telaVendas(), 'Faturamento no período')
+  assert.ok(faixa, 'faixa de faturamento')
+  const t = texto(faixa)
+  assert.ok(t.includes('R$ 23.480,50'), t)
+  assert.ok(t.includes('2 motos em 2 lojas'), t)
+  assert.ok(t.includes('Valor da moto, sem frete nem acessório'), t)
+})
+
+test('faixa: "Ver por loja" recolhido mostra cada loja com o faturamento e as motos, do maior para o menor', () => {
+  const porLoja = telaVendas().querySelector('details[aria-label="Faturamento por loja"]')
+  assert.ok(porLoja, 'recolhível do por loja')
+  assert.equal(porLoja.hasAttribute('open'), false, 'nasce recolhido')
+  assert.ok(texto(porLoja.querySelector('summary')).includes('Ver por loja'))
+  const linhasLoja = [...porLoja.querySelectorAll('li')].map(texto)
+  assert.deepEqual(linhasLoja, ['Loja Norte R$ 13.490,50 1 moto', 'Loja Centro R$ 9.990,00 1 moto'])
+})
+
+test('faixa no celular: só o total; o "Ver por loja" e a tabela de vendas por loja ficam para a tela larga', () => {
+  const tela = telaVendas()
+  assert.ok(porRotulo(tela, 'Faturamento por loja')?.classList.contains('md:block'))
+  assert.ok(porRotulo(tela, 'Faturamento por loja')?.classList.contains('hidden'))
+  const tabelas = porRotulo(tela, 'Tabelas de vendas por loja')
+  assert.ok(tabelas?.classList.contains('hidden') && tabelas.classList.contains('md:grid'))
+})
+
+test('detalhe: coluna "Valor da moto" e rodapé com o total de motos e de valor', () => {
+  const tabela = porRotulo(telaVendas(), 'Detalhes das vendas')
+  assert.ok(tabela, 'tabela do detalhe')
+  assert.ok(texto(tabela.querySelector('thead')).endsWith('Valor da moto'))
+  assert.equal(texto(tabela.querySelector('tfoot')), 'Total, 2 motos R$ 23.480,50')
+})
+
+test('celular, loja × modelo: uma linha por loja com as motos; o toque abre o faturamento e cada modelo, zero incluído', () => {
+  const lista = porRotulo(telaVendas(), 'Vendas por loja e modelo')
+  assert.ok(lista, 'lista do celular')
+  assert.ok(lista.classList.contains('md:hidden'), 'só no celular')
+  const centro = [...lista.querySelectorAll('details')].find(d => texto(d.querySelector('summary')).startsWith('Loja Centro'))
+  assert.ok(centro)
+  assert.equal(texto(centro.querySelector('summary')), 'Loja Centro 1 moto')
+  assert.deepEqual([...centro.querySelectorAll('dl > div')].map(texto), ['Faturamento R$ 9.990,00', 'JETMAX 1', 'X12 0'])
+  assert.equal(texto(lista.lastElementChild), 'Total 2 motos')
+})
+
+test('celular, detalhe: duas linhas por venda (modelo e valor; dia, loja, cor e final do chassi); o toque abre data, venda, loja e chassi', () => {
+  const lista = porRotulo(telaVendas(), 'Vendas, uma por linha')
+  assert.ok(lista, 'lista do celular')
+  assert.ok(lista.classList.contains('md:hidden'), 'só no celular')
+  const [primeira] = lista.querySelectorAll('details')
+  // 01:30 UTC de 01/11 ainda é 31/10 em Brasília.
+  assert.equal(texto(primeira.querySelector('summary')), 'X12 R$ 13.490,50 31/10 · Loja Norte · PRETO · final 0201')
+  assert.deepEqual([...primeira.querySelectorAll('dl > div')].map(texto), ['Data 31/10/2026', 'Venda 201', 'Loja Loja Norte', 'Chassi LA9EXEMPLO0000201'])
+  assert.equal(texto(lista.lastElementChild), 'Total, 2 motos R$ 23.480,50 Valor da moto, sem frete nem acessório')
+})
+
+test('impresso: o faturamento por loja sai aberto, sem botão de recolher, e as listas do celular não saem no papel', () => {
+  const tela = montar(createElement(TabelaVendas, { ...props, vendas, impresso: true }))
+  assert.equal(porRotulo(tela, 'Faturamento no período')?.querySelector('summary'), null)
+  const porLoja = porRotulo(tela, 'Faturamento por loja')
+  assert.ok(porLoja && !porLoja.classList.contains('hidden'))
+  assert.equal(porLoja.querySelectorAll('li').length, 2)
+  for (const rotulo of ['Vendas por loja e modelo', 'Vendas, uma por linha']) {
+    assert.ok(porRotulo(tela, rotulo)?.classList.contains('print:hidden'), rotulo)
+  }
+  assert.ok(porRotulo(tela, 'Tabelas de vendas por loja')?.classList.contains('print:grid'))
+  assert.ok(porRotulo(tela, 'Detalhes das vendas')?.parentElement?.classList.contains('print:block'))
+})
+
+test('sem vendas: faturamento R$ 0,00 e a frase de vazio, sem travessão', () => {
+  const tela = telaVendas({ vendas: [] })
+  assert.ok(texto(porRotulo(tela, 'Faturamento no período')).includes('R$ 0,00'))
+  assert.equal(porRotulo(tela, 'Faturamento por loja'), null)
+  assert.ok(!texto(tela).includes(TRAVESSAO))
+  assert.ok(texto(porRotulo(tela, 'Vendas, uma por linha')).includes('Nenhuma venda no período com estes filtros.'))
 })
