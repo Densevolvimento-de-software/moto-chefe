@@ -1,6 +1,7 @@
 // src/lib/estado-moto.ts
 import { STATUS_DE_ESTOQUE, type StatusDeEstoque } from './status-moto'
 import type { PapelDoBanco } from '@/lib/rotulo-do-papel'
+import { MOTO_ARQUIVADA } from './arquivar-moto-regras'
 
 export type Status = StatusDeEstoque
 export type Disponibilidade = 'disponivel' | 'reservada' | 'vendida' | 'aguardando_aprovacao'
@@ -39,11 +40,12 @@ export function getTransicoesStatusPermitidas(
 }
 
 /**
- * Motivo pelo qual a pessoa não pode marcar a chegada desta moto (botão Chegou), ou null. A tela e a
- * action passam por aqui. O status vem antes: a correção montada → caixa do admin não é chegada.
+ * Motivo pelo qual a pessoa não pode marcar a chegada desta moto (botão Chegou), ou null. A tela (mostra o
+ * botão) e a action (grava) passam por aqui. A correção montada → caixa do admin não é chegada.
  */
-export function motivoParaNaoMarcarChegada(status: string, papel: Papel, isMinhaLoja: boolean): string | null {
-  if (status !== 'em_transporte') return 'Esta moto não está mais em transporte.'
+export function motivoParaNaoMarcarChegada(moto: { status: string; arquivada: boolean }, papel: Papel, isMinhaLoja: boolean): string | null {
+  if (moto.arquivada) return MOTO_ARQUIVADA
+  if (moto.status !== 'em_transporte') return 'Esta moto não está mais em transporte.'
   if (!mudaStatusFisico(papel, isMinhaLoja)) return 'Sem permissão para marcar a chegada desta moto.'
   return null
 }

@@ -102,7 +102,7 @@ export default async function MotoDetailPage({ params }: { params: Promise<{ id:
       {moto.status === 'em_transporte' && (
         <FaixaEmTransporte
           moto={{ id: moto.id, modelo: moto.modelo, chassi: moto.chassi, disponibilidade: moto.disponibilidade }}
-          podeMarcar={!moto.arquivadaEm && motivoParaNaoMarcarChegada(moto.status, usuario.papel, usuario.lojaId === moto.lojaId) === null}
+          podeMarcar={motivoParaNaoMarcarChegada({ status: moto.status, arquivada: moto.arquivadaEm !== null }, usuario.papel, usuario.lojaId === moto.lojaId) === null}
         />
       )}
 
