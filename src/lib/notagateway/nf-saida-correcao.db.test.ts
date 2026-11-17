@@ -3,7 +3,7 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearGrupo, semearLoja, semearUsuario } from '@/test/semear-conta'
+import { nomeDeTeste, semearContaBase, semearGrupo, semearLoja, semearUsuario } from '@/test/semear-conta'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -263,7 +263,7 @@ test('nota recusada que saiu pelo grupo de entrada (#552): a correção acha a n
 // Rede (#17): a Conta A com uma 2ª loja no grupo da base e um 2º grupo, com loja própria.
 async function semearRede(tx: Tx, cnpj: string, cnpjOutroGrupo: string) {
   const a = await semearConta(tx, 'A', cnpj)
-  const outraLoja = await semearLoja(tx, a.grupoId, 'CO347 Loja 2')
+  const outraLoja = await semearLoja(tx, a.grupoId, nomeDeTeste('CO347', 'A', 'Loja 2'))
   const outroGrupo = await semearGrupo(tx, a.contaId, { prefixo: 'CO347', nome: 'A grupo 2', cnpj: cnpjOutroGrupo })
   const naOutraLoja = (chassi: string) => semearVenda(tx, { ...a, lojaId: outraLoja }, chassi, 'Negada')
   const noOutroGrupo = (chassi: string) => semearVenda(tx, { ...a, ...outroGrupo }, chassi, 'Negada')
