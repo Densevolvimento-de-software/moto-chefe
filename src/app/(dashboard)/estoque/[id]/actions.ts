@@ -118,12 +118,11 @@ export async function marcarChegadaAction(motoId: string) {
 async function marcarChegada(motoId: string) {
   const usuario = await getUsuarioLogado()
   // Conta no where: moto de outra Conta recebe a mesma frase do id inexistente.
-  const moto = await lojaDaMotoParaGravar(usuario, motoId)
-  if (!moto) throw new RecusaUsuario('Moto não encontrada')
-  // O status vem da linha travada, a mesma que a função do banco vai mudar: dois cliques não marcam duas vezes.
+  if (!(await lojaDaMotoParaGravar(usuario, motoId))) throw new RecusaUsuario('Moto não encontrada')
+  // Status e loja vêm da linha travada, a mesma que a função do banco vai mudar: dois cliques não marcam duas vezes.
   await db.transaction(async tx => {
-    const { status } = await travarMotoNaoArquivada(tx, motoId)
-    const motivo = motivoParaNaoMarcarChegada(status, usuario.papel, usuario.lojaId === moto.lojaId)
+    const { status, lojaId } = await travarMotoNaoArquivada(tx, motoId)
+    const motivo = motivoParaNaoMarcarChegada(status, usuario.papel, usuario.lojaId === lojaId)
     if (motivo) throw new RecusaUsuario(motivo)
     await mudarStatusMoto({ motoId, novoStatus: 'caixa', usuarioId: usuario.id, observacao: 'Chegada marcada' }, tx)
   })
