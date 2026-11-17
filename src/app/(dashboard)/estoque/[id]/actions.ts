@@ -12,6 +12,7 @@ import {
   getTransicoesStatusPermitidas,
   getTransicoesDisponibilidadePermitidas,
   motivoBloqueioPorVenda,
+  motivoParaNaoMarcarChegada,
   statusLabel,
   disponibilidadeLabel,
   type Status,
@@ -105,6 +106,27 @@ export async function alterarStatusAction(
       .where(eq(motos.id, motoId))
   }
 
+  revalidatePath(`/estoque/${motoId}`)
+  revalidatePath('/estoque')
+}
+
+// Botão Chegou (#11). Recusa volta como valor ({ ok: false, erro }): em produção o React troca a mensagem do throw (#404).
+export async function marcarChegadaAction(motoId: string) {
+  return acao(() => marcarChegada(motoId))
+}
+
+async function marcarChegada(motoId: string) {
+  const usuario = await getUsuarioLogado()
+  // Conta no where: moto de outra Conta recebe a mesma frase do id inexistente.
+  const moto = await lojaDaMotoParaGravar(usuario, motoId)
+  if (!moto) throw new RecusaUsuario('Moto não encontrada')
+  // O status vem da linha travada, a mesma que a função do banco vai mudar: dois cliques não marcam duas vezes.
+  await db.transaction(async tx => {
+    const { status } = await travarMotoNaoArquivada(tx, motoId)
+    const motivo = motivoParaNaoMarcarChegada(status, usuario.papel, usuario.lojaId === moto.lojaId)
+    if (motivo) throw new RecusaUsuario(motivo)
+    await mudarStatusMoto({ motoId, novoStatus: 'caixa', usuarioId: usuario.id, observacao: 'Chegada marcada' }, tx)
+  })
   revalidatePath(`/estoque/${motoId}`)
   revalidatePath('/estoque')
 }
