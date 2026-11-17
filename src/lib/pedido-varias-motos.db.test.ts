@@ -370,12 +370,13 @@ test('D3c: pedido com várias motos e uma de outra Conta, no criar e no trocar: 
   assert.deepEqual(await disponibilidades([daA, b2, b3]), { [daA]: 'disponivel', [b2]: 'disponivel', [b3]: 'disponivel' })
 })
 
-test('D11: aux_adm efetiva 3 motos, a 1ª de outro CNPJ: uma venda por moto; frete, formas e caixa só na 1ª do CNPJ da loja (D-A, D2); a 1ª com o número do pedido, as outras da sequência', async () => {
+test('D11: aux_adm efetiva 3 motos, a 1ª e a 3ª de outro CNPJ: uma venda por moto; frete, formas e caixa só na do CNPJ da loja (D-A, D2); a 1ª com o número do pedido, as outras da sequência', async () => {
   const c = await semearConta()
   const [m1, m2, m3] = await c.motos(3)
   await comPrecoMinimo(c, m1, 8000)
   await execRows(sql`update contas set transferencia_entre_grupos = true where id = ${c.base.contaId}`)
-  await execRows(sql`update motos set grupo_entrada_id = ${c.outro.grupoId} where id = ${m1}`)
+  // Itens do mesmo pedido nascem com o mesmo criado_em; entre a 2ª e a 3ª a ordem é a do id. Só a 2ª é do CNPJ da loja.
+  await execRows(sql`update motos set grupo_entrada_id = ${c.outro.grupoId} where id in ${[m1, m3]}`)
   const pedidoId = await criarPedido(c, [m1, m2, m3], entregarSintetico(300))
   usuario = c.aux
   const pagamentos = [{ tipo: 'dinheiro', valor: 2300 }, { tipo: 'pix', valor: 28000 }]
