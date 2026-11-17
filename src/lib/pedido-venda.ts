@@ -1,6 +1,6 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, count, eq, inArray, sql } from 'drizzle-orm'
 import type { db } from '@/lib/db'
-import { historicoEstoque, motos, pecasCatalogo, pedidosVenda, pedidosVendaItens, reservas, transferencias } from '@/lib/db/schema'
+import { historicoEstoque, motos, pecasCatalogo, pedidosVenda, pedidosVendaItens, reservas, transferencias, vendas } from '@/lib/db/schema'
 import {
   motivoBloqueioMotoNoPedido, motosDoPedido, PEDIDO_SEM_MOTO, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDaPecaNoPedido, valorDePecaInvalido,
   type MotoDoPedidoInput, type PecaDoPedidoInput, type QuemCancela,
@@ -49,7 +49,7 @@ export async function motosDoPedidoTx(exec: Pick<Tx, 'select'>, pedidoId: string
  * Trava as motos numa consulta só, em ordem de id: dois pedidos que mexem em motos em comum esperam um pelo
  * outro em vez de se travarem em cruz. Quem chama já conferiu a Conta de cada uma.
  */
-async function travarMotos(tx: Tx, ids: readonly string[]) {
+export async function travarMotos(tx: Tx, ids: readonly string[]) {
   const travadas = await tx
     .select({ id: motos.id, lojaId: motos.lojaId, status: motos.status, disponibilidade: motos.disponibilidade, arquivadaEm: motos.arquivadaEm })
     .from(motos).where(inArray(motos.id, [...ids])).orderBy(asc(motos.id)).for('update')
@@ -223,4 +223,10 @@ export async function gravarMotoDoPedido(
       set: { valorUnitario: d.valor },
       setWhere: eq(pedidosVendaItens.pedidoVendaId, d.pedidoId),
     })
+}
+
+/** A venda é de um pedido efetivado com várias motos (#20): cancelar e editar são do pedido inteiro, no #23. */
+export async function vendaDePedidoComVariasMotos(exec: Pick<Tx, 'select'>, pedidoVendaId: string): Promise<boolean> {
+  const [{ n }] = await exec.select({ n: count() }).from(vendas).where(eq(vendas.pedidoVendaId, pedidoVendaId))
+  return n > 1
 }

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { motivoBloqueioCriarPedido, motivoBloqueioMotoNoPedido, motosDoPedido, listaDeMotosValida, motosSemRepetir, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDeMotoInvalido, valorDePecaInvalido, podeCriarPedido, podeEfetivarPedido, totalDasPecas, totalDoPedido, valorDaPecaNoPedido } from './pedido-venda-regras'
+import { aprovacaoDoPedido, liquidoPorMoto, motivoBloqueioCriarPedido, valoresDaEfetivacao, vendaDoPagamento, motivoBloqueioMotoNoPedido, motosDoPedido, listaDeMotosValida, motosSemRepetir, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDeMotoInvalido, valorDePecaInvalido, podeCriarPedido, podeEfetivarPedido, totalDasPecas, totalDoPedido, valorDaPecaNoPedido } from './pedido-venda-regras'
 import { entregarSintetico } from '@/test/entrega-sintetica'
 
 const pedido = { status: 'pendente', lojaId: 'loja-a', vendedorId: 'vend-1' }
@@ -175,5 +175,37 @@ describe('valor da moto no pedido (#20, D-E)', () => {
 
   test('moto repetida vale uma vez, com o valor que veio primeiro', () => {
     assert.deepEqual(motosSemRepetir([{ motoId: 'm1', valor: 10 }, { motoId: 'm2' }, { motoId: 'm1', valor: 20 }]), [{ motoId: 'm1', valor: 10 }, { motoId: 'm2' }])
+  })
+})
+
+describe('efetivar com várias motos (#20, PR B)', () => {
+  test('pagamento e frete vão na 1ª venda do CNPJ da loja; sem nenhuma, ou sem frete, na 1ª (D-A, D2 do #779)', () => {
+    const motos = [{ outroCnpj: true }, { outroCnpj: false }, { outroCnpj: false }]
+    assert.equal(vendaDoPagamento(motos, 300), 1)
+    assert.equal(vendaDoPagamento([{ outroCnpj: true }, { outroCnpj: true }], 300), 0)
+    assert.equal(vendaDoPagamento(motos, 0), 0)
+  })
+
+  test('o líquido se reparte na proporção do valor de cada moto e a soma fecha em centavos (D-C)', () => {
+    assert.deepEqual(liquidoPorMoto(20000, [12000, 8000]), [12000, 8000])
+    assert.deepEqual(liquidoPorMoto(10000, [1, 1, 1]), [3333.33, 3333.33, 3333.34])
+    assert.deepEqual(liquidoPorMoto(500, [700]), [500])
+  })
+
+  test('cada moto contra o próprio mínimo; o pagamento sensível vale para o pedido inteiro', () => {
+    const motos = [{ motoId: 'a', valor: 12000, minimo: 12000 }, { motoId: 'b', valor: 8000, minimo: 9000 }, { motoId: 'c', valor: 5000, minimo: null }]
+    const p = { sensivelSemPermissao: false, papel: 'aux_adm', liquido: 25000, motos }
+    assert.deepEqual(aprovacaoDoPedido(p), { tipo: 'valor_minimo', abaixo: [{ motoId: 'b', minimo: 9000, liquido: 8000 }] })
+    assert.equal(aprovacaoDoPedido({ ...p, sensivelSemPermissao: true }).tipo, 'pagamento_sensivel')
+    assert.deepEqual(aprovacaoDoPedido({ ...p, papel: 'admin_socio' }), { tipo: null, abaixo: [] })
+    assert.deepEqual(aprovacaoDoPedido({ ...p, liquido: 28125 }), { tipo: null, abaixo: [] })
+  })
+
+  test('os valores precisam ser das mesmas motos do pedido, sem faltar nem sobrar; saem na ordem do pedido', () => {
+    assert.deepEqual(valoresDaEfetivacao(['a', 'b'], [{ motoId: 'b', valor: 2 }, { motoId: 'a', valor: 1 }]), [{ motoId: 'a', valor: 1 }, { motoId: 'b', valor: 2 }])
+    assert.deepEqual(valoresDaEfetivacao(['a'], 10), [{ motoId: 'a', valor: 10 }])
+    for (const v of [[{ motoId: 'a', valor: 1 }], [{ motoId: 'a', valor: 1 }, { motoId: 'a', valor: 1 }], [{ motoId: 'a', valor: 1 }, { motoId: 'b', valor: 2 }, { motoId: 'c', valor: 3 }], 10]) {
+      assert.equal(valoresDaEfetivacao(['a', 'b'], v), null, JSON.stringify(v))
+    }
   })
 })

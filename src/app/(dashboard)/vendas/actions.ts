@@ -29,11 +29,11 @@ import { lerContribuinteIcms, tipoPessoaDoDocumento } from '@/lib/documento'
 import { STATUS_MORTOS } from '@/lib/notagateway/status'
 import { notasParaTravaDaVenda, vendaTemNfViva } from '@/lib/notagateway/nf-viva'
 import { travaDoCancelamentoDaVendaAction } from './nfe-propria-actions'
-import { podeCriarPedido, podeEfetivarPedido, foraDaMoto, listaDeMotosValida, motosSemRepetir, valorDeMotoInvalido, type MotoDoPedidoInput, type PecaDoPedidoInput } from '@/lib/pedido-venda-regras'
+import { podeCriarPedido, podeEfetivarPedido, foraDaMoto, listaDeMotosValida, motosSemRepetir, valorDeMotoInvalido, aprovacaoDoPedido, valorDaEfetivacao, valoresDaEfetivacao, ITENS_DO_PEDIDO_MUDARAM, VENDA_DE_PEDIDO_NAO_CANCELA, VENDA_DE_PEDIDO_NAO_EDITA, type MotoComValor, type MotoDoPedidoInput, type PecaDoPedidoInput } from '@/lib/pedido-venda-regras'
 import { podeGerirPecas } from '../pecas/papeis'
 import { PAPEIS_QUE_CANCELAM_VENDA, travaDoPapel } from '@/lib/cancelar-venda'
 import { alterarEntregaDoPedidoTx, efetivarPedidoTx, pecasDoPedido, pedirAprovacaoDoPedidoTx, type PedidoEmAprovacao } from '@/lib/efetivar-pedido'
-import { cancelarPedidoTx, criarPedidoTx, gravarMotoDoPedido, trocarMotosDoPedidoTx } from '@/lib/pedido-venda'
+import { cancelarPedidoTx, criarPedidoTx, gravarMotoDoPedido, motosDoPedidoTx, trocarMotosDoPedidoTx, vendaDePedidoComVariasMotos } from '@/lib/pedido-venda'
 import { conferirEntrega, entregaParaLog, freteDaVenda, motoNaNota, recusaDoFreteDaVendaEfetivada, totalComFrete, travaDaAlteracaoDaEntrega, travaDaEntregaEmOutroEstado, type EntregaVenda } from '@/lib/notagateway/entrega'
 import { ufDoEmissorDaMoto } from '@/lib/notagateway/grupo-emissor'
 import { travaDoValorVenda } from '@/lib/valor-venda'
@@ -251,7 +251,8 @@ async function efetivarVenda(
   pedidoId: string,
   clienteNome: string,
   clienteCpf: string,
-  valor: string,
+  /** Texto no pedido de 1 moto (a tela de hoje); a lista com o valor de cada moto no pedido com várias (#20). */
+  valor: string | MotoComValor[],
   pagamentos: PagamentoEntrada[],
   clienteId?: string,
   origemId?: string,
@@ -268,26 +269,32 @@ async function efetivarVenda(
   const pedido = await pedidoDoUsuario(usuario, pedidoId)
   if (!pedido) throw new RecusaUsuario('Pedido não encontrado')
 
-  const valorNum = parseFloat(valor)
-  if (isNaN(valorNum) || valorNum <= 0) throw new RecusaUsuario('Valor inválido')
+  const recebido = valorDaEfetivacao(valor)
+  if (recebido == null) throw new RecusaUsuario('Valor inválido')
+  // Lidas sem trava, para o preço mínimo; a efetivação confere de novo sob a trava do pedido.
+  const motosComValor = valoresDaEfetivacao(await motosDoPedidoTx(db, pedidoId, pedido.motoId), recebido)
+  if (!motosComValor) throw new RecusaUsuario(ITENS_DO_PEDIDO_MUDARAM)
 
   const origem = await garantirOrigemValida(pedido.lojaId, origemId, origemDetalhe)
   const comprador = conferirComprador(clienteCpf)
   const dados = {
     pedidoId, lojaId: pedido.lojaId, efetivadoPor: usuario.id, clienteId: clienteId || null, clienteNome,
-    clienteCpf: comprador.clienteCpf, valor: valorNum, pagamentos, origem, grupoLiberado: usuario.grupoLiberado,
+    clienteCpf: comprador.clienteCpf, valor: recebido, pagamentos, origem, grupoLiberado: usuario.grupoLiberado,
   }
 
-  // As mesmas regras do Vender (#776); o mínimo vale sobre a moto, sem o frete do pedido.
-  const [moto] = await db.select({ modeloId: motos.modeloId }).from(motos).where(eq(motos.id, pedido.motoId)).limit(1)
-  const prec = moto ? await buscarPrecificacao(moto.modeloId, pedido.lojaId) : null
+  // As mesmas regras do Vender (#776); o mínimo vale sobre cada moto, sem o frete do pedido (#20, D-C).
+  const modelos = await db.select({ id: motos.id, modeloId: motos.modeloId }).from(motos).where(inArray(motos.id, motosComValor.map(m => m.motoId)))
+  const precos = new Map(await Promise.all([...new Set(modelos.map(m => m.modeloId))]
+    .map(async modeloId => [modeloId, await buscarPrecificacao(modeloId, pedido.lojaId)] as const)))
+  const precoDaMoto = (motoId: string) => precos.get(modelos.find(m => m.id === motoId)?.modeloId ?? '') ?? null
+  const taxas = [...precos.values()].find(p => p != null)?.taxas
   // Frete e acessórios (#778) ficam fora do preço da moto: não pagam desconto dela.
   const pecas = await pecasDoPedido(db, pedidoId)
-  const preco = prec && { liquido: liquidoDaMoto(pagamentos, prec.taxas, foraDaMoto(pedido.entrega, pecas)), minimo: prec.valorMinimoPix }
-  const tipo = aprovacaoNecessaria({
+  const { tipo, abaixo } = aprovacaoDoPedido({
     sensivelSemPermissao: temPagamentoSensivel(pagamentos) && !(await podeAprovarPagamentoSensivelNaLoja(usuario, pedido.lojaId)),
-    preco,
     papel: usuario.papel,
+    liquido: taxas ? liquidoDaMoto(pagamentos, taxas, foraDaMoto(pedido.entrega, pecas)) : 0,
+    motos: motosComValor.map(m => ({ ...m, minimo: precoDaMoto(m.motoId)?.valorMinimoPix ?? null })),
   })
 
   // Pelo Drizzle, não pela sessão: a RLS de escrita em vendas só aceita
@@ -297,7 +304,7 @@ async function efetivarVenda(
   } else {
     const motivoFinal = motivoDaAprovacao(tipo, motivo)
     if (!motivoFinal) throw new RecusaUsuario(MOTIVO_OBRIGATORIO)
-    const snapshot = tipo === 'valor_minimo' && preco ? { valorMinimo: preco.minimo, liquido: preco.liquido } : null
+    const snapshot = tipo === 'valor_minimo' && abaixo[0] ? { valorMinimo: abaixo[0].minimo, liquido: abaixo[0].liquido } : null
     await db.transaction(tx => pedirAprovacaoDoPedidoTx(tx, { ...dados, numero: pedido.numero, tipo, motivo: motivoFinal, snapshot }))
   }
   revalidatePath('/vendas')
@@ -1079,6 +1086,7 @@ export async function cancelarVendaCompletaAction(vendaId: string, motivo: strin
   if (usuario.papel === 'aux_adm' && vendaRecord.lojaId !== usuario.lojaId) {
     return { ok: false as const, error: 'Sem permissão para cancelar venda de outra loja' }
   }
+  if (await vendaDePedidoComVariasMotos(db, vendaRecord.pedidoVendaId)) return { ok: false as const, error: VENDA_DE_PEDIDO_NAO_CANCELA }
 
   // ADR-0014. A recusa volta como valor porque, em produção, o Next não leva ao
   // cliente a mensagem de um erro lançado na action.
@@ -1453,6 +1461,7 @@ async function editarVenda(vendaId: string, dados: {
   if (!(await podeEditarVendaDaLoja(usuario, vendaAtual.lojaId))) {
     throw new RecusaUsuario('Sem permissão para editar vendas de outra loja')
   }
+  if (await vendaDePedidoComVariasMotos(db, vendaAtual.pedidoVendaId)) throw new RecusaUsuario(VENDA_DE_PEDIDO_NAO_EDITA)
   await conferirMaquininhas(db, vendaAtual.lojaId, dados.pagamentos, operadorasGravadas(vendaAtual.pagamentos))
 
   // Origem é corrigível: campo obrigatório que só pudesse ser preenchido uma vez
