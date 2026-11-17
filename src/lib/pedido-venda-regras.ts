@@ -49,6 +49,46 @@ export function motivoBloqueioCriarPedido(moto: MotoParaPedido, temTransferencia
   return null
 }
 
+const MOTO_DE_OUTRA_LOJA = 'Só motos da mesma loja no pedido. Transfira a moto antes.'
+export const PEDIDO_SEM_MOTO = 'O pedido precisa de ao menos uma moto. Para desistir, cancele o pedido.'
+
+/** Moto pedida no Novo pedido ou na troca (#20). Sem valor, o item fica nulo e a efetivação pede (D-E). */
+export type MotoDoPedidoInput = { motoId: string; valor?: number }
+
+/** A mesma moto mandada duas vezes vale uma vez, com o que veio primeiro. */
+export const motosSemRepetir = (motos: readonly MotoDoPedidoInput[]): MotoDoPedidoInput[] =>
+  motos.filter((m, i) => motos.findIndex(o => o.motoId === m.motoId) === i)
+
+/** Valor que veio e não serve (zero, negativo, não número); ausente é válido. */
+export const valorDeMotoInvalido = (valor: number | undefined): boolean => valor != null && !(Number.isFinite(valor) && valor > 0)
+
+/** Valor gravado no item moto: o que veio, já conferido, ou nulo. */
+export const valorDaMotoNoPedido = (valor: number | undefined): string | null => (valor == null ? null : valor.toFixed(2))
+
+/** Motivo para a moto não entrar num pedido da loja `lojaDoPedido` (#20, Q14), ou null quando pode. */
+export function motivoBloqueioMotoNoPedido(moto: MotoParaPedido & { lojaId: string }, lojaDoPedido: string, temTransferenciaPendente: boolean): string | null {
+  if (moto.lojaId !== lojaDoPedido) return MOTO_DE_OUTRA_LOJA
+  return motivoBloqueioCriarPedido(moto, temTransferenciaPendente)
+}
+
+/** Motos do pedido (#20): a do `moto_id` primeiro (o pedido de antes do #774 só tem ela), depois as dos itens, sem repetir. */
+export function motosDoPedido(motoIdDoPedido: string, itens: readonly { motoId: string | null }[]): string[] {
+  return [...new Set([motoIdDoPedido, ...itens.flatMap(i => (i.motoId ? [i.motoId] : []))])]
+}
+
+/**
+ * Trocar as motos do pedido pendente (#20): quem entra, quem sai e qual fica no `moto_id` (a de antes, se
+ * fica; senão a 1ª pedida). Lista pedida vazia deixa `principal` nulo: o pedido precisa de ao menos uma moto.
+ */
+export function trocaDeMotos(atuais: readonly string[], pedidas: readonly string[], principal: string): { entram: string[]; saem: string[]; principal: string | null } {
+  const ficam = [...new Set(pedidas)]
+  return {
+    entram: ficam.filter(id => !atuais.includes(id)),
+    saem: atuais.filter(id => !ficam.includes(id)),
+    principal: ficam.includes(principal) ? principal : ficam[0] ?? null,
+  }
+}
+
 /** Peça que entra no pedido (#778): brinde (R$ 0) ou acessório, do catálogo de peças da Conta. */
 export type PecaDoPedidoInput = { tipo: 'brinde' | 'acessorio'; pecaId: string; quantidade: number; valorUnitario?: number }
 
