@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ehMarcaDoPainel, filtroDaUrl, urlDoFiltro, abaDaUrl, opcoesDoPainel, filtrarEstoque, filtrarVendas, resumirEstoque, resumirVendas,
-  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, periodoDoPainel, finalDoChassi, FILTRO_VAZIO,
+  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, periodoDoPainel, finalDoChassi, lojasComVendas, lojasPorFaturamento, FILTRO_VAZIO,
   type LinhaEstoquePainel, type LojaPainel, type VendaPainel,
 } from './painel-fabrica'
 
@@ -75,6 +75,34 @@ test('faturamento: segue o filtro, porque soma só as vendas que chegam', () => 
   assert.equal(r.valor, 23500.5)
   assert.equal(r.valorPorLoja.get('a'), undefined)
   assert.equal(resumirVendas([]).valor, 0)
+})
+
+// Loja Centro: 1 venda de R$ 20.000; Loja Norte: 2 de R$ 5.000; Loja Sul: nenhuma; Loja Oeste: 2 de R$ 4.000.
+const lojasQuatro: LojaPainel[] = [
+  { lojaId: 'c', lojaNome: 'Loja Sul' }, { lojaId: 'o', lojaNome: 'Loja Oeste' },
+  { lojaId: 'n', lojaNome: 'Loja Norte' }, { lojaId: 'a', lojaNome: 'Loja Centro' },
+]
+const vendasQuatro = [
+  venda(1, 'a', 'X12', 'PRETO', '2026-10-01T15:00:00.000Z', 20000),
+  venda(2, 'n', 'X12', 'PRETO', '2026-10-01T15:00:00.000Z', 5000),
+  venda(3, 'n', 'X12', 'PRETO', '2026-10-01T15:00:00.000Z', 5000),
+  venda(4, 'o', 'X12', 'PRETO', '2026-10-01T15:00:00.000Z', 4000),
+  venda(5, 'o', 'X12', 'PRETO', '2026-10-01T15:00:00.000Z', 4000),
+]
+
+test('lojas com venda: só as que venderam, com motos e faturamento, da que mais vendeu motos; empate pelo nome', () => {
+  const l = lojasComVendas(lojasQuatro, resumirVendas(vendasQuatro))
+  assert.deepEqual(l, [
+    { lojaId: 'n', lojaNome: 'Loja Norte', motos: 2, valor: 10000 },
+    { lojaId: 'o', lojaNome: 'Loja Oeste', motos: 2, valor: 8000 },
+    { lojaId: 'a', lojaNome: 'Loja Centro', motos: 1, valor: 20000 },
+  ])
+})
+
+test('lojas por faturamento: do maior valor para o menor, sem mexer na lista recebida', () => {
+  const porMotos = lojasComVendas(lojasQuatro, resumirVendas(vendasQuatro))
+  assert.deepEqual(lojasPorFaturamento(porMotos).map(l => l.lojaNome), ['Loja Centro', 'Loja Norte', 'Loja Oeste'])
+  assert.deepEqual(porMotos.map(l => l.lojaNome), ['Loja Norte', 'Loja Oeste', 'Loja Centro'])
 })
 
 test('vendas: loja, modelo e cor filtram; da mais recente para a mais antiga, empate pelo número maior', () => {

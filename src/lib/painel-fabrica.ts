@@ -179,6 +179,21 @@ export function resumirVendas(vendas: VendaPainel[]) {
   }
 }
 
+export type ResumoVendas = ReturnType<typeof resumirVendas>
+export type LojaComVenda = LojaPainel & { motos: number; valor: number }
+
+/** Lojas que venderam no filtro, com motos e faturamento: da que mais vendeu motos, empate pelo nome. */
+export function lojasComVendas(lojas: LojaPainel[], r: ResumoVendas): LojaComVenda[] {
+  return lojas
+    .map(l => ({ ...l, motos: r.porLoja.get(l.lojaId) ?? 0, valor: r.valorPorLoja.get(l.lojaId) ?? 0 }))
+    .filter(l => l.motos > 0)
+    .sort((a, b) => b.motos - a.motos || ordemPt(a.lojaNome, b.lojaNome))
+}
+
+/** As mesmas lojas, do maior faturamento para o menor (faixa "Ver por loja"); empate pelo nome. */
+export const lojasPorFaturamento = (lojas: LojaComVenda[]): LojaComVenda[] =>
+  [...lojas].sort((a, b) => b.valor - a.valor || ordemPt(a.lojaNome, b.lojaNome))
+
 export type Planilha = { nome: string; cabecalho: string[]; linhas: Celula[][] }
 
 /**

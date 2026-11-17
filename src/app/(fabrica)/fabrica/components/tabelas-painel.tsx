@@ -5,8 +5,9 @@
 import Link from 'next/link'
 import { ChevronDown } from 'lucide-react'
 import {
-  celulasDaVenda, finalDoChassi, nomeDaLoja, resumirEstoque, resumirVendas, urlDoFiltro, COLUNAS_VENDAS, ROTA_PAINEL_FABRICA,
-  type Celula, type FiltroPainel, type LinhaEstoquePainel, type LojaPainel, type VendaPainel,
+  celulasDaVenda, finalDoChassi, lojasComVendas, lojasPorFaturamento, nomeDaLoja, resumirEstoque, resumirVendas, urlDoFiltro,
+  COLUNAS_VENDAS, ROTA_PAINEL_FABRICA,
+  type Celula, type FiltroPainel, type LinhaEstoquePainel, type LojaComVenda, type LojaPainel, type ResumoVendas, type VendaPainel,
 } from '@/lib/painel-fabrica'
 import { diaBrt, diaCurtoBrt } from '@/lib/data-venda'
 import { fmtBRL } from '@/lib/preco-minimo'
@@ -111,9 +112,6 @@ export function TabelaEstoque({ lojas, estoque }: { lojas: LojaPainel[]; estoque
   )
 }
 
-type ResumoVendas = ReturnType<typeof resumirVendas>
-type LojaComVenda = LojaPainel & { motos: number; valor: number }
-
 export function TabelaVendas({ lojas, vendas, periodo, filtro, de, ate, impresso = false }: {
   lojas: LojaPainel[]
   /** Já filtradas e em ordem (filtrarVendas): uma linha por moto vendida. */
@@ -128,10 +126,7 @@ export function TabelaVendas({ lojas, vendas, periodo, filtro, de, ate, impresso
 }) {
   const v = resumirVendas(vendas)
   const nomeLoja = nomeDaLoja(lojas)
-  const lojasComVenda: LojaComVenda[] = lojas
-    .map(l => ({ ...l, motos: v.porLoja.get(l.lojaId) ?? 0, valor: v.valorPorLoja.get(l.lojaId) ?? 0 }))
-    .filter(l => l.motos > 0)
-    .sort((a, b) => b.motos - a.motos || a.lojaNome.localeCompare(b.lojaNome, 'pt-BR'))
+  const lojasComVenda = lojasComVendas(lojas, v)
   // Clicar na loja filtra só ela, mantendo modelo, cor e período.
   const soDaLoja = (lojaId: string) => `${ROTA_PAINEL_FABRICA}?${urlDoFiltro({ ...filtro, lojas: [lojaId] }, de, ate, 'vendas')}`
 
@@ -243,7 +238,7 @@ function FaixaFaturamento({ v, lojas, impresso }: { v: ResumoVendas; lojas: Loja
   const maior = Math.max(0, ...lojas.map(l => l.valor))
   const porLoja = (
     <ul className="border-t px-4 py-3 space-y-2">
-      {[...lojas].sort((a, b) => b.valor - a.valor).map(l => (
+      {lojasPorFaturamento(lojas).map(l => (
         <li key={l.lojaId} className="grid grid-cols-[minmax(8rem,12rem)_1fr_auto_5rem] items-center gap-4 text-sm">
           <span className="font-medium truncate">{l.lojaNome}</span>
           <span className="h-2 rounded-full bg-muted overflow-hidden" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }} aria-hidden>
