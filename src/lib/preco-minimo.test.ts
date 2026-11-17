@@ -96,7 +96,7 @@ test('validarPrecoVenda: o bruto que embute a taxa (10.000 / 0,91 = 10.989,01) p
   assert.equal(r.liquido, 10000)
 })
 
-test('taxa de 100% ou mais zera o líquido: a venda cai no mínimo e pede aprovação', () => {
+test('taxa de 100% ou mais deixa o líquido em 0', () => {
   const taxas = { ...TAXAS, taxasCartao: { '12': 1 }, taxasLink: { '12': 1.5 } }
   assert.equal(calcLiquidoRecebido([{ tipo: 'cartao_credito', valor: 10000, parcelas: 12 }], taxas), 0)
   assert.equal(calcLiquidoRecebido([{ tipo: 'link_pagamento', valor: 10000, parcelas: 12 }], taxas), 0)
