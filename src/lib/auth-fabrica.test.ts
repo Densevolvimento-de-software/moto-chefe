@@ -40,3 +40,11 @@ test('sem papel no token e sem linha: continua indo para o /login', async () => 
   papelNoToken = undefined; linha = undefined
   await assert.rejects(entrar(), /redirect \/login/)
 })
+
+// O banco já recusa a linha fabrica com loja ou Conta (0192); a sessão também as zera, se vierem.
+test('linha de fábrica com loja e Conta: a sessão sai sem as duas', async () => {
+  papelNoToken = 'fabrica'; linha = { ...base, lojaId: 'loja', contaId: 'conta' }
+  const u = await entrar()
+  assert.equal(u.lojaId, null)
+  assert.equal(u.contaId, null)
+})
