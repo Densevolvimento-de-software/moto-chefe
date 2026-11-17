@@ -20,7 +20,9 @@ const mocks = [
   mock.module('../../components/vender-button', {
     namedExports: { VenderButton: ({ soReserva }: { soReserva?: boolean }) => createElement('button', { 'data-vender': soReserva ? 'reserva' : 'venda' }, 'Vender') },
   }),
-  mock.module('../../components/garantia-button', { namedExports: { GarantiaButton: nulo } }),
+  mock.module('../../components/garantia-button', {
+    namedExports: { GarantiaButton: ({ motivoBloqueio }: { motivoBloqueio?: string | null }) => createElement('button', { 'data-garantia': motivoBloqueio ?? '' }, 'Garantia') },
+  }),
   mock.module('../../components/logistica-button', { namedExports: { LogisticaButton: () => createElement('button', { 'data-logistica': '' }, 'Logística') } }),
   mock.module('../../components/nf-saida-button', { namedExports: { NfSaidaButton: nulo } }),
   mock.module('../../components/montar-button', { namedExports: { MontarButton: nulo } }),
@@ -65,6 +67,7 @@ async function montar(status: string, disponibilidade: string | null, reserva: {
     },
     vender: () => [...container.querySelectorAll('[data-vender]')].map(b => b.getAttribute('data-vender')),
     logistica: () => container.querySelector('[data-logistica]') !== null,
+    garantia: () => container.querySelector('[data-garantia]')?.getAttribute('data-garantia') ?? null,
     comprovante: () => container.querySelector('a[href="/reservas/r1/imprimir"]') !== null,
   }
 }
@@ -80,6 +83,13 @@ test('moto em transporte com ?vender=1: aviso do transporte, nenhum Vender e nen
   assert.deepEqual(t.aviso(), ['A moto voltou ao estoque, mas ainda está em transporte', 'Moto em transporte não pode ser vendida. Marque a chegada, monte e depois venda.'])
   assert.deepEqual(t.vender(), [])
   assert.equal(t.logistica(), false)
+})
+
+// Decisão do Luis (#9): o botão Garantia fica desabilitado com o motivo, também no detalhe.
+test('Garantia no detalhe: recebe o motivo na moto em transporte e na caixa; montada abre', async () => {
+  assert.equal((await montar('em_transporte', null)).garantia(), 'Moto ainda em transporte. Garantia só depois da chegada.')
+  assert.equal((await montar('caixa', null)).garantia(), 'Moto ainda não foi montada. Garantia só depois da montagem.')
+  assert.equal((await montar('montada', 'disponivel')).garantia(), '')
 })
 
 test('moto montada disponível com ?vender=1: Vender e Logística aparecem, sem aviso', async () => {

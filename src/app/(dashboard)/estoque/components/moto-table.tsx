@@ -11,7 +11,7 @@ import { NfSaidaProvider, NfSaidaGatilhoLinha } from './nf-saida-contexto'
 import { MontarButton } from './montar-button'
 import { CancelarReservaButton } from './cancelar-reserva-button'
 import { podeVendedorReservarForaDaLoja } from '@/lib/loja-galpao'
-import { motivoParaNaoTransferir, motivoParaNaoVender } from '@/lib/estado-moto'
+import { motivoParaNaoAbrirGarantia, motivoParaNaoTransferir, motivoParaNaoVender } from '@/lib/estado-moto'
 import type { MotoComDetalhes } from '@/lib/queries/motos'
 import type { DemandaCompativel } from '@/lib/queries/demandas'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
@@ -154,7 +154,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                               <GarantiaButton
                                 motoId={moto.id}
                                 descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
-                                disabled={moto.status === 'caixa'}
+                                motivoBloqueio={motivoParaNaoAbrirGarantia(moto.status)}
                               />
                             )}
 
