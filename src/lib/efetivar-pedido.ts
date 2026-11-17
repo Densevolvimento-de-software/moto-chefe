@@ -4,6 +4,7 @@ import { clientes, historicoEstoque, lancamentosCaixa, motos, pedidosVenda, rese
 import { hojeBrt } from '@/lib/data-venda'
 import { clientesDoEscopo, contaDaLoja } from '@/lib/conta'
 import { RecusaUsuario } from '@/lib/resultado-action'
+import { motivoParaNaoVender } from '@/lib/estado-moto'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -45,6 +46,9 @@ export async function efetivarPedidoTx(tx: Tx, d: DadosEfetivarPedido): Promise<
     .where(eq(motos.id, pedido.motoId))
     .for('update')
   if (!moto) throw new RecusaUsuario('Moto não encontrada')
+  // O status pode ter mudado depois do pedido (Editar moto); confere na linha travada.
+  const naoVende = motivoParaNaoVender(moto.status)
+  if (naoVende) throw new RecusaUsuario(naoVende)
   if (moto.status === 'vendida') throw new RecusaUsuario('Moto já foi vendida')
 
   // Contato e endereço saem do cadastro, não do navegador: a NF exige o endereço (#577).

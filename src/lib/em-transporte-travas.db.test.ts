@@ -213,3 +213,35 @@ test('Conta B não vende, não transfere nem edita moto em transporte da Conta A
   }
   assert.deepEqual(await estadoDa(moto), intacta('em_transporte', 'disponivel'))
 })
+
+// A moto pode mudar de status entre o pedido (ou a aprovação) e a venda: o admin a corrige pelo Editar moto.
+const porNoTransporte = (motoId: string) => db.execute(sql`update motos set status = 'em_transporte' where id = ${motoId}`)
+
+test('pedido de venda feito com a moto montada, que depois foi posta em transporte: efetivar recusa; nada vendido', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const moto = await novaMoto('EFT', 'montada', 'disponivel')
+  const acoes = await vendas()
+  assert.equal((await acoes.criarPedidoVendaAction(moto)).ok, true)
+  const [{ id: pedidoId }] = await linhas(sql`select id from pedidos_venda where moto_id = ${moto} and status = 'pendente'`)
+  await porNoTransporte(moto)
+  assert.deepEqual(await acoes.efetivarVendaAction(pedidoId, 'Cliente ' + P, CPF, '1000', 'pix', undefined, semente.origemId),
+    { ok: false, erro: EM_TRANSPORTE_NAO_VENDE })
+  const [{ status }] = await linhas(sql`select status from pedidos_venda where id = ${pedidoId}`)
+  assert.equal(status, 'pendente')
+  assert.equal((await estadoDa(moto)).vendas, 0)
+})
+
+test('aprovação pedida com a moto montada, que depois foi posta em transporte: aprovar recusa; nada vendido', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const moto = await novaMoto('APV', 'montada', 'disponivel')
+  const acoes = await vendas()
+  assert.equal((await acoes.solicitarAprovacaoVendaAction(venda(moto, 'transferencia'), '', 'pagamento_sensivel')).ok, true)
+  const [{ id: aprovacaoId }] = await linhas(sql`select id from aprovacoes_venda where moto_id = ${moto} and status = 'pendente'`)
+  await porNoTransporte(moto)
+  // Quem aprova transferência bancária tem a permissão ligada no cadastro, para o grupo da loja.
+  usuarioDaSessao = { ...sessoes.socioA, aprovaPagamentoSensivel: true, gruposAprovacao: [semente.grupoA] }
+  assert.deepEqual(await acoes.aprovarVendaAction(aprovacaoId), { ok: false, erro: EM_TRANSPORTE_NAO_VENDE })
+  const [{ status }] = await linhas(sql`select status from aprovacoes_venda where id = ${aprovacaoId}`)
+  assert.equal(status, 'pendente')
+  assert.equal((await estadoDa(moto)).vendas, 0)
+})
