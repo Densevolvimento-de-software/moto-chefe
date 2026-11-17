@@ -59,6 +59,7 @@ As páginas da base de conhecimento abrem, mas o WebFetch não extrai o texto: l
 |---|---|---|---|
 | 301: uso denegado, irregularidade fiscal do emitente | https://atendimento.notagateway.com.br/kb/pt-br/article/227470/rejeicao-ao-emitir-sefaz-301-uso-denegado-irregularidade-fiscal- | sem resumo ainda | IE do emitente suspensa, baixada, cancelada ou em baixa; consultar no SINTEGRA ou no CCC. "Quando uma nota é denegada, seu número não pode ser mais utilizado, cancelado ou inutilizado" |
 | 302: uso denegado, irregularidade fiscal do destinatário | https://atendimento.notagateway.com.br/kb/pt-br/article/251476/rejeicao-sefaz-302-uso-denegado-irregularidade-fiscal-do-destina | sem resumo ainda | Mesma família da 301, do lado do destinatário |
+| 806: operação com ICMS-ST sem informação do CEST | https://atendimento.notagateway.com.br/kb/pt-br/article/223093/rejeicao-ao-emitir-na-sefaz-806-rejeicao-operacao-com-icms-st-se | sem resumo ainda | "faltou ser enviada a informação do Código Especificador da Substituição Tributária - CEST"; vem quando o CST/CSOSN é de ST (10, 30, 60, 70, 90, 201, 202, 203, 500, 900) e o CEST não foi informado. Não está na tabela B.1.2 do manual da NF-e. No MOVA abre a ficha da moto (`recusa.ts`, #17) |
 
 Outras rejeições: a barra lateral desses artigos lista as demais (232, 733, 926 etc.).
 
