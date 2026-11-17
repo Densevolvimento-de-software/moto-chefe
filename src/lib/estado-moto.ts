@@ -113,6 +113,25 @@ export function motivoParaNaoVender(status: string): string | null {
   return NAO_VENDE_POR_STATUS[status] ?? null
 }
 
+const AVISO_VENDA_BARRADA: Partial<Record<string, { titulo: string; texto: string }>> = {
+  caixa: {
+    titulo: 'A moto voltou ao estoque, mas ainda está em caixa',
+    texto: 'Moto em caixa não pode ser vendida. Use o botão Montar e depois o Vender.',
+  },
+  em_transporte: {
+    titulo: 'A moto voltou ao estoque, mas ainda está em transporte',
+    texto: 'Moto em transporte não pode ser vendida. Marque a chegada, monte e depois venda.',
+  },
+}
+
+/**
+ * Aviso da moto que voltou ao estoque pelo painel de vendidas sem venda (?vender=1) e que o status
+ * ainda não deixa vender, ou null se ela vende.
+ */
+export function avisoVendaBarrada(status: string): { titulo: string; texto: string } | null {
+  return AVISO_VENDA_BARRADA[status] ?? null
+}
+
 /**
  * Motivo pelo qual o status físico da moto impede pedir a transferência, ou null. O servidor e o
  * botão da tela passam por aqui; moto vendida continua recusada pela função do banco.

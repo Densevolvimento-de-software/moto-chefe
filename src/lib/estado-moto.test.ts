@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
+import { motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, avisoVendaBarrada, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
 
 // A venda que estragou a LYDAE3936T1207627: efetivada em 20/08 e já faturada.
 const VENDA_FATURADA: VendaVinculada = { numero: 31118, notaFiscalSaida: '2263' }
@@ -106,6 +106,18 @@ test('motivoParaNaoVender: a moto na caixa e a em transporte são barradas pelo 
 
 test('moto em transporte não vai para aprovação, nem reservada', () => {
   assert.equal(motivoBloqueioPedidoAprovacao({ status: 'em_transporte', disponibilidade: 'reservada' }), 'Moto ainda em transporte. Não pode ser vendida.')
+})
+
+test('avisoVendaBarrada: a caixa com o texto de sempre, a em transporte com o seu; a que vende, nenhum', () => {
+  assert.deepEqual(avisoVendaBarrada('caixa'), {
+    titulo: 'A moto voltou ao estoque, mas ainda está em caixa',
+    texto: 'Moto em caixa não pode ser vendida. Use o botão Montar e depois o Vender.',
+  })
+  assert.deepEqual(avisoVendaBarrada('em_transporte'), {
+    titulo: 'A moto voltou ao estoque, mas ainda está em transporte',
+    texto: 'Moto em transporte não pode ser vendida. Marque a chegada, monte e depois venda.',
+  })
+  assert.deepEqual(['montada', 'em_garantia'].map(avisoVendaBarrada), [null, null])
 })
 
 test('motivoParaNaoTransferir: só a moto em transporte é barrada, com a frase que manda marcar a chegada', () => {
