@@ -132,12 +132,17 @@ export function avisoVendaBarrada(status: string): { titulo: string; texto: stri
   return AVISO_VENDA_BARRADA[status] ?? null
 }
 
+const NAO_TRANSFERE_POR_STATUS: Partial<Record<string, string>> = {
+  em_transporte: 'Moto ainda em transporte. Marque a chegada antes de transferir.',
+  vendida: 'Moto já foi vendida',
+}
+
 /**
- * Motivo pelo qual o status físico da moto impede pedir a transferência, ou null. O servidor e o
- * botão da tela passam por aqui; moto vendida continua recusada pela função do banco.
+ * Motivo pelo qual o status físico da moto impede pedir a transferência, ou null. O servidor, o
+ * botão da tela e a lista de motos do diálogo de transferência passam por aqui.
  */
 export function motivoParaNaoTransferir(status: string): string | null {
-  return status === 'em_transporte' ? 'Moto ainda em transporte. Marque a chegada antes de transferir.' : null
+  return NAO_TRANSFERE_POR_STATUS[status] ?? null
 }
 
 /**

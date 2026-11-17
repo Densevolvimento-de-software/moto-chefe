@@ -120,10 +120,10 @@ test('avisoVendaBarrada: a caixa com o texto de sempre, a em transporte com o se
   assert.deepEqual(['montada', 'em_garantia'].map(avisoVendaBarrada), [null, null])
 })
 
-test('motivoParaNaoTransferir: só a moto em transporte é barrada, com a frase que manda marcar a chegada', () => {
+test('motivoParaNaoTransferir: barra a em transporte (marcar a chegada) e a vendida; o resto do estoque transfere', () => {
   assert.deepEqual(
-    ['em_transporte', 'caixa', 'montada', 'em_garantia'].map(motivoParaNaoTransferir),
-    ['Moto ainda em transporte. Marque a chegada antes de transferir.', null, null, null],
+    ['em_transporte', 'vendida', 'caixa', 'montada', 'em_garantia'].map(motivoParaNaoTransferir),
+    ['Moto ainda em transporte. Marque a chegada antes de transferir.', 'Moto já foi vendida', null, null, null],
   )
 })
 

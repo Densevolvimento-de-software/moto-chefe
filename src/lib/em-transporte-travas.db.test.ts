@@ -155,13 +155,19 @@ test('transferir moto na caixa continua valendo para o aux_adm', async () => {
   assert.equal((await estadoDa(moto)).transferencias, 1)
 })
 
-test('a lista de motos para transferir deixa de fora a em transporte', async () => {
-  const emTransporte = await novaMoto('LSTET', 'em_transporte')
-  const naCaixa = await novaMoto('LSTCX', 'caixa')
+test('a lista de motos para transferir deixa de fora a em transporte e a vendida; o legado faturada continua', async () => {
+  const motos = { em_transporte: await novaMoto('LSTET', 'em_transporte'), vendida: await novaMoto('LSTVD', 'vendida'),
+    caixa: await novaMoto('LSTCX', 'caixa'), faturada: await novaMoto('LSTFT', 'faturada') }
   const { listarMotosTransferiveis } = await import('@/lib/queries/transferencias')
-  const ids = (await listarMotosTransferiveis([semente.lojaA])).map(m => m.id)
-  assert.equal(ids.includes(emTransporte), false)
-  assert.equal(ids.includes(naCaixa), true)
+  const ids = new Set((await listarMotosTransferiveis([semente.lojaA])).map(m => m.id))
+  assert.deepEqual(Object.entries(motos).filter(([, id]) => ids.has(id)).map(([status]) => status), ['caixa', 'faturada'])
+})
+
+test('transferir moto vendida, chamando a action direto: recusa com a frase da regra; nenhuma transferência', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const moto = await novaMoto('TRFVD', 'vendida')
+  assert.deepEqual(await (await transferencias()).solicitarTransferenciaAction(moto, semente.destinoA), { ok: false, erro: 'Moto já foi vendida' })
+  assert.equal((await estadoDa(moto)).transferencias, 0)
 })
 
 const estoque = () => import('@/app/(dashboard)/estoque/[id]/actions')
