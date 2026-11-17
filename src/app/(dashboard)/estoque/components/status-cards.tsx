@@ -1,15 +1,6 @@
 import { CheckCircle2, Clock, Layers, FileCheck } from 'lucide-react'
 import { cardDoStatus, type StatusDeEstoque } from '@/lib/status-moto'
-
-type Counts = {
-  total:        number
-  caixa:        number
-  montada:      number
-  disponivel:   number
-  reservada:    number
-  em_garantia:  number
-  aguardando_nf: number
-}
+import type { ContagemShowroom as Counts } from '@/lib/showroom-contagem'
 
 type Props = { counts: Counts }
 
@@ -21,6 +12,7 @@ function cardDe(status: Extract<StatusDeEstoque, keyof Counts>) {
 
 const items = [
   { key: 'total'         as const, label: 'Total',       icon: Layers,       value: (c: Counts) => c.total,         text: 'text-foreground',  bg: 'bg-muted',  border: 'border-border', icon_c: 'text-muted-foreground'  },
+  cardDe('em_transporte'),
   cardDe('caixa'),
   cardDe('montada'),
   { key: 'disponivel'    as const, label: 'Disponíveis', icon: CheckCircle2, value: (c: Counts) => c.disponivel,    text: 'text-success',  bg: 'bg-success/10',  border: 'border-success/30', icon_c: 'text-success'  },
@@ -29,16 +21,25 @@ const items = [
   { key: 'aguardando_nf' as const, label: 'Ag. NF',      icon: FileCheck,    value: (c: Counts) => c.aguardando_nf, text: 'text-info',   bg: 'bg-info/10',   border: 'border-info/30',  icon_c: 'text-info'   },
 ]
 
+// O card Em transporte só aparece com moto no status no recorte (P8 do #7); os outros, sempre.
+const aparece = (key: (typeof items)[number]['key'], counts: Counts) => key !== 'em_transporte' || counts.em_transporte > 0
+
+// Desktop: todos os cards numa linha. Classe escrita inteira para o Tailwind achar.
+const COLUNAS_XL: Record<number, string> = { 7: 'xl:grid-cols-7', 8: 'xl:grid-cols-8' }
+
 export function StatusCards({ counts }: Props) {
+  const visiveis = items.filter(i => aparece(i.key, counts))
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
-      {items.map(({ key, label, icon: Icon, value, text, bg, border, icon_c }) => (
-        <div key={key} className={`rounded-xl border ${border} ${bg} px-4 py-3`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-muted-foreground">{label}</span>
+    <div className={`grid grid-cols-2 sm:grid-cols-4 ${COLUNAS_XL[visiveis.length]} gap-3`}>
+      {visiveis.map(({ key, label, icon: Icon, value, text, bg, border, icon_c }) => (
+        // O rótulo tem a linha toda e não quebra; o ícone fica ao lado do número. Com o ícone na linha do rótulo,
+        // "Em transporte" quebrava em 1280/1366 e o número descia em relação aos vizinhos.
+        <div key={key} className={`rounded-xl border ${border} ${bg} px-3 py-3`}>
+          <span className="mb-2 block whitespace-nowrap text-xs font-medium text-muted-foreground">{label}</span>
+          <div className="flex items-center justify-between">
+            <p className={`text-2xl font-bold ${text}`}>{value(counts)}</p>
             <Icon size={14} className={icon_c} />
           </div>
-          <p className={`text-2xl font-bold ${text}`}>{value(counts)}</p>
         </div>
       ))}
     </div>

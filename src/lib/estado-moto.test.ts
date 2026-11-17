@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { MOTO_ARQUIVADA } from './arquivar-moto-regras'
 import type { PapelDoBanco as Papel } from '@/lib/rotulo-do-papel'
-import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, motivoParaNaoMarcarChegada, avisoVendaBarrada, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
+import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, motivoParaNaoMarcarChegada, avisoVendaBarrada, disponibilidadeAposCancelarReserva, soPodeReservar, avisoDasAcoes, statusLabel, type VendaVinculada } from './estado-moto'
 
 // A venda que estragou a LYDAE3936T1207627: efetivada em 20/08 e já faturada.
 const VENDA_FATURADA: VendaVinculada = { numero: 31118, notaFiscalSaida: '2263' }
@@ -190,4 +190,24 @@ test('disponibilidade depois de cancelar a reserva: nula na caixa e em transport
 
 test('statusLabel: os rótulos dos status de estoque', () => {
   assert.deepEqual(statusLabel, { em_transporte: 'Em transporte', caixa: 'Caixa', montada: 'Montada', em_garantia: 'Garantia' })
+})
+
+test('soPodeReservar: moto sem disponibilidade na caixa ou em transporte só reserva; a que vende, a já reservada e a vendida, não', () => {
+  const moto = (status: string, disponibilidade: string | null = null) => ({ status, disponibilidade })
+  assert.deepEqual(
+    [
+      moto('em_transporte'), moto('caixa'),
+      moto('em_transporte', 'reservada'), moto('caixa', 'reservada'), moto('caixa', 'disponivel'),
+      moto('montada'), moto('montada', 'disponivel'), moto('em_garantia'), moto('vendida'),
+    ].map(soPodeReservar),
+    [true, true, false, false, false, false, false, false, false],
+  )
+})
+
+// Protótipo variante 2 (#7), tela da moto: a frase fica no card Ações da moto em transporte.
+test('avisoDasAcoes: só a moto em transporte avisa quando vender, montar e transferir ficam liberados', () => {
+  assert.deepEqual(
+    ['em_transporte', 'caixa', 'montada', 'em_garantia', 'vendida'].map(avisoDasAcoes),
+    ['Vender, montar e transferir ficam liberados depois da chegada.', null, null, null, null],
+  )
 })

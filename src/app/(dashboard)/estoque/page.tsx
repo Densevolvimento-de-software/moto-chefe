@@ -20,6 +20,7 @@ import { MaisAcoesShowroom } from './components/mais-acoes-showroom'
 import { podeArquivarMotos, podeRemoverMotos } from '@/lib/arquivar-moto-regras'
 import { motoVendidaSemVendaPorChassi } from '@/lib/motos-vendidas-sem-venda'
 import { filtrosDoShowroom, paramsDoShowroom, type ParamsShowroom } from '@/lib/showroom-filtros'
+import { contarCardsDoShowroom } from '@/lib/showroom-contagem'
 
 const ADMINS = ['admin_geral', 'admin_socio']
 
@@ -76,16 +77,6 @@ export default async function EstoquePage({
     ? await motoVendidaSemVendaPorChassi(await contaDoGrupoAtivo(usuario), lojaIdsGrupo, params.q)
     : null
 
-  const counts = {
-    total:         motosList.length,
-    caixa:         motosList.filter(m => m.status === 'caixa').length,
-    montada:       motosList.filter(m => m.status === 'montada').length,
-    disponivel:    motosList.filter(m => m.disponibilidade === 'disponivel').length,
-    reservada:     motosList.filter(m => m.disponibilidade === 'reservada').length,
-    em_garantia:   motosList.filter(m => m.status === 'em_garantia').length,
-    aguardando_nf: motosList.filter(m => m.status === 'vendida').length,
-  }
-
   return (
     <div className="space-y-6">
       {/* Celular: os botões descem para baixo do título (com o "Mais ações" a linha estourava a tela, #688). */}
@@ -107,7 +98,7 @@ export default async function EstoquePage({
           )}
         </div>
       </div>
-      <StatusCards counts={counts} />
+      <StatusCards counts={contarCardsDoShowroom(motosList)} />
       <EstoqueFiltros
         lojas={lojasOpts}
         modelos={modelosOpts}

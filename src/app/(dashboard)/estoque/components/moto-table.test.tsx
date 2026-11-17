@@ -2,7 +2,7 @@
 // Showroom sem a moto, que passou a vendida e o filtro padrão esconde. Aqui a tabela é
 // redesenhada assim, e o diálogo da NF aberto tem de continuar o mesmo (nf-saida-contexto).
 import { createElement, useState } from 'react'
-import test, { after, mock } from 'node:test'
+import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert'
 import type { MotoComDetalhes } from '@/lib/queries/motos'
 import { montarDom } from '@/test/montar-dom'
@@ -68,8 +68,15 @@ async function montar() {
   })
   const clicar = (sel: string) => act(async () => { document.querySelector(sel)!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
   const montagem = () => document.querySelector('[data-montagem]')?.textContent ?? null
-  return { desenhar, clicar, montagem, desmontar: () => act(async () => { root.unmount() }) }
+  let montada = true
+  const desmontar = () => act(async () => { if (montada) root.unmount(); montada = false })
+  desmontarUltima = desmontar
+  return { desenhar, clicar, montagem, desmontar }
 }
+
+// Teste que falha no meio não chega ao próprio desmontar; sem isto a tabela dele suja o seguinte.
+let desmontarUltima: (() => Promise<void>) | null = null
+afterEach(async () => { await desmontarUltima?.(); desmontarUltima = null })
 
 test('o diálogo da NF continua (sem remontar) quando a moto vendida sai da lista', async () => {
   montagens = 0
@@ -129,6 +136,21 @@ test('em transporte não vende nem transfere; reservada que não vende fica sem 
   assert.deepEqual(ids('[data-modo=venda]', 'data-vender'), ['m1', 'm2'])
   assert.deepEqual(ids('[data-logistica]', 'data-logistica'), ['c1', 'm1', 'm2'])
   assert.deepEqual(ids('a[href^="/reservas/"]', 'href'), ['/reservas/r-e3/imprimir', '/reservas/r-c1/imprimir', '/reservas/r-m2/imprimir'])
+  await t.desmontar()
+})
+
+test('Reservar na lista: em transporte sem disponibilidade só reserva, como a caixa; a já reservada não reserva de novo (#12)', async () => {
+  const t = await montar()
+  const linha = (id: string, status: string, disponibilidade: string | null) => ({ ...MOTO, id, chassi: `LXYTCK00000000${id}`, status, disponibilidade }) as unknown as MotoComDetalhes
+  await t.desenhar([
+    linha('e1', 'em_transporte', null),
+    linha('e2', 'em_transporte', 'reservada'),
+    linha('c1', 'caixa', null),
+    linha('m1', 'montada', 'disponivel'),
+  ])
+  const linhasCom = (modo: string) => [...document.querySelectorAll(`[data-modo=${modo}]`)].map(b => b.getAttribute('data-vender'))
+  assert.deepEqual(linhasCom('reserva'), ['e1', 'c1'])
+  assert.deepEqual(linhasCom('venda'), ['m1'])
   await t.desmontar()
 })
 

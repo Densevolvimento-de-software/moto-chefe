@@ -69,6 +69,8 @@ async function montar(status: string, disponibilidade: string | null, reserva: {
     logistica: () => container.querySelector('[data-logistica]') !== null,
     garantia: () => container.querySelector('[data-garantia]')?.getAttribute('data-garantia') ?? null,
     comprovante: () => container.querySelector('a[href="/reservas/r1/imprimir"]') !== null,
+    // Textos do card Ações fora do aviso do ?vender=1 (os botões aqui são marcadores, sem parágrafo).
+    textos: () => [...container.querySelectorAll('p')].filter(p => !p.closest('[role=status]')).map(p => p.textContent),
   }
 }
 
@@ -108,4 +110,18 @@ test('reservada na caixa ou em transporte: sem o Vender de finalizar a reserva, 
     assert.equal(t.comprovante(), true, status)
   }
   assert.deepEqual((await montar('montada', 'reservada', reservada)).vender(), ['venda'])
+})
+
+test('moto em transporte sem disponibilidade: só o Reservar, como a caixa; a montada disponível vende (#12)', async () => {
+  assert.deepEqual((await montar('em_transporte', null)).vender(), ['reserva'])
+  assert.deepEqual((await montar('caixa', null)).vender(), ['reserva'])
+  assert.deepEqual((await montar('montada', 'disponivel')).vender(), ['venda'])
+})
+
+test('moto em transporte: o card Ações diz quando vender, montar e transferir ficam liberados; caixa e montada não (#12)', async () => {
+  const frase = 'Vender, montar e transferir ficam liberados depois da chegada.'
+  assert.deepEqual((await montar('em_transporte', null)).textos(), [frase])
+  assert.deepEqual((await montar('em_transporte', 'reservada', { reservaId: 'r1', reservaValorEntrada: '300' })).textos(), [frase])
+  assert.deepEqual((await montar('caixa', null)).textos(), [])
+  assert.deepEqual((await montar('montada', 'disponivel')).textos(), [])
 })
