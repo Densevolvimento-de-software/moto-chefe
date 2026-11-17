@@ -78,7 +78,7 @@ const disponibilidades = async (ids: string[]) =>
   (await execRows(sql`select id, disponibilidade from motos where id in ${ids}`))
     .reduce<Record<string, unknown>>((acc, m) => ({ ...acc, [m.id as string]: m.disponibilidade }), {})
 
-// Itens gravados no mesmo insert têm o mesmo criado_em: a comparação é pela moto, não pela ordem.
+// A comparação é pela moto; a ordem de inclusão tem cenário próprio (D24).
 const motosDoPedidoNoBanco = (pedidoId: string) => execRows(sql`select i.moto_id, i.valor_unitario from pedidos_venda_itens i
   where i.pedido_venda_id = ${pedidoId} and i.tipo = 'moto' order by i.moto_id`)
 const porMoto = <T extends { moto_id: string }>(itens: T[]) => [...itens].sort((a, b) => a.moto_id.localeCompare(b.moto_id))
@@ -395,6 +395,35 @@ test('D11: aux_adm efetiva 3 motos, a 1ª e a 3ª de outro CNPJ: uma venda por m
     { moto_id: m1, valor_unitario: '12000.00' }, { moto_id: m2, valor_unitario: '10000.00' }, { moto_id: m3, valor_unitario: '8000.00' }]))
   assert.deepEqual(await execRows(sql`select distinct m.status::text, p.status as pedido from motos m, pedidos_venda p where m.id in ${[m1, m2, m3]} and p.id = ${pedidoId}`),
     [{ status: 'vendida', pedido: 'efetivado' }])
+})
+
+test('D24: a ordem em que o vendedor adicionou as motos fica gravada e decide quem leva frete, formas e caixa (Luis, 17/11): a 1ª do CNPJ da loja', async () => {
+  const c = await semearConta()
+  const [m1, m2, m3, m4] = await c.motos(4)
+  await execRows(sql`update contas set transferencia_entre_grupos = true where id = ${c.base.contaId}`)
+  await execRows(sql`update motos set grupo_entrada_id = ${c.outro.grupoId} where id = ${m1}`)
+  const pedidoId = await criarPedido(c, [m1, m2, m3, m4], entregarSintetico(300))
+  const itens = await execRows(sql`select moto_id, criado_em::text as criado_em from pedidos_venda_itens where pedido_venda_id = ${pedidoId} order by criado_em, id`)
+  assert.deepEqual(itens.map(i => i.moto_id), [m1, m2, m3, m4])
+  assert.equal(new Set(itens.map(i => i.criado_em)).size, 4)
+
+  usuario = c.aux
+  assert.deepEqual(await efetivarMotos(c, pedidoId, [m1, m2, m3, m4].map(motoId => ({ motoId, valor: 10000 })), [{ tipo: 'pix', valor: 40300 }]), OK)
+  const vendas = await vendasDoPedido(pedidoId)
+  assert.deepEqual(vendas.filter(v => (v.pagamentos as unknown[]).length > 0).map(v => [v.moto_id, v.valor]), [[m2, '10300.00']])
+})
+
+test('D25: na troca, a moto que entra vai para o fim; saiu a do pedido, a 1ª adicionada que fica passa a ser ela e leva o frete', async () => {
+  const c = await semearConta()
+  const [p, b, nova] = await c.motos(3)
+  const pedidoId = await criarPedido(c, [p, b], entregarSintetico(300))
+  usuario = c.aux
+  assert.deepEqual(await actions.trocarMotosDoPedidoAction(pedidoId, [{ motoId: nova }, { motoId: b }]), OK)
+  assert.equal(await motoDoPedido(pedidoId), b)
+
+  assert.deepEqual(await efetivarMotos(c, pedidoId, [{ motoId: nova, valor: 10000 }, { motoId: b, valor: 10000 }], [{ tipo: 'pix', valor: 20300 }]), OK)
+  const vendas = await vendasDoPedido(pedidoId)
+  assert.deepEqual(vendas.filter(v => (v.pagamentos as unknown[]).length > 0).map(v => [v.moto_id, v.valor, v.numero_do_pedido]), [[b, '10300.00', true]])
 })
 
 test('D12: valores que não batem com as motos do pedido (falta, sobra, moto de outra Conta, valor só) ou com o total: recusa e nenhuma venda', async () => {

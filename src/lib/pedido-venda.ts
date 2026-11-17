@@ -80,8 +80,11 @@ const historicoDoPedido = (d: { pedidoId: string; motoIds: readonly string[]; us
 async function reservarMotosNoPedidoTx(tx: Tx, d: { pedidoId: string; lista: readonly MotoDoPedidoInput[]; usuarioId: string; observacao: string }) {
   const ids = d.lista.map(m => m.motoId)
   await tx.update(motos).set({ disponibilidade: 'reservada' }).where(inArray(motos.id, ids))
-  await tx.insert(pedidosVendaItens).values(d.lista.map(m => ({
+  // A ordem de inclusão decide quem leva frete, formas e caixa (decisão do Luis, 17/11, na #20). Um insert só dá o mesmo
+  // now() a todos e o empate cairia no id; 1 µs por posição guarda a ordem sem coluna 'ordem' (evita migração).
+  await tx.insert(pedidosVendaItens).values(d.lista.map((m, i) => ({
     pedidoVendaId: d.pedidoId, tipo: 'moto' as const, motoId: m.motoId, valorUnitario: valorDaMotoNoPedido(m.valor),
+    criadoEm: sql`now() + ${i}::int * interval '1 microsecond'`,
   })))
   await tx.insert(historicoEstoque).values(historicoDoPedido({ ...d, motoIds: ids }))
 }

@@ -102,14 +102,14 @@ export function motosDoPedido(motoIdDoPedido: string, itens: readonly { motoId: 
 
 /**
  * Trocar as motos do pedido pendente (#20): quem entra, quem sai e qual fica no `moto_id` (a de antes, se
- * fica; senão a 1ª pedida). Lista pedida vazia deixa `principal` nulo: o pedido precisa de ao menos uma moto.
+ * fica; senão a 1ª adicionada que fica, e só então a 1ª que entra). Lista pedida vazia deixa `principal` nulo.
  */
 export function trocaDeMotos(atuais: readonly string[], pedidas: readonly string[], principal: string): { entram: string[]; saem: string[]; principal: string | null } {
   const ficam = [...new Set(pedidas)]
   return {
     entram: ficam.filter(id => !atuais.includes(id)),
     saem: atuais.filter(id => !ficam.includes(id)),
-    principal: ficam.includes(principal) ? principal : ficam[0] ?? null,
+    principal: ficam.includes(principal) ? principal : atuais.find(id => ficam.includes(id)) ?? ficam[0] ?? null,
   }
 }
 

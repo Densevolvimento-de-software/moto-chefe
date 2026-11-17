@@ -133,6 +133,10 @@ describe('trocaDeMotos (#20)', () => {
     assert.deepEqual(trocaDeMotos(['m1', 'm2'], ['m2', 'm3'], 'm1'), { entram: ['m3'], saem: ['m1'], principal: 'm2' })
   })
 
+  test('saiu a moto do pedido e a lista põe uma nova na frente: fica a 1ª adicionada antes, não a que acabou de entrar', () => {
+    assert.deepEqual(trocaDeMotos(['m1', 'm2'], ['m3', 'm2'], 'm1'), { entram: ['m3'], saem: ['m1'], principal: 'm2' })
+  })
+
   test('lista repetida não entra duas vezes; mesma lista não muda nada', () => {
     assert.deepEqual(trocaDeMotos(['m1'], ['m1', 'm2', 'm2'], 'm1'), { entram: ['m2'], saem: [], principal: 'm1' })
     assert.deepEqual(trocaDeMotos(['m1', 'm2'], ['m2', 'm1'], 'm1'), { entram: [], saem: [], principal: 'm1' })
