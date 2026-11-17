@@ -132,6 +132,15 @@ export function avisoVendaBarrada(status: string): { titulo: string; texto: stri
   return AVISO_VENDA_BARRADA[status] ?? null
 }
 
+const AVISO_DAS_ACOES: Partial<Record<string, string>> = {
+  em_transporte: 'Vender, montar e transferir ficam liberados depois da chegada.',
+}
+
+/** Frase do card Ações da moto cujo status ainda segura vender, montar e transferir, ou null. */
+export function avisoDasAcoes(status: string): string | null {
+  return AVISO_DAS_ACOES[status] ?? null
+}
+
 const NAO_TRANSFERE_POR_STATUS: Partial<Record<string, string>> = {
   em_transporte: 'Moto ainda em transporte. Marque a chegada antes de transferir.',
   vendida: 'Moto já foi vendida',

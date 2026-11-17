@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, avisoVendaBarrada, disponibilidadeAposCancelarReserva, soPodeReservar, statusLabel, type VendaVinculada } from './estado-moto'
+import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, avisoVendaBarrada, disponibilidadeAposCancelarReserva, soPodeReservar, avisoDasAcoes, statusLabel, type VendaVinculada } from './estado-moto'
 
 // A venda que estragou a LYDAE3936T1207627: efetivada em 20/08 e já faturada.
 const VENDA_FATURADA: VendaVinculada = { numero: 31118, notaFiscalSaida: '2263' }
@@ -161,5 +161,13 @@ test('soPodeReservar: moto sem disponibilidade na caixa ou em transporte só res
       moto('montada'), moto('montada', 'disponivel'), moto('em_garantia'), moto('vendida'),
     ].map(soPodeReservar),
     [true, true, false, false, false, false, false, false, false],
+  )
+})
+
+// Protótipo variante 2 (#7), tela da moto: a frase fica no card Ações da moto em transporte.
+test('avisoDasAcoes: só a moto em transporte avisa quando vender, montar e transferir ficam liberados', () => {
+  assert.deepEqual(
+    ['em_transporte', 'caixa', 'montada', 'em_garantia', 'vendida'].map(avisoDasAcoes),
+    ['Vender, montar e transferir ficam liberados depois da chegada.', null, null, null, null],
   )
 })
