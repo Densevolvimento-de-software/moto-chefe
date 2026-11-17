@@ -204,9 +204,13 @@ export async function registrarEntradaNota(dados: Omit<NotaComPecas, 'usuario' |
   const status = statusNaEntrada(dados.statusNaEntrada)
   if (!status) return { error: STATUS_INVALIDO }
 
+  // Campo a campo (#891): o que vem do navegador não entra inteiro na gravação.
+  const nota: NotaComPecas = {
+    usuario, status, lojaId: dados.lojaId, nota: dados.nota, motos: dados.motos, fiscais: dados.fiscais, pecas: dados.pecas,
+  }
   let total: { motos: number; pecas: number }
   try {
-    total = await db.transaction(tx => registrarNotaComPecas(tx, { ...dados, status, usuario }))
+    total = await db.transaction(tx => registrarNotaComPecas(tx, nota))
   } catch (e) {
     if (e instanceof NotaRecusada) return { error: `Nada foi gravado. Corrija:\n${e.erros.join('\n')}` }
     if (e instanceof EntradaPecasRecusada) return { error: `Nada foi gravado. ${e.message}` }
