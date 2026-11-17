@@ -8,10 +8,10 @@ import { and, eq, exists, ilike, inArray, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   agendamentos, aprovacoesVenda, conciliacoesCartao, cuponsRevisao, garantias, historicoEstoque, lancamentosCaixa,
-  motos, ordensServico, osItens, pedidosVenda, pixRecebimentosMcp, reservas, transferencias, vendas,
+  motos, ordensServico, osItens, pedidosVenda, pedidosVendaItens, pixRecebimentosMcp, reservas, transferencias, vendas,
 } from '@/lib/db/schema'
 import {
-  alcance, daMoto, motosComDados, NAO_ENCONTRADA, registrarNoLog, temLinha, travarDoAlcance, type Exec, type UsuarioQueArquiva,
+  alcance, daMoto, motosComDados, NAO_ENCONTRADA, pedidoPendenteDaMoto, registrarNoLog, temLinha, travarDoAlcance, type Exec, type UsuarioQueArquiva,
 } from '@/lib/arquivar-motos'
 import { podeRemoverMotos } from '@/lib/arquivar-moto-regras'
 import { motivoQueImpedeRemover, primeiraOsComDinheiro, recusaDaRemocao, type ImpedimentosDeRemover, type OsDaMoto, type SaiJunto } from '@/lib/remover-moto-regras'
@@ -40,7 +40,7 @@ function motosComImpedimentos<E extends Record<string, SQL.Aliased | SQL>>(exec:
     marcadaVendida: sql<boolean>`not (${motoNaoVendida()})`,
     temGarantia: temLinha(exec, garantias),
     aprovacaoPendente: temLinha(exec, aprovacoesVenda, eq(aprovacoesVenda.status, 'pendente')),
-    pedidoPendente: temLinha(exec, pedidosVenda, eq(pedidosVenda.status, 'pendente')),
+    pedidoPendente: pedidoPendenteDaMoto(exec),
     temReserva: temLinha(exec, reservas),
     pedidoComPix: sql<boolean>`${exists(exec.select({ um: sql`1` }).from(pixRecebimentosMcp)
       .innerJoin(pedidosVenda, eq(pedidosVenda.id, pixRecebimentosMcp.pedidoId))
@@ -115,6 +115,8 @@ async function apagarDependentes(tx: Tx, ids: string[]): Promise<Record<keyof Sa
     await tx.update(agendamentos).set({ osId: null }).where(inArray(agendamentos.osId, osIds))
   }
   const motoIds = (linhas: { motoId: string | null }[]) => linhas.map(l => l.motoId)
+  // A moto que é item de um pedido cancelado de outra moto (#20) sai do item; o pedido fica com as outras.
+  await tx.delete(pedidosVendaItens).where(inArray(pedidosVendaItens.motoId, ids))
   // A ordem conta: o que aponta para a OS sai antes dela.
   return {
     // A da moto e a de pagamento da OS (sem moto, origem 'os'); a pendente já recusou a remoção. Cupom aponta para a OS.

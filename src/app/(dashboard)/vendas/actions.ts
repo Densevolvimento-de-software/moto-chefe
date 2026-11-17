@@ -29,17 +29,18 @@ import { lerContribuinteIcms, tipoPessoaDoDocumento } from '@/lib/documento'
 import { STATUS_MORTOS } from '@/lib/notagateway/status'
 import { notasParaTravaDaVenda, vendaTemNfViva } from '@/lib/notagateway/nf-viva'
 import { travaDoCancelamentoDaVendaAction } from './nfe-propria-actions'
-import { podeCriarPedido, podeEfetivarPedido, foraDaMoto, type PecaDoPedidoInput } from '@/lib/pedido-venda-regras'
+import { podeCriarPedido, podeEfetivarPedido, foraDaMoto, motosSemRepetir, valorDeMotoInvalido, type MotoDoPedidoInput, type PecaDoPedidoInput } from '@/lib/pedido-venda-regras'
 import { podeGerirPecas } from '../pecas/papeis'
 import { PAPEIS_QUE_CANCELAM_VENDA, travaDoPapel } from '@/lib/cancelar-venda'
 import { alterarEntregaDoPedidoTx, efetivarPedidoTx, pecasDoPedido, pedirAprovacaoDoPedidoTx, type PedidoEmAprovacao } from '@/lib/efetivar-pedido'
-import { cancelarPedidoTx, criarPedidoTx, gravarMotoDoPedido } from '@/lib/pedido-venda'
+import { cancelarPedidoTx, criarPedidoTx, gravarMotoDoPedido, trocarMotosDoPedidoTx } from '@/lib/pedido-venda'
 import { conferirEntrega, entregaParaLog, freteDaVenda, motoNaNota, recusaDoFreteDaVendaEfetivada, totalComFrete, travaDaAlteracaoDaEntrega, travaDaEntregaEmOutroEstado, type EntregaVenda } from '@/lib/notagateway/entrega'
 import { ufDoEmissorDaMoto } from '@/lib/notagateway/grupo-emissor'
 import { travaDoValorVenda } from '@/lib/valor-venda'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { pedidoDoUsuario } from '@/lib/pedido-do-usuario'
 import { motoDoUsuario, travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
+import { ehUuid } from '@/lib/uuid'
 import { aprovacaoDoUsuario } from '@/lib/aprovacao-do-usuario'
 import { voltarMotoAoEstoque } from '@/lib/motos-vendidas-sem-venda'
 import { vendedorDaConta } from '@/lib/vendedor-da-conta'
@@ -171,18 +172,31 @@ export async function criarPedidoVendaAction(...a: Parameters<typeof criarPedido
   return acao(() => criarPedidoVenda(...a))
 }
 
-async function criarPedidoVenda(motoId: string, observacao: string | undefined, entregaDaTela: unknown, pecas: PecaDoPedidoInput[] = []) {
+/**
+ * Motos pedidas (#20), cada uma conferida na Conta e na loja de quem pede: outra Conta, id inexistente e id que
+ * nem é uuid recebem a mesma frase. Valor que veio e não serve é recusado (D-E).
+ */
+async function motosPedidas(usuario: Awaited<ReturnType<typeof getUsuarioLogado>>, lista: MotoDoPedidoInput[]) {
+  const pedidas = motosSemRepetir(lista)
+  if (pedidas.some(m => valorDeMotoInvalido(m.valor))) throw new RecusaUsuario('Valor inválido')
+  const doUsuario = await Promise.all(pedidas.map(m => (ehUuid(m.motoId) ? motoDoUsuario(usuario, m.motoId) : null)))
+  if (doUsuario.some(m => !m)) throw new RecusaUsuario('Moto não encontrada')
+  return { pedidas, primeira: doUsuario[0] }
+}
+
+/** `motos`: a moto (a tela de hoje) ou a lista, a 1ª define a loja (#20, Q14). */
+async function criarPedidoVenda(motos: string | MotoDoPedidoInput[], observacao: string | undefined, entregaDaTela: unknown, pecas: PecaDoPedidoInput[] = []) {
   const usuario = await getUsuarioLogado()
   if (!podeCriarPedido(usuario.papel)) {
     throw new RecusaUsuario('Sem permissão para criar pedido de venda')
   }
 
-  const moto = await motoDoUsuario(usuario, motoId)
-  if (!moto) throw new RecusaUsuario('Moto não encontrada')
-  const entrega = await entregaConferida(motoId, moto.lojaId, entregaDaTela)
+  const { pedidas, primeira } = await motosPedidas(usuario, typeof motos === 'string' ? [{ motoId: motos }] : motos)
+  if (!primeira) throw new RecusaUsuario('Moto não encontrada')
+  const entrega = await entregaConferida(primeira.id, primeira.lojaId, entregaDaTela)
 
   await db.transaction(tx => criarPedidoTx(tx, {
-    motoId,
+    motos: pedidas,
     vendedorId: usuario.id,
     observacao: observacao?.trim() || null,
     entrega,
@@ -190,6 +204,22 @@ async function criarPedidoVenda(motoId: string, observacao: string | undefined, 
     pecas: podeGerirPecas(usuario.papel) ? pecas : pecas.map(({ valorUnitario: _descartado, ...p }) => p),
   }))
 
+  revalidatePath('/vendas')
+  revalidatePath('/estoque')
+}
+
+export async function trocarMotosDoPedidoAction(...a: Parameters<typeof trocarMotosDoPedido>) {
+  return acao(() => trocarMotosDoPedido(...a))
+}
+
+/** Troca as motos do pedido pendente (#20): `motos` é a lista inteira, com o valor de cada uma (D-E). */
+async function trocarMotosDoPedido(pedidoId: string, motos: MotoDoPedidoInput[]) {
+  const usuario = await getUsuarioLogado()
+  if (!ehUuid(pedidoId) || !(await pedidoDoUsuario(usuario, pedidoId))) throw new RecusaUsuario('Pedido não encontrado')
+  const { pedidas } = await motosPedidas(usuario, motos)
+  await db.transaction(tx => trocarMotosDoPedidoTx(tx, {
+    pedidoId, motos: pedidas, usuario: { id: usuario.id, papel: usuario.papel, lojaId: usuario.lojaId ?? null },
+  }))
   revalidatePath('/vendas')
   revalidatePath('/estoque')
 }

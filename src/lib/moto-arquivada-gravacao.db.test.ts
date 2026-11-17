@@ -75,10 +75,10 @@ test('vender, reservar e pedir (motoDoUsuario): arquivada recusa com a frase; a 
 test('criar pedido de venda: arquivada recusa sem reservar a moto; a viva vira pedido', async () => {
   await emTransacaoDesfeita(async tx => {
     const s = await semear(tx, '00000000068841')
-    await assert.rejects(criarPedidoTx(tx, { motoId: s.arquivada, vendedorId: s.vendedorId, observacao: null, entrega: RETIRA_SEM_MODALIDADE }), recusaArquivada)
+    await assert.rejects(criarPedidoTx(tx, { motos: [{ motoId: s.arquivada }], vendedorId: s.vendedorId, observacao: null, entrega: RETIRA_SEM_MODALIDADE }), recusaArquivada)
     assert.equal((await linhas(tx, sql`select disponibilidade from motos where id = ${s.arquivada}`))[0].disponibilidade, 'disponivel')
     assert.equal((await linhas(tx, sql`select count(*)::int as n from pedidos_venda where moto_id = ${s.arquivada}`))[0].n, 0)
-    const { pedidoId } = await criarPedidoTx(tx, { motoId: s.viva, vendedorId: s.vendedorId, observacao: null, entrega: RETIRA_SEM_MODALIDADE })
+    const { pedidoId } = await criarPedidoTx(tx, { motos: [{ motoId: s.viva }], vendedorId: s.vendedorId, observacao: null, entrega: RETIRA_SEM_MODALIDADE })
     assert.equal((await linhas(tx, sql`select moto_id from pedidos_venda where id = ${pedidoId}`))[0].moto_id, s.viva)
   })
 })

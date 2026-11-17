@@ -5,7 +5,7 @@
  */
 import { and, eq, exists, ilike, inArray, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { aprovacoesVenda, garantias, lojas, modelos, motos, ordensServico, pedidosVenda, reservas, transferencias, vendas } from '@/lib/db/schema'
+import { aprovacoesVenda, garantias, lojas, modelos, motos, ordensServico, pedidosVenda, pedidosVendaItens, reservas, transferencias, vendas } from '@/lib/db/schema'
 import { lojasDoEscopo } from '@/lib/conta'
 import { listarGruposVisiveis } from '@/lib/grupo'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
@@ -32,6 +32,14 @@ export const daMoto = sql.raw('"motos"."id"')
 type ComMoto = typeof reservas | typeof pedidosVenda | typeof aprovacoesVenda | typeof transferencias | typeof garantias | typeof vendas | typeof ordensServico
 export const temLinha = (exec: Exec, tabela: ComMoto, condicao?: SQL) =>
   sql<boolean>`${exists(exec.select({ um: sql`1` }).from(tabela).where(and(eq(tabela.motoId, daMoto), condicao)))}`
+
+/**
+ * A moto está num pedido de venda pendente: no `moto_id` ou como item (pedido com várias motos, #20). Arquivar e
+ * remover recusam pela mesma expressão.
+ */
+export const pedidoPendenteDaMoto = (exec: Exec) => sql<boolean>`(${temLinha(exec, pedidosVenda, eq(pedidosVenda.status, 'pendente'))} or ${exists(
+  exec.select({ um: sql`1` }).from(pedidosVendaItens).innerJoin(pedidosVenda, eq(pedidosVenda.id, pedidosVendaItens.pedidoVendaId))
+    .where(and(eq(pedidosVendaItens.motoId, daMoto), eq(pedidosVenda.status, 'pendente'))))})`
 
 /** Grupos que a pessoa vê (o admin_geral vê todos), sempre dentro da Conta da sessão. null = nenhum. */
 export async function alcance(usuario: UsuarioQueArquiva, exec: Exec): Promise<SQL | undefined | null> {
@@ -69,7 +77,7 @@ function motosComPendencias(exec: Exec, onde: SQL | undefined) {
   return motosComDados(exec, {
     temVenda: temLinha(exec, vendas),
     reservaAtiva: temLinha(exec, reservas, eq(reservas.status, 'ativa')),
-    pedidoPendente: temLinha(exec, pedidosVenda, eq(pedidosVenda.status, 'pendente')),
+    pedidoPendente: pedidoPendenteDaMoto(exec),
     aprovacaoPendente: temLinha(exec, aprovacoesVenda, eq(aprovacoesVenda.status, 'pendente')),
     transferenciaPendente: temLinha(exec, transferencias, eq(transferencias.status, 'pendente')),
     garantiaAtiva: temLinha(exec, garantias, eq(garantias.status, 'ativa')),
