@@ -10,6 +10,10 @@ import { alternarAcessoFabricaAction, criarAcessoFabricaAction, redefinirSenhaFa
 
 type Acesso = { id: string; nome: string; email: string; ativo: boolean }
 
+// Erro fora das recusas da action (banco, rede) não pode deixar a tela sem resposta.
+const FALHA = 'Não deu para concluir agora. Tente de novo.'
+const semExcecao = <T,>(p: Promise<T>) => p.catch(() => ({ ok: false as const, erro: FALHA }))
+
 export function AcessosFabrica({ acessos }: { acessos: Acesso[] }) {
   const [enviando, iniciar] = useTransition()
   const [novo, setNovo] = useState({ nome: '', email: '', senha: '' })
@@ -20,7 +24,7 @@ export function AcessosFabrica({ acessos }: { acessos: Acesso[] }) {
     const v = validarAcessoFabrica(novo)
     if (!v.ok) { toast.error(v.erro); return }
     iniciar(async () => {
-      const r = await criarAcessoFabricaAction(v.dados)
+      const r = await semExcecao(criarAcessoFabricaAction(v.dados))
       if (!r.ok) { toast.error(r.erro); return }
       toast.success(`Acesso criado. Passe à fábrica o e-mail ${v.dados.email} e a senha definida.`)
       setNovo({ nome: '', email: '', senha: '' })
@@ -28,7 +32,7 @@ export function AcessosFabrica({ acessos }: { acessos: Acesso[] }) {
   }
 
   const alternar = (a: Acesso) => iniciar(async () => {
-    const r = await alternarAcessoFabricaAction(a.id, !a.ativo)
+    const r = await semExcecao(alternarAcessoFabricaAction(a.id, !a.ativo))
     if (!r.ok) toast.error(r.erro)
     else toast.success(a.ativo ? `${a.nome} não entra mais` : `${a.nome} voltou a entrar`)
   })
@@ -36,7 +40,7 @@ export function AcessosFabrica({ acessos }: { acessos: Acesso[] }) {
   const trocarSenha = (a: Acesso) => {
     if (senhaCurta(novaSenha)) { toast.error(FRASE_SENHA_CURTA); return }
     iniciar(async () => {
-      const r = await redefinirSenhaFabricaAction(a.id, novaSenha)
+      const r = await semExcecao(redefinirSenhaFabricaAction(a.id, novaSenha))
       if (!r.ok) { toast.error(r.erro); return }
       toast.success(`Senha de ${a.nome} trocada`)
       setSenhaDe(null)

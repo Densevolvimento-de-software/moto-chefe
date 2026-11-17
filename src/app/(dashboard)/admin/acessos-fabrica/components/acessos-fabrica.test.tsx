@@ -91,3 +91,21 @@ test('nenhum texto da tela tem travessão', async () => {
   assert.ok(!(document.body.textContent ?? '').includes('—'))
   assert.ok(![...document.querySelectorAll('input')].some(i => (i.placeholder ?? '').includes('—')))
 })
+
+// Erro fora da lista (banco, rede) não pode deixar a tela sem resposta (#3, spec D).
+test('falha inesperada em qualquer ação vira uma frase na tela', async () => {
+  const falha = async () => { throw new Error('banco fora') }
+  criar.mock.mockImplementationOnce(falha)
+  alternar.mock.mockImplementationOnce(falha)
+  redefinir.mock.mockImplementationOnce(falha)
+  const { clique } = await montar()
+  await digitar(campo(/^Nome$/), 'F')
+  await digitar(campo(/^E-mail/), 'a@teste.invalid')
+  await digitar(campo(/^Senha$/), '12345678')
+  await clique(botao('Criar acesso'))
+  await clique(botao('Desativar'))
+  await clique(botao('Trocar senha'))
+  await digitar(campo(/^Nova senha$/), 'nova-senha-1')
+  await clique(botao('Salvar senha'))
+  assert.deepEqual(erros, Array(3).fill('Não deu para concluir agora. Tente de novo.'))
+})
