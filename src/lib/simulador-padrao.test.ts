@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { liquidoDoBruto } from './preco-minimo'
 import { destaqueAvista12x, ehPadraoSimulador, lerTotal12x, linhasDoSimulador, usaValor12x } from './simulador-padrao'
 
 test('à vista + 12x: o total digitado vira 12 parcelas, sem taxa', () => {
@@ -67,17 +68,29 @@ test('só os dois padrões existem, e só o novo usa o valor em 12x', () => {
 })
 
 test('simulador, maquininha: o total embute a taxa como % do bruto (#50)', () => {
-  // Para a loja ficar com 10.000 a 9%: 10.000 / 0,91 = 10.989,01, em 12 de 915,75.
+  // Para a loja ficar com 10.000 a 9%: 10.000 / 0,91 = 10.989,01, em 12 de 915,76 (parcela para cima).
   assert.deepEqual(linhasDoSimulador({ '12': 0.09 }, 10000, 0, 'maquininha'), [
-    { parcelas: 12, credito: 10989.01, parcela: 915.75 },
+    { parcelas: 12, credito: 10989.01, parcela: 915.76 },
   ])
 })
 
 test('simulador, maquininha com entrada: a taxa incide só sobre o saldo', () => {
-  // Saldo 8.000 / 0,91 = 8.791,21, em 12 de 732,60.
+  // Saldo 8.000 / 0,91 = 8.791,21, em 12 de 732,61 (parcela para cima).
   assert.deepEqual(linhasDoSimulador({ '12': 0.09 }, 10000, 2000, 'maquininha'), [
-    { parcelas: 12, credito: 8791.21, parcela: 732.6 },
+    { parcelas: 12, credito: 8791.21, parcela: 732.61 },
   ])
+})
+
+test('simulador, maquininha: cobrando a parcela n vezes, a loja ainda recebe o mínimo', () => {
+  // 13.990 a 14,99% em 21x: total 16.456,89, parcela 783,67 (21 × 783,67 = 16.457,07).
+  // 10.000 a 9% em 12x: total 10.989,01, parcela 915,76 (12 × 915,76 = 10.989,12).
+  for (const [base, taxa, n, parcelaEsperada] of [[13990, 0.1499, 21, 783.67], [10000, 0.09, 12, 915.76]]) {
+    const [linha] = linhasDoSimulador({ [n]: taxa }, base, 0, 'maquininha')
+    assert.equal(linha.parcela, parcelaEsperada)
+    const cobrado = Math.round(linha.parcela * n * 100) / 100
+    assert.ok(cobrado >= linha.credito, `${n} × ${linha.parcela} = ${cobrado} abaixo do total ${linha.credito}`)
+    assert.ok(liquidoDoBruto(cobrado, taxa) >= base, `líquido de ${cobrado} abaixo do mínimo ${base}`)
+  }
 })
 
 test('simulador, maquininha: parcela sem taxa ou com taxa de 100% ou mais não aparece', () => {

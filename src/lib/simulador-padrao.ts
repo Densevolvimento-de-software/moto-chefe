@@ -4,7 +4,7 @@
  * - 'avista_12x': PIX/dinheiro (o valor mínimo) e o total em 12x que o administrador digita
  *   por modelo, sem taxa nenhuma.
  */
-import { centavos } from './centavos'
+import { centavos, centavosParaCima } from './centavos'
 import { brutoParaReceber } from './preco-minimo'
 
 export const PADROES_SIMULADOR = ['taxas', 'avista_12x'] as const
@@ -87,6 +87,12 @@ function totalDoSaldo(saldo: number, taxa: number, modo: TaxaDoSimulador): numbe
   return modo === 'maquininha' ? brutoParaReceber(saldo, taxa) : saldo * (1 + taxa)
 }
 
+// Na maquininha a parcela sobe ao centavo: cobrada n vezes, nunca fica abaixo do total e a loja
+// recebe o mínimo. O financiamento segue com o arredondamento comum.
+function parcelaDoTotal(total: number, parcelas: number, modo: TaxaDoSimulador): number {
+  return modo === 'maquininha' ? centavosParaCima(total / parcelas) : centavos(total / parcelas)
+}
+
 /** Uma linha por parcela com taxa cadastrada, sobre o saldo (base menos entrada). */
 export function linhasDoSimulador(
   taxas: Record<string, number>, base: number, entrada: number, modo: TaxaDoSimulador,
@@ -98,6 +104,6 @@ export function linhasDoSimulador(
     .flatMap(([n, taxa]) => {
       const parcelas = parseInt(n)
       const credito = totalDoSaldo(saldo, taxa, modo)
-      return credito === null || credito <= 0 ? [] : [{ parcelas, credito, parcela: centavos(credito / parcelas) }]
+      return credito === null || credito <= 0 ? [] : [{ parcelas, credito, parcela: parcelaDoTotal(credito, parcelas, modo) }]
     })
 }
