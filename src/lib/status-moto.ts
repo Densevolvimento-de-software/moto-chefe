@@ -2,8 +2,11 @@
 // status, rótulos) deriva daqui. Status é lista igual para qualquer Conta (AGENTS.md, "Multi-grupo").
 import { CheckCircle2, Package, ShieldAlert, Truck, XCircle, Zap, type LucideIcon } from 'lucide-react'
 
-/** Selo da lista e da transferência: ícone e classes do texto e do ícone. */
-type Selo = { icone: LucideIcon; texto: string; classeIcone?: string }
+/**
+ * Selo da lista e da transferência: ícone e classes do texto e do ícone. `pilula`: o detalhe da moto
+ * mostra este selo no lugar do Badge.
+ */
+type Selo = { icone: LucideIcon; texto: string; classeIcone?: string; pilula?: true }
 
 /** Card do Showroom: tem rótulo no plural e paleta própria, diferente do selo. */
 type Card = { rotulo: string; icone: LucideIcon; numero: string; fundo: string; borda: string; corIcone: string }
@@ -13,7 +16,7 @@ export const STATUS_DE_ESTOQUE = [
   {
     // Variante 2 do protótipo (#7): selo em pílula e card tracejado, os dois na cor info.
     valor: 'em_transporte', rotulo: 'Em transporte',
-    selo: { icone: Truck, texto: 'w-fit rounded-full border border-info/30 bg-info/10 px-2 py-0.5 text-info font-medium' },
+    selo: { icone: Truck, texto: 'w-fit rounded-full border border-info/30 bg-info/10 px-2 py-0.5 text-info font-medium', pilula: true },
     card: { rotulo: 'Em transporte', icone: Truck, numero: 'text-info', fundo: 'bg-card', borda: 'border-dashed border-info', corIcone: 'text-info' },
   },
   {

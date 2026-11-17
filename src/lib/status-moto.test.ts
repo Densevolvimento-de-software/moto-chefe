@@ -22,3 +22,8 @@ test('statusDaLista acha só os status da lista', () => {
   assert.equal(statusDaLista('montada')?.rotulo, 'Montada')
   assert.equal(statusDaLista('faturada'), null)
 })
+
+// O detalhe da moto mostra em pílula só o status que o protótipo v2 mudou (#9); os outros seguem no Badge.
+test('só o selo de em transporte é pílula', () => {
+  assert.deepEqual(STATUS_MOTO.filter(s => s.selo.pilula).map(s => s.valor), ['em_transporte'])
+})
