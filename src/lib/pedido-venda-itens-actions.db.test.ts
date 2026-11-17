@@ -122,7 +122,7 @@ test('V2: "Vender" com aprovação: o item nasce quando a venda é aprovada, com
 test('V3: Conta B efetiva o pedido da Conta A: mesma frase de id inexistente, e o item da Conta A não muda', async () => {
   const moto = await novaMoto(A, 'V3')
   const { pedidoId } = await db.transaction(tx => criarPedidoTx(tx, {
-    motoId: moto, vendedorId: A.aux.id as string, observacao: null, entrega: { modo: 'retira', modalidade: '' },
+    motos: [{ motoId: moto }], vendedorId: A.aux.id as string, observacao: null, entrega: { modo: 'retira', modalidade: '' },
   }))
   const antes = await itensDaMoto(moto)
   assert.deepEqual(antes, [{ tipo: 'moto', motoId: moto, quantidade: '1.00', valorUnitario: null }])

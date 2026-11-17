@@ -5,6 +5,7 @@ import { freteDaVenda, type EntregaVenda } from '@/lib/notagateway/entrega'
 // cartão do pedido (cliente), para a tela e o servidor não divergirem de novo (#181:
 // a tela mostrava "Cancelar" ao sócio e o banco recusava).
 import { motivoParaNaoVender } from './estado-moto'
+import { MOTO_ARQUIVADA } from './arquivar-moto-regras'
 
 const PAPEIS_QUE_CRIAM_PEDIDO = ['admin_geral', 'admin_socio', 'aux_adm', 'vendedor']
 
@@ -47,6 +48,68 @@ export function motivoBloqueioCriarPedido(moto: MotoParaPedido, temTransferencia
   }
   if (temTransferenciaPendente) return 'Moto tem transferência pendente'
   return null
+}
+
+const MOTO_DE_OUTRA_LOJA = 'Só motos da mesma loja no pedido. Transfira a moto antes.'
+export const PEDIDO_SEM_MOTO = 'O pedido precisa de ao menos uma moto. Para desistir, cancele o pedido.'
+
+/** Moto pedida no Novo pedido ou na troca (#20). Sem valor, o item fica nulo e a efetivação pede (D-E). */
+export type MotoDoPedidoInput = { motoId: string; valor?: number }
+
+/** A mesma moto mandada duas vezes vale uma vez, com o que veio primeiro. */
+export const motosSemRepetir = (motos: readonly MotoDoPedidoInput[]): MotoDoPedidoInput[] =>
+  motos.filter((m, i) => motos.findIndex(o => o.motoId === m.motoId) === i)
+
+// O maior valor que numeric(12,2) guarda: acima disso o banco recusa com erro cru.
+const MAIOR_VALOR_DO_ITEM = 9_999_999_999.99
+
+/** Valor em reais que veio e não serve: não número, abaixo do mínimo em centavos ou maior que a coluna. Ausente é válido. */
+const valorInvalido = (valor: number | undefined, minimo: number): boolean =>
+  valor != null && !(Number.isFinite(valor) && centavos(valor) >= minimo && valor <= MAIOR_VALOR_DO_ITEM)
+
+/** Valor da moto (#20, D-E): pelo menos 1 centavo. */
+export const valorDeMotoInvalido = (valor: number | undefined): boolean => valorInvalido(valor, 0.01)
+
+/** Valor ajustado da peça (#778): zero serve. */
+export const valorDePecaInvalido = (valor: number | undefined): boolean => valorInvalido(valor, 0)
+
+/** A lista de motos que chega do navegador tem a forma esperada (a Server Action recebe qualquer JSON). */
+export const listaDeMotosValida = (x: unknown): x is MotoDoPedidoInput[] =>
+  Array.isArray(x) && x.every(m => typeof m === 'object' && m !== null && typeof m.motoId === 'string'
+    && (m.valor === undefined || typeof m.valor === 'number'))
+
+/** Valor gravado no item moto: o que veio, já conferido, ou nulo. */
+export const valorDaMotoNoPedido = (valor: number | undefined): string | null => (valor == null ? null : valor.toFixed(2))
+
+/**
+ * Motivo para a moto, lida sob a trava, não entrar num pedido da loja `lojaDoPedido` (#20, Q14), ou null quando
+ * pode. Sumida ou arquivada depois da conferência da action: as frases de `travarMotoNaoArquivada`.
+ */
+export function motivoBloqueioMotoNoPedido(
+  moto: (MotoParaPedido & { lojaId: string; arquivadaEm: Date | null }) | undefined, lojaDoPedido: string, temTransferenciaPendente: boolean,
+): string | null {
+  if (!moto) return 'Moto não encontrada'
+  if (moto.arquivadaEm) return MOTO_ARQUIVADA
+  if (moto.lojaId !== lojaDoPedido) return MOTO_DE_OUTRA_LOJA
+  return motivoBloqueioCriarPedido(moto, temTransferenciaPendente)
+}
+
+/** Motos do pedido (#20): a do `moto_id` primeiro (o pedido de antes do #774 só tem ela), depois as dos itens, sem repetir. */
+export function motosDoPedido(motoIdDoPedido: string, itens: readonly { motoId: string | null }[]): string[] {
+  return [...new Set([motoIdDoPedido, ...itens.flatMap(i => (i.motoId ? [i.motoId] : []))])]
+}
+
+/**
+ * Trocar as motos do pedido pendente (#20): quem entra, quem sai e qual fica no `moto_id` (a de antes, se
+ * fica; senão a 1ª pedida). Lista pedida vazia deixa `principal` nulo: o pedido precisa de ao menos uma moto.
+ */
+export function trocaDeMotos(atuais: readonly string[], pedidas: readonly string[], principal: string): { entram: string[]; saem: string[]; principal: string | null } {
+  const ficam = [...new Set(pedidas)]
+  return {
+    entram: ficam.filter(id => !atuais.includes(id)),
+    saem: atuais.filter(id => !ficam.includes(id)),
+    principal: ficam.includes(principal) ? principal : ficam[0] ?? null,
+  }
 }
 
 /** Peça que entra no pedido (#778): brinde (R$ 0) ou acessório, do catálogo de peças da Conta. */

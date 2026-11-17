@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import pg from 'pg'
 import { sql } from 'drizzle-orm'
 import { semearContaComMotos } from '@/test/semear-motos'
+import { ate, esperandoPor } from '@/test/espera-de-trava'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -46,13 +47,6 @@ after(async () => {
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
 })
 
-// Sessões esperando lock por causa da sessão dada.
-const esperandoPor = async (pid: number) => (await linhas(sql`select pid from pg_stat_activity where ${pid} = any(pg_blocking_pids(pid))`)).length
-
-async function ate(condicao: () => Promise<boolean>, oQue: string) {
-  for (let i = 0; i < 400; i++) { if (await condicao()) return; await new Promise(r => setImmediate(r)) }
-  throw new Error('não chegou: ' + oQue)
-}
 
 test('pagamento no cartão gravado na OS durante a remoção: o Remover espera, vê o pagamento e recusa', async () => {
   const m = await conta.novaMoto('1')
@@ -67,7 +61,7 @@ test('pagamento no cartão gravado na OS durante a remoção: o Remover espera, 
     const pid = (await pagador.query('select pg_backend_pid() p')).rows[0].p as number
 
     const remocao = removerMotos(conta.socio, [m], 'importada errada', 'CONFIRMAR').then(r => ({ ok: r }), (e: Error) => ({ erro: e.message }))
-    await ate(async () => (await esperandoPor(pid)) > 0, 'o Remover esperar o pagamento')
+    await ate(async () => (await esperandoPor(db, pid)) > 0, 'o Remover esperar o pagamento')
     await pagador.query('commit')
 
     assert.deepEqual(await remocao, { erro: `${P}A1: A OS nº 69251 tem pagamento registrado. Moto que passou pelo financeiro não se remove.` })

@@ -7,7 +7,7 @@ import { conferirMaquininhas } from '@/lib/maquininhas'
 import { formaPagamentoDaVenda, pagamentosFecham, pagamentosIncompletos, PAGAMENTO_INCOMPLETO, projetarPagamentos, SOMA_PAGAMENTOS_DIFERE, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
 import { clientesDoEscopo, contaDaLoja } from '@/lib/conta'
 import { RecusaUsuario } from '@/lib/resultado-action'
-import { gravarMotoDoPedido } from '@/lib/pedido-venda'
+import { gravarMotoDoPedido, motosDoPedidoTx } from '@/lib/pedido-venda'
 import { totalDasPecas, totalDoPedido } from '@/lib/pedido-venda-regras'
 import { aplicarVendaPeca } from '@/lib/venda-peca'
 import { lerDocumentoCliente } from '@/lib/documento'
@@ -64,6 +64,11 @@ async function travarPedidoEMoto(tx: Tx, pedidoId: string, daAprovacao: boolean)
   if (moto.status === 'vendida') throw new RecusaUsuario('Moto já foi vendida')
   if (!daAprovacao && moto.disponibilidade === 'aguardando_aprovacao') throw new RecusaUsuario(motivoBloqueioPedidoAprovacao(moto)!)
   return { pedido, moto }
+}
+
+/** Enquanto a efetivação cria uma venda só (#20 em andamento), o pedido com 2+ motos não efetiva: venderia só a do `moto_id`. */
+async function recusarVariasMotos(tx: Tx, pedidoId: string, motoId: string) {
+  if ((await motosDoPedidoTx(tx, pedidoId, motoId)).length > 1) throw new RecusaUsuario('Pedido com várias motos ainda não pode ser efetivado.')
 }
 
 /**
@@ -130,6 +135,7 @@ async function conferirPagamentos(tx: Tx, pedido: { lojaId: string; entrega: Ent
  */
 export async function efetivarPedidoTx(tx: Tx, d: DadosEfetivarPedido): Promise<{ vendaId: string }> {
   const { pedido, moto } = await travarPedidoEMoto(tx, d.pedidoId, !!d.daAprovacao)
+  await recusarVariasMotos(tx, d.pedidoId, pedido.motoId)
   // O status pode ter mudado depois do pedido (Editar moto); confere na linha travada.
   const naoVende = motivoParaNaoVender(moto.status)
   if (naoVende) throw new RecusaUsuario(naoVende)
@@ -227,6 +233,7 @@ export async function pedirAprovacaoDoPedidoTx(tx: Tx, d: DadosEfetivarPedido & 
   snapshot: { valorMinimo: number; liquido: number } | null
 }) {
   const { pedido, moto } = await travarPedidoEMoto(tx, d.pedidoId, false)
+  await recusarVariasMotos(tx, d.pedidoId, pedido.motoId)
   await clienteDoCadastro(tx, pedido.lojaId, d)
   const total = await conferirPagamentos(tx, pedido, await pecasDoPedido(tx, d.pedidoId), d)
   const guardado: PedidoEmAprovacao = {
