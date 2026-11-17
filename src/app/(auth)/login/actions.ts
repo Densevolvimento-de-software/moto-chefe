@@ -9,6 +9,7 @@ import { redirect } from 'next/navigation'
 import { origemDaRequisicao, registrarSemFalhar } from '@/lib/log-acoes'
 import { getGrupoAtivo } from '@/lib/grupo'
 import { PAPEL_FABRICA } from '@/lib/login-fabrica'
+import { motivoDoErroDeLogin } from '@/lib/erro-de-login'
 import { ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
 
 export async function loginAction(formData: FormData) {
@@ -30,10 +31,7 @@ export async function loginAction(formData: FormData) {
     redirect('/login?error=indisponivel')
   }
 
-  if (error) {
-    const falhaDeRede = error.name === 'AuthRetryableFetchError' || !error.status
-    redirect(falhaDeRede ? '/login?error=indisponivel' : '/login?error=1')
-  }
+  if (error) redirect(`/login?error=${motivoDoErroDeLogin(error)}`)
 
   // Conta desativada não pode logar, mesmo com a senha certa. getUsuarioLogado
   // já pega isso mais adiante (redireciona pra /conta-desativada), mas checar

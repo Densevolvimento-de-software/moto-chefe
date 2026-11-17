@@ -1,9 +1,9 @@
 // Teste de banco: Postgres descartável. O login da fábrica (#901) só lê: com a sessão dele, uma
 // Server Action de verdade chamada por pedido forjado (cabeçalho de action, ou formulário sem o
 // cabeçalho) volta ao painel e a linha que ela gravaria (comunicados_lidos) não aparece, sem o
-// middleware na frente. O login dele vai direto ao painel e o log de login fica sem grupo; loja e
-// Conta gravadas na linha não valem; desativado vai à tela de conta desativada; /admin/usuarios
-// não o exclui.
+// middleware na frente. O login dele vai direto ao painel e o log de login fica sem grupo e sem Conta;
+// desativado vai à tela de conta desativada; /admin/usuarios não o exclui. A linha com loja ou
+// Conta não existe mais: o banco recusa (0192, usuario-fabrica-banco.db.test.ts).
 // Fronteira mockada: sessão do Supabase, cabeçalhos e redirect do Next, next/cache.
 import { after, before, beforeEach, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -55,7 +55,6 @@ let marcarComoLidoAction: typeof import('@/app/(dashboard)/admin/comunicados/act
 let loginAction: typeof import('@/app/(auth)/login/actions')['loginAction']
 let getUsuarioLogado: typeof import('@/lib/auth')['getUsuarioLogado']
 let excluirUsuarioAction: typeof import('@/app/(dashboard)/admin/usuarios/actions')['excluirUsuarioAction']
-let ImprimirDemandaPage: typeof import('@/app/(print)/demandas/[id]/imprimir/page')['default']
 let ROTA_PAINEL_FABRICA: string
 let PAPEL_FABRICA: string
 let base: Base
@@ -86,7 +85,6 @@ before(async () => {
   ;({ loginAction } = await import('@/app/(auth)/login/actions'))
   ;({ getUsuarioLogado } = await import('@/lib/auth'))
   ;({ excluirUsuarioAction } = await import('@/app/(dashboard)/admin/usuarios/actions'))
-  ;({ default: ImprimirDemandaPage } = await import('@/app/(print)/demandas/[id]/imprimir/page'))
   ;({ ROTA_PAINEL_FABRICA } = await import('@/lib/painel-fabrica'))
   ;({ PAPEL_FABRICA } = await import('@/lib/login-fabrica'))
   base = await semearContaBase(db, { prefixo: P, nome: 'Rede', cnpj: '00000000901001' })
@@ -129,48 +127,16 @@ test('controle: a mesma action, pela sessão de um aux_adm do grupo do comunicad
   assert.equal(await lidos(comunicadoId, aux), 1)
 })
 
-test('login da fábrica entra direto no painel, e o log do login fica sem grupo', async () => {
+test('login da fábrica entra direto no painel, e o log do login fica sem grupo e sem Conta', async () => {
   const email = emailDeTeste(P, 'Rede', 'fabrica')
   const form = new FormData()
   form.set('email', email)
   form.set('password', 'qualquer')
   assert.equal(await redirecionaPara(() => loginAction(form)), ROTA_PAINEL_FABRICA)
   assert.deepEqual(entrouComo, { email })
-  const log = await linhas(sql`select grupo_id from log_acoes where usuario_id = ${fabricaId} and tipo = 'login'`)
+  const log = await linhas(sql`select grupo_id, conta_id from log_acoes where usuario_id = ${fabricaId} and tipo = 'login'`)
   assert.equal(log.length, 1)
-  assert.equal(log[0].grupo_id, null)
-})
-
-test('login da fábrica com Conta gravada na linha: o log do login fica sem Conta e sem grupo', async () => {
-  const id = await semearUsuario(db, base, { papel: PAPEL_FABRICA, rotulo: 'fabrica-login-conta', comConta: true })
-  const form = new FormData()
-  form.set('email', emailDeTeste(P, 'Rede', 'fabrica-login-conta'))
-  form.set('password', 'qualquer')
-  assert.equal(await redirecionaPara(() => loginAction(form)), ROTA_PAINEL_FABRICA)
-  const log = await linhas(sql`select conta_id, grupo_id from log_acoes where usuario_id = ${id} and tipo = 'login'`)
-  assert.deepEqual(log, [{ conta_id: null, grupo_id: null }])
-})
-
-// Linha fabrica que alguém gravou com loja e Conta (o ticket D não deixa, mas o banco aceita):
-// o servidor não confia nela, e o login da fábrica continua sem loja e sem Conta.
-test('login da fábrica com loja e Conta na linha: a sessão sai sem as duas', async () => {
-  idDaSessao = await semearUsuario(db, base, { papel: PAPEL_FABRICA, rotulo: 'fabrica-com-loja', comConta: true })
-  const u = await getUsuarioLogado()
-  assert.equal(u.lojaId, null)
-  assert.equal(u.contaId, null)
-})
-
-test('login da fábrica com loja na linha não abre o impresso de um registro daquela loja', async () => {
-  const solicitante = await semearUsuario(db, base, { papel: 'aux_adm', rotulo: 'aux-da-loja' })
-  const [d] = await linhas(sql`insert into demandas (modelo, cor, loja_id, solicitante_id, sinal_recebido, valor_sinal)
-    values (${`${P} modelo`}, 'PRETO', ${base.lojaId}, ${solicitante}, true, '100') returning id`)
-  const abrir = () => ImprimirDemandaPage({ params: Promise.resolve({ id: d.id }) })
-
-  idDaSessao = solicitante
-  await abrir()
-
-  idDaSessao = await semearUsuario(db, base, { papel: PAPEL_FABRICA, rotulo: 'fabrica-loja-impresso' })
-  await assert.rejects(abrir(), NaoEncontrado)
+  assert.deepEqual(log[0], { grupo_id: null, conta_id: null })
 })
 
 test('login da fábrica desativado vai para a tela de conta desativada', async () => {

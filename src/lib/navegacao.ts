@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
 import { PAPEL_FABRICA } from '@/lib/login-fabrica'
+import { ROTA_ACESSOS_FABRICA } from '@/lib/acessos-fabrica'
 import {
   ArrowLeftRight, BarChart3, Bike, Building2, CalendarDays, CalendarRange,
   ClipboardList, CreditCard, Database, FileBarChart, FileSpreadsheet, FileText, Receipt,
@@ -188,6 +189,8 @@ export const ITENS: ItemNav[] = [
   // Estoque e vendas MotoChefe de todas as Contas para a fábrica: lê fora da Conta, por isso
   // no menu só o admin_geral, sem liberação individual; o login da fábrica abre por visivel().
   { id: 'painel-fabrica', href: ROTA_PAINEL_FABRICA, label: 'Painel Fábrica MotoChefe', icon: FileBarChart, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
+  // Login e senha da fábrica (papel `fabrica`), fora do /admin/usuarios de propósito (#3).
+  { id: 'acessos-fabrica', href: ROTA_ACESSOS_FABRICA, label: 'Acessos da Fábrica', icon: IdCard, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
   // Certificado digital é a credencial fiscal da empresa perante a SEFAZ, não é
   // item de configuração comum — só admin_geral (SUPER) mexe nisso.
   { id: 'certificados',   href: '/admin/certificados', label: 'Certificados', icon: Shield, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
