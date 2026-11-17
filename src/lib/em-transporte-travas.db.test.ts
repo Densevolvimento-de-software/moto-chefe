@@ -83,3 +83,54 @@ test('moto grava com o status em_transporte', async () => {
   const [{ status }] = await linhas(sql`select status from motos where id = ${moto}`)
   assert.equal(status, 'em_transporte')
 })
+
+type Vendas = typeof import('@/app/(dashboard)/vendas/actions')
+const vendas = () => import('@/app/(dashboard)/vendas/actions') as Promise<Vendas>
+
+const cliente = { clienteNome: 'Cliente ' + P, clienteCpf: CPF, clienteCelular: '35999990009', clienteEmail: 'c@example.com',
+  clienteCep: '', clienteLogradouro: '', clienteNumero: '', clienteComplemento: '', clienteBairro: '', clienteCidade: '', clienteEstado: '' }
+const venda = (motoId: string, tipo = 'pix') => ({ motoId, ...cliente, valorTotal: '1000', pagamentos: [{ tipo, valor: 1000 }], origemId: semente.origemId })
+const reserva = (motoId: string) => ({ motoId, ...cliente, valorReserva: '300', valorTotalVenda: '1000',
+  pagamentos: [{ tipo: 'pix', valor: 300 }], dataPrevistaFinalizacao: '2026-11-30' })
+
+/** O que a moto tem gravado: status, disponibilidade e quantas linhas de cada coisa a apontam. */
+const estadoDa = async (motoId: string) => (await linhas(sql`select m.status, m.disponibilidade,
+  (select count(*)::int from vendas v where v.moto_id = m.id) as vendas,
+  (select count(*)::int from aprovacoes_venda a where a.moto_id = m.id) as aprovacoes,
+  (select count(*)::int from pedidos_venda p where p.moto_id = m.id) as pedidos,
+  (select count(*)::int from transferencias t where t.moto_id = m.id) as transferencias
+  from motos m where m.id = ${motoId}`))[0]
+const intacta = (status: string, disponibilidade: string | null) => ({ status, disponibilidade, vendas: 0, aprovacoes: 0, pedidos: 0, transferencias: 0 })
+
+const EM_TRANSPORTE_NAO_VENDE = 'Moto ainda em transporte. Não pode ser vendida.'
+
+test('venda direta de moto em transporte: recusa com a frase do status; nada gravado', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const moto = await novaMoto('VEN', 'em_transporte', 'disponivel')
+  assert.deepEqual(await (await vendas()).registrarVendaCompletaAction(venda(moto)), { ok: false, erro: EM_TRANSPORTE_NAO_VENDE })
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', 'disponivel'))
+})
+
+test('pedido de aprovação de moto em transporte: recusa com a frase do status; nada gravado', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const moto = await novaMoto('APR', 'em_transporte', 'disponivel')
+  assert.deepEqual(await (await vendas()).solicitarAprovacaoVendaAction(venda(moto, 'transferencia'), '', 'pagamento_sensivel'), { ok: false, erro: EM_TRANSPORTE_NAO_VENDE })
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', 'disponivel'))
+})
+
+test('pedido de venda de moto em transporte: recusa com a frase do status; nenhum pedido', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const moto = await novaMoto('PED', 'em_transporte', 'disponivel')
+  assert.deepEqual(await (await vendas()).criarPedidoVendaAction(moto), { ok: false, erro: EM_TRANSPORTE_NAO_VENDE })
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', 'disponivel'))
+})
+
+test('cancelar a reserva de moto em transporte devolve sem disponibilidade (não vai à venda)', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const moto = await novaMoto('RES', 'em_transporte')
+  const acoes = await vendas()
+  assert.equal((await acoes.registrarReservaAction(reserva(moto))).ok, true)
+  const [{ id }] = await linhas(sql`select id from reservas where moto_id = ${moto} and status = 'ativa'`)
+  assert.equal((await acoes.cancelarReservaAction(id, 'cliente desistiu')).ok, true)
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+})

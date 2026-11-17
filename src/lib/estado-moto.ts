@@ -99,14 +99,18 @@ export function motivoBloqueioPorVenda(
   return `Moto já vendida na venda nº ${venda.numero} — não pode voltar ao estoque. Se a venda foi um engano, cancele a venda primeiro; o cancelamento devolve a moto ao Showroom.`
 }
 
+const NAO_VENDE_POR_STATUS: Partial<Record<string, string>> = {
+  caixa: 'Moto ainda não foi montada. Não pode ser vendida.',
+  em_transporte: 'Moto ainda em transporte. Não pode ser vendida.',
+}
+
 /**
  * Motivo pelo qual o status físico da moto impede a venda, ou null. Venda direta, pedido de venda,
  * pedido de aprovação e o botão Vender da tela passam por aqui. Moto já vendida e disponibilidade
  * ficam com cada chamador, que tem frase própria para elas.
  */
 export function motivoParaNaoVender(status: string): string | null {
-  if (status === 'caixa') return 'Moto ainda não foi montada. Não pode ser vendida.'
-  return null
+  return NAO_VENDE_POR_STATUS[status] ?? null
 }
 
 /**
@@ -142,11 +146,11 @@ export function motivoBloqueioCancelarReserva(
 }
 
 /**
- * Disponibilidade da moto quando a última reserva ativa é cancelada. Moto que ainda não foi
- * montada volta sem disponibilidade; "disponivel" a poria à venda sem montagem.
+ * Disponibilidade da moto quando a última reserva ativa é cancelada. Moto que ainda não pode ser
+ * vendida (na caixa, em transporte) volta sem disponibilidade; "disponivel" a poria à venda.
  */
 export function disponibilidadeAposCancelarReserva(status: string): Disponibilidade | null {
-  return status === 'caixa' ? null : 'disponivel'
+  return motivoParaNaoVender(status) ? null : 'disponivel'
 }
 
 export const statusLabel = Object.fromEntries(STATUS_DE_ESTOQUE.map(s => [s.valor, s.rotulo])) as Record<Status, string>

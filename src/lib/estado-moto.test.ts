@@ -97,20 +97,24 @@ test('reserva de moto na caixa pode ser cancelada', () => {
   assert.equal(motivoBloqueioCancelarReserva({ disponibilidade: null }), null)
 })
 
-test('motivoParaNaoVender: só a moto na caixa é barrada pelo status, com a frase de sempre', () => {
+test('motivoParaNaoVender: a moto na caixa e a em transporte são barradas pelo status, cada uma com a sua frase', () => {
   assert.deepEqual(
-    ['caixa', 'montada', 'em_garantia', 'vendida'].map(motivoParaNaoVender),
-    ['Moto ainda não foi montada. Não pode ser vendida.', null, null, null],
+    ['caixa', 'em_transporte', 'montada', 'em_garantia', 'vendida'].map(motivoParaNaoVender),
+    ['Moto ainda não foi montada. Não pode ser vendida.', 'Moto ainda em transporte. Não pode ser vendida.', null, null, null],
   )
 })
 
-test('disponibilidade depois de cancelar a reserva: nula na caixa, "disponivel" no resto', () => {
+test('moto em transporte não vai para aprovação, nem reservada', () => {
+  assert.equal(motivoBloqueioPedidoAprovacao({ status: 'em_transporte', disponibilidade: 'reservada' }), 'Moto ainda em transporte. Não pode ser vendida.')
+})
+
+test('disponibilidade depois de cancelar a reserva: nula na caixa e em transporte, "disponivel" no resto', () => {
   assert.deepEqual(
-    ['caixa', 'montada', 'em_garantia'].map(disponibilidadeAposCancelarReserva),
-    [null, 'disponivel', 'disponivel'],
+    ['caixa', 'em_transporte', 'montada', 'em_garantia'].map(disponibilidadeAposCancelarReserva),
+    [null, null, 'disponivel', 'disponivel'],
   )
 })
 
-test('statusLabel: os rótulos de hoje', () => {
-  assert.deepEqual(statusLabel, { caixa: 'Caixa', montada: 'Montada', em_garantia: 'Garantia' })
+test('statusLabel: os rótulos dos status de estoque', () => {
+  assert.deepEqual(statusLabel, { em_transporte: 'Em transporte', caixa: 'Caixa', montada: 'Montada', em_garantia: 'Garantia' })
 })
