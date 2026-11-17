@@ -10,8 +10,9 @@
  *   margem — quanto faltou pro piso DEPOIS das taxas
  *   preço  — quanto o vendedor cedeu na negociação, sobre o valor cheio
  *
- * Uma venda de 10.908 em 12x com piso de 10.490 tem preço 0 (vendeu acima da
- * tabela) e margem 500,99 (a taxa comeu). Sem as duas colunas não dá pra separar
+ * Uma venda de 10.908 em 12x a 12,15% com piso de 10.490 tem preço 0 (vendeu acima
+ * da tabela) e margem 907,32: a loja recebe 10.908 × (1 − 12,15%) = 9.582,68, porque a
+ * taxa da maquininha é % do valor cobrado (#50). Sem as duas colunas não dá pra separar
  * quem negocia mal de quem parcela muito.
  */
 
