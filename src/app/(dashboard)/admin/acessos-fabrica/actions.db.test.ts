@@ -53,7 +53,7 @@ let acoes: Acoes
 let listarAcessosFabrica: typeof import('@/lib/queries/acessos-fabrica')['listarAcessosFabrica']
 let contaA: Base
 let contaB: Base
-const pessoas = {} as Record<'geral' | 'socioA' | 'rede' | 'auxA' | 'auxComGeralExtra' | 'vendedorB', { id: string; papel: string; papeisExtras?: string[] }>
+const pessoas = {} as Record<'geral' | 'socioA' | 'rede' | 'auxA' | 'auxComGeralExtra' | 'vendedorB' | 'fabrica', { id: string; papel: string; papeisExtras?: string[] }>
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const linhas = async (q: ReturnType<typeof sql>) => ((await db.execute(q)) as unknown as { rows: any[] }).rows
@@ -85,6 +85,7 @@ before(async () => {
   pessoas.auxA = { id: await semearUsuario(db, contaA, { papel: 'aux_adm', rotulo: 'aux' }), papel: 'aux_adm' }
   pessoas.auxComGeralExtra = { id: await semearUsuario(db, contaA, { papel: 'aux_adm', rotulo: 'aux-extra' }), papel: 'aux_adm', papeisExtras: ['admin_geral'] }
   pessoas.vendedorB = { id: await semearUsuario(db, contaB, { papel: 'vendedor', rotulo: 'vend' }), papel: 'vendedor' }
+  pessoas.fabrica = { id: await semearUsuario(db, contaA, { papel: 'fabrica', rotulo: 'fabrica', semLoja: true }), papel: 'fabrica' }
 })
 
 beforeEach(() => { pedidosAuth = []; authRecusa = {} })
@@ -192,10 +193,10 @@ test('id de usuário de uma Conta (A ou B) e id inexistente: mesma frase, nada m
   assert.deepEqual(pedidosAuth, [])
 })
 
-test('só o admin_geral pelo papel principal: sócio da Conta A, admin_rede, aux_adm e admin_geral como papel extra são recusados', async () => {
+test('só o admin_geral pelo papel principal: sócio da Conta A, admin_rede, aux_adm, admin_geral como papel extra e o próprio login da fábrica são recusados', async () => {
   const id = await criarComoGeral()
   pedidosAuth = []
-  for (const p of [pessoas.socioA, pessoas.rede, pessoas.auxA, pessoas.auxComGeralExtra]) {
+  for (const p of [pessoas.socioA, pessoas.rede, pessoas.auxA, pessoas.auxComGeralExtra, pessoas.fabrica]) {
     sessao = p
     const recusa = { ok: false, erro: 'Sem permissão' }
     assert.deepEqual(await acoes.criarAcessoFabricaAction(entrada()), recusa, p.papel)
@@ -213,6 +214,7 @@ test('a lista traz só logins da fábrica, nenhum usuário de Conta', async () =
   const lista = await listarAcessosFabrica()
   assert.ok(lista.some(a => a.id === id))
   const ids = new Set(lista.map(a => a.id))
-  for (const p of Object.values(pessoas)) assert.ok(!ids.has(p.id), p.papel)
+  for (const p of Object.values(pessoas).filter(p => p.papel !== 'fabrica')) assert.ok(!ids.has(p.id), p.papel)
+  assert.ok(ids.has(pessoas.fabrica.id))
   assert.deepEqual(Object.keys(lista[0]).sort(), ['ativo', 'email', 'id', 'nome'])
 })
