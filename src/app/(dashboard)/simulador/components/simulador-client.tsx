@@ -392,23 +392,23 @@ function ResultadoTaxas({ modelo, taxas, lojasFrete, isAdmin, lojaUsuarioId }: O
   const entradaInvalida = base > 0 && entradaNum >= base
 
   const linhasCartaoDestaque = useMemo(
-    () => modelo ? linhasDoSimulador(taxas.taxasCartao, base, 0) : [],
+    () => modelo ? linhasDoSimulador(taxas.taxasCartao, base, 0, 'maquininha') : [],
     [modelo, base, taxas.taxasCartao]
   )
   const linhasCartao = useMemo(
-    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasCartao, base, entradaNum) : [],
+    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasCartao, base, entradaNum, 'maquininha') : [],
     [modelo, base, entradaNum, entradaInvalida, taxas.taxasCartao]
   )
   const linhasDebito = useMemo(
-    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasDebito, base, entradaNum) : [],
+    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasDebito, base, entradaNum, 'maquininha') : [],
     [modelo, base, entradaNum, entradaInvalida, taxas.taxasDebito]
   )
   const linhasLink = useMemo(
-    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasLink, base, entradaNum) : [],
+    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasLink, base, entradaNum, 'maquininha') : [],
     [modelo, base, entradaNum, entradaInvalida, taxas.taxasLink]
   )
   const linhasFinanciamento = useMemo(
-    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasFinanciamento, base, entradaNum) : [],
+    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasFinanciamento, base, entradaNum, 'financiamento') : [],
     [modelo, base, entradaNum, entradaInvalida, taxas.taxasFinanciamento]
   )
 

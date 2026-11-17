@@ -5,6 +5,7 @@
  *   por modelo, sem taxa nenhuma.
  */
 import { centavos } from './centavos'
+import { brutoParaReceber } from './preco-minimo'
 
 export const PADROES_SIMULADOR = ['taxas', 'avista_12x'] as const
 export type PadraoSimulador = (typeof PADROES_SIMULADOR)[number]
@@ -75,17 +76,28 @@ export function destaqueAvista12x(valorMinimo: number, valor12x: number | null, 
 /** Linha da tabela de parcelas do padrão 'taxas': total cobrado (credito) e valor de cada parcela. */
 export type LinhaDoSimulador = { parcelas: number; credito: number; parcela: number }
 
+/**
+ * Como a taxa entra no total. Maquininha (crédito, débito, link): % que a operadora tira do bruto,
+ * então o total é o saldo / (1 − taxa) (#50). Financiamento: acréscimo que o cliente paga ao banco
+ * sobre o saldo, saldo × (1 + taxa).
+ */
+export type TaxaDoSimulador = 'maquininha' | 'financiamento'
+
+function totalDoSaldo(saldo: number, taxa: number, modo: TaxaDoSimulador): number | null {
+  return modo === 'maquininha' ? brutoParaReceber(saldo, taxa) : saldo * (1 + taxa)
+}
+
 /** Uma linha por parcela com taxa cadastrada, sobre o saldo (base menos entrada). */
-export function linhasDoSimulador(taxas: Record<string, number>, base: number, entrada: number): LinhaDoSimulador[] {
+export function linhasDoSimulador(
+  taxas: Record<string, number>, base: number, entrada: number, modo: TaxaDoSimulador,
+): LinhaDoSimulador[] {
   const saldo = base - entrada
   return Object.entries(taxas)
     .filter(([, taxa]) => taxa > 0)
     .sort(([a], [b]) => parseInt(a) - parseInt(b))
-    .map(([n, taxa]) => {
+    .flatMap(([n, taxa]) => {
       const parcelas = parseInt(n)
-      const credito = saldo * (1 + taxa)
-      const parcela = credito / parcelas
-      return { parcelas, credito, parcela }
+      const credito = totalDoSaldo(saldo, taxa, modo)
+      return credito === null || credito <= 0 ? [] : [{ parcelas, credito, parcela: centavos(credito / parcelas) }]
     })
-    .filter(r => r.credito > 0)
 }

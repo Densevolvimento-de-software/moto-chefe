@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { destaqueAvista12x, ehPadraoSimulador, lerTotal12x, usaValor12x } from './simulador-padrao'
+import { destaqueAvista12x, ehPadraoSimulador, lerTotal12x, linhasDoSimulador, usaValor12x } from './simulador-padrao'
 
 test('à vista + 12x: o total digitado vira 12 parcelas, sem taxa', () => {
   const r = destaqueAvista12x(13990, 15600)
@@ -64,4 +64,31 @@ test('só os dois padrões existem, e só o novo usa o valor em 12x', () => {
   assert.equal(ehPadraoSimulador(undefined), false)
   assert.equal(usaValor12x('avista_12x'), true)
   assert.equal(usaValor12x('taxas'), false)
+})
+
+test('simulador, maquininha: o total embute a taxa como % do bruto (#50)', () => {
+  // Para a loja ficar com 10.000 a 9%: 10.000 / 0,91 = 10.989,01, em 12 de 915,75.
+  assert.deepEqual(linhasDoSimulador({ '12': 0.09 }, 10000, 0, 'maquininha'), [
+    { parcelas: 12, credito: 10989.01, parcela: 915.75 },
+  ])
+})
+
+test('simulador, maquininha com entrada: a taxa incide só sobre o saldo', () => {
+  // Saldo 8.000 / 0,91 = 8.791,21, em 12 de 732,60.
+  assert.deepEqual(linhasDoSimulador({ '12': 0.09 }, 10000, 2000, 'maquininha'), [
+    { parcelas: 12, credito: 8791.21, parcela: 732.6 },
+  ])
+})
+
+test('simulador, maquininha: parcela sem taxa ou com taxa de 100% ou mais não aparece', () => {
+  const linhas = linhasDoSimulador({ '3': 0, '6': 1.2, '12': 0.09 }, 10000, 0, 'maquininha')
+  assert.deepEqual(linhas.map(l => l.parcelas), [12])
+})
+
+test('simulador, financiamento: a taxa segue como acréscimo sobre o saldo, como antes do #50', () => {
+  // Saldo 8.000: 12x a 20% = 9.600; 24x a 140% = 19.200 (acréscimo acima de 100% vale aqui).
+  assert.deepEqual(linhasDoSimulador({ '24': 1.4, '12': 0.2 }, 10000, 2000, 'financiamento'), [
+    { parcelas: 12, credito: 9600, parcela: 800 },
+    { parcelas: 24, credito: 19200, parcela: 800 },
+  ])
 })
