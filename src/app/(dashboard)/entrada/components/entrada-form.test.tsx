@@ -8,19 +8,20 @@ const { dom, desmontar } = montarDom()
 after(desmontar)
 
 // O que cada "Registrar entrada" mandou ao servidor, e por qual action.
-type Envio = { lojaId: string; motos: { chassi: string; modeloId: string }[]; fiscais?: { chassi: string; emitente: { nfNumero: string } }[] }
-const enviados: { action: 'lote' | 'nota'; dados: Envio }[] = []
+type Envio = { lojaId: string; motos: { chassi: string; modeloId: string }[]; fiscais?: { chassi: string; emitente: { nfNumero: string } }[]; statusNaEntrada?: string }
+const enviados: { action: 'lote' | 'nota' | 'manual'; dados: Envio }[] = []
 let respostaDoEnvio: { success?: string; error?: string } = { success: 'ok' }
 // Segura a resposta para o teste olhar a tela enquanto o registro está sendo enviado.
 let segurarEnvio: Promise<void> = Promise.resolve()
 const registrarEntradaLote = async (dados: Envio) => { enviados.push({ action: 'lote', dados }); await segurarEnvio; return respostaDoEnvio }
 const registrarEntradaNota = async (dados: Envio) => { enviados.push({ action: 'nota', dados }); return respostaDoEnvio }
+const registrarEntrada = async (dados: Envio) => { enviados.push({ action: 'manual', dados }); return respostaDoEnvio }
 // Conferência de peças: o item da nota já tem peça no catálogo, então a linha entra sem correção.
 const carregarConferenciaPecas = async () => ({
   conferencia: { pecas: [{ id: 'p1', nome: 'Carregador', valor: '50.00' }], sugestoes: ['p1'], notaJaLancada: null },
 })
 const acoesMock = mock.module('../actions', { namedExports: {
-  registrarEntrada: async () => ({}), registrarEntradaLote, registrarEntradaNota, carregarConferenciaPecas,
+  registrarEntrada, registrarEntradaLote, registrarEntradaNota, carregarConferenciaPecas,
 } })
 
 // Aviso com "Desfazer": guarda o botão do último aviso e quais avisos foram fechados.
@@ -483,4 +484,98 @@ test('XML com apelido envia à action o id do modelo do catálogo', async () => 
   })), [{
     action: 'lote', lojaId: 'l1', motos: [{ chassi: 'TESTEALIAS000001', modeloId: 'm-giga' }],
   }])
+})
+
+// Status na entrada (#10, variante 2 do protótipo): um campo para o lançamento inteiro, padrão Caixa.
+const opcaoDoStatus = (rotulo: string) =>
+  [...document.querySelectorAll('label')].find(l => l.textContent?.includes(rotulo))?.querySelector<HTMLInputElement>('input[type=radio]')
+const SIM = 'Sim, estão na loja'
+const NAO = 'Não, ainda estão no caminhão'
+const AVISO_EM_TRANSPORTE = 'Todas as motos deste lançamento entram como Em transporte. Elas podem ser reservadas, mas não podem ser montadas, vendidas nem transferidas até alguém marcar a chegada.'
+const avisoEmTransporte = () => [...document.querySelectorAll('p')].find(p => p.textContent?.trim() === AVISO_EM_TRANSPORTE)
+
+// O select de modelo é o que oferece os modelos do catálogo.
+const selectDoModelo = () => [...document.querySelectorAll('select')].find(s => [...s.options].some(o => o.value === 'm-giga'))
+
+async function preencher(el: HTMLInputElement | HTMLSelectElement | null | undefined, valor: string) {
+  const { act } = await import('react')
+  assert.ok(el, 'campo não encontrado')
+  const prototipo = el instanceof dom.window.HTMLSelectElement ? dom.window.HTMLSelectElement.prototype : dom.window.HTMLInputElement.prototype
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(prototipo, 'value')?.set?.call(el, valor)
+    el.dispatchEvent(new dom.window.Event(el instanceof dom.window.HTMLSelectElement ? 'change' : 'input', { bubbles: true }))
+  })
+}
+
+test('o status na entrada começa em "Sim, estão na loja", sem o aviso, e o lote vai como Caixa', async () => {
+  await montarComPlanilha()
+  assert.ok(opcaoDoStatus(SIM)?.checked)
+  assert.equal(opcaoDoStatus(NAO)?.checked, false)
+  assert.equal(avisoEmTransporte(), undefined)
+
+  await escolherLoja()
+  await clicar(botao('Registrar entrada'))
+  await esperar(() => enviados.length === 1)
+  assert.equal(enviados[0].dados.statusNaEntrada, 'caixa')
+})
+
+test('"Não, ainda estão no caminhão" mostra o aviso em azul e o lote vai Em transporte', async () => {
+  await montarComPlanilha()
+  await clicar(opcaoDoStatus(NAO))
+  assert.ok(opcaoDoStatus(NAO)?.checked)
+  assert.match(avisoEmTransporte()?.className ?? '', /\btext-info\b/)
+
+  await escolherLoja()
+  await clicar(botao('Registrar entrada'))
+  await esperar(() => enviados.length === 1)
+  assert.equal(enviados[0].action, 'lote')
+  assert.equal(enviados[0].dados.statusNaEntrada, 'em_transporte')
+})
+
+test('nota com peças marcada Em transporte vai Em transporte', async () => {
+  await montar()
+  await carregarXml(notaXml('444', ['TESTE0000GG000003'], true), 1)
+  await clicar(opcaoDoStatus(NAO))
+  await escolherLoja()
+  await esperar(() => botao('Registrar entrada')?.textContent?.trim() === 'Registrar entrada (1 moto e 1 peça)')
+
+  await clicar(botao('Registrar entrada'))
+  await esperar(() => enviados.length === 1)
+  assert.equal(enviados[0].action, 'nota')
+  assert.equal(enviados[0].dados.statusNaEntrada, 'em_transporte')
+})
+
+test('entrada manual tem o mesmo campo e vai Em transporte', async () => {
+  await montar()
+  await clicar(botao('Entrada Manual'))
+  await clicar(opcaoDoStatus(NAO))
+  assert.ok(avisoEmTransporte())
+  const campo = (seletor: string) => document.querySelector<HTMLInputElement>(seletor)
+  await preencher(campo('input[placeholder="Ex: 12345"]'), '1010')
+  await escolherLoja()
+  await preencher(selectDoModelo(), 'm-giga')
+  await preencher(campo('input[placeholder="0,00"]'), '640000')
+  await preencher(campo('input[placeholder="Chassi"]'), 'MAN0001')
+
+  await clicar(botao('Registrar entrada'))
+  await esperar(() => enviados.length === 1)
+  assert.equal(enviados[0].action, 'manual')
+  assert.equal(enviados[0].dados.statusNaEntrada, 'em_transporte')
+})
+
+test('erro no registro mantém Em transporte; depois de gravar, o campo volta para "Sim, estão na loja"', async () => {
+  await montarComPlanilha()
+  await clicar(opcaoDoStatus(NAO))
+  await escolherLoja()
+  respostaDoEnvio = { error: 'falhou' }
+  await clicar(botao('Registrar entrada'))
+  await esperar(() => enviados.length === 1)
+  await esperar(() => !botao('Registrando'))
+  assert.ok(opcaoDoStatus(NAO)?.checked)
+
+  respostaDoEnvio = { success: 'ok' }
+  await clicar(botao('Registrar entrada'))
+  await esperar(() => enviados.length === 2)
+  await esperar(() => !!opcaoDoStatus(SIM)?.checked)
+  assert.equal(avisoEmTransporte(), undefined)
 })
