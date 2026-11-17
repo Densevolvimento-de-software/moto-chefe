@@ -11,7 +11,7 @@ import { ResolverGarantiaButton } from './resolver-garantia-button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeftRight, Printer } from 'lucide-react'
 import { podeVendedorReservarForaDaLoja } from '@/lib/loja-galpao'
-import { avisoVendaBarrada, motivoParaNaoAbrirGarantia, motivoParaNaoTransferir, motivoParaNaoVender } from '@/lib/estado-moto'
+import { avisoVendaBarrada, motivoParaNaoAbrirGarantia, motivoParaNaoTransferir, motivoParaNaoVender, soPodeReservar } from '@/lib/estado-moto'
 import type { DemandaCompativel } from '@/lib/queries/demandas'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
 import type { PagamentoEntrada } from '@/lib/pagamentos-entrada'
@@ -204,7 +204,7 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
           )
         }
       }
-      if (moto.status === 'caixa' && moto.disponibilidade == null) {
+      if (soPodeReservar(moto)) {
         acoes.push(
           <VenderButton
             key="vender-acao"

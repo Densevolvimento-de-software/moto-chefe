@@ -109,3 +109,9 @@ test('reservada na caixa ou em transporte: sem o Vender de finalizar a reserva, 
   }
   assert.deepEqual((await montar('montada', 'reservada', reservada)).vender(), ['venda'])
 })
+
+test('moto em transporte sem disponibilidade: só o Reservar, como a caixa; a montada disponível vende (#12)', async () => {
+  assert.deepEqual((await montar('em_transporte', null)).vender(), ['reserva'])
+  assert.deepEqual((await montar('caixa', null)).vender(), ['reserva'])
+  assert.deepEqual((await montar('montada', 'disponivel')).vender(), ['venda'])
+})
