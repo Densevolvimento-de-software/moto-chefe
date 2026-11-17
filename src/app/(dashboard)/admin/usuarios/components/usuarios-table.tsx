@@ -20,6 +20,7 @@ import { diferencaDaFuncao } from '@/lib/modulos-picker-estado'
 import { ITENS } from '@/lib/navegacao'
 import { contaDoFormulario, gruposDaConta } from '@/lib/grupos-do-formulario'
 import { filtrarUsuarios, type FiltrosUsuarios } from '@/lib/usuarios-filtro'
+import { iniciaisDoNome } from '@/lib/texto'
 
 // O picker esconde os itens de regra própria: o resumo conta só o que ele mostra.
 const IDS_MODULOS = ITENS.filter(i => !i.regraPropria).map(i => i.id)
@@ -475,14 +476,13 @@ export function UsuariosTable({ usuarios, lojas, grupos, limites, cargos, contaA
     const n = new Set([...u.gruposAprovacao, ...(u.grupoDaLojaId ? [u.grupoDaLojaId] : [])]).size
     return `${n} ${n === 1 ? 'grupo' : 'grupos'}${u.aprovaPagamentoSensivel ? ', transferência' : ''}`
   }
-  const iniciais = (nome: string) => { const p = nome.trim().split(/\s+/); return ((p[0]?.[0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() }
   const Situacao = ({ ativo }: { ativo: boolean }) => (
     <span className={`inline-flex items-center gap-1.5 text-sm ${ativo ? '' : 'text-muted-foreground'}`}>
       <span className={`size-1.5 rounded-full ${ativo ? 'bg-success' : 'bg-input'}`} />{ativo ? 'Ativo' : 'Inativo'}
     </span>
   )
   const Ini = ({ nome }: { nome: string }) => (
-    <span className="grid size-7 shrink-0 place-items-center rounded-sm border bg-muted text-[11px] font-semibold text-muted-foreground">{iniciais(nome)}</span>
+    <span className="grid size-7 shrink-0 place-items-center rounded-sm border bg-muted text-[11px] font-semibold text-muted-foreground">{iniciaisDoNome(nome)}</span>
   )
   const painel = criando || !!editando
 
