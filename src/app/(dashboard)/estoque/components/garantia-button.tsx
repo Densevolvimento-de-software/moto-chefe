@@ -13,12 +13,14 @@ type Props = {
   motoId: string
   descricao: string
   showLabel?: boolean
-  disabled?: boolean
+  /** Por que a garantia não abre (motivoParaNaoAbrirGarantia): desabilita o botão e mostra a frase. */
+  motivoBloqueio?: string | null
   /** Troca o botão padrão por outro (ex.: os botões do painel da venda). */
   gatilho?: (abrir: () => void) => React.ReactNode
 }
 
-export function GarantiaButton({ motoId, descricao, showLabel, disabled, gatilho }: Props) {
+export function GarantiaButton({ motoId, descricao, showLabel, motivoBloqueio, gatilho }: Props) {
+  const disabled = Boolean(motivoBloqueio)
   const [open, setOpen] = useState(false)
   const [descricaoGarantia, setDescricaoGarantia] = useState('')
   const [dataPedido, setDataPedido] = useState('')
@@ -56,10 +58,11 @@ export function GarantiaButton({ motoId, descricao, showLabel, disabled, gatilho
   return (
     <>
       {gatilho ? gatilho(() => { if (!disabled) setOpen(true) }) : (
+      <>
       <Button
         variant={showLabel ? 'outline' : 'ghost'}
         size={showLabel ? 'sm' : 'icon'}
-        title={disabled ? 'Moto ainda não montada — não é possível abrir garantia' : 'Abrir Garantia'}
+        title={motivoBloqueio || 'Abrir Garantia'}
         onClick={() => setOpen(true)}
         disabled={disabled}
         className={showLabel
@@ -69,6 +72,9 @@ export function GarantiaButton({ motoId, descricao, showLabel, disabled, gatilho
         <ShieldAlert size={showLabel ? 14 : 16} />
         {showLabel && 'Garantia'}
       </Button>
+      {/* No celular não há title: com rótulo, o motivo fica escrito ao lado. */}
+      {showLabel && motivoBloqueio && <span className="text-xs text-muted-foreground">{motivoBloqueio}</span>}
+      </>
       )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

@@ -34,8 +34,9 @@ describe('motivoBloqueioCriarPedido', () => {
     assert.equal(motivoBloqueioCriarPedido({ status: 'em_garantia', disponibilidade: 'disponivel' }, false), null)
   })
 
-  test('caixa, vendida, reservada, aguardando aprovação ou com transferência: não pode', () => {
+  test('caixa, em transporte, vendida, reservada, aguardando aprovação ou com transferência: não pode', () => {
     assert.match(motivoBloqueioCriarPedido({ status: 'caixa', disponibilidade: null }, false)!, /montada/)
+    assert.equal(motivoBloqueioCriarPedido({ status: 'em_transporte', disponibilidade: 'disponivel' }, false), 'Moto ainda em transporte. Não pode ser vendida.')
     assert.match(motivoBloqueioCriarPedido({ status: 'vendida', disponibilidade: null }, false)!, /vendida/)
     assert.match(motivoBloqueioCriarPedido({ status: 'montada', disponibilidade: 'reservada' }, false)!, /não está disponível/)
     assert.match(motivoBloqueioCriarPedido({ status: 'montada', disponibilidade: 'aguardando_aprovacao' }, false)!, /não está disponível/)

@@ -20,10 +20,18 @@ mock.module('./vender-button', {
       createElement('button', { 'data-vender': motoId, 'data-modo': soReserva ? 'reserva' : 'venda' }, 'Vender'),
   },
 })
+mock.module('./garantia-button', {
+  namedExports: {
+    GarantiaButton: ({ motoId, motivoBloqueio }: { motoId: string; motivoBloqueio?: string | null }) =>
+      createElement('button', { 'data-garantia': motoId, 'data-motivo': motivoBloqueio ?? '' }, 'Garantia'),
+  },
+})
 for (const [caminho, nome] of [
-  ['./garantia-button', 'GarantiaButton'], ['./logistica-button', 'LogisticaButton'],
   ['./montar-button', 'MontarButton'], ['./cancelar-reserva-button', 'CancelarReservaButton'],
 ]) mock.module(caminho, { namedExports: { [nome]: () => null } })
+mock.module('./logistica-button', {
+  namedExports: { LogisticaButton: ({ motoId }: { motoId: string }) => createElement('button', { 'data-logistica': motoId }, 'Logística') },
+})
 // Como o diálogo real: o estado vive no useState; desmontar perde. Conta as montagens para
 // separar "continuou" de "desmontou e montou de novo", e o Fechar chama o onFechado.
 let montagens = 0
@@ -102,6 +110,38 @@ test('Vender: montada disponível e garantia vendem; moto em caixa não vende, s
   const linhasCom = (modo: string) => [...document.querySelectorAll(`[data-modo=${modo}]`)].map(b => b.getAttribute('data-vender'))
   assert.deepEqual(linhasCom('venda'), ['m1', 'm2'])
   assert.deepEqual(linhasCom('reserva'), ['m4'])
+  await t.desmontar()
+})
+
+test('em transporte não vende nem transfere; reservada que não vende fica sem o Vender de finalizar, com o Comprovante (#9)', async () => {
+  const t = await montar()
+  const linha = (id: string, status: string, disponibilidade: string | null) => ({ ...MOTO, id, chassi: `LXYTCK00000000${id}`, status, disponibilidade }) as unknown as MotoComDetalhes
+  const reservada = (id: string, status: string) => ({ ...linha(id, status, 'reservada'), reservaId: `r-${id}`, reservaValorEntrada: '300' }) as unknown as MotoComDetalhes
+  await t.desenhar([
+    linha('e1', 'em_transporte', 'disponivel'),
+    linha('e2', 'em_transporte', null),
+    reservada('e3', 'em_transporte'),
+    reservada('c1', 'caixa'),
+    linha('m1', 'montada', 'disponivel'),
+    reservada('m2', 'montada'),
+  ])
+  const ids = (sel: string, attr: string) => [...document.querySelectorAll(sel)].map(b => b.getAttribute(attr))
+  assert.deepEqual(ids('[data-modo=venda]', 'data-vender'), ['m1', 'm2'])
+  assert.deepEqual(ids('[data-logistica]', 'data-logistica'), ['c1', 'm1', 'm2'])
+  assert.deepEqual(ids('a[href^="/reservas/"]', 'href'), ['/reservas/r-e3/imprimir', '/reservas/r-c1/imprimir', '/reservas/r-m2/imprimir'])
+  await t.desmontar()
+})
+
+test('Garantia na lista: motivo na moto em transporte e na caixa; montada e em garantia abrem (#9)', async () => {
+  const t = await montar()
+  const linha = (id: string, status: string) => ({ ...MOTO, id, chassi: `LXYTCK00000000${id}`, status, disponibilidade: null }) as unknown as MotoComDetalhes
+  await t.desenhar([linha('e1', 'em_transporte'), linha('c1', 'caixa'), linha('m1', 'montada'), linha('g1', 'em_garantia')])
+  const motivos = Object.fromEntries([...document.querySelectorAll('[data-garantia]')].map(b => [b.getAttribute('data-garantia'), b.getAttribute('data-motivo')]))
+  assert.deepEqual(motivos, {
+    e1: 'Moto ainda em transporte. Garantia só depois da chegada.',
+    c1: 'Moto ainda não foi montada. Garantia só depois da montagem.',
+    m1: '', g1: '',
+  })
   await t.desmontar()
 })
 

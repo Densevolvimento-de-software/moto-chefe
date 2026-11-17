@@ -203,9 +203,10 @@ describe('importar garantias da fábrica', () => {
     { loja_id: s.lojaId, descricao: 'Bateria', data_inicio: '2026-11-03', data_fim: '2026-12-03', status: 'ativa', moto: 'em_garantia' })
   })
 
+  // Caixa e em transporte o servidor recusa antes, com frase própria (#9); o legado 'reservada' só o banco recusa.
   test('recusa do banco chega à tela com o motivo, sem a consulta nem os ids', async () => {
-    const motoId = await novaMoto('caixa')
+    const motoId = await novaMoto('reservada')
     const r = await importar(motoId, `${P}-2`)
-    assert.deepEqual(r.porLoja.map(l => [l.importadas, l.erro]), [[0, 'Garantia não pode ser aberta para moto com status "caixa"']])
+    assert.deepEqual(r.porLoja.map(l => [l.importadas, l.erro]), [[0, 'Garantia não pode ser aberta para moto com status "reservada"']])
   })
 })
