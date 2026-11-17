@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { escolherUsuarios, mascararEmail, motivoRecusaMatrizLocal, type Candidato } from './matriz-local'
+import { PAPEL_FABRICA } from '../../src/lib/login-fabrica'
 
 const ALVO = {
   databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
@@ -41,7 +42,7 @@ test('um usuário por papel, na ordem da matriz, o primeiro da lista que serve',
     c({ id: 'g1', email: 'g1@a.com', papel: 'admin_geral', temDados: false, temLoja: false }),
   ])
   assert.deepEqual(escolhidos.map(e => [e.papel, e.id]), [['admin_geral', 'g1'], ['vendedor', 'v1']])
-  assert.deepEqual(semCandidato, ['admin_socio', 'aux_adm', 'mecanico', 'motorista'])
+  assert.deepEqual(semCandidato, ['admin_socio', 'aux_adm', 'mecanico', 'motorista', PAPEL_FABRICA])
 })
 
 test('pula quem tem exceção de acesso, porque o esperado vem só do papel', () => {
@@ -59,4 +60,9 @@ test('o rótulo mascara o e-mail', () => {
   assert.equal(mascararEmail('joao.silva@loja.com.br'), 'jo***@loja.com.br')
   assert.equal(mascararEmail('a@b.com'), 'a***@b.com')
   assert.equal(escolherUsuarios([c({})]).escolhidos[0].rotulo, 'jo***@loja.com')
+})
+
+test('login da fábrica entra na matriz da cópia sem loja e sem cadastro completo (#901)', () => {
+  const { escolhidos } = escolherUsuarios([c({ id: 'f1', email: 'f1@a.com', papel: PAPEL_FABRICA, temDados: false, temLoja: false })])
+  assert.deepEqual(escolhidos.map(e => [e.papel, e.id]), [[PAPEL_FABRICA, 'f1']])
 })

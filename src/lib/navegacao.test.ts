@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert'
 import { ITENS, acessaModulo, itensDoMenu, itensVisiveis, liberavelPara, podeAcessar, type Papel, type UsuarioNav } from './navegacao'
 import { podeOperarNfSaida } from '@/app/(dashboard)/vendas/papeis-nf-saida'
+import { ROTA_PAINEL_FABRICA } from './painel-fabrica'
+import { PAPEL_FABRICA } from './login-fabrica'
 
 const SEM_REGRA_PROPRIA = {}
 
@@ -252,4 +254,21 @@ test('Gerenciar cargos é permissão, não tela: fora do menu, dos hubs e da rot
     assert.ok(!itensDoMenu(u, SEM_REGRA_PROPRIA).some(i => i.id === 'cargos'), u.papel)
   }
   assert.equal(podeAcessar(ADMIN_GERAL, ITENS.find(i => i.id === 'cargos')?.href ?? '', SEM_REGRA_PROPRIA), true)
+})
+
+test('login da fábrica só alcança o painel da fábrica, nem com liberação individual (#901)', () => {
+  const fabrica: UsuarioNav = { papel: PAPEL_FABRICA, modulosExtras: ['pix', 'despesas', 'marketing'] }
+  assert.deepEqual(ids(fabrica), ['painel-fabrica'])
+  assert.ok(podeAcessar(fabrica, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar(fabrica, '/pix-mcp', SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar(fabrica, '/despesas', SEM_REGRA_PROPRIA))
+})
+
+test('painel da fábrica: admin_geral abre; sócio, aux_adm e admin_geral com o item bloqueado não', () => {
+  assert.ok(podeAcessar(ADMIN_GERAL, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar(SOCIO, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar(AUX, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar({ papel: 'admin_rede' }, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar({ papel: 'admin_socio', modulosExtras: ['painel-fabrica'] }, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar({ papel: 'admin_geral', modulosBloqueados: ['painel-fabrica'] }, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
 })

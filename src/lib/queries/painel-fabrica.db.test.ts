@@ -27,7 +27,7 @@ const lojas = {} as Record<Chave, string>
 const contas: string[] = []
 const modelos = { mc: '', voi: '' }
 const CNPJS = ['00000000081901', '00000000081902', '00000000081903']
-let numeros = { a15: 0, a31: 0, b20: 0, a01nov: 0 }
+let numeros = { a15: 0, a31: 0, b20: 0, a01nov: 0, a15jul: 0 }
 let chassis = { a15: '', a31: '', b20: '' }
 
 const linha = async (q: ReturnType<typeof sql>) => (await execRows(q))[0] as { id: string }
@@ -95,7 +95,9 @@ before(async () => {
   const b20 = await vender(lojas.b, modelos.mc, '2026-10-20T15:00:00Z')
   await vender(lojas.a, modelos.voi, '2026-10-15T15:00:00Z')
   const a01nov = await vender(lojas.a, modelos.mc, '2026-11-01T03:30:00Z') // 00:30 de 01/11 em Brasília: fora
-  numeros = { a15: a15.numero, a31: a31.numero, b20: b20.numero, a01nov: a01nov.numero }
+  // 15/07: mais de 92 dias antes de 31/10, fora do teto da aba Vendas (#901).
+  const a15jul = await vender(lojas.a, modelos.mc, '2026-07-15T15:00:00Z')
+  numeros = { a15: a15.numero, a31: a31.numero, b20: b20.numero, a01nov: a01nov.numero, a15jul: a15jul.numero }
   chassis = { a15: a15.chassi, a31: a31.chassi, b20: b20.chassi }
   // Fora pela loja: sem portal, inativa e de Conta desativada.
   for (const l of [lojas.semPortal, lojas.inativa, lojas.desativada]) await vender(l, modelos.mc, '2026-10-15T15:00:00Z')
@@ -150,4 +152,12 @@ test('vendas: cada linha leva só data, número, loja, modelo, cor e chassi (sem
   const v = nossas(await painel.vendasDoPainel('2026-10-01', '2026-10-31'))
   assert.equal(v.length, 3)
   for (const l of v) assert.deepEqual(Object.keys(l).sort(), ['chassi', 'cor', 'data', 'lojaId', 'modelo', 'numero'])
+})
+
+test('período maior que 92 dias: o servidor corta o início e a venda antiga não vem (#901)', async () => {
+  const p = await painel.carregarPainelFabrica('2020-01-01', '2026-10-31')
+  assert.deepEqual([p.de, p.ate, p.limitado], ['2026-08-01', '2026-10-31', true])
+  const vendidas = nossas(p.vendas).map(v => v.numero).sort((x, y) => x - y)
+  assert.deepEqual(vendidas, [numeros.a15, numeros.b20, numeros.a31].sort((x, y) => x - y))
+  assert.ok(!vendidas.includes(numeros.a15jul))
 })

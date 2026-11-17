@@ -13,11 +13,14 @@ export const ROTULO_DO_PAPEL: Record<PapelDoBanco, string> = {
   mecanico: 'Mecânico',
   motorista: 'Motorista',
   cargo: 'Cargo da Conta',
+  fabrica: 'Fábrica',
 }
 
 /** Ordem em que select, filtro e lista mostram os papéis. */
 export const ORDEM_DOS_PAPEIS: readonly PapelDoBanco[] = [
   'admin_geral', 'admin_rede', 'admin_socio', 'aux_adm', 'vendedor', 'mecanico', 'motorista', 'cargo',
+  // O select de /admin/usuarios não oferece (limitesDaTela) e a lista não mostra (podeGerenciar).
+  'fabrica',
 ]
 
 export const OPCOES_DE_PAPEL: { value: PapelDoBanco; label: string }[] =

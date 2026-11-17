@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import { ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
+import { PAPEL_FABRICA } from '@/lib/login-fabrica'
 import {
   ArrowLeftRight, BarChart3, Bike, Building2, CalendarDays, CalendarRange,
   ClipboardList, CreditCard, Database, FileBarChart, FileSpreadsheet, FileText, Receipt,
@@ -185,7 +186,7 @@ export const ITENS: ItemNav[] = [
   // Tabela de preço sugerido da MotoChefe (#522): da plataforma, só admin_geral carrega.
   { id: 'precos-padrao',  href: '/admin/precos-padrao', label: 'Preços MotoChefe', icon: BadgeDollarSign, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
   // Estoque e vendas MotoChefe de todas as Contas para a fábrica: lê fora da Conta, por isso
-  // só o admin_geral, sem liberação individual (@/lib/painel-fabrica).
+  // no menu só o admin_geral, sem liberação individual; o login da fábrica abre por visivel().
   { id: 'painel-fabrica', href: ROTA_PAINEL_FABRICA, label: 'Painel Fábrica MotoChefe', icon: FileBarChart, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
   // Certificado digital é a credencial fiscal da empresa perante a SEFAZ, não é
   // item de configuração comum — só admin_geral (SUPER) mexe nisso.
@@ -207,6 +208,9 @@ export function liberavelPara(item: Pick<ItemNav, 'liberavelPara'>, papel: strin
 function visivel(item: ItemNav, usuario: UsuarioNav, regras: RegrasProprias): boolean {
   // Bloqueio individual ganha de tudo — inclusive de liberação individual.
   if ((usuario.modulosBloqueados ?? []).includes(item.id)) return false
+  // Login da fábrica: só o painel dela, nem com liberação individual (rotas da API que
+  // liberam por modulosExtras não passam pelo middleware).
+  if (usuario.papel === PAPEL_FABRICA) return item.href === ROTA_PAINEL_FABRICA
   if (usuario.grupoLiberado && FORA_DA_PERSONA.includes(item.id)) return false
   if (item.regraPropria) return regras[item.id] === true
   if (item.soAdminGeral) return usuario.papel === 'admin_geral'

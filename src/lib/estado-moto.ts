@@ -1,7 +1,10 @@
 // src/lib/estado-moto.ts
 export type Status = 'caixa' | 'montada' | 'em_garantia'
 export type Disponibilidade = 'disponivel' | 'reservada' | 'vendida' | 'aguardando_aprovacao'
-type Papel = 'admin_geral' | 'admin_socio' | 'aux_adm' | 'vendedor' | 'mecanico' | 'motorista' | 'cargo'
+import type { PapelDoBanco } from '@/lib/rotulo-do-papel'
+
+// Do enum do banco: papel novo não precisa de outra lista aqui (só admin e aux_adm mudam estado).
+type Papel = PapelDoBanco
 
 const isAdmin = (p: Papel) => p === 'admin_geral' || p === 'admin_socio'
 
