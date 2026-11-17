@@ -13,7 +13,8 @@ function mapear(grupos: GrupoCorrecao[], codigos: string) {
   for (const c of codigos.split(' ')) GRUPOS[c] = grupos
 }
 mapear(['comprador'], '208 210 225 237 690 724 726 728 _0004 _0005 _0006 _0008 GW6758')
-mapear(['moto'], '446 471 777 778 891 892 CEST001 NCM001 E008 GW99223')
+// 806 (ICMS-ST sem CEST) não está na B.1.2; vem do artigo 223093 da base de conhecimento da Nota Gateway.
+mapear(['moto'], '446 471 777 778 806 891 892 CEST001 NCM001 E008 GW99223')
 mapear(['empresa'], '209 213 244 245 257 481 518 519 678 GW3331 GW3332 GW3333 GW0901 GW0902 GW7324 CFOP001 E003 GW073 GW1324')
 mapear(['comprador', 'empresa'], '523 732 733')
 // Tipo/espécie do veículo (veicProd, tpVeic e espVeic): tabelas da NT 2021.004. Ver docs/fiscal/ng-veiculo-transporte.md.
@@ -57,6 +58,7 @@ const FRASES: Record<string, string> = {
   'GW6758': 'Falta o endereço do cliente.',
   '446': 'O CEST da moto não existe.',
   'CEST001': 'O CEST da moto precisa ter 7 números.',
+  '806': 'Falta o CEST da moto.',
   '471': 'O NCM da moto está errado.',
   '777': 'O NCM da moto está incompleto.',
   '778': 'O NCM da moto não existe.',
