@@ -10,12 +10,11 @@ export default async function AcessosFabricaPage() {
   const acessos = await listarAcessosFabrica()
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-2">
       <div>
-        <h1 className="text-xl font-bold">Acessos da fábrica</h1>
+        <h1 className="text-2xl font-bold">Acessos da fábrica</h1>
         <p className="text-muted-foreground text-sm">
-          Login e senha da fábrica MotoChefe. Quem entra com um destes vê só o Painel da Fábrica
-          (estoque e vendas MotoChefe de todas as lojas), sem menu e sem nenhuma outra tela.
+          Logins da fábrica MotoChefe. Quem entra com um deles vê só o Painel da Fábrica, sem menu e sem nenhuma outra tela.
         </p>
       </div>
       <AcessosFabrica acessos={acessos} />
