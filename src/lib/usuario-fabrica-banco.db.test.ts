@@ -53,3 +53,8 @@ test('trocar para fabrica uma linha que tem loja também é recusado', async () 
   const [u] = (await db.execute(sql`insert into usuarios (id, nome, email, papel, loja_id) values (gen_random_uuid(), 'Vend', ${`fab3-chk-${seq++}@teste.invalid`}, 'vendedor', ${base.lojaId}) returning id`) as unknown as { rows: { id: string }[] }).rows
   await assert.rejects(db.execute(sql`update usuarios set papel = 'fabrica' where id = ${u.id}`), recusadoPelaTrava)
 })
+
+test('login da fábrica que aprova pagamento sensível também é recusado', async () => {
+  await assert.rejects(db.execute(sql`insert into usuarios (id, nome, email, papel, aprova_pagamento_sensivel)
+    values (gen_random_uuid(), 'Fábrica', ${`fab3-chk-${seq++}@teste.invalid`}, 'fabrica', true)`), recusadoPelaTrava)
+})
