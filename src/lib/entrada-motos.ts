@@ -13,7 +13,7 @@ import { modelosUsaveisPelaConta } from '@/lib/modelos-da-conta'
 import { historicoEstoque, lojas, motos, motosFiscal } from '@/lib/db/schema'
 import { normalizarCor } from '@/lib/cores-moto'
 import { CHASSI_ARQUIVADO } from '@/lib/arquivar-moto-regras'
-import { separarMotosDaEntrada } from '@/lib/entrada-motos-regras'
+import { separarMotosDaEntrada, type StatusNaEntrada } from '@/lib/entrada-motos-regras'
 import { type FichaFiscal, type EmitenteNfe, type FichaDaMoto } from '@/lib/nfe-fiscal'
 
 type Executor = Pick<typeof db, 'insert'>
@@ -43,14 +43,14 @@ export type MotoEntradaLote = {
 
 export async function inserirMotoDaEntrada(
   exec: Executor,
-  e: { lojaId: string; usuarioId: string; chassi: string; moto: MotoEntradaLote; precoCompra: string },
+  e: { lojaId: string; usuarioId: string; status: StatusNaEntrada; chassi: string; moto: MotoEntradaLote; precoCompra: string },
 ): Promise<string> {
   const nf = e.moto.notaFiscal.trim()
   const [novaMoto] = await exec.insert(motos).values({
     chassi: e.chassi,
     modeloId: e.moto.modeloId,
     lojaId: e.lojaId,
-    status: 'caixa',
+    status: e.status,
     cor: normalizarCor(e.moto.cor),
     notaFiscalEntrada: nf,
     motor: e.moto.motor?.trim() || null,
@@ -62,7 +62,7 @@ export async function inserirMotoDaEntrada(
     lojaDestinoId: e.lojaId,
     usuarioId: e.usuarioId,
     tipo: 'entrada',
-    statusNovo: 'caixa',
+    statusNovo: e.status,
     observacao: `Entrada NF ${nf}`,
   })
   return novaMoto.id
@@ -202,13 +202,13 @@ async function recusaDoInsertDaMoto(exec: Pick<typeof db, 'select'>, destino: { 
  */
 export async function inserirMotosUmaAUma(
   exec: Pick<typeof db, 'select' | 'transaction'>,
-  e: { lojaId: string; usuario: QuemDaEntrada & { id: string }; motos: MotoConferida[] },
+  e: { lojaId: string; usuario: QuemDaEntrada & { id: string }; status: StatusNaEntrada; motos: MotoConferida[] },
 ): Promise<{ idPorChassi: Map<string, string>; erros: string[] }> {
   const idPorChassi = new Map<string, string>()
   const erros: string[] = []
   for (const m of e.motos) {
     try {
-      const id = await exec.transaction(sp => inserirMotoDaEntrada(sp, { lojaId: e.lojaId, usuarioId: e.usuario.id, ...m }))
+      const id = await exec.transaction(sp => inserirMotoDaEntrada(sp, { ...m, lojaId: e.lojaId, usuarioId: e.usuario.id, status: e.status }))
       idPorChassi.set(m.chassi, id)
     } catch (erro) {
       erros.push(await recusaDoInsertDaMoto(exec, { lojaId: e.lojaId, usuario: e.usuario }, m.chassi, erro))
@@ -220,11 +220,11 @@ export async function inserirMotosUmaAUma(
 /** Grava as motos já conferidas e a ficha fiscal de cada uma. Devolve quantas fichas entraram. */
 export async function gravarMotosConferidas(
   exec: Executor,
-  e: { lojaId: string; usuarioId: string; prontas: MotoConferida[]; fiscais: FichaDaMoto[] },
+  e: { lojaId: string; usuarioId: string; status: StatusNaEntrada; prontas: MotoConferida[]; fiscais: FichaDaMoto[] },
 ): Promise<number> {
   const idPorChassi = new Map<string, string>()
   for (const p of e.prontas) {
-    idPorChassi.set(p.chassi, await inserirMotoDaEntrada(exec, { lojaId: e.lojaId, usuarioId: e.usuarioId, ...p }))
+    idPorChassi.set(p.chassi, await inserirMotoDaEntrada(exec, { ...p, lojaId: e.lojaId, usuarioId: e.usuarioId, status: e.status }))
   }
   return gravarFichaFiscalDasMotos(exec, e.fiscais
     .map(f => ({ ...f, motoId: idPorChassi.get(f.chassi.trim().toUpperCase()) }))
@@ -234,7 +234,7 @@ export async function gravarMotosConferidas(
 /**
  * Lote inteiro ou nada, para o onboarding de uma loja (scripts/importar-motos-xml.ts), com a
  * mesma conferência da nota com peças. Quem chama abre a transação. A loja precisa existir e
- * estar ativa; o usuário fica no histórico.
+ * estar ativa; o usuário fica no histórico. O onboarding sempre entra como Caixa (#10).
  */
 export async function gravarLoteDeEntrada(
   exec: Pick<typeof db, 'select' | 'insert'>,
@@ -253,6 +253,6 @@ export async function gravarLoteDeEntrada(
   // Onboarding pelo operador do MOVA, fora de persona.
   const { prontas, erros } = await conferirMotosDaEntrada(exec, e.lojaId, e.motos, { grupoLiberado: null })
   if (erros.length) throw new Error(`Nada foi gravado:\n${erros.join('\n')}`)
-  const fichas = await gravarMotosConferidas(exec, { lojaId: e.lojaId, usuarioId: e.usuarioId, prontas, fiscais: e.fiscais })
+  const fichas = await gravarMotosConferidas(exec, { lojaId: e.lojaId, usuarioId: e.usuarioId, status: 'caixa', prontas, fiscais: e.fiscais })
   return { motos: prontas.length, fichas }
 }
