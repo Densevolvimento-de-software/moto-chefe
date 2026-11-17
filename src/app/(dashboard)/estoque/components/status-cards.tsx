@@ -32,12 +32,14 @@ export function StatusCards({ counts }: Props) {
   return (
     <div className={`grid grid-cols-2 sm:grid-cols-4 ${COLUNAS_XL[visiveis.length]} gap-3`}>
       {visiveis.map(({ key, label, icon: Icon, value, text, bg, border, icon_c }) => (
-        <div key={key} className={`rounded-xl border ${border} ${bg} px-4 py-3`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-muted-foreground">{label}</span>
+        // O rótulo tem a linha toda e não quebra; o ícone fica ao lado do número. Com o ícone na linha do rótulo,
+        // "Em transporte" quebrava em 1280/1366 e o número descia em relação aos vizinhos.
+        <div key={key} className={`rounded-xl border ${border} ${bg} px-3 py-3`}>
+          <span className="mb-2 block whitespace-nowrap text-xs font-medium text-muted-foreground">{label}</span>
+          <div className="flex items-center justify-between">
+            <p className={`text-2xl font-bold ${text}`}>{value(counts)}</p>
             <Icon size={14} className={icon_c} />
           </div>
-          <p className={`text-2xl font-bold ${text}`}>{value(counts)}</p>
         </div>
       ))}
     </div>
