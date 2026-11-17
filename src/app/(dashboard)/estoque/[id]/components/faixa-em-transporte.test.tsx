@@ -35,13 +35,16 @@ async function montar(props: { podeMarcar: boolean; disponibilidade?: string | n
   return t
 }
 
-test('faixa: avisa que a moto não chegou para todos; o botão Chegou só para quem pode marcar', async () => {
+test('quem não pode marcar vê a faixa que avisa que a moto não chegou, sem o botão Chegou', async () => {
   await montar({ podeMarcar: false })
   assert.match(textoDaTela(), /Esta moto ainda não chegou na loja/)
   assert.match(textoDaTela(), /Pode ser reservada\. Montar, vender e transferir só depois da chegada\./)
   assert.equal(botao('Chegou'), undefined)
-  for (const desmontar of montados.splice(0)) await desmontar()
+})
+
+test('quem pode marcar vê o botão Chegou na faixa', async () => {
   await montar({ podeMarcar: true })
+  assert.match(textoDaTela(), /Esta moto ainda não chegou na loja/)
   assert.ok(botao('Chegou'))
 })
 
