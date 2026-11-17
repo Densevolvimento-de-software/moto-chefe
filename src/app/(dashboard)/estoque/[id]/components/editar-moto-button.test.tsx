@@ -40,13 +40,19 @@ async function montar(status: string) {
     const Evento = tipo.startsWith('pointer') ? dom.window.PointerEvent ?? dom.window.MouseEvent : dom.window.MouseEvent
     el.dispatchEvent(new Evento(tipo, { bubbles: true, button: 0 } as MouseEventInit))
   })
-  const clicar = async (el: Element) => { await disparar(el, 'pointerdown'); await disparar(el, 'mousedown'); await disparar(el, 'pointerup'); await disparar(el, 'mouseup'); await disparar(el, 'click') }
+  // Botão e gatilho do select: só o click. Com apertar e soltar no gatilho separados por 200 ms ou
+  // mais (CI lento), o select do base-ui fecha no soltar e o teste não acha as opções.
+  const clicar = (el: Element) => disparar(el, 'click')
+  // Opção do select: o base-ui escolhe no soltar, então vai a sequência inteira.
+  const escolher = async (el: Element) => {
+    for (const tipo of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) await disparar(el, tipo)
+  }
   const botao = (texto: string) => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === texto)!
   await clicar(botao('Editar'))
   // O select que fica no mesmo bloco do rótulo "Status".
   const gatilhoStatus = () => [...document.querySelectorAll('[role=dialog] label')]
     .find(l => l.textContent?.trim() === 'Status')?.parentElement?.querySelector('[role=combobox]')
-  return { clicar, botao, gatilhoStatus }
+  return { clicar, escolher, botao, gatilhoStatus }
 }
 
 // Um fluxo só: o select do base-ui aberto num teste não abre de novo no seguinte do mesmo arquivo.
@@ -57,7 +63,7 @@ test('Status: gatilho com o rótulo; opções Caixa, Montada e Garantia, nessa o
   await t.clicar(t.gatilhoStatus()!)
   const opcoes = [...document.querySelectorAll('[role=option]')]
   assert.deepEqual(opcoes.map(o => o.textContent?.trim()), ['Caixa', 'Montada', 'Garantia'])
-  await t.clicar(opcoes.find(o => o.textContent?.trim() === 'Montada')!)
+  await t.escolher(opcoes.find(o => o.textContent?.trim() === 'Montada')!)
   await t.clicar(t.botao('Salvar'))
   assert.deepEqual(enviados.map(d => d.status), ['montada'])
 })
