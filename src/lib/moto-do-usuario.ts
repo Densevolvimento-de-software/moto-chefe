@@ -16,23 +16,36 @@ export const daContaDo = (usuario: { papel: string; contaId: string | null; grup
     : usuario.contaId ? inArray(motos.lojaId, lojasDoEscopo(usuario)) : null
 
 /**
- * Moto que o usuário pode vender, reservar ou pedir venda, ou null. A Conta entra no
- * where; a regra de loja (com a exceção do Galpão) vem depois, no podeVenderMotoDaLoja.
- * Moto de outra Conta volta null, igual a moto inexistente: quem chama responde
- * "Moto não encontrada" nos dois casos (#404). Moto arquivada da Conta recusa com a frase
- * que manda desarquivar (#688): não se vende, reserva nem pede.
+ * Motos que o usuário pode vender, reservar ou pedir venda, numa consulta só (pedido com várias motos, #20), na
+ * ordem pedida; ou null se alguma não existe, é de outra Conta ou de loja onde ele não vende. A Conta entra no
+ * where; a regra de loja (com a exceção do Galpão) vem depois, no podeVenderMotoDaLoja. Os três casos voltam
+ * null: quem chama responde "Moto não encontrada" para todos (#404). Moto arquivada da Conta recusa com a frase
+ * que manda desarquivar (#688), só depois do acesso: senão a frase revelaria a moto de outra Conta.
  */
+export async function motosDoUsuario(
+  usuario: Parameters<typeof podeVenderMotoDaLoja>[0],
+  motoIds: readonly string[],
+  exec: Executor = db,
+) {
+  const daConta = daContaDo(usuario)
+  if (daConta === null) return null
+  const achadas = motoIds.length === 0 ? [] : await exec.select().from(motos).where(and(inArray(motos.id, [...motoIds]), daConta))
+  const porId = new Map(achadas.map(m => [m.id, m]))
+  const pedidas = motoIds.flatMap(id => porId.get(id) ?? [])
+  if (pedidas.length !== motoIds.length) return null
+  const lojas = [...new Set(pedidas.map(m => m.lojaId))]
+  if (!(await Promise.all(lojas.map(l => podeVenderMotoDaLoja(usuario, l, exec)))).every(Boolean)) return null
+  if (pedidas.some(m => m.arquivadaEm)) throw new RecusaUsuario(MOTO_ARQUIVADA)
+  return pedidas
+}
+
+/** A moto que o usuário pode vender, reservar ou pedir venda, ou null: a mesma regra de `motosDoUsuario`. */
 export async function motoDoUsuario(
   usuario: Parameters<typeof podeVenderMotoDaLoja>[0],
   motoId: string,
   exec: Executor = db,
 ) {
-  const daConta = daContaDo(usuario)
-  if (daConta === null) return null
-  const [moto] = await exec.select().from(motos).where(and(eq(motos.id, motoId), daConta)).limit(1)
-  if (!moto || !(await podeVenderMotoDaLoja(usuario, moto.lojaId, exec))) return null
-  if (moto.arquivadaEm) throw new RecusaUsuario(MOTO_ARQUIVADA)
-  return moto
+  return (await motosDoUsuario(usuario, [motoId], exec))?.[0] ?? null
 }
 
 /**

@@ -39,7 +39,7 @@ import { ufDoEmissorDaMoto } from '@/lib/notagateway/grupo-emissor'
 import { travaDoValorVenda } from '@/lib/valor-venda'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { pedidoDoUsuario } from '@/lib/pedido-do-usuario'
-import { motoDoUsuario, travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
+import { motoDoUsuario, motosDoUsuario, travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
 import { ehUuid } from '@/lib/uuid'
 import { aprovacaoDoUsuario } from '@/lib/aprovacao-do-usuario'
 import { voltarMotoAoEstoque } from '@/lib/motos-vendidas-sem-venda'
@@ -173,15 +173,15 @@ export async function criarPedidoVendaAction(...a: Parameters<typeof criarPedido
 }
 
 /**
- * Motos pedidas (#20), cada uma conferida na Conta e na loja de quem pede: outra Conta, id inexistente e id que
+ * Motos pedidas (#20), conferidas numa consulta só na Conta e na loja de quem pede: outra Conta, id inexistente e id que
  * nem é uuid recebem a mesma frase, como a lista com forma errada. Valor que veio e não serve é recusado (D-E).
  */
 async function motosPedidas(usuario: Awaited<ReturnType<typeof getUsuarioLogado>>, lista: unknown) {
   if (!listaDeMotosValida(lista)) throw new RecusaUsuario('Moto não encontrada')
   const pedidas = motosSemRepetir(lista)
   if (pedidas.some(m => valorDeMotoInvalido(m.valor))) throw new RecusaUsuario('Valor inválido')
-  const doUsuario = await Promise.all(pedidas.map(m => (ehUuid(m.motoId) ? motoDoUsuario(usuario, m.motoId) : null)))
-  if (doUsuario.some(m => !m)) throw new RecusaUsuario('Moto não encontrada')
+  const doUsuario = pedidas.every(m => ehUuid(m.motoId)) ? await motosDoUsuario(usuario, pedidas.map(m => m.motoId)) : null
+  if (!doUsuario) throw new RecusaUsuario('Moto não encontrada')
   return { pedidas, primeira: doUsuario[0] }
 }
 

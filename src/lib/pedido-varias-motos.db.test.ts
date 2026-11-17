@@ -350,3 +350,19 @@ test('D10c: pedir aprovação (abaixo do mínimo) de pedido com 2 motos também 
   assert.deepEqual(await execRows(sql`select id from aprovacoes_venda where dados_venda->>'pedidoId' = ${pedidoId}`), [])
   assert.deepEqual(await disponibilidades([m1, m2]), { [m1]: 'reservada', [m2]: 'reservada' })
 })
+
+test('D3c: pedido com várias motos e uma de outra Conta, no criar e no trocar: recusa o pedido inteiro com a frase do inexistente', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const [daA] = await a.motos(1)
+  const [b1, b2, b3] = await b.motos(3)
+  usuario = b.vendedor
+  assert.deepEqual(await actions.criarPedidoVendaAction([{ motoId: b1 }, { motoId: b2 }, { motoId: daA }], '', RETIRA), recusa('Moto não encontrada'))
+  assert.deepEqual(await pedidosDaMoto(b1), [])
+  assert.deepEqual(await disponibilidades([b1, b2]), { [b1]: 'disponivel', [b2]: 'disponivel' })
+
+  const pedidoId = await criarPedido(b, [b1])
+  assert.deepEqual(await actions.trocarMotosDoPedidoAction(pedidoId, [{ motoId: b1 }, { motoId: b2 }, { motoId: daA }, { motoId: b3 }]), recusa('Moto não encontrada'))
+  assert.deepEqual(await idsDasMotos(pedidoId), [b1])
+  assert.deepEqual(await disponibilidades([daA, b2, b3]), { [daA]: 'disponivel', [b2]: 'disponivel', [b3]: 'disponivel' })
+})
