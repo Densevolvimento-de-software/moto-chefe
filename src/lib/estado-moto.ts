@@ -114,6 +114,14 @@ export function motivoParaNaoVender(status: string): string | null {
 }
 
 /**
+ * Motivo pelo qual o status físico da moto impede pedir a transferência, ou null. O servidor e o
+ * botão da tela passam por aqui; moto vendida continua recusada pela função do banco.
+ */
+export function motivoParaNaoTransferir(status: string): string | null {
+  return status === 'em_transporte' ? 'Moto ainda em transporte. Marque a chegada antes de transferir.' : null
+}
+
+/**
  * Motivo pelo qual a moto não pode receber um pedido de aprovação de venda, ou
  * null se pode. Moto 'reservada' é aceita de propósito: é assim que se finaliza
  * uma reserva abaixo do mínimo ou com transferência. A aprovação converte a

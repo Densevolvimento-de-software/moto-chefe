@@ -134,3 +134,32 @@ test('cancelar a reserva de moto em transporte devolve sem disponibilidade (não
   assert.equal((await acoes.cancelarReservaAction(id, 'cliente desistiu')).ok, true)
   assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
 })
+
+const transferencias = () => import('@/app/(dashboard)/transferencias/actions')
+const EM_TRANSPORTE_NAO_TRANSFERE = 'Moto ainda em transporte. Marque a chegada antes de transferir.'
+
+test('transferir moto em transporte, como sócio ou aux_adm: recusa com a frase da chegada; nenhuma transferência', async () => {
+  const moto = await novaMoto('TRF', 'em_transporte')
+  const { solicitarTransferenciaAction } = await transferencias()
+  for (const sessao of [sessoes.socioA, sessoes.auxA]) {
+    usuarioDaSessao = sessao
+    assert.deepEqual(await solicitarTransferenciaAction(moto, semente.destinoA), { ok: false, erro: EM_TRANSPORTE_NAO_TRANSFERE })
+  }
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+})
+
+test('transferir moto na caixa continua valendo para o aux_adm', async () => {
+  usuarioDaSessao = sessoes.auxA
+  const moto = await novaMoto('TRFCX', 'caixa')
+  assert.deepEqual(await (await transferencias()).solicitarTransferenciaAction(moto, semente.destinoA), { ok: true, dados: undefined })
+  assert.equal((await estadoDa(moto)).transferencias, 1)
+})
+
+test('a lista de motos para transferir deixa de fora a em transporte', async () => {
+  const emTransporte = await novaMoto('LSTET', 'em_transporte')
+  const naCaixa = await novaMoto('LSTCX', 'caixa')
+  const { listarMotosTransferiveis } = await import('@/lib/queries/transferencias')
+  const ids = (await listarMotosTransferiveis([semente.lojaA])).map(m => m.id)
+  assert.equal(ids.includes(emTransporte), false)
+  assert.equal(ids.includes(naCaixa), true)
+})
