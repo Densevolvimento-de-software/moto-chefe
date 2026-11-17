@@ -8,7 +8,7 @@ import {
 const TAXAS: TaxasVenda = {
   taxasCartao: { '1': 0.0399, '8': 0.0916, '12': 0.09 },
   taxasDebito: { '1': 0.0139 },
-  taxasLink: { '12': 0.09 },
+  taxasLink: { '12': 0.1499 },
   taxasFinanciamento: { '1': 0.05 },
 }
 
@@ -23,8 +23,9 @@ test('cartão de crédito: a taxa é % do bruto, o líquido é bruto × (1 − t
   assert.equal(calcLiquidoRecebido([{ tipo: 'cartao_credito', valor: 10900, parcelas: 12 }], TAXAS), 9919)
 })
 
-test('link de pagamento desconta a taxa do mesmo jeito', () => {
-  assert.equal(calcLiquidoRecebido([{ tipo: 'link_pagamento', valor: 10900, parcelas: 12 }], TAXAS), 9919)
+test('link de pagamento desconta a taxa da tabela dele', () => {
+  // 10.900 × (1 − 14,99%) = 9.266,09; pela tabela do cartão daria 9.919.
+  assert.equal(calcLiquidoRecebido([{ tipo: 'link_pagamento', valor: 10900, parcelas: 12 }], TAXAS), 9266.09)
 })
 
 test('cada parcela usa a sua própria taxa', () => {
