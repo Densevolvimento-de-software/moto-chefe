@@ -11,7 +11,7 @@ import { NfSaidaProvider, NfSaidaGatilhoLinha } from './nf-saida-contexto'
 import { MontarButton } from './montar-button'
 import { CancelarReservaButton } from './cancelar-reserva-button'
 import { podeVendedorReservarForaDaLoja } from '@/lib/loja-galpao'
-import { motivoParaNaoVender } from '@/lib/estado-moto'
+import { motivoParaNaoAbrirGarantia, motivoParaNaoTransferir, motivoParaNaoVender } from '@/lib/estado-moto'
 import type { MotoComDetalhes } from '@/lib/queries/motos'
 import type { DemandaCompativel } from '@/lib/queries/demandas'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
@@ -154,7 +154,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                               <GarantiaButton
                                 motoId={moto.id}
                                 descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
-                                disabled={moto.status === 'caixa'}
+                                motivoBloqueio={motivoParaNaoAbrirGarantia(moto.status)}
                               />
                             )}
 
@@ -175,8 +175,8 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                                     demandasCompativeis={demandasComSinal.filter(d => d.modeloId === moto.modeloId && d.lojaId === moto.lojaId)}
                                   />
                                 )}
-                                {/* Reservada: só finalizar venda */}
-                                {moto.disponibilidade === 'reservada' && moto.reservaValorEntrada && (
+                                {/* Reservada: só finalizar venda, se o status deixa vender */}
+                                {moto.disponibilidade === 'reservada' && moto.reservaValorEntrada && motivoParaNaoVender(moto.status) === null && (
                                   <VenderButton
                                     key={`vender-acao-${moto.id}`}
                                     motoId={moto.id}
@@ -265,7 +265,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                                     <ArrowLeftRight size={16} />
                                   </span>
                                 )
-                                : (
+                                : motivoParaNaoTransferir(moto.status) === null && (
                                   <LogisticaButton
                                     motoId={moto.id}
                                     descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}

@@ -56,14 +56,15 @@ async function montar(status: string) {
 }
 
 // Um fluxo só: o select do base-ui aberto num teste não abre de novo no seguinte do mesmo arquivo.
-test('Status: gatilho com o rótulo; opções Caixa, Montada e Garantia, nessa ordem; Montada envia "montada"', async () => {
-  const t = await montar('em_garantia')
+// P4 (#7): o admin corrige "Caixa → Em transporte" pelo Editar moto.
+test('Status: gatilho com o rótulo; opções Em transporte, Caixa, Montada e Garantia, nessa ordem; Em transporte envia "em_transporte"', async () => {
+  const t = await montar('caixa')
   // O gatilho traz a seta do select depois do texto.
-  assert.equal(t.gatilhoStatus()?.textContent?.replace('▼', '').trim(), 'Garantia')
+  assert.equal(t.gatilhoStatus()?.textContent?.replace('▼', '').trim(), 'Caixa')
   await t.clicar(t.gatilhoStatus()!)
   const opcoes = [...document.querySelectorAll('[role=option]')]
-  assert.deepEqual(opcoes.map(o => o.textContent?.trim()), ['Caixa', 'Montada', 'Garantia'])
-  await t.escolher(opcoes.find(o => o.textContent?.trim() === 'Montada')!)
+  assert.deepEqual(opcoes.map(o => o.textContent?.trim()), ['Em transporte', 'Caixa', 'Montada', 'Garantia'])
+  await t.escolher(opcoes.find(o => o.textContent?.trim() === 'Em transporte')!)
   await t.clicar(t.botao('Salvar'))
-  assert.deepEqual(enviados.map(d => d.status), ['montada'])
+  assert.deepEqual(enviados.map(d => d.status), ['em_transporte'])
 })

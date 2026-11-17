@@ -12,7 +12,7 @@ import { totalDasPecas, totalDoPedido } from '@/lib/pedido-venda-regras'
 import { aplicarVendaPeca } from '@/lib/venda-peca'
 import { lerDocumentoCliente } from '@/lib/documento'
 import { freteDaVenda, PEDIDO_EM_APROVACAO_PARA_ALTERAR, totalComFrete, type EntregaVenda } from '@/lib/notagateway/entrega'
-import { motivoBloqueioPedidoAprovacao } from '@/lib/estado-moto'
+import { motivoBloqueioPedidoAprovacao, motivoParaNaoVender } from '@/lib/estado-moto'
 import { gravarPedidoDeAprovacaoTx } from '@/lib/pedido-de-aprovacao'
 import type { TipoAprovacaoVenda } from '@/lib/aprovacao-venda'
 
@@ -129,7 +129,10 @@ async function conferirPagamentos(tx: Tx, pedido: { lojaId: string; entrega: Ent
  * cifrados, enquanto o resto do sistema lê texto puro (#181).
  */
 export async function efetivarPedidoTx(tx: Tx, d: DadosEfetivarPedido): Promise<{ vendaId: string }> {
-  const { pedido } = await travarPedidoEMoto(tx, d.pedidoId, !!d.daAprovacao)
+  const { pedido, moto } = await travarPedidoEMoto(tx, d.pedidoId, !!d.daAprovacao)
+  // O status pode ter mudado depois do pedido (Editar moto); confere na linha travada.
+  const naoVende = motivoParaNaoVender(moto.status)
+  if (naoVende) throw new RecusaUsuario(naoVende)
   const doCadastro = await clienteDoCadastro(tx, pedido.lojaId, d)
 
   const [reservaAtiva] = await tx

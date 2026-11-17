@@ -42,10 +42,10 @@ async function montar() {
   return { clicar, opcoesDe }
 }
 
-test('filtro Status: opções Caixa, Montada e Garantia, nessa ordem', async () => {
+test('filtro Status: opções Em transporte, Caixa, Montada e Garantia, nessa ordem', async () => {
   const { clicar, opcoesDe } = await montar()
   await clicar('Status')
-  assert.deepEqual(opcoesDe('Status'), ['Caixa', 'Montada', 'Garantia'])
+  assert.deepEqual(opcoesDe('Status'), ['Em transporte', 'Caixa', 'Montada', 'Garantia'])
 })
 
 test('escolher Garantia leva status=em_garantia para a URL', async () => {

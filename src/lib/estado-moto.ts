@@ -99,14 +99,65 @@ export function motivoBloqueioPorVenda(
   return `Moto já vendida na venda nº ${venda.numero} — não pode voltar ao estoque. Se a venda foi um engano, cancele a venda primeiro; o cancelamento devolve a moto ao Showroom.`
 }
 
+const NAO_VENDE_POR_STATUS: Partial<Record<string, string>> = {
+  caixa: 'Moto ainda não foi montada. Não pode ser vendida.',
+  em_transporte: 'Moto ainda em transporte. Não pode ser vendida.',
+}
+
 /**
  * Motivo pelo qual o status físico da moto impede a venda, ou null. Venda direta, pedido de venda,
  * pedido de aprovação e o botão Vender da tela passam por aqui. Moto já vendida e disponibilidade
  * ficam com cada chamador, que tem frase própria para elas.
  */
 export function motivoParaNaoVender(status: string): string | null {
-  if (status === 'caixa') return 'Moto ainda não foi montada. Não pode ser vendida.'
-  return null
+  return NAO_VENDE_POR_STATUS[status] ?? null
+}
+
+const AVISO_VENDA_BARRADA: Partial<Record<string, { titulo: string; texto: string }>> = {
+  caixa: {
+    titulo: 'A moto voltou ao estoque, mas ainda está em caixa',
+    texto: 'Moto em caixa não pode ser vendida. Use o botão Montar e depois o Vender.',
+  },
+  em_transporte: {
+    titulo: 'A moto voltou ao estoque, mas ainda está em transporte',
+    texto: 'Moto em transporte não pode ser vendida. Marque a chegada, monte e depois venda.',
+  },
+}
+
+/**
+ * Aviso da moto que voltou ao estoque pelo painel de vendidas sem venda (?vender=1) e que o status
+ * ainda não deixa vender, ou null se ela vende.
+ */
+export function avisoVendaBarrada(status: string): { titulo: string; texto: string } | null {
+  return AVISO_VENDA_BARRADA[status] ?? null
+}
+
+const NAO_TRANSFERE_POR_STATUS: Partial<Record<string, string>> = {
+  em_transporte: 'Moto ainda em transporte. Marque a chegada antes de transferir.',
+  vendida: 'Moto já foi vendida',
+}
+
+/**
+ * Motivo pelo qual o status físico da moto impede pedir a transferência, ou null. O servidor, o
+ * botão da tela e a lista de motos do diálogo de transferência passam por aqui.
+ */
+export function motivoParaNaoTransferir(status: string): string | null {
+  return NAO_TRANSFERE_POR_STATUS[status] ?? null
+}
+
+// Os status de estoque que a função abrir_garantia do banco recusa. O banco continua como última rede
+// (e é quem recusa o legado 'reservada', sem motos hoje).
+const NAO_ABRE_GARANTIA_POR_STATUS: Partial<Record<string, string>> = {
+  em_transporte: 'Moto ainda em transporte. Garantia só depois da chegada.',
+  caixa: 'Moto ainda não foi montada. Garantia só depois da montagem.',
+}
+
+/**
+ * Motivo pelo qual o status físico da moto impede abrir garantia, ou null. A action e o botão da tela
+ * passam por aqui.
+ */
+export function motivoParaNaoAbrirGarantia(status: string): string | null {
+  return NAO_ABRE_GARANTIA_POR_STATUS[status] ?? null
 }
 
 /**
@@ -142,11 +193,11 @@ export function motivoBloqueioCancelarReserva(
 }
 
 /**
- * Disponibilidade da moto quando a última reserva ativa é cancelada. Moto que ainda não foi
- * montada volta sem disponibilidade; "disponivel" a poria à venda sem montagem.
+ * Disponibilidade da moto quando a última reserva ativa é cancelada. Moto que ainda não pode ser
+ * vendida (na caixa, em transporte) volta sem disponibilidade; "disponivel" a poria à venda.
  */
 export function disponibilidadeAposCancelarReserva(status: string): Disponibilidade | null {
-  return status === 'caixa' ? null : 'disponivel'
+  return motivoParaNaoVender(status) ? null : 'disponivel'
 }
 
 export const statusLabel = Object.fromEntries(STATUS_DE_ESTOQUE.map(s => [s.valor, s.rotulo])) as Record<Status, string>
