@@ -1,10 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { calcLiquidoRecebido, parcelasComTaxa, validarPrecoVenda, type TaxasVenda } from './preco-minimo'
+import {
+  brutoParaReceber, calcLiquidoRecebido, liquidoDoBruto, parcelasComTaxa, validarPrecoVenda, type TaxasVenda,
+} from './preco-minimo'
 
 // Taxas no formato do banco (configuracao_taxas): fração, não percentual.
 const TAXAS: TaxasVenda = {
-  taxasCartao: { '1': 0.0399, '8': 0.0916, '12': 0.1215 },
+  taxasCartao: { '1': 0.0399, '8': 0.0916, '12': 0.09 },
   taxasDebito: { '1': 0.0139 },
   taxasLink: { '12': 0.1499 },
   taxasFinanciamento: { '1': 0.05 },
@@ -16,11 +18,14 @@ test('pix, dinheiro e transferência entram integrais — não têm taxa', () =>
   assert.equal(calcLiquidoRecebido([{ tipo: 'transferencia', valor: 8000 }], TAXAS), 8000)
 })
 
-test('cartão de crédito desconta a taxa da parcela — divide, não multiplica', () => {
-  // 10908 em 12x a 12,15%: o bruto embute a taxa, então o líquido é 10908 / 1,1215.
-  const liquido = calcLiquidoRecebido([{ tipo: 'cartao_credito', valor: 10908, parcelas: 12 }], TAXAS)
-  assert.ok(Math.abs(liquido - 10908 / 1.1215) < 0.01)
-  assert.ok(liquido < 10908)
+test('cartão de crédito: a taxa é % do bruto, o líquido é bruto × (1 − taxa)', () => {
+  // Exemplo do #50: 10.900 em 12x a 9% deixa 9.919 para a loja (não 10.900 / 1,09 = 10.000).
+  assert.equal(calcLiquidoRecebido([{ tipo: 'cartao_credito', valor: 10900, parcelas: 12 }], TAXAS), 9919)
+})
+
+test('link de pagamento desconta a taxa da tabela dele', () => {
+  // 10.900 × (1 − 14,99%) = 9.266,09; pela tabela do cartão daria 9.919.
+  assert.equal(calcLiquidoRecebido([{ tipo: 'link_pagamento', valor: 10900, parcelas: 12 }], TAXAS), 9266.09)
 })
 
 test('cada parcela usa a sua própria taxa', () => {
@@ -30,8 +35,8 @@ test('cada parcela usa a sua própria taxa', () => {
 })
 
 test('débito usa sempre a taxa de 1x, mesmo sem parcelas informadas', () => {
-  const liquido = calcLiquidoRecebido([{ tipo: 'cartao_debito', valor: 1000 }], TAXAS)
-  assert.ok(Math.abs(liquido - 1000 / 1.0139) < 0.01)
+  // 1.000 × (1 − 1,39%) = 986,10
+  assert.equal(calcLiquidoRecebido([{ tipo: 'cartao_debito', valor: 1000 }], TAXAS), 986.1)
 })
 
 test('parcela sem taxa cadastrada passa integral em vez de zerar', () => {
@@ -54,8 +59,8 @@ test('pagamento misto soma o líquido de cada parte', () => {
     { tipo: 'dinheiro', valor: 2000 },
     { tipo: 'cartao_credito', valor: 6634.88, parcelas: 8 },
   ]
-  const esperado = 2000 + 6634.88 / 1.0916
-  assert.ok(Math.abs(calcLiquidoRecebido(pagamentos, TAXAS) - esperado) < 0.01)
+  // 2.000 + 6.634,88 × (1 − 9,16%) = 2.000 + 6.027,12, em centavos
+  assert.equal(calcLiquidoRecebido(pagamentos, TAXAS), 8027.12)
 })
 
 test('validarPrecoVenda: déficit é o que falta pro mínimo — o desconto que será gravado', () => {
@@ -78,10 +83,28 @@ test('validarPrecoVenda: acima do mínimo o déficit não fica negativo', () => 
 })
 
 test('validarPrecoVenda: cartão pode reprovar mesmo com bruto acima do mínimo', () => {
-  // 10908 > 10490, mas a taxa de 12x derruba o líquido pra baixo do piso.
-  const r = validarPrecoVenda([{ tipo: 'cartao_credito', valor: 10908, parcelas: 12 }], 10490, TAXAS)
+  // 10.900 em 12x a 9% passa do mínimo de 10.000 no bruto, mas deixa 9.919: faltam 81.
+  const r = validarPrecoVenda([{ tipo: 'cartao_credito', valor: 10900, parcelas: 12 }], 10000, TAXAS)
   assert.equal(r.valido, false)
-  assert.ok(r.deficit > 0)
+  assert.equal(r.liquido, 9919)
+  assert.equal(r.deficit, 81)
+})
+
+test('validarPrecoVenda: o bruto que embute a taxa (10.000 / 0,91 = 10.989,01) passa no mínimo', () => {
+  const r = validarPrecoVenda([{ tipo: 'cartao_credito', valor: 10989.01, parcelas: 12 }], 10000, TAXAS)
+  assert.equal(r.valido, true)
+  assert.equal(r.liquido, 10000)
+})
+
+test('taxa de 100% ou mais deixa o líquido em 0', () => {
+  const taxas = { ...TAXAS, taxasCartao: { '12': 1 }, taxasLink: { '12': 1.5 } }
+  assert.equal(calcLiquidoRecebido([{ tipo: 'cartao_credito', valor: 10000, parcelas: 12 }], taxas), 0)
+  assert.equal(calcLiquidoRecebido([{ tipo: 'link_pagamento', valor: 10000, parcelas: 12 }], taxas), 0)
+})
+
+test('taxa negativa não aumenta o líquido', () => {
+  const taxas = { ...TAXAS, taxasCartao: { '12': -0.05 } }
+  assert.equal(calcLiquidoRecebido([{ tipo: 'cartao_credito', valor: 10000, parcelas: 12 }], taxas), 10000)
 })
 
 test('parcelasComTaxa: as parcelas dos pagamentos parcelados que pagam taxa', () => {
@@ -104,4 +127,29 @@ test('parcelasComTaxa: N diferentes saem em ordem e sem repetir', () => {
     { tipo: 'cartao_credito', valor: 3000, parcelas: 6 },
     { tipo: 'cartao_credito', valor: 3000, parcelas: 12 },
   ]), [6, 12])
+})
+
+test('brutoParaReceber: exemplo do #50, para receber 10.000 a 9% cobra-se 10.989,01', () => {
+  assert.equal(brutoParaReceber(10000, 0.09), 10989.01)
+})
+
+test('liquidoDoBruto: 10.900 a 9% deixa 9.919', () => {
+  assert.equal(liquidoDoBruto(10900, 0.09), 9919)
+})
+
+test('cobrar o bruto calculado devolve o líquido pedido, em centavos', () => {
+  assert.equal(liquidoDoBruto(brutoParaReceber(10000, 0.09)!, 0.09), 10000)
+})
+
+test('taxa de 100% ou mais: não há bruto que pague, e o líquido é 0', () => {
+  assert.equal(brutoParaReceber(1000, 1), null)
+  assert.equal(brutoParaReceber(1000, 1.5), null)
+  assert.equal(liquidoDoBruto(1000, 1), 0)
+})
+
+test('taxa zero, negativa ou inválida não mexe no valor', () => {
+  for (const taxa of [0, -0.05, NaN]) {
+    assert.equal(brutoParaReceber(1000, taxa), 1000)
+    assert.equal(liquidoDoBruto(1000, taxa), 1000)
+  }
 })

@@ -9,6 +9,7 @@ import type { ResultadoFrete } from '../actions'
 import { fmtBRL } from '@/lib/preco-minimo'
 import { esc } from '@/lib/html'
 import { folhaSimulacao } from '@/lib/simulador-impressao'
+import { linhasDoSimulador, type LinhaDoSimulador as Linha } from '@/lib/simulador-padrao'
 
 // Financiamento oculto no simulador e no PDF, para todos, a pedido do Luis (#161,
 // 15/10/2026). É temporário: para voltar, troque para true. As taxas seguem na Precificação.
@@ -34,24 +35,6 @@ type Props = {
   lojasFrete: { id: string; nome: string; temCep: boolean }[]
   isAdmin: boolean
   lojaUsuarioId: string | null
-}
-
-
-
-type Linha = { parcelas: number; credito: number; parcela: number }
-
-function calcularLinhas(taxas: Record<string, number>, base: number, entrada: number): Linha[] {
-  const saldo = base - entrada
-  return Object.entries(taxas)
-    .filter(([, taxa]) => taxa > 0)
-    .sort(([a], [b]) => parseInt(a) - parseInt(b))
-    .map(([n, taxa]) => {
-      const parcelas = parseInt(n)
-      const credito = saldo * (1 + taxa)
-      const parcela = credito / parcelas
-      return { parcelas, credito, parcela }
-    })
-    .filter(r => r.credito > 0)
 }
 
 // Tabela de opções com checkboxes opcionais
@@ -409,23 +392,23 @@ function ResultadoTaxas({ modelo, taxas, lojasFrete, isAdmin, lojaUsuarioId }: O
   const entradaInvalida = base > 0 && entradaNum >= base
 
   const linhasCartaoDestaque = useMemo(
-    () => modelo ? calcularLinhas(taxas.taxasCartao, base, 0) : [],
+    () => modelo ? linhasDoSimulador(taxas.taxasCartao, base, 0, 'maquininha') : [],
     [modelo, base, taxas.taxasCartao]
   )
   const linhasCartao = useMemo(
-    () => modelo && !entradaInvalida ? calcularLinhas(taxas.taxasCartao, base, entradaNum) : [],
+    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasCartao, base, entradaNum, 'maquininha') : [],
     [modelo, base, entradaNum, entradaInvalida, taxas.taxasCartao]
   )
   const linhasDebito = useMemo(
-    () => modelo && !entradaInvalida ? calcularLinhas(taxas.taxasDebito, base, entradaNum) : [],
+    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasDebito, base, entradaNum, 'maquininha') : [],
     [modelo, base, entradaNum, entradaInvalida, taxas.taxasDebito]
   )
   const linhasLink = useMemo(
-    () => modelo && !entradaInvalida ? calcularLinhas(taxas.taxasLink, base, entradaNum) : [],
+    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasLink, base, entradaNum, 'maquininha') : [],
     [modelo, base, entradaNum, entradaInvalida, taxas.taxasLink]
   )
   const linhasFinanciamento = useMemo(
-    () => modelo && !entradaInvalida ? calcularLinhas(taxas.taxasFinanciamento, base, entradaNum) : [],
+    () => modelo && !entradaInvalida ? linhasDoSimulador(taxas.taxasFinanciamento, base, entradaNum, 'financiamento') : [],
     [modelo, base, entradaNum, entradaInvalida, taxas.taxasFinanciamento]
   )
 
