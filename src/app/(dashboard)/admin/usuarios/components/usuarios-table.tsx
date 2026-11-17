@@ -1,7 +1,7 @@
 'use client'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { BadgeCheck, Trash2, UserPlus, Eye, EyeOff, Power, PowerOff, Search } from 'lucide-react'
+import { BadgeCheck, Trash2, UserPlus, Eye, EyeOff, Power, PowerOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -20,6 +20,7 @@ import { diferencaDaFuncao } from '@/lib/modulos-picker-estado'
 import { ITENS } from '@/lib/navegacao'
 import { contaDoFormulario, gruposDaConta } from '@/lib/grupos-do-formulario'
 import { filtrarUsuarios, type FiltrosUsuarios } from '@/lib/usuarios-filtro'
+import { BuscaDaLista, FiltroSituacao, SeloIniciais, SituacaoAtivo } from '@/components/cadastro/lista-cadastro'
 
 // O picker esconde os itens de regra própria: o resumo conta só o que ele mostra.
 const IDS_MODULOS = ITENS.filter(i => !i.regraPropria).map(i => i.id)
@@ -475,25 +476,12 @@ export function UsuariosTable({ usuarios, lojas, grupos, limites, cargos, contaA
     const n = new Set([...u.gruposAprovacao, ...(u.grupoDaLojaId ? [u.grupoDaLojaId] : [])]).size
     return `${n} ${n === 1 ? 'grupo' : 'grupos'}${u.aprovaPagamentoSensivel ? ', transferência' : ''}`
   }
-  const iniciais = (nome: string) => { const p = nome.trim().split(/\s+/); return ((p[0]?.[0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() }
-  const Situacao = ({ ativo }: { ativo: boolean }) => (
-    <span className={`inline-flex items-center gap-1.5 text-sm ${ativo ? '' : 'text-muted-foreground'}`}>
-      <span className={`size-1.5 rounded-full ${ativo ? 'bg-success' : 'bg-input'}`} />{ativo ? 'Ativo' : 'Inativo'}
-    </span>
-  )
-  const Ini = ({ nome }: { nome: string }) => (
-    <span className="grid size-7 shrink-0 place-items-center rounded-sm border bg-muted text-[11px] font-semibold text-muted-foreground">{iniciais(nome)}</span>
-  )
   const painel = criando || !!editando
 
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <label className="flex h-8 w-full items-center gap-2 rounded-md border border-input bg-card px-2 text-muted-foreground sm:w-72">
-          <Search size={15} className="shrink-0" />
-          <input value={filtros.busca} onChange={e => setFiltros(f => ({ ...f, busca: e.target.value }))} placeholder="Buscar por nome, e-mail ou loja"
-            aria-label="Buscar usuário" className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground" />
-        </label>
+        <BuscaDaLista valor={filtros.busca} onChange={busca => setFiltros(f => ({ ...f, busca }))} placeholder="Buscar por nome, e-mail ou loja" rotulo="Buscar usuário" />
         {/* selects nativos: o Select do design system mostraria o id no lugar do nome */}
         <select aria-label="Função" value={filtros.papel} onChange={e => setFiltros(f => ({ ...f, papel: e.target.value }))} className="h-8 flex-1 rounded-md border border-input bg-card px-2 text-sm sm:flex-none">
           <option value="">Todas as funções</option>
@@ -505,14 +493,7 @@ export function UsuariosTable({ usuarios, lojas, grupos, limites, cargos, contaA
             {contasDaLista.map(c => <option key={c} value={c}>{contasNomes[c] ?? 'Conta'}</option>)}
           </select>
         )}
-        <div className="flex gap-1" role="group" aria-label="Situação">
-          {(['ativos', 'inativos', 'todos'] as const).map(s => (
-            <button key={s} type="button" aria-pressed={filtros.situacao === s} onClick={() => setFiltros(f => ({ ...f, situacao: s }))}
-              className="h-8 rounded-md border px-2.5 text-sm text-muted-foreground aria-pressed:border-foreground aria-pressed:font-medium aria-pressed:text-foreground">
-              {s === 'ativos' ? 'Ativos' : s === 'inativos' ? 'Inativos' : 'Todos'}
-            </button>
-          ))}
-        </div>
+        <FiltroSituacao valor={filtros.situacao} onChange={situacao => setFiltros(f => ({ ...f, situacao }))} />
         <span className="hidden flex-1 sm:block" />
         {limites.podeCargos && <Button variant="outline" onClick={() => setVendoCargos(true)} className="gap-2"><BadgeCheck size={16} /> Cargos</Button>}
         <Button onClick={() => setCriando(true)} className="gap-2"><UserPlus size={16} /> Novo usuário</Button>
@@ -536,7 +517,7 @@ export function UsuariosTable({ usuarios, lojas, grupos, limites, cargos, contaA
               <tr key={u.id} onClick={() => setEditando(u)} className="cursor-pointer border-t hover:bg-muted/60">
                 <td className="px-3 py-2">
                   <button type="button" onClick={() => setEditando(u)} className="flex items-center gap-2.5 text-left">
-                    <Ini nome={u.nome} />
+                    <SeloIniciais nome={u.nome} />
                     <span className="min-w-0"><span className="block font-medium">{u.nome}</span><span className="block text-xs text-muted-foreground">{u.email}</span></span>
                   </button>
                 </td>
@@ -547,7 +528,7 @@ export function UsuariosTable({ usuarios, lojas, grupos, limites, cargos, contaA
                 <td className="px-3 py-2">{u.lojaNome ?? <span className="text-muted-foreground">Sem loja</span>}</td>
                 {contasDaLista.length > 1 && <td className="px-3 py-2 text-muted-foreground">{u.contaId ? contasNomes[u.contaId] : 'Plataforma'}</td>}
                 <td className="px-3 py-2 text-muted-foreground tabular-nums">{ondeAprova(u)}</td>
-                <td className="px-3 py-2"><Situacao ativo={u.ativo} /></td>
+                <td className="px-3 py-2"><SituacaoAtivo ativo={u.ativo} /></td>
               </tr>
             ))}
           </tbody>
@@ -559,7 +540,7 @@ export function UsuariosTable({ usuarios, lojas, grupos, limites, cargos, contaA
       <div className="divide-y rounded-md border bg-card md:hidden">
         {lista.map(u => (
           <button key={u.id} type="button" onClick={() => setEditando(u)} className="flex w-full items-start gap-2.5 px-3 py-3 text-left">
-            <Ini nome={u.nome} />
+            <SeloIniciais nome={u.nome} />
             <span className="min-w-0 flex-1">
               <span className="block font-medium">{u.nome}</span>
               <span className="block truncate text-xs text-muted-foreground">{u.email}</span>
@@ -568,7 +549,7 @@ export function UsuariosTable({ usuarios, lojas, grupos, limites, cargos, contaA
               </span>
               {detalhePapel(u) && <span className="block text-xs text-muted-foreground">{detalhePapel(u)}</span>}
             </span>
-            <Situacao ativo={u.ativo} />
+            <SituacaoAtivo ativo={u.ativo} />
           </button>
         ))}
       </div>
@@ -582,7 +563,7 @@ export function UsuariosTable({ usuarios, lojas, grupos, limites, cargos, contaA
           <SheetHeader className="border-b pr-12">
             {editando ? (
               <div className="flex items-center gap-2.5">
-                <Ini nome={editando.nome} />
+                <SeloIniciais nome={editando.nome} />
                 <div className="min-w-0">
                   <SheetTitle className="truncate">{editando.nome}</SheetTitle>
                   <p className="text-xs text-muted-foreground">{nomePapel(editando)}{editando.lojaNome ? ` na ${editando.lojaNome}` : ''}</p>

@@ -21,3 +21,9 @@ export function semZerosAEsquerda(texto: string | null | undefined): string {
 
 /** Quantidade com a palavra certa: "1 moto", "2 motos", "0 motos". */
 export const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`
+
+/** "Ana Paula Souza" → "AS": primeira letra do primeiro e do último nome, para o selo de iniciais. */
+export function iniciaisDoNome(nome: string): string {
+  const partes = nome.trim().split(/\s+/)
+  return ((partes[0]?.[0] ?? '') + (partes.length > 1 ? partes[partes.length - 1][0] : '')).toUpperCase()
+}

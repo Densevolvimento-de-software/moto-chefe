@@ -3,7 +3,8 @@ import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { grupoAtivoDaRequisicao } from '@/lib/grupo'
 import { notasParaBaixar } from '@/lib/queries/notas-emitidas'
-import { nomeDoArquivo, periodoEmissao, type Situacao, type TipoArquivo } from '@/lib/notas-emitidas'
+import { nomeDoArquivo, type Situacao, type TipoArquivo } from '@/lib/notas-emitidas'
+import { periodoDoMesBrt } from '@/lib/data-venda'
 import { zipDasNotas, type Baixar } from '@/lib/notas-emitidas-arquivos'
 
 // Route Handler e não Server Action: um lote grande leva minutos e Server Action trava as outras (hotfix v1.2.2).
@@ -51,7 +52,7 @@ async function responder(req: NextRequest, p: URLSearchParams) {
   const situacao = SITUACOES.find(s => s === p.get('situacao')) ?? 'todas'
   const ids = p.getAll('id')
   const grupo = await grupoAtivoDaRequisicao(usuario)
-  const periodo = periodoEmissao({ de: p.get('de') ?? undefined, ate: p.get('ate') ?? undefined })
+  const periodo = periodoDoMesBrt({ de: p.get('de') ?? undefined, ate: p.get('ate') ?? undefined })
 
   const notas = await notasParaBaixar({
     grupoId: grupo.id,

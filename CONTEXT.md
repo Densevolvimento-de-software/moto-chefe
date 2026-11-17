@@ -83,7 +83,12 @@ _Evitar_: veículo
 Moto vendida fora do sistema, cadastrada só para registrar garantia. Nunca é estoque.
 
 **Status**:
-Onde a moto está fisicamente: na caixa, montada, em garantia ou vendida.
+Onde a moto está fisicamente: em transporte, na caixa, montada, em garantia ou vendida.
+
+**Em transporte**:
+Status da moto já comprada pela nota de entrada que ainda não chegou na loja. Pode ser reservada;
+não pode ser montada, vendida nem transferida até alguém marcar a chegada, quando passa a "Na caixa".
+_Evitar_: a caminho, em trânsito, faturada
 
 **Na caixa**:
 Status da moto que chegou e ainda não foi montada. A tela mostra "Caixa".

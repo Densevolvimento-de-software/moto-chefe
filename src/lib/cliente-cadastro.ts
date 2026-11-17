@@ -1,10 +1,12 @@
 // ─── Cadastro de cliente (CPF único por Conta) ────────────────────────────────
 // Na persona do admin_rede (#517, ADR-0019), CPF repetido recebe uma frase neutra: a trava é
 // da Conta dona inteira, e "já cadastrado" revelaria que o cliente existe em outro grupo dela.
+// A recusa sai como RecusaUsuario, que a action devolve como { ok: false, erro } por acao() (#404).
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { clientes } from '@/lib/db/schema'
 import { clientesDoEscopo } from '@/lib/conta'
+import { RecusaUsuario } from '@/lib/resultado-action'
 
 type Executor = Pick<typeof db, 'insert'>
 type Escopo = { contaId: string; grupoLiberado?: string | null }
@@ -15,6 +17,7 @@ const CAMPOS_DO_FORMULARIO = [
   'endereco', 'numero', 'complemento', 'bairro', 'cep', 'cidade', 'uf',
 ] as const satisfies readonly (keyof typeof clientes.$inferInsert)[]
 type CampoDoFormulario = (typeof CAMPOS_DO_FORMULARIO)[number]
+type DadosCliente = Pick<typeof clientes.$inferInsert, CampoDoFormulario>
 
 const soDoFormulario = <T extends object>(dados: T) =>
   Object.fromEntries(Object.entries(dados).filter(([campo]) => (CAMPOS_DO_FORMULARIO as readonly string[]).includes(campo))) as
@@ -35,30 +38,31 @@ export function mensagemCpfRepetido(escopo: { grupoLiberado?: string | null }): 
 export async function cadastrarCliente(
   exec: Executor,
   escopo: Escopo,
-  dados: Omit<typeof clientes.$inferInsert, 'contaId'>,
+  dados: DadosCliente,
 ): Promise<string> {
   try {
     const [novo] = await exec.insert(clientes).values({ ...soDoFormulario(dados), contaId: escopo.contaId }).returning({ id: clientes.id })
     return novo.id
   } catch (e: unknown) {
-    if (cpfRepetido(e)) throw new Error(mensagemCpfRepetido(escopo))
+    if (cpfRepetido(e)) throw new RecusaUsuario(mensagemCpfRepetido(escopo))
     throw e
   }
 }
 
+// Cliente de outra Conta e id inexistente recebem a mesma frase: não revela que ele existe.
 export async function atualizarCliente(
   exec: Pick<typeof db, 'update'>,
   escopo: Escopo,
   id: string,
-  dados: Partial<Omit<typeof clientes.$inferInsert, 'contaId'>>,
+  dados: Partial<DadosCliente>,
 ): Promise<void> {
   try {
     const atualizados = await exec.update(clientes).set({ ...soDoFormulario(dados), atualizadoEm: new Date() })
       .where(and(eq(clientes.id, id), clientesDoEscopo(escopo.contaId, escopo)))
       .returning({ id: clientes.id })
-    if (!atualizados.length) throw new Error('Cliente não encontrado')
+    if (!atualizados.length) throw new RecusaUsuario('Cliente não encontrado')
   } catch (e: unknown) {
-    if (cpfRepetido(e)) throw new Error(mensagemCpfRepetido(escopo))
+    if (cpfRepetido(e)) throw new RecusaUsuario(mensagemCpfRepetido(escopo))
     throw e
   }
 }

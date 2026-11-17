@@ -10,7 +10,7 @@ nomes, com o propósito de cada um e os padrões não secretos, está em `.env.e
 |---|---|---|
 | Produção | **Vercel → Environment Variables → Production** (projeto `mova-motochefe`, time MOVA) | `.env.prod.local`, só na máquina de quem opera a prod |
 | Staging | **Bitwarden, coleção "MOVA staging"** | `.env.local` local; Vercel **Preview** (desde 2026-10-07; ver [`staging.md`](staging.md#app-na-vercel-preview)) |
-| CI (GitHub Actions) | **Secrets do repo** `Meu-mova/moto-chefe` (Settings → Secrets and variables → Actions) | nenhuma |
+| CI (GitHub Actions) | **Secrets do repo** `Densevolvimento-de-software/moto-chefe` (Settings → Secrets and variables → Actions): `STAGING_DATABASE_URL`, `SMOKE_SENHA`, `VERCEL_AUTOMATION_BYPASS_SECRET`, `CLAUDE_CODE_OAUTH_TOKEN`, `GITLEAKS_LICENSE` | nenhuma |
 | Credencial de integração por grupo ou loja | **Banco**. Cifradas com `src/lib/cripto.ts` (AES-256-GCM, chave `CERT_MASTER_KEY`): MCPAI, Nota Gateway, certificado A1. Bling, Kommo e fábrica: não há uso de `cripto.ts` em `bling.ts`, `kommo.ts` nem `fabrica-por-loja.ts` | nenhuma |
 
 Secrets do GitHub:

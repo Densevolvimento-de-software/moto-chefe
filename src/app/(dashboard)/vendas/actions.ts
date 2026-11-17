@@ -1,5 +1,6 @@
 'use server'
 import { aplicarEdicaoAprovadaTx, type EdicaoPendente } from '@/lib/editar-venda-peca'
+import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
 import { getUsuarioLogado } from '@/lib/auth'
 import { registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
 import { db } from '@/lib/db'
@@ -1582,8 +1583,7 @@ async function buscarDanfe(motoId: string): Promise<{ linkDanfe: string | null; 
     if (porNumero.length === 1) pdfPath = porNumero[0].pdfPath
   }
   if (pdfPath) {
-    const { createClient } = await import('@supabase/supabase-js')
-    const { data } = await createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    const { data } = await clienteSupabaseAdmin()
       .storage.from('nfe-bling').createSignedUrl(pdfPath, 600)
     if (data?.signedUrl) return { linkDanfe: data.signedUrl, linkPDF: data.signedUrl }
   }

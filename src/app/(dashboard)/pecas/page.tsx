@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 import { listarPecas } from '@/lib/pecas-da-conta'
 import { contaDoGrupoAtivo, getGrupoAtivo, listarLojasDoGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { listarUsuariosDoGrupo } from '@/lib/usuarios-do-grupo'
-import { hojeBrt } from '@/lib/data-venda'
+import { hojeBrt, primeiroDiaDoMesBrt } from '@/lib/data-venda'
 import { calcStatusMultiPagamento } from '@/lib/conciliacao-status'
 import { listarVendasPecasAction } from './actions'
 import { lojaDoEstoque, PAPEIS_VENDA_PECA, podeGerirPecas, podeVenderPeca } from './papeis'
@@ -25,11 +25,6 @@ import { ImportarPlanilhaPecasDialog } from './components/importar-planilha-peca
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-/** Primeiro dia do mês corrente no calendário de Brasília. */
-function primeiroDiaDoMes() {
-  return `${hojeBrt().slice(0, 7)}-01`
-}
-
 export default async function PecasPage({
   searchParams,
 }: {
@@ -46,7 +41,7 @@ export default async function PecasPage({
   const params = await searchParams
   // Período sempre preenchido: os cards somam a lista devolvida, e sem recorte a
   // consulta bateria no teto de 500 linhas e mostraria total menor que o real.
-  const de  = params.de  ?? primeiroDiaDoMes()
+  const de  = params.de  ?? primeiroDiaDoMesBrt()
   const ate = params.ate ?? hojeBrt()
 
   // Estoque por loja (#195): o catálogo mostra o saldo de uma loja só. Admin escolhe
