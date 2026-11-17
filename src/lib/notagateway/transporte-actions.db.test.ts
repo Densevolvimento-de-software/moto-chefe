@@ -169,19 +169,18 @@ test('salvar e reenviar leva o transporte no mesmo id, na mesma linha e com o me
   assert.deepEqual(notes[0].payload.transporte, expectedTransport)
 })
 
-test('sócio e aux_adm com loja no cadastro corrigem e reenviam a NF recusada de outra loja do grupo (#17)', async () => {
-  for (const papel of ['admin_socio', 'aux_adm']) {
+for (const papel of ['admin_socio', 'aux_adm']) {
+  test(`${papel} com loja no cadastro corrige e reenvia a NF recusada de outra loja do grupo (#17)`, async () => {
     const f = await fixture(true)
     const outraLoja = await semearLoja(db, f.grupoId, nomeDeTeste(f.prefixo, f.nome, 'Loja 2'))
     const id = await semearUsuario(db, { ...f, lojaId: outraLoja }, { papel, rotulo: `${papel}-outra-loja`, comConta: true })
     user = { id, papel, lojaId: outraLoja, contaId: f.contaId, gruposAcesso: [] }
     const net = network(f)
     const result = await actions.corrigirEReenviarNfAction(f.motoId, { moto: { ncm: '87116000', cest: '0107700' } }, renave, transport)
-    assert.equal(result.ok, true, `${papel}: ${JSON.stringify(result)}`)
-    assert.deepEqual(net.payloads.map(p => [p.id, p.itens[0].cest]), [[f.externalId, '0107700']], papel)
-    mock.restoreAll()
-  }
-})
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.deepEqual(net.payloads.map(p => [p.id, p.itens[0].cest]), [[f.externalId, '0107700']])
+  })
+}
 
 test('recusa 841: reenviar com o RENAVE editado leva o veículo novo no mesmo id, linha e número (#673)', async () => {
   const f = await fixture(true)
