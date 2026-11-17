@@ -1,4 +1,4 @@
-import { eq, sql, type SQL } from 'drizzle-orm'
+import { and, eq, sql, type SQL } from 'drizzle-orm'
 import type { db } from '@/lib/db'
 import { aprovacoesVenda, historicoEstoque, motos } from '@/lib/db/schema'
 import type { TipoAprovacaoVenda } from '@/lib/aprovacao-venda'
@@ -47,6 +47,10 @@ export async function gravarPedidoDeAprovacaoTx(tx: Tx, d: {
     observacao: d.observacao,
   })
 }
+
+/** As linhas pendentes do mesmo pedido, na loja dele: uma por moto abaixo do mínimo, respondidas juntas (#20, D-D). */
+export const linhasPendentesDoPedido = (pedidoId: string, lojaId: string) => and(eq(aprovacoesVenda.origem, 'pedido'),
+  eq(aprovacoesVenda.status, 'pendente'), eq(aprovacoesVenda.lojaId, lojaId), sql`${aprovacoesVenda.dadosVenda}->>'pedidoId' = ${pedidoId}`)
 
 /**
  * O pedido tem um pedido de aprovação pendente dele mesmo (#776). Não basta a moto estar "aguardando":

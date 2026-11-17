@@ -49,7 +49,7 @@ import { vendaDoUsuario, vendaDoUsuarioParaNf } from '@/lib/venda-do-usuario'
 import { podeOperarNfSaida } from './papeis-nf-saida'
 import { apagarVendaTx } from '@/lib/apagar-venda'
 import { abaixoDoMinimo, aprovacaoNecessaria, MOTIVO_OBRIGATORIO, motivoDaAprovacao, podeVenderAbaixoDoMinimo, temPagamentoSensivel, type TipoAprovacaoVenda } from '@/lib/aprovacao-venda'
-import { gravarPedidoDeAprovacaoTx } from '@/lib/pedido-de-aprovacao'
+import { gravarPedidoDeAprovacaoTx, linhasPendentesDoPedido } from '@/lib/pedido-de-aprovacao'
 import { apagarArquivosAssinatura } from '@/lib/assinatura/infra'
 
 /**
@@ -304,8 +304,7 @@ async function efetivarVenda(
   } else {
     const motivoFinal = motivoDaAprovacao(tipo, motivo)
     if (!motivoFinal) throw new RecusaUsuario(MOTIVO_OBRIGATORIO)
-    const snapshot = tipo === 'valor_minimo' && abaixo[0] ? { valorMinimo: abaixo[0].minimo, liquido: abaixo[0].liquido } : null
-    await db.transaction(tx => pedirAprovacaoDoPedidoTx(tx, { ...dados, numero: pedido.numero, tipo, motivo: motivoFinal, snapshot }))
+    await db.transaction(tx => pedirAprovacaoDoPedidoTx(tx, { ...dados, numero: pedido.numero, tipo, motivo: motivoFinal, abaixo }))
   }
   revalidatePath('/vendas')
   revalidatePath('/estoque')
@@ -1870,11 +1869,11 @@ async function aprovarVenda(aprovacaoId: string) {
     // Revalida a origem como o Vender: pode ter sido desativada enquanto o pedido esperava.
     const origem = await garantirOrigemValida(aprovacao.lojaId, dados.origem.origemId, dados.origem.origemDetalhe ?? undefined)
     await db.transaction(async (tx) => {
-      const [claimed] = await tx.update(aprovacoesVenda)
+      const claimed = await tx.update(aprovacoesVenda)
         .set({ status: 'aprovada', respondidoPor: usuario.id, dataResposta: new Date() })
-        .where(and(eq(aprovacoesVenda.id, aprovacaoId), eq(aprovacoesVenda.status, 'pendente')))
+        .where(linhasPendentesDoPedido(dados.pedidoId, aprovacao.lojaId))
         .returning({ id: aprovacoesVenda.id })
-      if (!claimed) throw new RecusaUsuario('Esta solicitação não está mais pendente. Recarregue a página.')
+      if (!claimed.some(l => l.id === aprovacaoId)) throw new RecusaUsuario('Esta solicitação não está mais pendente. Recarregue a página.')
       await efetivarPedidoTx(tx, { ...dados, lojaId: aprovacao.lojaId, origem, efetivadoPor: usuario.id, daAprovacao: true })
     })
     revalidatePath('/vendas')
@@ -1959,28 +1958,29 @@ async function recusarVenda(aprovacaoId: string, observacao?: string) {
 
   await db.transaction(async (tx) => {
     // UPDATE condicionado a status = 'pendente' — evita recusar duas vezes
-    // (ou recusar depois de já aprovada) se dois aprovadores agirem juntos.
-    const [claimed] = await tx.update(aprovacoesVenda)
+    // (ou recusar depois de já aprovada) se dois aprovadores agirem juntos. No pedido, todas as linhas dele (D-D).
+    const claimed = await tx.update(aprovacoesVenda)
       .set({ status: 'recusada', respondidoPor: usuario.id, dataResposta: new Date() })
-      .where(and(eq(aprovacoesVenda.id, aprovacaoId), eq(aprovacoesVenda.status, 'pendente')))
-      .returning({ id: aprovacoesVenda.id })
-    if (!claimed) throw new RecusaUsuario('Esta solicitação não está mais pendente. Recarregue a página.')
+      .where(aprovacao.origem === 'pedido'
+        ? linhasPendentesDoPedido((aprovacao.dadosVenda as PedidoEmAprovacao).pedidoId, aprovacao.lojaId)
+        : and(eq(aprovacoesVenda.id, aprovacaoId), eq(aprovacoesVenda.status, 'pendente')))
+      .returning({ id: aprovacoesVenda.id, motoId: aprovacoesVenda.motoId, disponibilidadeAnterior: aprovacoesVenda.disponibilidadeAnterior })
+    if (!claimed.some(l => l.id === aprovacaoId)) throw new RecusaUsuario('Esta solicitação não está mais pendente. Recarregue a página.')
 
-    await tx.update(motos)
-      .set({ disponibilidade: aprovacao.disponibilidadeAnterior })
-      .where(eq(motos.id, aprovacao.motoId!))
-
-    await tx.insert(historicoEstoque).values({
-      motoId: aprovacao.motoId!,
-      lojaOrigemId: aprovacao.lojaId,
-      usuarioId: usuario.id,
-      tipo: 'mudanca_status',
-      referenciaTipo: 'aprovacao_venda',
-      referenciaId: aprovacaoId,
-      observacao: observacao?.trim()
-        ? `Venda recusada — Motivo: ${observacao.trim()}`
-        : 'Venda recusada',
-    })
+    for (const l of claimed) {
+      await tx.update(motos).set({ disponibilidade: l.disponibilidadeAnterior }).where(eq(motos.id, l.motoId!))
+      await tx.insert(historicoEstoque).values({
+        motoId: l.motoId!,
+        lojaOrigemId: aprovacao.lojaId,
+        usuarioId: usuario.id,
+        tipo: 'mudanca_status',
+        referenciaTipo: 'aprovacao_venda',
+        referenciaId: l.id,
+        observacao: observacao?.trim()
+          ? `Venda recusada — Motivo: ${observacao.trim()}`
+          : 'Venda recusada',
+      })
+    }
   })
 
   revalidatePath('/vendas')
