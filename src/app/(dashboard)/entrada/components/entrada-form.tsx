@@ -12,6 +12,8 @@ import type { Conferencia } from '@/lib/entrada-pecas'
 import { ConferenciaPecas } from './conferencia-pecas'
 import { PecasPorPlanilha } from './pecas-por-planilha'
 import { MotosImportadas } from './motos-importadas'
+import { StatusNaEntradaCampo } from './status-na-entrada'
+import type { StatusNaEntrada } from '@/lib/entrada-motos-regras'
 import { acrescentarDoXml, chaveDoChassi, devolverTiradas, fichasDoEnvio, tirarMarcadas, type Exclusao, type MotoImportada } from '@/lib/entrada-lista'
 import { marcarVarias } from '@/lib/selecao'
 import { plural } from '@/lib/texto'
@@ -33,6 +35,8 @@ export function EntradaForm({ modelos, lojas, apelidos = [] }: { modelos: Modelo
   const [modeloId, setModeloId] = useState('')
   const [precoCompra, setPrecoCompra] = useState('')
   const [lojaId, setLojaId] = useState('')
+  // Vale para o lançamento inteiro, nos dois modos; volta a Caixa depois de gravar (#10).
+  const [statusNaEntrada, setStatusNaEntrada] = useState<StatusNaEntrada>('caixa')
   const [linhas, setLinhas] = useState<MotoLinha[]>([{ chassi: '', cor: '', motor: '' }])
 
   const [linhasPlanilha, setLinhasPlanilha] = useState<MotoImportada[]>([])
@@ -365,6 +369,7 @@ export function EntradaForm({ modelos, lojas, apelidos = [] }: { modelos: Modelo
         precoCompra,
         lojaId,
         motos: motosValidas,
+        statusNaEntrada,
       })
 
       if (result.error) {
@@ -375,6 +380,7 @@ export function EntradaForm({ modelos, lojas, apelidos = [] }: { modelos: Modelo
         setPrecoCompra('')
         setModeloId('')
         setLojaId('')
+        setStatusNaEntrada('caixa')
         setLinhas([{ chassi: '', cor: '', motor: '' }])
       }
     } finally {
@@ -439,6 +445,7 @@ export function EntradaForm({ modelos, lojas, apelidos = [] }: { modelos: Modelo
           })),
           fiscais: fichasDoEnvio(linhasPlanilha),
           pecas: paraGravacao(linhasPecas),
+          statusNaEntrada,
         })
         if (result.error) {
           toast.error(result.error, { duration: Infinity, closeButton: true })
@@ -448,6 +455,7 @@ export function EntradaForm({ modelos, lojas, apelidos = [] }: { modelos: Modelo
           setNotaPecas(null)
           setLinhasPecas([])
           setLojaId('')
+          setStatusNaEntrada('caixa')
         }
       } finally {
         terminarEnvio()
@@ -468,6 +476,7 @@ export function EntradaForm({ modelos, lojas, apelidos = [] }: { modelos: Modelo
           notaFiscal: l.nf,
         })),
         fiscais: fichasDoEnvio(linhasPlanilha),
+        statusNaEntrada,
       })
 
       if (result.error) {
@@ -476,6 +485,7 @@ export function EntradaForm({ modelos, lojas, apelidos = [] }: { modelos: Modelo
         toast.success(result.success)
         substituirLista([])
         setLojaId('')
+        setStatusNaEntrada('caixa')
       }
     } finally {
       terminarEnvio()
@@ -535,6 +545,8 @@ export function EntradaForm({ modelos, lojas, apelidos = [] }: { modelos: Modelo
                 ))}
               </select>
             </div>
+
+            <StatusNaEntradaCampo valor={statusNaEntrada} onChange={setStatusNaEntrada} travado={loading} />
 
             <div>
               <label className="block text-sm text-muted-foreground mb-1">XMLs de NF-e (recomendado)</label>
@@ -721,6 +733,7 @@ export function EntradaForm({ modelos, lojas, apelidos = [] }: { modelos: Modelo
                 />
               </div>
             </div>
+            <StatusNaEntradaCampo valor={statusNaEntrada} onChange={setStatusNaEntrada} travado={loading} />
           </div>
 
           <div className="bg-card rounded-lg border p-4 space-y-4">

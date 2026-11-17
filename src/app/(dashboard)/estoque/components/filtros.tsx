@@ -5,17 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MultiSelectFiltro } from './multi-select-filtro'
 import { ArrowLeftRight } from 'lucide-react'
+import { STATUS_DE_ESTOQUE } from '@/lib/status-moto'
 
 type Loja = { id: string; nome: string }
 type Modelo = { id: string; modelo: string }
 
 const DISP_DEFAULT = ['disponivel', 'reservada']
 
-const statusOpcoes = [
-  { value: 'caixa',       label: 'Caixa' },
-  { value: 'montada',     label: 'Montada' },
-  { value: 'em_garantia', label: 'Garantia' },
-]
+const statusOpcoes = STATUS_DE_ESTOQUE.map(s => ({ value: s.valor, label: s.rotulo }))
 
 const dispOpcoes = [
   { value: 'disponivel', label: 'Disponível' },

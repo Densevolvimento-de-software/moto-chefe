@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, type VendaVinculada } from './estado-moto'
+import { MOTO_ARQUIVADA } from './arquivar-moto-regras'
+import type { PapelDoBanco as Papel } from '@/lib/rotulo-do-papel'
+import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, motivoParaNaoMarcarChegada, avisoVendaBarrada, disponibilidadeAposCancelarReserva, soPodeReservar, avisoDasAcoes, statusLabel, type VendaVinculada } from './estado-moto'
 
 // A venda que estragou a LYDAE3936T1207627: efetivada em 20/08 e já faturada.
 const VENDA_FATURADA: VendaVinculada = { numero: 31118, notaFiscalSaida: '2263' }
@@ -95,4 +97,117 @@ test('reserva de moto disponível pode ser cancelada', () => {
 
 test('reserva de moto na caixa pode ser cancelada', () => {
   assert.equal(motivoBloqueioCancelarReserva({ disponibilidade: null }), null)
+})
+
+test('motivoParaNaoVender: a moto na caixa e a em transporte são barradas pelo status, cada uma com a sua frase', () => {
+  assert.deepEqual(
+    ['caixa', 'em_transporte', 'montada', 'em_garantia', 'vendida'].map(motivoParaNaoVender),
+    ['Moto ainda não foi montada. Não pode ser vendida.', 'Moto ainda em transporte. Não pode ser vendida.', null, null, null],
+  )
+})
+
+test('moto em transporte não vai para aprovação, nem reservada', () => {
+  assert.equal(motivoBloqueioPedidoAprovacao({ status: 'em_transporte', disponibilidade: 'reservada' }), 'Moto ainda em transporte. Não pode ser vendida.')
+})
+
+test('avisoVendaBarrada: a caixa com o texto de sempre, a em transporte com o seu; a que vende, nenhum', () => {
+  assert.deepEqual(avisoVendaBarrada('caixa'), {
+    titulo: 'A moto voltou ao estoque, mas ainda está em caixa',
+    texto: 'Moto em caixa não pode ser vendida. Use o botão Montar e depois o Vender.',
+  })
+  assert.deepEqual(avisoVendaBarrada('em_transporte'), {
+    titulo: 'A moto voltou ao estoque, mas ainda está em transporte',
+    texto: 'Moto em transporte não pode ser vendida. Marque a chegada, monte e depois venda.',
+  })
+  assert.deepEqual(['montada', 'em_garantia'].map(avisoVendaBarrada), [null, null])
+})
+
+// A chegada tem um caminho só, o botão Chegou (#11): a troca de status genérica não tira a moto do transporte.
+test('moto em transporte não tem transição na troca de status genérica, para nenhum papel', () => {
+  for (const papel of ['admin_geral', 'admin_socio', 'aux_adm'] as const) {
+    assert.deepEqual(getTransicoesStatusPermitidas('em_transporte', papel, true), [], papel)
+  }
+})
+
+const JA_CHEGOU = 'Esta moto não está mais em transporte.'
+const SEM_PERMISSAO_CHEGADA = 'Sem permissão para marcar a chegada desta moto.'
+const EM_TRANSPORTE = { status: 'em_transporte', arquivada: false }
+// Como a sessão entrega cada um (usuarioDaRede): o admin_rede chega com papel admin_socio e papelReal admin_rede.
+const pessoa = (papel: Papel) => ({ papel, papelReal: papel })
+const ADMIN_REDE = { papel: 'admin_socio', papelReal: 'admin_rede' } as const
+
+test('marcar chegada: só moto em transporte, por aux_adm da loja da moto ou admin_geral/admin_socio', () => {
+  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, pessoa('aux_adm'), true), null)
+  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, pessoa('admin_socio'), false), null)
+  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, pessoa('admin_geral'), false), null)
+  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, pessoa('aux_adm'), false), SEM_PERMISSAO_CHEGADA, 'aux_adm de outra loja')
+  for (const papel of ['vendedor', 'mecanico'] as const) {
+    assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, pessoa(papel), true), SEM_PERMISSAO_CHEGADA, papel)
+  }
+})
+
+// D2 do #11: o admin_rede opera como sócio no resto do app (Montar inclusive), mas não marca a chegada.
+test('marcar chegada: admin_rede recusa sem permissão, mesmo chegando como admin_socio', () => {
+  for (const isMinhaLoja of [true, false]) {
+    assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, ADMIN_REDE, isMinhaLoja), SEM_PERMISSAO_CHEGADA, String(isMinhaLoja))
+  }
+})
+
+// D2 do #11: moto arquivada não ganha o botão; a tela e a action decidem pela mesma regra.
+test('marcar chegada de moto arquivada em transporte recusa com a frase de desarquivar, para qualquer papel', () => {
+  for (const papel of ['admin_geral', 'admin_socio', 'aux_adm'] as const) {
+    assert.equal(motivoParaNaoMarcarChegada({ status: 'em_transporte', arquivada: true }, pessoa(papel), true), MOTO_ARQUIVADA, papel)
+  }
+})
+
+test('marcar chegada de moto que não está em transporte recusa, inclusive a montada que o admin pode voltar para Caixa', () => {
+  for (const status of ['caixa', 'montada', 'em_garantia', 'vendida']) {
+    assert.equal(motivoParaNaoMarcarChegada({ status, arquivada: false }, pessoa('admin_socio'), true), JA_CHEGOU, status)
+  }
+})
+
+test('motivoParaNaoTransferir: barra a em transporte (marcar a chegada) e a vendida; o resto do estoque transfere', () => {
+  assert.deepEqual(
+    ['em_transporte', 'vendida', 'caixa', 'montada', 'em_garantia'].map(motivoParaNaoTransferir),
+    ['Moto ainda em transporte. Marque a chegada antes de transferir.', 'Moto já foi vendida', null, null, null],
+  )
+})
+
+// Decisão do Luis (#9): garantia só depois da chegada e da montagem, como a função abrir_garantia do banco.
+test('motivoParaNaoAbrirGarantia: barra a em transporte e a caixa, cada uma com a sua frase; montada, em garantia e vendida abrem', () => {
+  assert.deepEqual(
+    ['em_transporte', 'caixa', 'montada', 'em_garantia', 'vendida'].map(motivoParaNaoAbrirGarantia),
+    ['Moto ainda em transporte. Garantia só depois da chegada.', 'Moto ainda não foi montada. Garantia só depois da montagem.', null, null, null],
+  )
+})
+
+test('disponibilidade depois de cancelar a reserva: nula na caixa e em transporte, "disponivel" no resto', () => {
+  assert.deepEqual(
+    ['caixa', 'em_transporte', 'montada', 'em_garantia'].map(disponibilidadeAposCancelarReserva),
+    [null, null, 'disponivel', 'disponivel'],
+  )
+})
+
+test('statusLabel: os rótulos dos status de estoque', () => {
+  assert.deepEqual(statusLabel, { em_transporte: 'Em transporte', caixa: 'Caixa', montada: 'Montada', em_garantia: 'Garantia' })
+})
+
+test('soPodeReservar: moto sem disponibilidade na caixa ou em transporte só reserva; a que vende, a já reservada e a vendida, não', () => {
+  const moto = (status: string, disponibilidade: string | null = null) => ({ status, disponibilidade })
+  assert.deepEqual(
+    [
+      moto('em_transporte'), moto('caixa'),
+      moto('em_transporte', 'reservada'), moto('caixa', 'reservada'), moto('caixa', 'disponivel'),
+      moto('montada'), moto('montada', 'disponivel'), moto('em_garantia'), moto('vendida'),
+    ].map(soPodeReservar),
+    [true, true, false, false, false, false, false, false, false],
+  )
+})
+
+// Protótipo variante 2 (#7), tela da moto: a frase fica no card Ações da moto em transporte.
+test('avisoDasAcoes: só a moto em transporte avisa quando vender, montar e transferir ficam liberados', () => {
+  assert.deepEqual(
+    ['em_transporte', 'caixa', 'montada', 'em_garantia', 'vendida'].map(avisoDasAcoes),
+    ['Vender, montar e transferir ficam liberados depois da chegada.', null, null, null, null],
+  )
 })

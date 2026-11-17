@@ -9,6 +9,7 @@ import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { conferirMotosDaEntrada, gravarMotosConferidas, type MotoEntradaLote, type QuemDaEntrada } from '@/lib/entrada-motos'
 import { conferirLinhasPecas, gravarEntradaPecas, type EntradaPecas, type LinhaEntradaPeca } from '@/lib/entrada-pecas'
 import type { FichaDaMoto } from '@/lib/nfe-fiscal'
+import type { StatusNaEntrada } from '@/lib/entrada-motos-regras'
 
 type Executor = Pick<typeof db, 'select' | 'insert' | 'update'>
 
@@ -22,6 +23,8 @@ export class NotaRecusada extends Error {
 export type NotaComPecas = {
   usuario: EntradaPecas['usuario'] & QuemDaEntrada
   lojaId: string
+  /** Status de todas as motos da nota, já conferido pelo servidor (#10). */
+  status: StatusNaEntrada
   nota: EntradaPecas['nota']
   motos: MotoEntradaLote[]
   fiscais?: FichaDaMoto[]
@@ -38,7 +41,7 @@ export async function registrarNotaComPecas(exec: Executor, e: NotaComPecas): Pr
   const erros = [...errosDasMotos, ...await conferirLinhasPecas(exec, e.lojaId, e.pecas)]
   if (erros.length) throw new NotaRecusada(erros)
 
-  await gravarMotosConferidas(exec, { lojaId: e.lojaId, usuarioId: e.usuario.id, prontas, fiscais: e.fiscais ?? [] })
+  await gravarMotosConferidas(exec, { lojaId: e.lojaId, usuarioId: e.usuario.id, status: e.status, prontas, fiscais: e.fiscais ?? [] })
   await gravarEntradaPecas(exec, { lojaId: e.lojaId, usuario: e.usuario, nota: e.nota, linhas: e.pecas })
   return { motos: prontas.length, pecas: e.pecas.length }
 }

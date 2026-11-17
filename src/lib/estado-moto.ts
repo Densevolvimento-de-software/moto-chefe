@@ -1,14 +1,21 @@
 // src/lib/estado-moto.ts
-export type Status = 'caixa' | 'montada' | 'em_garantia'
-export type Disponibilidade = 'disponivel' | 'reservada' | 'vendida' | 'aguardando_aprovacao'
+import { STATUS_DE_ESTOQUE, type StatusDeEstoque } from './status-moto'
 import type { PapelDoBanco } from '@/lib/rotulo-do-papel'
+import { MOTO_ARQUIVADA } from './arquivar-moto-regras'
+
+export type Status = StatusDeEstoque
+export type Disponibilidade = 'disponivel' | 'reservada' | 'vendida' | 'aguardando_aprovacao'
 
 // Do enum do banco: papel novo não precisa de outra lista aqui (só admin e aux_adm mudam estado).
 type Papel = PapelDoBanco
 
 const isAdmin = (p: Papel) => p === 'admin_geral' || p === 'admin_socio'
 
-// Transições de status físico (Aux Adm + Admin)
+// Quem mexe no status físico da moto: admin em qualquer loja que vê, aux_adm só na própria.
+const mudaStatusFisico = (papel: Papel, isMinhaLoja: boolean) => isAdmin(papel) || (papel === 'aux_adm' && isMinhaLoja)
+
+// Transições de status físico (Aux Adm + Admin). Em transporte → Caixa fica fora: a chegada tem um caminho
+// só, o botão Chegou (motivoParaNaoMarcarChegada + marcarChegadaAction), que trava a moto e recusa a arquivada.
 const transicoesNormais: Partial<Record<Status, Status[]>> = {
   caixa:       ['montada'],
   montada:     ['em_garantia'],
@@ -25,20 +32,23 @@ export function getTransicoesStatusPermitidas(
   papel: Papel,
   isMinhaLoja: boolean
 ): Status[] {
-  if (!isMinhaLoja && !isAdmin(papel)) return []
+  if (!mudaStatusFisico(papel, isMinhaLoja)) return []
+  return [
+    ...(transicoesNormais[statusAtual] ?? []),
+    ...(isAdmin(papel) ? transicoesCorrecao[statusAtual] ?? [] : []),
+  ]
+}
 
-  if (isAdmin(papel)) {
-    return [
-      ...(transicoesNormais[statusAtual] ?? []),
-      ...(transicoesCorrecao[statusAtual] ?? []),
-    ]
-  }
-
-  if (papel === 'aux_adm') {
-    return transicoesNormais[statusAtual] ?? []
-  }
-
-  return []
+/**
+ * Motivo pelo qual a pessoa não pode marcar a chegada desta moto (botão Chegou), ou null. A tela (mostra o
+ * botão) e a action (grava) passam por aqui com o usuário da sessão. A correção montada → caixa do admin não é chegada.
+ */
+export function motivoParaNaoMarcarChegada(moto: { status: string; arquivada: boolean }, quem: { papel: Papel; papelReal: Papel }, isMinhaLoja: boolean): string | null {
+  if (moto.arquivada) return MOTO_ARQUIVADA
+  if (moto.status !== 'em_transporte') return 'Esta moto não está mais em transporte.'
+  // A sessão entrega o admin_rede como admin_socio (usuarioDaRede); a chegada olha o papel real (D2 do #11).
+  if (quem.papelReal === 'admin_rede' || !mudaStatusFisico(quem.papel, isMinhaLoja)) return 'Sem permissão para marcar a chegada desta moto.'
+  return null
 }
 
 // Transições de disponibilidade (Aux Adm + Admin, apenas motos montadas)
@@ -97,6 +107,76 @@ export function motivoBloqueioPorVenda(
   return `Moto já vendida na venda nº ${venda.numero} — não pode voltar ao estoque. Se a venda foi um engano, cancele a venda primeiro; o cancelamento devolve a moto ao Showroom.`
 }
 
+const NAO_VENDE_POR_STATUS: Partial<Record<string, string>> = {
+  caixa: 'Moto ainda não foi montada. Não pode ser vendida.',
+  em_transporte: 'Moto ainda em transporte. Não pode ser vendida.',
+}
+
+/**
+ * Motivo pelo qual o status físico da moto impede a venda, ou null. Venda direta, pedido de venda,
+ * pedido de aprovação e o botão Vender da tela passam por aqui. Moto já vendida e disponibilidade
+ * ficam com cada chamador, que tem frase própria para elas.
+ */
+export function motivoParaNaoVender(status: string): string | null {
+  return NAO_VENDE_POR_STATUS[status] ?? null
+}
+
+const AVISO_VENDA_BARRADA: Partial<Record<string, { titulo: string; texto: string }>> = {
+  caixa: {
+    titulo: 'A moto voltou ao estoque, mas ainda está em caixa',
+    texto: 'Moto em caixa não pode ser vendida. Use o botão Montar e depois o Vender.',
+  },
+  em_transporte: {
+    titulo: 'A moto voltou ao estoque, mas ainda está em transporte',
+    texto: 'Moto em transporte não pode ser vendida. Marque a chegada, monte e depois venda.',
+  },
+}
+
+/**
+ * Aviso da moto que voltou ao estoque pelo painel de vendidas sem venda (?vender=1) e que o status
+ * ainda não deixa vender, ou null se ela vende.
+ */
+export function avisoVendaBarrada(status: string): { titulo: string; texto: string } | null {
+  return AVISO_VENDA_BARRADA[status] ?? null
+}
+
+const AVISO_DAS_ACOES: Partial<Record<string, string>> = {
+  em_transporte: 'Vender, montar e transferir ficam liberados depois da chegada.',
+}
+
+/** Frase do card Ações da moto cujo status ainda segura vender, montar e transferir, ou null. */
+export function avisoDasAcoes(status: string): string | null {
+  return AVISO_DAS_ACOES[status] ?? null
+}
+
+const NAO_TRANSFERE_POR_STATUS: Partial<Record<string, string>> = {
+  em_transporte: 'Moto ainda em transporte. Marque a chegada antes de transferir.',
+  vendida: 'Moto já foi vendida',
+}
+
+/**
+ * Motivo pelo qual o status físico da moto impede pedir a transferência, ou null. O servidor, o
+ * botão da tela e a lista de motos do diálogo de transferência passam por aqui.
+ */
+export function motivoParaNaoTransferir(status: string): string | null {
+  return NAO_TRANSFERE_POR_STATUS[status] ?? null
+}
+
+// Os status de estoque que a função abrir_garantia do banco recusa. O banco continua como última rede
+// (e é quem recusa o legado 'reservada', sem motos hoje).
+const NAO_ABRE_GARANTIA_POR_STATUS: Partial<Record<string, string>> = {
+  em_transporte: 'Moto ainda em transporte. Garantia só depois da chegada.',
+  caixa: 'Moto ainda não foi montada. Garantia só depois da montagem.',
+}
+
+/**
+ * Motivo pelo qual o status físico da moto impede abrir garantia, ou null. A action e o botão da tela
+ * passam por aqui.
+ */
+export function motivoParaNaoAbrirGarantia(status: string): string | null {
+  return NAO_ABRE_GARANTIA_POR_STATUS[status] ?? null
+}
+
 /**
  * Motivo pelo qual a moto não pode receber um pedido de aprovação de venda, ou
  * null se pode. Moto 'reservada' é aceita de propósito: é assim que se finaliza
@@ -106,7 +186,8 @@ export function motivoBloqueioPorVenda(
 export function motivoBloqueioPedidoAprovacao(
   moto: { status: string; disponibilidade: string | null },
 ): string | null {
-  if (moto.status === 'caixa') return 'Moto ainda não foi montada. Não pode ser vendida.'
+  const porStatus = motivoParaNaoVender(moto.status)
+  if (porStatus) return porStatus
   if (moto.status === 'vendida') return 'Moto já foi vendida'
   if (moto.disponibilidade === 'aguardando_aprovacao') return 'Esta moto já tem uma venda aguardando aprovação'
   return null
@@ -128,26 +209,27 @@ export function motivoBloqueioCancelarReserva(
   return null
 }
 
-export const statusLabel: Record<Status, string> = {
-  caixa:       'Caixa',
-  montada:     'Montada',
-  em_garantia: 'Garantia',
+/**
+ * Disponibilidade da moto quando a última reserva ativa é cancelada. Moto que ainda não pode ser
+ * vendida (na caixa, em transporte) volta sem disponibilidade; "disponivel" a poria à venda.
+ */
+export function disponibilidadeAposCancelarReserva(status: string): Disponibilidade | null {
+  return motivoParaNaoVender(status) ? null : 'disponivel'
 }
+
+/**
+ * A moto sem disponibilidade que o status não deixa vender (na caixa, em transporte) só pode ser
+ * reservada: a tela oferece o Reservar no lugar do Vender. A lista do Showroom e o detalhe passam por aqui.
+ */
+export function soPodeReservar(moto: { status: string; disponibilidade: string | null }): boolean {
+  return moto.disponibilidade === null && motivoParaNaoVender(moto.status) !== null
+}
+
+export const statusLabel = Object.fromEntries(STATUS_DE_ESTOQUE.map(s => [s.valor, s.rotulo])) as Record<Status, string>
 
 export const disponibilidadeLabel: Record<Disponibilidade, string> = {
   disponivel:            'Disponível',
   reservada:             'Reservada',
   vendida:               'Vendida',
   aguardando_aprovacao:  'Aguardando aprovação',
-}
-
-// Compat: usado em lugares que ainda esperam a string antiga
-export const statusLabel_legado: Record<string, string> = {
-  faturada:    'Caixa',
-  caixa:       'Caixa',
-  montada:     'Montada',
-  disponivel:  'Disponível',
-  reservada:   'Reservada',
-  em_garantia: 'Garantia',
-  vendida:     'Vendida',
 }

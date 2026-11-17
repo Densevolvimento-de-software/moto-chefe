@@ -11,6 +11,7 @@ import { NfSaidaProvider, NfSaidaGatilhoLinha } from './nf-saida-contexto'
 import { MontarButton } from './montar-button'
 import { CancelarReservaButton } from './cancelar-reserva-button'
 import { podeVendedorReservarForaDaLoja } from '@/lib/loja-galpao'
+import { motivoParaNaoAbrirGarantia, motivoParaNaoTransferir, motivoParaNaoVender, soPodeReservar } from '@/lib/estado-moto'
 import type { MotoComDetalhes } from '@/lib/queries/motos'
 import type { DemandaCompativel } from '@/lib/queries/demandas'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
@@ -153,14 +154,14 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                               <GarantiaButton
                                 motoId={moto.id}
                                 descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
-                                disabled={moto.status === 'caixa'}
+                                motivoBloqueio={motivoParaNaoAbrirGarantia(moto.status)}
                               />
                             )}
 
                             {podeVenderAqui && podeVender.has(papel) && (
                               <>
                                 {/* Montada/Garantia disponível: venda + reserva */}
-                                {moto.status !== 'caixa' && moto.disponibilidade !== 'reservada' && moto.disponibilidade !== 'aguardando_aprovacao' && (moto.disponibilidade === 'disponivel' || moto.status === 'em_garantia') && (
+                                {motivoParaNaoVender(moto.status) === null && moto.disponibilidade !== 'reservada' && moto.disponibilidade !== 'aguardando_aprovacao' && (moto.disponibilidade === 'disponivel' || moto.status === 'em_garantia') && (
                                   <VenderButton
                                     key={`vender-acao-${moto.id}`}
                                     motoId={moto.id}
@@ -174,8 +175,8 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                                     demandasCompativeis={demandasComSinal.filter(d => d.modeloId === moto.modeloId && d.lojaId === moto.lojaId)}
                                   />
                                 )}
-                                {/* Reservada: só finalizar venda */}
-                                {moto.disponibilidade === 'reservada' && moto.reservaValorEntrada && (
+                                {/* Reservada: só finalizar venda, se o status deixa vender */}
+                                {moto.disponibilidade === 'reservada' && moto.reservaValorEntrada && motivoParaNaoVender(moto.status) === null && (
                                   <VenderButton
                                     key={`vender-acao-${moto.id}`}
                                     motoId={moto.id}
@@ -227,8 +228,8 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                                     valorEntrada={moto.reservaValorEntrada}
                                   />
                                 )}
-                                {/* Caixa ainda não reservada: só reserva */}
-                                {moto.status === 'caixa' && moto.disponibilidade == null && (
+                                {/* Caixa ou em transporte ainda não reservada: só reserva */}
+                                {soPodeReservar(moto) && (
                                   <VenderButton
                                     key={`vender-acao-${moto.id}`}
                                     motoId={moto.id}
@@ -264,7 +265,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                                     <ArrowLeftRight size={16} />
                                   </span>
                                 )
-                                : (
+                                : motivoParaNaoTransferir(moto.status) === null && (
                                   <LogisticaButton
                                     motoId={moto.id}
                                     descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}

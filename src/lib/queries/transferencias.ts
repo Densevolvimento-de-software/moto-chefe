@@ -1,7 +1,8 @@
 import { db } from '@/lib/db'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
 import { motoNaoArquivada } from '@/lib/queries/showroom'
-import { transferencias, motos, lojas, usuarios, modelos, grupos } from '@/lib/db/schema'
+import { transferencias, motos, lojas, usuarios, modelos, grupos, motoStatusEnum } from '@/lib/db/schema'
+import { motivoParaNaoTransferir } from '@/lib/estado-moto'
 import { eq, or, and, ilike, inArray, desc } from 'drizzle-orm'
 import { alias, type PgSelect } from 'drizzle-orm/pg-core'
 
@@ -87,7 +88,8 @@ export async function listarTodasTransferencias() {
   return listarTransferencias()
 }
 
-const STATUS_TRANSFERIVEIS = ['caixa', 'faturada', 'montada', 'disponivel', 'reservada', 'em_garantia'] as const
+// Todo valor do enum que a regra da transferência deixa passar, inclusive os legados.
+const STATUS_TRANSFERIVEIS = motoStatusEnum.enumValues.filter(s => motivoParaNaoTransferir(s) === null)
 
 // Só das lojas pedidas, dentro da consulta: a lista vai inteira para o navegador.
 export async function listarMotosTransferiveis(lojaIds: string[], exec: Executor = db) {
@@ -96,7 +98,7 @@ export async function listarMotosTransferiveis(lojaIds: string[], exec: Executor
     .select({ id: motos.id, chassi: motos.chassi, marca: modelos.marca, modelo: nomeDoModeloNaLoja(motos.lojaId), lojaId: motos.lojaId })
     .from(motos)
     .innerJoin(modelos, eq(motos.modeloId, modelos.id))
-    .where(and(inArray(motos.status, [...STATUS_TRANSFERIVEIS]), inArray(motos.lojaId, lojaIds), motoNaoArquivada()))
+    .where(and(inArray(motos.status, STATUS_TRANSFERIVEIS), inArray(motos.lojaId, lojaIds), motoNaoArquivada()))
 }
 
 const grupoDaOrigem = alias(grupos, 'grupo_origem')

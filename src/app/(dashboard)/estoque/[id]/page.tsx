@@ -14,9 +14,12 @@ import { eq, and } from 'drizzle-orm'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { listarUsuariosDoGrupo } from '@/lib/usuarios-do-grupo'
 import { Badge } from '@/components/ui/badge'
+import { MotoStatusIcon } from '@/components/moto-status-icon'
+import { statusDaLista } from '@/lib/status-moto'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MotoActions } from './components/moto-actions'
+import { FaixaEmTransporte } from './components/faixa-em-transporte'
 import { AcoesOuArquivada } from '../components/acoes-ou-arquivada'
 import { AprovacaoVendaCard } from './components/aprovacao-venda-card'
 import { EditarMotoButton } from './components/editar-moto-button'
@@ -28,7 +31,7 @@ import { listarOrigensAtivasDoGrupo } from '@/lib/queries/origens-venda'
 import { OSTab } from './components/os-tab'
 import { GarantiasTab } from './components/garantias-tab'
 import { potenciaNaTela } from '@/lib/gestao-modelos'
-import { statusLabel, disponibilidadeLabel, type Status, type Disponibilidade } from '@/lib/estado-moto'
+import { statusLabel, disponibilidadeLabel, motivoParaNaoMarcarChegada, type Status, type Disponibilidade } from '@/lib/estado-moto'
 import { dataPuraBr } from '@/lib/data-venda'
 
 export default async function MotoDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -96,6 +99,13 @@ export default async function MotoDetailPage({ params }: { params: Promise<{ id:
         </div>
       </div>
 
+      {moto.status === 'em_transporte' && (
+        <FaixaEmTransporte
+          moto={{ id: moto.id, modelo: moto.modelo, chassi: moto.chassi, disponibilidade: moto.disponibilidade }}
+          podeMarcar={motivoParaNaoMarcarChegada({ status: moto.status, arquivada: moto.arquivadaEm !== null }, usuario, usuario.lojaId === moto.lojaId) === null}
+        />
+      )}
+
       {/* Celular: os cards empilham; lado a lado só do md para cima (#688). */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card>
@@ -122,7 +132,9 @@ export default async function MotoDetailPage({ params }: { params: Promise<{ id:
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Chassi</span><span className="font-mono text-xs">{moto.chassi}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Status</span><Badge>{statusLabel[moto.status as Status] ?? moto.status}</Badge></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Status</span>{statusDaLista(moto.status)?.selo.pilula
+              ? <MotoStatusIcon status={moto.status} />
+              : <Badge>{statusLabel[moto.status as Status] ?? moto.status}</Badge>}</div>
             {moto.disponibilidade && (
               <div className="flex justify-between"><span className="text-muted-foreground">Disponibilidade</span><Badge variant="outline">{disponibilidadeLabel[moto.disponibilidade as Disponibilidade] ?? moto.disponibilidade}</Badge></div>
             )}

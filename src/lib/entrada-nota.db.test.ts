@@ -65,7 +65,7 @@ test('nota com motos e peças grava as duas na loja de destino', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A', '11111111000191')
     await nota.registrarNotaComPecas(tx, {
-      usuario: a.usuario, lojaId: a.lojaId, nota: NOTA,
+      usuario: a.usuario, lojaId: a.lojaId, status: 'caixa', nota: NOTA,
       motos: [moto(a.modeloId, 'EN429CHA1'), moto(a.modeloId, 'EN429CHA2')],
       pecas: [capacete(a.pecaId)],
     })
@@ -81,7 +81,7 @@ test('nota mista grava a ficha fiscal da moto com o xProd literal da nota (ADR-0
       origem: '1', cstIcmsEntrada: '00', cstPis: '', cstCofins: '', classTribIbsCbs: '', tpPint: 'A', valorUnitario: '' }
     const emitente = { cnpj: NOTA.fornecedorCnpj, nome: 'FORNECEDOR', nfNumero: NOTA.numero, nfChave: NOTA.chaveAcesso }
     await nota.registrarNotaComPecas(tx, {
-      usuario: a.usuario, lojaId: a.lojaId, nota: NOTA,
+      usuario: a.usuario, lojaId: a.lojaId, status: 'caixa', nota: NOTA,
       motos: [moto(a.modeloId, 'EN429FICHA')], fiscais: [{ chassi: 'en429ficha', emitente, ficha }],
       pecas: [capacete(a.pecaId)],
     })
@@ -95,7 +95,7 @@ test('o total devolvido conta só as motos com chassi e as linhas de peça', asy
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A', '11111111000191')
     const total = await nota.registrarNotaComPecas(tx, {
-      usuario: a.usuario, lojaId: a.lojaId, nota: NOTA,
+      usuario: a.usuario, lojaId: a.lojaId, status: 'caixa', nota: NOTA,
       motos: [moto(a.modeloId, 'EN429T1'), moto(a.modeloId, '  ')],
       pecas: [capacete(a.pecaId)],
     })
@@ -106,10 +106,10 @@ test('o total devolvido conta só as motos com chassi e as linhas de peça', asy
 test('chassi que já existe recusa a nota inteira: as peças também não entram', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A', '11111111000191')
-    await nota.registrarNotaComPecas(tx, { usuario: a.usuario, lojaId: a.lojaId, nota: NOTA, motos: [moto(a.modeloId, 'EN429DUP')], pecas: [capacete(a.pecaId, 1)] })
+    await nota.registrarNotaComPecas(tx, { usuario: a.usuario, lojaId: a.lojaId, status: 'caixa', nota: NOTA, motos: [moto(a.modeloId, 'EN429DUP')], pecas: [capacete(a.pecaId, 1)] })
 
     const erro = await tentar(tx, {
-      usuario: a.usuario, lojaId: a.lojaId, nota: NOTA,
+      usuario: a.usuario, lojaId: a.lojaId, status: 'caixa', nota: NOTA,
       motos: [moto(a.modeloId, 'EN429NOVA'), moto(a.modeloId, 'EN429DUP')],
       pecas: [capacete(a.pecaId, 5)],
     })
@@ -124,7 +124,7 @@ test('peça recusada recusa a nota, com os erros de moto e de peça na mesma lis
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A', '11111111000191')
     const erro = await tentar(tx, {
-      usuario: a.usuario, lojaId: a.lojaId, nota: NOTA,
+      usuario: a.usuario, lojaId: a.lojaId, status: 'caixa', nota: NOTA,
       motos: [moto(a.modeloId, 'EN429SOLO'), { ...moto(a.modeloId, 'EN429SEMPRECO'), precoCompra: '' }],
       pecas: [capacete(a.pecaId, 1.5)],
     })
@@ -142,7 +142,7 @@ test('aux_adm da Conta B não lança nota na loja da Conta A, e nada é gravado'
     const a = await semearConta(tx, 'A', '11111111000191')
     const b = await semearConta(tx, 'B', '22222222000191')
     const erro = await tentar(tx, {
-      usuario: b.usuario, lojaId: a.lojaId, nota: NOTA,
+      usuario: b.usuario, lojaId: a.lojaId, status: 'caixa', nota: NOTA,
       motos: [moto(b.modeloId, 'EN429INTRUSA')],
       pecas: [capacete(b.pecaId)],
     })
@@ -159,7 +159,7 @@ test('modelo próprio da Conta B não serve para moto da nota na loja da Conta A
     const a = await semearConta(tx, 'A', '11111111000191')
     const b = await semearConta(tx, 'B', '22222222000191')
     const erro = await tentar(tx, {
-      usuario: a.usuario, lojaId: a.lojaId, nota: NOTA,
+      usuario: a.usuario, lojaId: a.lojaId, status: 'caixa', nota: NOTA,
       motos: [moto(b.modeloId, 'EN429MODB')],
       pecas: [capacete(a.pecaId)],
     })
@@ -173,10 +173,10 @@ test('chassi que só existe na Conta A recusa a nota da Conta B com frase neutra
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A', '11111111000191')
     const b = await semearConta(tx, 'B', '22222222000191')
-    await nota.registrarNotaComPecas(tx, { usuario: a.usuario, lojaId: a.lojaId, nota: NOTA, motos: [moto(a.modeloId, 'EN429DEA')], pecas: [capacete(a.pecaId, 1)] })
+    await nota.registrarNotaComPecas(tx, { usuario: a.usuario, lojaId: a.lojaId, status: 'caixa', nota: NOTA, motos: [moto(a.modeloId, 'EN429DEA')], pecas: [capacete(a.pecaId, 1)] })
 
     const erro = await tentar(tx, {
-      usuario: b.usuario, lojaId: b.lojaId, nota: NOTA,
+      usuario: b.usuario, lojaId: b.lojaId, status: 'caixa', nota: NOTA,
       motos: [moto(b.modeloId, 'EN429NOVAB'), moto(b.modeloId, 'EN429DEA')],
       pecas: [capacete(b.pecaId, 2)],
     })
@@ -201,7 +201,7 @@ test('admin_rede na persona (#517, #691): nota com chassi do grupo irmão não l
       { id: redeId, papel: 'admin_rede', lojaId: b.lojaId, gruposAcesso: [], gruposAprovacao: [], contaId: b.contaId },
       [{ grupoId: grupoA, contaId: a.contaId }], grupoA,
     )
-    const erro = await tentar(tx, { usuario: rede, lojaId: a.lojaId, nota: NOTA, motos: [moto(a.modeloId, 'EN429IRMAO')], pecas: [capacete(a.pecaId)] })
+    const erro = await tentar(tx, { usuario: rede, lojaId: a.lojaId, status: 'caixa', nota: NOTA, motos: [moto(a.modeloId, 'EN429IRMAO')], pecas: [capacete(a.pecaId)] })
     assert.ok(erro instanceof nota.NotaRecusada, String(erro))
     assert.deepEqual(erro.erros, ['EN429IRMAO: não deu para registrar este chassi. Confira o número.'])
   })

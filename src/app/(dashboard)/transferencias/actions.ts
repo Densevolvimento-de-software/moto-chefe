@@ -8,6 +8,7 @@ import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { destinoDeTransferenciaPermitido } from '@/lib/transferencia-grupos'
 import { eq, sql } from 'drizzle-orm'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
+import { motivoParaNaoTransferir } from '@/lib/estado-moto'
 
 const ADMINS = ['admin_geral', 'admin_socio']
 
@@ -56,8 +57,11 @@ async function solicitarTransferencia(
     throw new RecusaUsuario('Loja de destino fora do seu grupo')
   }
   // A função do banco roda na transação que já travou a moto: um arquivar no meio faz recusar (#688).
+  // O status vem da linha travada, a mesma que a função do banco vai ler.
   await db.transaction(async tx => {
-    await travarMotoNaoArquivada(tx, motoId)
+    const { status } = await travarMotoNaoArquivada(tx, motoId)
+    const naoTransfere = motivoParaNaoTransferir(status)
+    if (naoTransfere) throw new RecusaUsuario(naoTransfere)
     await tx.execute(sql`select solicitar_transferencia(${motoId}::uuid, ${lojaDestinoId}::uuid, ${usuario.id}::uuid, ${observacao ?? null}::text)`)
   })
   revalidatePath('/transferencias')

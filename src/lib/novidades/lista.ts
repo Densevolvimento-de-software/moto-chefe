@@ -4,5 +4,6 @@ import type { NovidadeDaVersao } from './tipos'
 import v1_36_0 from './versoes/1.36.0'
 import v1_37_0 from './versoes/1.37.0'
 import v1_37_1 from './versoes/1.37.1'
+import v1_38_0 from './versoes/1.38.0'
 
-export const NOVIDADES_DA_VERSAO: readonly NovidadeDaVersao[] = [v1_36_0, v1_37_0, v1_37_1]
+export const NOVIDADES_DA_VERSAO: readonly NovidadeDaVersao[] = [v1_36_0, v1_37_0, v1_37_1, v1_38_0]

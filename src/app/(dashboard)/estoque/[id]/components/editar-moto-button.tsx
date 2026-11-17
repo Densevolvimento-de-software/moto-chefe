@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Pencil } from 'lucide-react'
 import { editarMotoAction } from '../actions'
 import { CORES_MOTO } from '@/lib/cores-moto'
+import { STATUS_DE_ESTOQUE } from '@/lib/status-moto'
 
 type Loja = { id: string; nome: string }
 type Modelo = { id: string; modelo: string }
@@ -32,12 +33,6 @@ type Props = {
   /** Sem venda, marcar "Vendida" aqui não registra venda: a moto some do Showroom e das Vendas (#544). */
   temVenda: boolean
 }
-
-const statusOpts = [
-  { value: 'caixa', label: 'Caixa' },
-  { value: 'montada', label: 'Montada' },
-  { value: 'em_garantia', label: 'Garantia' },
-]
 
 const dispOpts = [
   { value: '__null__', label: 'Nenhuma' },
@@ -182,11 +177,11 @@ export function EditarMotoButton({ moto, lojas, modelos, temVenda }: Props) {
                 <Label>Status</Label>
                 <Select value={status} onValueChange={v => v && setStatus(v)}>
                   <SelectTrigger>
-                    {statusOpts.find(s => s.value === status)?.label ?? status}
+                    {STATUS_DE_ESTOQUE.find(s => s.valor === status)?.rotulo ?? status}
                   </SelectTrigger>
                   <SelectContent>
-                    {statusOpts.map(s => (
-                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    {STATUS_DE_ESTOQUE.map(s => (
+                      <SelectItem key={s.valor} value={s.valor}>{s.rotulo}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
