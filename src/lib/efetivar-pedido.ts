@@ -14,7 +14,7 @@ import { grupoEmissorDaVenda } from '@/lib/notagateway/grupo-emissor'
 import { lerDocumentoCliente } from '@/lib/documento'
 import { freteDaVenda, PEDIDO_EM_APROVACAO_PARA_ALTERAR, totalComFrete, type EntregaVenda } from '@/lib/notagateway/entrega'
 import { motivoBloqueioPedidoAprovacao, motivoParaNaoVender } from '@/lib/estado-moto'
-import { gravarPedidoDeAprovacaoTx } from '@/lib/pedido-de-aprovacao'
+import { gravarPedidoDeAprovacaoTx, pedidoEmAprovacaoSql } from '@/lib/pedido-de-aprovacao'
 import type { TipoAprovacaoVenda } from '@/lib/aprovacao-venda'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -48,7 +48,10 @@ export type PedidoEmAprovacao = Omit<DadosEfetivarPedido, 'efetivadoPor' | 'daAp
 /** Trava o pedido pendente e todas as motos dele, em ordem de id como a troca de motos (#20). */
 async function travarPedidoEMotos(tx: Tx, pedidoId: string, daAprovacao: boolean) {
   const [pedido] = await tx
-    .select({ motoId: pedidosVenda.motoId, lojaId: pedidosVenda.lojaId, vendedorId: pedidosVenda.vendedorId, status: pedidosVenda.status, entrega: pedidosVenda.entrega })
+    .select({
+      motoId: pedidosVenda.motoId, lojaId: pedidosVenda.lojaId, vendedorId: pedidosVenda.vendedorId, status: pedidosVenda.status, entrega: pedidosVenda.entrega,
+      emAprovacao: pedidoEmAprovacaoSql(pedidoId),
+    })
     .from(pedidosVenda)
     .where(eq(pedidosVenda.id, pedidoId))
     .for('update')
@@ -68,13 +71,14 @@ async function travarPedidoEMotos(tx: Tx, pedidoId: string, daAprovacao: boolean
 }
 
 /**
- * Troca a Entrega do pedido pendente (#895); a venda nasce com ela no efetivarPedidoTx. Trava o pedido e a moto
+ * Troca a Entrega do pedido pendente (#895); a venda nasce com ela no efetivarPedidoTx. Trava o pedido e as motos
  * como a efetivação; em aprovação, recusa: o frete já foi guardado nos dados da aprovação. Devolve a de antes, para o log.
  */
 export async function alterarEntregaDoPedidoTx(tx: Tx, pedidoId: string, entrega: EntregaVenda): Promise<EntregaVenda | null> {
   // `true` deixa passar o "aguardando aprovação", recusado logo abaixo com a frase do Alterar; "vendida" continua barrando.
-  const { pedido, travadas } = await travarPedidoEMotos(tx, pedidoId, true)
-  if (travadas.get(pedido.motoId)?.disponibilidade === 'aguardando_aprovacao') throw new RecusaUsuario(PEDIDO_EM_APROVACAO_PARA_ALTERAR)
+  // Pelo pedido, não pela moto do `moto_id`: com várias motos ela pode não estar entre as abaixo do mínimo (#20, D-D).
+  const { pedido } = await travarPedidoEMotos(tx, pedidoId, true)
+  if (pedido.emAprovacao) throw new RecusaUsuario(PEDIDO_EM_APROVACAO_PARA_ALTERAR)
   await tx.update(pedidosVenda).set({ entrega, dataAtualizacao: new Date() }).where(eq(pedidosVenda.id, pedidoId))
   return pedido.entrega
 }
@@ -156,8 +160,9 @@ async function venderMotoDoPedidoTx(tx: Tx, d: DadosEfetivarPedido, v: {
     dataVenda: v.agora,
     origemId: d.origem.origemId,
     origemDetalhe: d.origem.origemDetalhe,
-    // A Entrega vem do pedido, lido aqui sob a trava: a efetivação não a recebe do navegador.
-    entrega: pedido.entrega,
+    // A Entrega vem do pedido, lido aqui sob a trava: a efetivação não a recebe do navegador. O frete fica só na venda
+    // que o soma no valor (D-A); nas outras, relatórios e NF tirariam da moto um frete que a venda não tem (#796).
+    entrega: v.comPagamento || pedido.entrega?.modo !== 'entregar' ? pedido.entrega : { ...pedido.entrega, frete: undefined },
   }).returning({ id: vendas.id })
   // O item moto guarda só a moto: o frete mora só na Entrega e soma no total da venda (#726, #779).
   await gravarMotoDoPedido(tx, { pedidoId: d.pedidoId, motoId: moto.motoId, valor: moto.valor.toFixed(2) })
@@ -246,26 +251,34 @@ export async function pedirAprovacaoDoPedidoTx(tx: Tx, d: DadosEfetivarPedido & 
   numero: number
   tipo: TipoAprovacaoVenda
   motivo: string
-  snapshot: { valorMinimo: number; liquido: number } | null
+  /** Motos abaixo do próprio mínimo, com o mínimo e o líquido rateado (D-C); vazio no pagamento sensível. */
+  abaixo: readonly { motoId: string; minimo: number; liquido: number }[]
 }) {
   const { pedido, motoIds, travadas } = await travarPedidoEMotos(tx, d.pedidoId, false)
-  // A aprovação com várias motos é o PR B2 do #20: até lá, o pedido de 2+ motos que precisa dela não vai.
-  if (motoIds.length > 1) throw new RecusaUsuario('Pedido com várias motos ainda não pode ir para aprovação.')
   const lista = valoresDaEfetivacao(motoIds, d.valor)
   if (!lista) throw new RecusaUsuario(ITENS_DO_PEDIDO_MUDARAM)
-  const [{ valor }] = lista
   await clienteDoCadastro(tx, pedido.lojaId, d)
   const total = await conferirPagamentos(tx, pedido, await pecasDoPedido(tx, d.pedidoId), lista, d)
   const guardado: PedidoEmAprovacao = {
     pedidoId: d.pedidoId, numero: d.numero, lojaId: pedido.lojaId, clienteId: d.clienteId, clienteNome: d.clienteNome,
-    clienteCpf: d.clienteCpf, valor, frete: freteDaVenda(pedido.entrega), pagamentos: projetarPagamentos(d.pagamentos),
+    clienteCpf: d.clienteCpf, valor: d.valor, frete: freteDaVenda(pedido.entrega), pagamentos: projetarPagamentos(d.pagamentos),
     origem: d.origem, grupoLiberado: d.grupoLiberado,
   }
-  await gravarPedidoDeAprovacaoTx(tx, {
-    origem: 'pedido', moto: { id: pedido.motoId, lojaId: pedido.lojaId, disponibilidade: travadas.get(pedido.motoId)!.disponibilidade },
-    // Valor da moto, sem o frete (#796): desconto, quadro do #878 e relatório seguem sobre a moto; o frete fica em dados_venda.
-    vendedorId: pedido.vendedorId, solicitadoPor: d.efetivadoPor, valor: valor.toFixed(2), dadosVenda: guardado,
-    tipo: d.tipo, motivo: d.motivo, snapshot: d.snapshot,
-    observacao: `Pedido #${d.numero} em aprovação — Cliente: ${d.clienteNome} — Total: R$ ${total.toFixed(2)} — Motivo: ${d.motivo}`,
-  })
+  // D-D (#20): uma linha por moto abaixo do mínimo, com o snapshot dela; o pagamento sensível é uma linha, na moto do pedido.
+  const linhas = d.tipo === 'valor_minimo'
+    ? d.abaixo.map(a => ({ motoId: a.motoId, snapshot: { valorMinimo: a.minimo, liquido: a.liquido } }))
+    : [{ motoId: pedido.motoId, snapshot: null }]
+  for (const [i, l] of linhas.entries()) {
+    const moto = lista.find(m => m.motoId === l.motoId)
+    if (!moto) throw new RecusaUsuario(ITENS_DO_PEDIDO_MUDARAM)
+    await gravarPedidoDeAprovacaoTx(tx, {
+      origem: 'pedido', moto: { id: moto.motoId, lojaId: pedido.lojaId, disponibilidade: travadas.get(moto.motoId)!.disponibilidade },
+      // Valor da moto, sem o frete (#796): desconto, quadro do #878 e relatório seguem sobre a moto; o frete fica em dados_venda.
+      vendedorId: pedido.vendedorId, solicitadoPor: d.efetivadoPor, valor: moto.valor.toFixed(2),
+      // O frete guardado só aparece na tela (a venda usa o da Entrega): numa linha só, o painel não o soma duas vezes.
+      dadosVenda: i === 0 ? guardado : { ...guardado, frete: 0 },
+      tipo: d.tipo, motivo: d.motivo, snapshot: l.snapshot,
+      observacao: `Pedido #${d.numero} em aprovação — Cliente: ${d.clienteNome} — Total: R$ ${total.toFixed(2)} — Motivo: ${d.motivo}`,
+    })
+  }
 }

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { aprovacaoDoPedido, liquidoPorMoto, motivoBloqueioCriarPedido, valoresDaEfetivacao, vendaDoPagamento, motivoBloqueioMotoNoPedido, motosDoPedido, listaDeMotosValida, motosSemRepetir, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDeMotoInvalido, valorDePecaInvalido, podeCriarPedido, podeEfetivarPedido, totalDasPecas, totalDoPedido, valorDaPecaNoPedido } from './pedido-venda-regras'
+import { aprovacaoDoPedido, liquidoPorMoto, valorDaEfetivacao, motivoBloqueioCriarPedido, valoresDaEfetivacao, vendaDoPagamento, motivoBloqueioMotoNoPedido, motosDoPedido, listaDeMotosValida, motosSemRepetir, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDeMotoInvalido, valorDePecaInvalido, podeCriarPedido, podeEfetivarPedido, totalDasPecas, totalDoPedido, valorDaPecaNoPedido } from './pedido-venda-regras'
 import { entregarSintetico } from '@/test/entrega-sintetica'
 
 const pedido = { status: 'pendente', lojaId: 'loja-a', vendedorId: 'vend-1' }
@@ -133,6 +133,10 @@ describe('trocaDeMotos (#20)', () => {
     assert.deepEqual(trocaDeMotos(['m1', 'm2'], ['m2', 'm3'], 'm1'), { entram: ['m3'], saem: ['m1'], principal: 'm2' })
   })
 
+  test('saiu a moto do pedido e a lista põe uma nova na frente: fica a 1ª adicionada antes, não a que acabou de entrar', () => {
+    assert.deepEqual(trocaDeMotos(['m1', 'm2'], ['m3', 'm2'], 'm1'), { entram: ['m3'], saem: ['m1'], principal: 'm2' })
+  })
+
   test('lista repetida não entra duas vezes; mesma lista não muda nada', () => {
     assert.deepEqual(trocaDeMotos(['m1'], ['m1', 'm2', 'm2'], 'm1'), { entram: ['m2'], saem: [], principal: 'm1' })
     assert.deepEqual(trocaDeMotos(['m1', 'm2'], ['m2', 'm1'], 'm1'), { entram: [], saem: [], principal: 'm1' })
@@ -152,6 +156,11 @@ describe('valor da moto no pedido (#20, D-E)', () => {
 
   test('zero, negativo, NaN e infinito não servem', () => {
     for (const v of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) assert.equal(valorDeMotoInvalido(v), true)
+  })
+
+  test('na efetivação, o valor em texto (a tela de hoje) passa pela mesma régua da lista', () => {
+    for (const v of ['0.004', '1e15', '0', 'abc']) assert.equal(valorDaEfetivacao(v), null, v)
+    assert.equal(valorDaEfetivacao('12000.5'), 12000.5)
   })
 
   test('menos de 1 centavo e acima do que numeric(12,2) guarda não servem; o maior que cabe serve', () => {

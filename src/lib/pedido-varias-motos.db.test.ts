@@ -10,13 +10,14 @@ import { semearUsuario } from '@/test/semear-conta'
 import { ate, esperandoPor } from '@/test/espera-de-trava'
 import { entregarSintetico } from '@/test/entrega-sintetica'
 import { SOMA_PAGAMENTOS_DIFERE } from '@/lib/pagamentos-entrada'
+import { PEDIDO_EM_APROVACAO_PARA_ALTERAR } from '@/lib/notagateway/entrega'
 import pg from 'pg'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
 process.env.DATABASE_URL = url
 
-type Persona = { id: string; papel: string; lojaId: string | null; gruposAcesso: string[]; contaId: string }
+type Persona = { id: string; papel: string; lojaId: string | null; gruposAcesso: string[]; contaId: string; aprovaPagamentoSensivel?: boolean; gruposAprovacao?: string[] }
 let usuario: Persona
 
 const authMock = mock.module('@/lib/auth', { namedExports: { getUsuarioLogado: async () => usuario } })
@@ -50,6 +51,7 @@ async function semearConta() {
   const c = await semearContaComMotos(db, 'PVM20', randomUUID(), randomUUID(), randomUUID())
   const vendedorId = await semearUsuario(db, c.base, { papel: 'vendedor', rotulo: 'vend' })
   const outroVendedorId = await semearUsuario(db, c.base, { papel: 'vendedor', rotulo: 'vend2' })
+  const aprovadorId = await semearUsuario(db, c.base, { papel: 'admin_socio', rotulo: 'aprov', comConta: true })
   const comum = { lojaId: c.base.lojaId, gruposAcesso: [], contaId: c.base.contaId }
   const [origem] = await execRows(sql`insert into origens_venda (grupo_id, nome) values (${c.base.grupoId}, 'Passou na porta') returning id`)
   return {
@@ -57,6 +59,7 @@ async function semearConta() {
     origemId: origem.id as string,
     vendedor: { id: vendedorId, papel: 'vendedor', ...comum },
     outroVendedor: { id: outroVendedorId, papel: 'vendedor', ...comum },
+    aprovador: { id: aprovadorId, papel: 'admin_socio', ...comum },
     motos: async (n: number, disp = 'disponivel') => Promise.all(Array.from({ length: n }, () => c.novaMoto(randomUUID().slice(0, 8), c.base.lojaId, disp))),
   }
 }
@@ -78,7 +81,7 @@ const disponibilidades = async (ids: string[]) =>
   (await execRows(sql`select id, disponibilidade from motos where id in ${ids}`))
     .reduce<Record<string, unknown>>((acc, m) => ({ ...acc, [m.id as string]: m.disponibilidade }), {})
 
-// Itens gravados no mesmo insert têm o mesmo criado_em: a comparação é pela moto, não pela ordem.
+// A comparação é pela moto; a ordem de inclusão tem cenário próprio (D24).
 const motosDoPedidoNoBanco = (pedidoId: string) => execRows(sql`select i.moto_id, i.valor_unitario from pedidos_venda_itens i
   where i.pedido_venda_id = ${pedidoId} and i.tipo = 'moto' order by i.moto_id`)
 const porMoto = <T extends { moto_id: string }>(itens: T[]) => [...itens].sort((a, b) => a.moto_id.localeCompare(b.moto_id))
@@ -341,17 +344,119 @@ test('D6e: a troca trava as motos que entram e as que saem em ordem de id (sem t
   assert.deepEqual(await disponibilidades([menor, maior]), { [menor]: 'disponivel', [maior]: 'reservada' })
 })
 
-test('D10c: pedido de 2 motos com uma abaixo do mínimo (líquido rateado) ainda não vai para aprovação (PR B2); nada é gravado', async () => {
-  const c = await semearConta()
+/** Pedido de 2 motos (mesmo modelo, mínimo 12.000) mandado para aprovação pelo aux_adm; o pix não tem taxa. */
+async function pedidoEmAprovacao(c: Conta, valores: [number, number], frete = 0) {
   const [m1, m2] = await c.motos(2)
   await comPrecoMinimo(c, m1, 12000)
-  const pedidoId = await criarPedido(c, [m1, m2])
+  const pedidoId = await criarPedido(c, [m1, m2], frete ? entregarSintetico(frete) : RETIRA)
   usuario = c.aux
-  assert.deepEqual(await efetivarMotos(c, pedidoId, [{ motoId: m1, valor: 12000 }, { motoId: m2, valor: 11000 }], [{ tipo: 'pix', valor: 23000 }], 'cliente fiel'),
-    recusa('Pedido com várias motos ainda não pode ir para aprovação.'))
+  assert.deepEqual(await efetivarMotos(c, pedidoId, [{ motoId: m1, valor: valores[0] }, { motoId: m2, valor: valores[1] }],
+    [{ tipo: 'pix', valor: valores[0] + valores[1] + frete }], 'cliente fiel'), { ok: true, dados: { aprovacao: 'valor_minimo' } })
+  return { pedidoId, m1, m2 }
+}
+const aprovacoesDoPedido = (pedidoId: string) => execRows(sql`select id, moto_id, valor, valor_minimo_snapshot as minimo, liquido_snapshot as liquido,
+  status, disponibilidade_anterior::text as antes from aprovacoes_venda where dados_venda->>'pedidoId' = ${pedidoId} order by moto_id`)
+const linha = (moto_id: string, valor: string, status = 'pendente') => ({ moto_id, valor, minimo: '12000.00', liquido: valor, status, antes: 'reservada' })
+
+test('D14: 2 motos e só a 2ª abaixo do mínimo (líquido rateado): uma linha de aprovação, só dela; ela aguardando, a outra reservada; nenhuma venda', async () => {
+  const c = await semearConta()
+  const { pedidoId, m1, m2 } = await pedidoEmAprovacao(c, [12000, 11000])
+  assert.deepEqual((await aprovacoesDoPedido(pedidoId)).map(({ id: _, ...a }) => a), [linha(m2, '11000.00')])
+  assert.deepEqual(await disponibilidades([m1, m2]), { [m1]: 'reservada', [m2]: 'aguardando_aprovacao' })
   assert.deepEqual(await execRows(sql`select id from vendas where pedido_venda_id = ${pedidoId}`), [])
-  assert.deepEqual(await execRows(sql`select id from aprovacoes_venda where dados_venda->>'pedidoId' = ${pedidoId}`), [])
+
+  // A Entrega não muda enquanto o pedido espera, mesmo com a moto do pedido só reservada.
+  assert.deepEqual(await actions.alterarEntregaDoPedidoAction(pedidoId, entregarSintetico(300)), recusa(PEDIDO_EM_APROVACAO_PARA_ALTERAR))
+  assert.deepEqual(await execRows(sql`select entrega->>'modo' as modo from pedidos_venda where id = ${pedidoId}`), [{ modo: 'retira' }])
+
+  // Aprovada a única linha, vendem as duas: a que esperava e a que só estava reservada.
+  usuario = c.aprovador
+  assert.deepEqual(await actions.aprovarVendaAction((await aprovacoesDoPedido(pedidoId))[0].id as string), OK)
+  assert.deepEqual(await execRows(sql`select distinct status::text from motos where id in ${[m1, m2]}`), [{ status: 'vendida' }])
+})
+
+test('D15: 2 motos abaixo (D-D): uma linha por moto; o sócio aprova uma e as duas vendem juntas, com o desconto de cada uma ligado à sua venda', async () => {
+  const c = await semearConta()
+  const { pedidoId, m1, m2 } = await pedidoEmAprovacao(c, [11500, 11000], 300)
+  const linhas = await aprovacoesDoPedido(pedidoId)
+  // O painel soma moto + frete por linha: o frete do pedido vai numa linha só, senão o aprovador lê o frete duas vezes.
+  assert.deepEqual(await execRows(sql`select sum((dados_venda->>'frete')::numeric)::int as frete from aprovacoes_venda where dados_venda->>'pedidoId' = ${pedidoId}`), [{ frete: 300 }])
+  assert.deepEqual(linhas.map(({ id: _, ...a }) => a), porMoto([linha(m1, '11500.00'), linha(m2, '11000.00')]))
+  assert.deepEqual(await disponibilidades([m1, m2]), { [m1]: 'aguardando_aprovacao', [m2]: 'aguardando_aprovacao' })
+
+  usuario = c.aprovador
+  assert.deepEqual(await actions.aprovarVendaAction(linhas[1].id as string), OK)
+  assert.deepEqual((await aprovacoesDoPedido(pedidoId)).map(a => a.status), ['aprovada', 'aprovada'])
+  const vendas = await execRows(sql`select id, moto_id from vendas where pedido_venda_id = ${pedidoId} order by moto_id`)
+  assert.deepEqual(vendas.map(v => v.moto_id), [m1, m2].sort())
+  assert.deepEqual(await execRows(sql`select distinct status::text from motos where id in ${[m1, m2]}`), [{ status: 'vendida' }])
+  assert.deepEqual(await actions.aprovarVendaAction(linhas[0].id as string), recusa('Esta solicitação não está mais pendente. Recarregue a página.'))
+
+  const { descontosDasVendas } = await import('@/lib/queries/descontos')
+  const descontos = await descontosDasVendas(vendas.map(v => v.id as string))
+  assert.deepEqual(vendas.map(v => descontos.get(v.id as string)?.preco), vendas.map(v => (v.moto_id === m1 ? 500 : 1000)))
+})
+
+test('D16: o sócio recusa uma linha e o pedido inteiro volta: todas recusadas, cada moto reservada, pedido pendente e efetivável', async () => {
+  const c = await semearConta()
+  const { pedidoId, m1, m2 } = await pedidoEmAprovacao(c, [11500, 11000])
+  const [primeira] = await aprovacoesDoPedido(pedidoId)
+  usuario = c.aprovador
+  assert.deepEqual(await actions.recusarVendaAction(primeira.id as string, 'abaixo demais'), OK)
+  assert.deepEqual((await aprovacoesDoPedido(pedidoId)).map(a => a.status), ['recusada', 'recusada'])
   assert.deepEqual(await disponibilidades([m1, m2]), { [m1]: 'reservada', [m2]: 'reservada' })
+
+  usuario = c.aux
+  assert.deepEqual(await efetivarMotos(c, pedidoId, [{ motoId: m1, valor: 12000 }, { motoId: m2, valor: 12000 }], [{ tipo: 'pix', valor: 24000 }]), OK)
+  assert.equal((await execRows(sql`select id from vendas where pedido_venda_id = ${pedidoId}`)).length, 2)
+})
+
+test('D27: pagamento sensível com 2 motos: uma linha, na moto do pedido; recusar a devolve a reservada, aprovar vende as duas', async () => {
+  const c = await semearConta()
+  const [m1, m2] = await c.motos(2)
+  const pedidoId = await criarPedido(c, [m1, m2])
+  const efetivar = () => { usuario = c.aux; return efetivarMotos(c, pedidoId, [{ motoId: m1, valor: 10000 }, { motoId: m2, valor: 10000 }], [{ tipo: 'transferencia', valor: 20000 }]) }
+  const aprovadorSensivel = { ...c.aprovador, aprovaPagamentoSensivel: true, gruposAprovacao: [c.base.grupoId] }
+  const pendente = async () => (await aprovacoesDoPedido(pedidoId)).filter(a => a.status === 'pendente')
+
+  assert.deepEqual(await efetivar(), { ok: true, dados: { aprovacao: 'pagamento_sensivel' } })
+  assert.deepEqual((await pendente()).map(a => a.moto_id), [m1])
+  assert.deepEqual(await disponibilidades([m1, m2]), { [m1]: 'aguardando_aprovacao', [m2]: 'reservada' })
+  usuario = aprovadorSensivel
+  assert.deepEqual(await actions.recusarVendaAction((await pendente())[0].id as string), OK)
+  assert.deepEqual(await disponibilidades([m1, m2]), { [m1]: 'reservada', [m2]: 'reservada' })
+
+  assert.deepEqual(await efetivar(), { ok: true, dados: { aprovacao: 'pagamento_sensivel' } })
+  usuario = aprovadorSensivel
+  assert.deepEqual(await actions.aprovarVendaAction((await pendente())[0].id as string), OK)
+  assert.equal((await execRows(sql`select id from vendas where pedido_venda_id = ${pedidoId}`)).length, 2)
+})
+
+test('D17: o sócio da Conta B não aprova nem recusa a aprovação do pedido da A: mesma frase do inexistente; nada muda', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const { pedidoId, m1, m2 } = await pedidoEmAprovacao(a, [11500, 11000])
+  usuario = b.aprovador
+  for (const { id } of await aprovacoesDoPedido(pedidoId)) {
+    assert.deepEqual(await actions.aprovarVendaAction(id as string), recusa('Solicitação não encontrada'))
+    assert.deepEqual(await actions.recusarVendaAction(id as string), recusa('Solicitação não encontrada'))
+  }
+  assert.deepEqual((await aprovacoesDoPedido(pedidoId)).map(x => x.status), ['pendente', 'pendente'])
+  assert.deepEqual(await disponibilidades([m1, m2]), { [m1]: 'aguardando_aprovacao', [m2]: 'aguardando_aprovacao' })
+})
+
+test('D22: a frase de moto de outra Conta vem antes da de arquivada e da de outra loja: quem não alcança a moto não fica sabendo nada dela', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const [daA] = await a.motos(1)
+  const [b1, arquivada] = await b.motos(2)
+  await execRows(sql`update motos set arquivada_em = now(), arquivada_por = ${b.socioId}, motivo_arquivo = 'golpe' where id = ${arquivada}`)
+  const doOutroGrupo = await b.novaMoto(randomUUID().slice(0, 8), b.outro.lojaId)
+  usuario = b.vendedor
+  assert.deepEqual(await actions.criarPedidoVendaAction([{ motoId: arquivada }, { motoId: daA }], '', RETIRA), recusa('Moto não encontrada'))
+  usuario = b.socioParcial
+  assert.deepEqual(await actions.criarPedidoVendaAction([{ motoId: b1 }, { motoId: doOutroGrupo }], '', RETIRA), recusa('Moto não encontrada'))
+  assert.deepEqual([...await pedidosDaMoto(b1), ...await pedidosDaMoto(arquivada), ...await pedidosDaMoto(daA)], [])
 })
 
 test('D3c: pedido com várias motos e uma de outra Conta, no criar e no trocar: recusa o pedido inteiro com a frase do inexistente', async () => {
@@ -389,12 +494,44 @@ test('D11: aux_adm efetiva 3 motos, a 1ª e a 3ª de outro CNPJ: uma venda por m
     { moto_id: m3, valor: '8000.00', forma_pagamento: 'pedido', pagamentos: [], numero_do_pedido: false },
   ]))
   assert.equal(new Set(vendas.map(v => v.numero).filter(n => n != null)).size, 3)
+  // Frete na Entrega só onde ele está somado no valor: relatórios e NF tiram da venda o frete que a Entrega diz (#796).
+  assert.deepEqual(await execRows(sql`select moto_id, entrega->>'modo' as modo, entrega->>'frete' as frete from vendas where pedido_venda_id = ${pedidoId} order by moto_id`),
+    porMoto([{ moto_id: m1, modo: 'entregar', frete: null }, { moto_id: m2, modo: 'entregar', frete: '300' }, { moto_id: m3, modo: 'entregar', frete: null }]))
   assert.deepEqual(await execRows(sql`select l.valor, v.moto_id from lancamentos_caixa l join vendas v on v.id = l.venda_id where v.pedido_venda_id = ${pedidoId}`),
     [{ valor: '2300.00', moto_id: m2 }])
   assert.deepEqual(await motosDoPedidoNoBanco(pedidoId), porMoto([
     { moto_id: m1, valor_unitario: '12000.00' }, { moto_id: m2, valor_unitario: '10000.00' }, { moto_id: m3, valor_unitario: '8000.00' }]))
   assert.deepEqual(await execRows(sql`select distinct m.status::text, p.status as pedido from motos m, pedidos_venda p where m.id in ${[m1, m2, m3]} and p.id = ${pedidoId}`),
     [{ status: 'vendida', pedido: 'efetivado' }])
+})
+
+test('D24: a ordem em que o vendedor adicionou as motos fica gravada e decide quem leva frete, formas e caixa (Luis, 17/11): a 1ª do CNPJ da loja', async () => {
+  const c = await semearConta()
+  const [m1, m2, m3, m4] = await c.motos(4)
+  await execRows(sql`update contas set transferencia_entre_grupos = true where id = ${c.base.contaId}`)
+  await execRows(sql`update motos set grupo_entrada_id = ${c.outro.grupoId} where id = ${m1}`)
+  const pedidoId = await criarPedido(c, [m1, m2, m3, m4], entregarSintetico(300))
+  const itens = await execRows(sql`select moto_id, criado_em::text as criado_em from pedidos_venda_itens where pedido_venda_id = ${pedidoId} order by criado_em, id`)
+  assert.deepEqual(itens.map(i => i.moto_id), [m1, m2, m3, m4])
+  assert.equal(new Set(itens.map(i => i.criado_em)).size, 4)
+
+  usuario = c.aux
+  assert.deepEqual(await efetivarMotos(c, pedidoId, [m1, m2, m3, m4].map(motoId => ({ motoId, valor: 10000 })), [{ tipo: 'pix', valor: 40300 }]), OK)
+  const vendas = await vendasDoPedido(pedidoId)
+  assert.deepEqual(vendas.filter(v => (v.pagamentos as unknown[]).length > 0).map(v => [v.moto_id, v.valor]), [[m2, '10300.00']])
+})
+
+test('D25: na troca, a moto que entra vai para o fim; saiu a do pedido, a 1ª adicionada que fica passa a ser ela e leva o frete', async () => {
+  const c = await semearConta()
+  const [p, b, nova] = await c.motos(3)
+  const pedidoId = await criarPedido(c, [p, b], entregarSintetico(300))
+  usuario = c.aux
+  assert.deepEqual(await actions.trocarMotosDoPedidoAction(pedidoId, [{ motoId: nova }, { motoId: b }]), OK)
+  assert.equal(await motoDoPedido(pedidoId), b)
+
+  assert.deepEqual(await efetivarMotos(c, pedidoId, [{ motoId: nova, valor: 10000 }, { motoId: b, valor: 10000 }], [{ tipo: 'pix', valor: 20300 }]), OK)
+  const vendas = await vendasDoPedido(pedidoId)
+  assert.deepEqual(vendas.filter(v => (v.pagamentos as unknown[]).length > 0).map(v => [v.moto_id, v.valor, v.numero_do_pedido]), [[b, '10300.00', true]])
 })
 
 test('D12: valores que não batem com as motos do pedido (falta, sobra, moto de outra Conta, valor só) ou com o total: recusa e nenhuma venda', async () => {
