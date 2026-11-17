@@ -9,7 +9,7 @@ import { modeloUsavelNaLoja, modelosUsaveisPelaConta } from '@/lib/modelos-da-co
 import { revalidatePath } from 'next/cache'
 import { type FichaDaMoto } from '@/lib/nfe-fiscal'
 import { gravarFichaFiscalDasMotos, inserirMotosUmaAUma, lojaDestinoDaEntrada, type MotoEntradaLote } from '@/lib/entrada-motos'
-import { separarMotosDaEntrada } from '@/lib/entrada-motos-regras'
+import { comoEntraram, separarMotosDaEntrada, statusNaEntrada, type StatusNaEntrada } from '@/lib/entrada-motos-regras'
 import { registrarNotaComPecas, NotaRecusada, type NotaComPecas } from '@/lib/entrada-nota'
 import { preencherGruposComPrecoPadrao } from '@/lib/tabela-preco-padrao'
 import {
@@ -28,6 +28,9 @@ async function precoPadraoDepoisDaEntrada(loja: { grupoId: string } | { lojaId: 
   }
 }
 
+// O status da entrada vem do navegador: fora de Caixa e Em transporte, nada se grava (#10).
+const STATUS_INVALIDO = 'Status na entrada inválido'
+
 type MotoEntrada = {
   chassi: string
   cor: string
@@ -40,11 +43,14 @@ export async function registrarEntrada(formData: {
   precoCompra: string
   lojaId: string
   motos: MotoEntrada[]
+  statusNaEntrada?: StatusNaEntrada
 }) {
   const usuario = await getUsuarioLogado()
   if (!acessaModulo(usuario, 'entrada')) {
     return { error: 'Sem permissão' }
   }
+  const status = statusNaEntrada(formData.statusNaEntrada)
+  if (!status) return { error: STATUS_INVALIDO }
 
   if (!formData.notaFiscal || !formData.modeloId || !formData.precoCompra || !formData.lojaId || !formData.motos.length) {
     return { error: 'Preencha todos os campos obrigatórios' }
@@ -76,7 +82,7 @@ export async function registrarEntrada(formData: {
   }
 
   const { idPorChassi, erros } = await inserirMotosUmaAUma(db, {
-    lojaId: loja.id, usuario,
+    lojaId: loja.id, usuario, status,
     motos: formData.motos.map(m => {
       const chassi = m.chassi.trim().toUpperCase()
       return { chassi, precoCompra, moto: { ...m, chassi, modeloId: formData.modeloId, precoCompra, notaFiscal: formData.notaFiscal } }
@@ -94,10 +100,10 @@ export async function registrarEntrada(formData: {
   }
 
   if (erros.length) {
-    return { success: `${inseridos} moto(s) inserida(s). Erros:\n${erros.join('\n')}` }
+    return { success: `${inseridos} moto(s) inserida(s)${comoEntraram(status)}. Erros:\n${erros.join('\n')}` }
   }
 
-  return { success: `${inseridos} moto(s) inserida(s) com sucesso!` }
+  return { success: `${inseridos} moto(s) inserida(s)${comoEntraram(status)} com sucesso!` }
 }
 
 
@@ -107,11 +113,14 @@ export async function registrarEntradaLote(formData: {
   // Fichas fiscais lidas dos XMLs, uma por CHASSI. Opcional: entrada por
   // planilha e entrada manual não têm XML.
   fiscais?: FichaDaMoto[]
+  statusNaEntrada?: StatusNaEntrada
 }) {
   const usuario = await getUsuarioLogado()
   if (!acessaModulo(usuario, 'entrada')) {
     return { error: 'Sem permissão' }
   }
+  const status = statusNaEntrada(formData.statusNaEntrada)
+  if (!status) return { error: STATUS_INVALIDO }
 
   if (!formData.lojaId) {
     return { error: 'Selecione a loja de destino' }
@@ -152,7 +161,7 @@ export async function registrarEntradaLote(formData: {
 
   const { prontas, erros: naConferencia } = separarMotosDaEntrada(formData.motos, idsValidos)
   // idPorChassi: id da moto recém-inserida, para casar com a ficha fiscal do XML
-  const { idPorChassi, erros: noInsert } = await inserirMotosUmaAUma(db, { lojaId: loja.id, usuario, motos: prontas })
+  const { idPorChassi, erros: noInsert } = await inserirMotosUmaAUma(db, { lojaId: loja.id, usuario, status, motos: prontas })
   const erros = [...naConferencia, ...noInsert]
   const inseridos = idPorChassi.size
 
@@ -179,23 +188,25 @@ export async function registrarEntradaLote(formData: {
     : '')
 
   if (erros.length) {
-    return { success: `${inseridos} moto(s) inserida(s). Erros:\n${erros.join('\n')}${avisoCadastro}` }
+    return { success: `${inseridos} moto(s) inserida(s)${comoEntraram(status)}. Erros:\n${erros.join('\n')}${avisoCadastro}` }
   }
 
-  return { success: `${inseridos} moto(s) inserida(s) com sucesso!${avisoCadastro}` }
+  return { success: `${inseridos} moto(s) inserida(s)${comoEntraram(status)} com sucesso!${avisoCadastro}` }
 }
 
 /**
  * Nota com peças (#429): motos e peças numa transação só; qualquer erro desfaz tudo e
  * volta a lista para a tela corrigir. Nota só de motos segue pelo registrarEntradaLote.
  */
-export async function registrarEntradaNota(dados: Omit<NotaComPecas, 'usuario'>) {
+export async function registrarEntradaNota(dados: Omit<NotaComPecas, 'usuario' | 'status'> & { statusNaEntrada?: StatusNaEntrada }) {
   const usuario = await getUsuarioLogado()
   if (!acessaModulo(usuario, 'entrada')) return { error: 'Sem permissão' }
+  const status = statusNaEntrada(dados.statusNaEntrada)
+  if (!status) return { error: STATUS_INVALIDO }
 
   let total: { motos: number; pecas: number }
   try {
-    total = await db.transaction(tx => registrarNotaComPecas(tx, { ...dados, usuario }))
+    total = await db.transaction(tx => registrarNotaComPecas(tx, { ...dados, status, usuario }))
   } catch (e) {
     if (e instanceof NotaRecusada) return { error: `Nada foi gravado. Corrija:\n${e.erros.join('\n')}` }
     if (e instanceof EntradaPecasRecusada) return { error: `Nada foi gravado. ${e.message}` }
@@ -207,7 +218,7 @@ export async function registrarEntradaNota(dados: Omit<NotaComPecas, 'usuario'>)
   revalidatePath('/pecas')
   revalidatePath('/dashboard')
   revalidatePath('/entrada')
-  return { success: `Nota lançada: ${total.motos} moto(s) e ${total.pecas} item(ns) de peça.` }
+  return { success: `Nota lançada: ${total.motos} moto(s)${comoEntraram(status)} e ${total.pecas} item(ns) de peça.` }
 }
 
 /**
