@@ -329,6 +329,15 @@ test('sócio corrige a NF de outro grupo da Conta só se vê o grupo (grupos_ace
   })
 })
 
+test('aux_adm não corrige a NF de outro grupo da Conta: o limite da decisão do Luis é o grupo da própria loja (#17)', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const r = await semearRede(tx, '00000000001717', '00000000001718')
+    const venda = await r.noOutroGrupo('CO17AG')
+    await assert.rejects(gravarCorrecaoDaNf(tx, r.a.usuario, venda.motoId, 'Producao', CORRECAO), { message: 'Venda não encontrada' })
+    assert.deepEqual(await corrigida(tx, venda), INTACTA)
+  })
+})
+
 test('grupo desativado: o sócio com loja ainda corrige a NF de outra loja dele, pelo prazo fiscal (#404, #17)', async () => {
   await emTransacaoDesfeita(async tx => {
     const r = await semearRede(tx, '00000000001709', '00000000001710')
