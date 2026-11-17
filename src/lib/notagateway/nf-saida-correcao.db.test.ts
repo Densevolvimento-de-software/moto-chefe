@@ -3,7 +3,7 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { semearContaBase, semearGrupo, semearLoja, semearUsuario } from '@/test/semear-conta'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -17,11 +17,13 @@ type Tx = Parameters<Parameters<Db['db']['transaction']>[0]>[0]
 let db: Db['db']
 let vc: typeof import('@/lib/venda-comprador')
 let gravarCorrecaoDaNf: typeof import('@/lib/notagateway/correcao')['gravarCorrecaoDaNf']
+let usuarioDaRede: typeof import('@/lib/grupos-liberados')['usuarioDaRede']
 
 before(async () => {
   ;({ db } = await import('@/lib/db'))
   vc = await import('@/lib/venda-comprador')
   ;({ gravarCorrecaoDaNf } = await import('@/lib/notagateway/correcao'))
+  ;({ usuarioDaRede } = await import('@/lib/grupos-liberados'))
 })
 
 after(async () => {
@@ -255,5 +257,113 @@ test('nota recusada que saiu pelo grupo de entrada (#552): a correção acha a n
       comprador: { clienteNome: 'Cliente', clienteCpf: '111.444.777-35', clienteCidade: 'Cidade Certa' },
     })
     assert.equal((await vendaDb(tx, venda.id)).cliente_cidade, 'Cidade Certa')
+  })
+})
+
+// Rede (#17): a Conta A com uma 2ª loja no grupo da base e um 2º grupo, com loja própria.
+async function semearRede(tx: Tx, cnpj: string, cnpjOutroGrupo: string) {
+  const a = await semearConta(tx, 'A', cnpj)
+  const outraLoja = await semearLoja(tx, a.grupoId, 'CO347 Loja 2')
+  const outroGrupo = await semearGrupo(tx, a.contaId, { prefixo: 'CO347', nome: 'A grupo 2', cnpj: cnpjOutroGrupo })
+  const naOutraLoja = (chassi: string) => semearVenda(tx, { ...a, lojaId: outraLoja }, chassi, 'Negada')
+  const noOutroGrupo = (chassi: string) => semearVenda(tx, { ...a, ...outroGrupo }, chassi, 'Negada')
+  return { a, outroGrupo, naOutraLoja, noOutroGrupo }
+}
+
+const socioComLoja = (a: Awaited<ReturnType<typeof semearConta>>, gruposAcesso: string[] = []) =>
+  ({ papel: 'admin_socio', lojaId: a.lojaId, gruposAcesso, contaId: a.contaId })
+
+const CORRECAO = {
+  comprador: { clienteNome: 'Cliente', clienteCpf: '111.444.777-35', clienteCidade: 'Cidade Certa' },
+  moto: { ncm: '87116000', cest: '0107700' },
+}
+
+async function corrigida(tx: Tx, venda: { id: string; motoId: string }) {
+  const [f] = await linhas(tx, sql`select cest from motos_fiscal where moto_id = ${venda.motoId}`)
+  return { cidade: (await vendaDb(tx, venda.id)).cliente_cidade, cest: f.cest }
+}
+
+const GRAVADA = { cidade: 'Cidade Certa', cest: '0107700' }
+const INTACTA = { cidade: 'Cidade Velha', cest: null }
+
+test('sócio com loja no cadastro corrige a NF recusada de outra loja do grupo (#17)', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const r = await semearRede(tx, '00000000001701', '00000000001702')
+    const venda = await r.naOutraLoja('CO17S')
+    await gravarCorrecaoDaNf(tx, socioComLoja(r.a), venda.motoId, 'Producao', CORRECAO)
+    assert.deepEqual(await corrigida(tx, venda), GRAVADA)
+  })
+})
+
+test('persona do admin_rede na própria Conta (opera como sócio, com loja) corrige a NF de outra loja (#17)', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const r = await semearRede(tx, '00000000001703', '00000000001704')
+    const venda = await r.naOutraLoja('CO17R')
+    const rede = usuarioDaRede({ papel: 'admin_rede', lojaId: r.a.lojaId, contaId: r.a.contaId, gruposAcesso: [], gruposAprovacao: [] }, [], null)
+    await gravarCorrecaoDaNf(tx, rede, venda.motoId, 'Producao', CORRECAO)
+    assert.deepEqual(await corrigida(tx, venda), GRAVADA)
+  })
+})
+
+test('aux_adm corrige a NF de outra loja do grupo, como já emite (#17, decisão do Luis)', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const r = await semearRede(tx, '00000000001705', '00000000001706')
+    const daPropria = await semearVenda(tx, r.a, 'CO17AP', 'Negada')
+    const daOutra = await r.naOutraLoja('CO17AO')
+    await gravarCorrecaoDaNf(tx, r.a.usuario, daPropria.motoId, 'Producao', CORRECAO)
+    await gravarCorrecaoDaNf(tx, r.a.usuario, daOutra.motoId, 'Producao', CORRECAO)
+    assert.deepEqual([await corrigida(tx, daPropria), await corrigida(tx, daOutra)], [GRAVADA, GRAVADA])
+  })
+})
+
+test('sócio corrige a NF de outro grupo da Conta só se vê o grupo (grupos_acesso) (#17)', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const r = await semearRede(tx, '00000000001707', '00000000001708')
+    const semAcesso = await r.noOutroGrupo('CO17G1')
+    await assert.rejects(gravarCorrecaoDaNf(tx, socioComLoja(r.a), semAcesso.motoId, 'Producao', CORRECAO), { message: 'Venda não encontrada' })
+    assert.deepEqual(await corrigida(tx, semAcesso), INTACTA)
+
+    const comAcesso = await r.noOutroGrupo('CO17G2')
+    await gravarCorrecaoDaNf(tx, socioComLoja(r.a, [r.outroGrupo.grupoId]), comAcesso.motoId, 'Producao', CORRECAO)
+    assert.deepEqual(await corrigida(tx, comAcesso), GRAVADA)
+  })
+})
+
+test('grupo desativado: o sócio com loja ainda corrige a NF de outra loja dele, pelo prazo fiscal (#404, #17)', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const r = await semearRede(tx, '00000000001709', '00000000001710')
+    const venda = await r.naOutraLoja('CO17IN')
+    await linhas(tx, sql`update grupos set ativo = false where id = ${r.a.grupoId}`)
+    await gravarCorrecaoDaNf(tx, socioComLoja(r.a), venda.motoId, 'Producao', CORRECAO)
+    assert.deepEqual(await corrigida(tx, venda), GRAVADA)
+  })
+})
+
+test('Conta B (aux e sócio) recebe a mesma frase da moto inexistente e nada muda na Conta A (#17)', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const r = await semearRede(tx, '00000000001711', '00000000001712')
+    const b = await semearConta(tx, 'B', '00000000001713')
+    const venda = await r.naOutraLoja('CO17B')
+    // O sócio da B com o grupo da A marcado em grupos_acesso: marcação de outra Conta não vale (ADR-0018).
+    for (const usuario of [b.usuario, socioComLoja(b, [r.a.grupoId])]) {
+      await assert.rejects(gravarCorrecaoDaNf(tx, usuario, venda.motoId, 'Producao', CORRECAO), { message: 'Venda não encontrada' })
+      await assert.rejects(gravarCorrecaoDaNf(tx, usuario, crypto.randomUUID(), 'Producao', CORRECAO), { message: 'Venda não encontrada' })
+    }
+    assert.deepEqual(await corrigida(tx, venda), INTACTA)
+  })
+})
+
+test('persona do admin_rede no grupo liberado corrige ali e não alcança outro grupo da Conta dona (#17)', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const r = await semearRede(tx, '00000000001714', '00000000001715')
+    const b = await semearConta(tx, 'B', '00000000001716')
+    const persona = usuarioDaRede(
+      { papel: 'admin_rede', lojaId: b.lojaId, contaId: b.contaId, gruposAcesso: [], gruposAprovacao: [] },
+      [{ grupoId: r.a.grupoId, contaId: r.a.contaId }], r.a.grupoId)
+    const noLiberado = await r.naOutraLoja('CO17PL')
+    const foraDoLiberado = await r.noOutroGrupo('CO17PF')
+    await gravarCorrecaoDaNf(tx, persona, noLiberado.motoId, 'Producao', CORRECAO)
+    await assert.rejects(gravarCorrecaoDaNf(tx, persona, foraDoLiberado.motoId, 'Producao', CORRECAO), { message: 'Venda não encontrada' })
+    assert.deepEqual([await corrigida(tx, noLiberado), await corrigida(tx, foraDoLiberado)], [GRAVADA, INTACTA])
   })
 })
