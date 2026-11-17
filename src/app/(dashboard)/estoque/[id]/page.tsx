@@ -14,6 +14,8 @@ import { eq, and } from 'drizzle-orm'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { listarUsuariosDoGrupo } from '@/lib/usuarios-do-grupo'
 import { Badge } from '@/components/ui/badge'
+import { MotoStatusIcon } from '@/components/moto-status-icon'
+import { statusDaLista } from '@/lib/status-moto'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MotoActions } from './components/moto-actions'
@@ -122,7 +124,9 @@ export default async function MotoDetailPage({ params }: { params: Promise<{ id:
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Chassi</span><span className="font-mono text-xs">{moto.chassi}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Status</span><Badge>{statusLabel[moto.status as Status] ?? moto.status}</Badge></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Status</span>{statusDaLista(moto.status)?.selo.pilula
+              ? <MotoStatusIcon status={moto.status} />
+              : <Badge>{statusLabel[moto.status as Status] ?? moto.status}</Badge>}</div>
             {moto.disponibilidade && (
               <div className="flex justify-between"><span className="text-muted-foreground">Disponibilidade</span><Badge variant="outline">{disponibilidadeLabel[moto.disponibilidade as Disponibilidade] ?? moto.disponibilidade}</Badge></div>
             )}

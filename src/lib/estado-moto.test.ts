@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
+import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, avisoVendaBarrada, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
 
 // A venda que estragou a LYDAE3936T1207627: efetivada em 20/08 e já faturada.
 const VENDA_FATURADA: VendaVinculada = { numero: 31118, notaFiscalSaida: '2263' }
@@ -97,20 +97,57 @@ test('reserva de moto na caixa pode ser cancelada', () => {
   assert.equal(motivoBloqueioCancelarReserva({ disponibilidade: null }), null)
 })
 
-test('motivoParaNaoVender: só a moto na caixa é barrada pelo status, com a frase de sempre', () => {
+test('motivoParaNaoVender: a moto na caixa e a em transporte são barradas pelo status, cada uma com a sua frase', () => {
   assert.deepEqual(
-    ['caixa', 'montada', 'em_garantia', 'vendida'].map(motivoParaNaoVender),
-    ['Moto ainda não foi montada. Não pode ser vendida.', null, null, null],
+    ['caixa', 'em_transporte', 'montada', 'em_garantia', 'vendida'].map(motivoParaNaoVender),
+    ['Moto ainda não foi montada. Não pode ser vendida.', 'Moto ainda em transporte. Não pode ser vendida.', null, null, null],
   )
 })
 
-test('disponibilidade depois de cancelar a reserva: nula na caixa, "disponivel" no resto', () => {
+test('moto em transporte não vai para aprovação, nem reservada', () => {
+  assert.equal(motivoBloqueioPedidoAprovacao({ status: 'em_transporte', disponibilidade: 'reservada' }), 'Moto ainda em transporte. Não pode ser vendida.')
+})
+
+test('avisoVendaBarrada: a caixa com o texto de sempre, a em transporte com o seu; a que vende, nenhum', () => {
+  assert.deepEqual(avisoVendaBarrada('caixa'), {
+    titulo: 'A moto voltou ao estoque, mas ainda está em caixa',
+    texto: 'Moto em caixa não pode ser vendida. Use o botão Montar e depois o Vender.',
+  })
+  assert.deepEqual(avisoVendaBarrada('em_transporte'), {
+    titulo: 'A moto voltou ao estoque, mas ainda está em transporte',
+    texto: 'Moto em transporte não pode ser vendida. Marque a chegada, monte e depois venda.',
+  })
+  assert.deepEqual(['montada', 'em_garantia'].map(avisoVendaBarrada), [null, null])
+})
+
+test('moto em transporte não tem transição de status nesta etapa, para nenhum papel (a chegada vem no botão Chegou)', () => {
+  for (const papel of ['admin_geral', 'admin_socio', 'aux_adm'] as const) {
+    assert.deepEqual(getTransicoesStatusPermitidas('em_transporte', papel, true), [], papel)
+  }
+})
+
+test('motivoParaNaoTransferir: barra a em transporte (marcar a chegada) e a vendida; o resto do estoque transfere', () => {
   assert.deepEqual(
-    ['caixa', 'montada', 'em_garantia'].map(disponibilidadeAposCancelarReserva),
-    [null, 'disponivel', 'disponivel'],
+    ['em_transporte', 'vendida', 'caixa', 'montada', 'em_garantia'].map(motivoParaNaoTransferir),
+    ['Moto ainda em transporte. Marque a chegada antes de transferir.', 'Moto já foi vendida', null, null, null],
   )
 })
 
-test('statusLabel: os rótulos de hoje', () => {
-  assert.deepEqual(statusLabel, { caixa: 'Caixa', montada: 'Montada', em_garantia: 'Garantia' })
+// Decisão do Luis (#9): garantia só depois da chegada e da montagem, como a função abrir_garantia do banco.
+test('motivoParaNaoAbrirGarantia: barra a em transporte e a caixa, cada uma com a sua frase; montada, em garantia e vendida abrem', () => {
+  assert.deepEqual(
+    ['em_transporte', 'caixa', 'montada', 'em_garantia', 'vendida'].map(motivoParaNaoAbrirGarantia),
+    ['Moto ainda em transporte. Garantia só depois da chegada.', 'Moto ainda não foi montada. Garantia só depois da montagem.', null, null, null],
+  )
+})
+
+test('disponibilidade depois de cancelar a reserva: nula na caixa e em transporte, "disponivel" no resto', () => {
+  assert.deepEqual(
+    ['caixa', 'em_transporte', 'montada', 'em_garantia'].map(disponibilidadeAposCancelarReserva),
+    [null, null, 'disponivel', 'disponivel'],
+  )
+})
+
+test('statusLabel: os rótulos dos status de estoque', () => {
+  assert.deepEqual(statusLabel, { em_transporte: 'Em transporte', caixa: 'Caixa', montada: 'Montada', em_garantia: 'Garantia' })
 })

@@ -273,7 +273,9 @@ async function criarVendaTx(
   }
 ): Promise<{ vendaId: string }> {
   const { moto, data, vendedorId, efetivadoPor, dataVendaFinal, origem, grupoLiberado } = params
-  await travarMotoNaoArquivada(tx, moto.id)
+  // A aprovação grava bem depois do pedido: o status se confere de novo na linha travada.
+  const naoVende = motivoParaNaoVender((await travarMotoNaoArquivada(tx, moto.id)).status)
+  if (naoVende) throw new RecusaUsuario(naoVende)
   // Aqui, e não só na action: a aprovação guardada chega direto (#460).
   await conferirMaquininhas(tx, moto.lojaId, data.pagamentos)
   const valorNum = parseFloat(data.valorTotal)

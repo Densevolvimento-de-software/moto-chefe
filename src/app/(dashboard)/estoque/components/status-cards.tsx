@@ -13,8 +13,8 @@ type Counts = {
 
 type Props = { counts: Counts }
 
-// Card de um status: rótulo, ícone e cores vêm da lista única de status.
-function cardDe(status: StatusDeEstoque) {
+// Card de um status: rótulo, ícone e cores vêm da lista única de status. Só os status que têm contagem.
+function cardDe(status: Extract<StatusDeEstoque, keyof Counts>) {
   const card = cardDoStatus(status)
   return { key: status, label: card.rotulo, icon: card.icone, value: (c: Counts) => c[status], text: card.numero, bg: card.fundo, border: card.borda, icon_c: card.corIcone }
 }

@@ -11,7 +11,7 @@ import { ResolverGarantiaButton } from './resolver-garantia-button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeftRight, Printer } from 'lucide-react'
 import { podeVendedorReservarForaDaLoja } from '@/lib/loja-galpao'
-import { motivoParaNaoVender } from '@/lib/estado-moto'
+import { avisoVendaBarrada, motivoParaNaoAbrirGarantia, motivoParaNaoTransferir, motivoParaNaoVender } from '@/lib/estado-moto'
 import type { DemandaCompativel } from '@/lib/queries/demandas'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
 import type { PagamentoEntrada } from '@/lib/pagamentos-entrada'
@@ -90,7 +90,7 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
   const isAdmin = ADMINS.has(papel)
   const abrirVenda = useSearchParams().get('vender') === '1'
   // Guardado no primeiro render: o replace abaixo tira o ?vender=1 da URL logo em seguida.
-  const [vendaBarradaPorCaixa] = useState(() => abrirVenda && motivoParaNaoVender(moto.status) !== null)
+  const [avisoVenda] = useState(() => (abrirVenda ? avisoVendaBarrada(moto.status) : null))
   const router = useRouter()
   const pathname = usePathname()
   // O VenderButton já leu o pedido ao montar; sem limpar, recarregar a página reabriria a venda.
@@ -112,7 +112,7 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
   } else {
     if (podeAlterar && podeGarantia.has(papel)) {
       acoes.push(
-        <GarantiaButton key="garantia" motoId={moto.id} descricao={descricao} showLabel />
+        <GarantiaButton key="garantia" motoId={moto.id} descricao={descricao} showLabel motivoBloqueio={motivoParaNaoAbrirGarantia(moto.status)} />
       )
     }
 
@@ -123,7 +123,8 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
     }
 
     if (podeVenderAqui && podeVender.has(papel)) {
-      const podeVenderMoto = motivoParaNaoVender(moto.status) === null &&
+      const vendePeloStatus = motivoParaNaoVender(moto.status) === null
+      const podeVenderMoto = vendePeloStatus &&
         moto.disponibilidade !== 'reservada' &&
         moto.disponibilidade !== 'aguardando_aprovacao' && (
           moto.disponibilidade === 'disponivel' ||
@@ -150,7 +151,8 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
         )
       }
       if (moto.disponibilidade === 'reservada' && moto.reservaValorEntrada) {
-        acoes.push(
+        // Finalizar a reserva só quando o status deixa vender; o Comprovante vale sempre.
+        if (vendePeloStatus) acoes.push(
           <VenderButton
             key="vender-acao"
             motoId={moto.id}
@@ -255,7 +257,7 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
             {moto.transferenciaDestino ?? 'Transf. pendente'}
           </span>
         )
-      } else {
+      } else if (motivoParaNaoTransferir(moto.status) === null) {
         acoes.push(
           <LogisticaButton
             key="logistica"
@@ -276,10 +278,10 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
     <Card>
       <CardHeader><CardTitle className="text-base">Ações</CardTitle></CardHeader>
       <CardContent className="space-y-3">
-        {vendaBarradaPorCaixa && (
-          <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
-            <p className="font-medium">A moto voltou ao estoque, mas ainda está em caixa</p>
-            <p>Moto em caixa não pode ser vendida. Use o botão Montar e depois o Vender.</p>
+        {avisoVenda && (
+          <div role="status" className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+            <p className="font-medium">{avisoVenda.titulo}</p>
+            <p>{avisoVenda.texto}</p>
           </div>
         )}
         <div className="flex items-center gap-2 flex-wrap">

@@ -17,6 +17,7 @@ import { conferirVinculosDaConta } from '@/lib/vinculos-da-conta'
 import { motoNaoArquivada } from '@/lib/queries/showroom'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { addDias } from '@/lib/calendario'
+import { motivoParaNaoAbrirGarantia } from '@/lib/estado-moto'
 
 export async function exportarRelatorioGarantiasAction(filtros: {
   lojaId?: string
@@ -78,8 +79,10 @@ async function gravarGarantia(g: {
   const dataFim = addDias(g.dataInicio, 30)
 
   // A função do banco roda na transação que já travou a moto: um arquivar no meio faz recusar (#688).
+  // O status sai da linha travada, a mesma que a função do banco vai ler.
   await db.transaction(async tx => {
-    await travarMotoNaoArquivada(tx, g.motoId)
+    const naoAbre = motivoParaNaoAbrirGarantia((await travarMotoNaoArquivada(tx, g.motoId)).status)
+    if (naoAbre) throw new RecusaUsuario(naoAbre)
     await tx.execute(sql`select abrir_garantia(${g.motoId}::uuid, ${g.lojaId}::uuid, ${g.abertaPor}::uuid,
       ${g.osId ?? null}::uuid, ${g.descricao}::text, ${g.dataInicio}::date, ${dataFim}::date,
       ${g.dataPedidoPeca ?? null}::date, ${g.numeroPedidoFabrica ?? null}::text)`)
