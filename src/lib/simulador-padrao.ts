@@ -78,19 +78,26 @@ export type LinhaDoSimulador = { parcelas: number; credito: number; parcela: num
 
 /**
  * Como a taxa entra no total. Maquininha (crédito, débito, link): % que a operadora tira do bruto,
- * então o total é o saldo / (1 − taxa) (#50). Financiamento: acréscimo que o cliente paga ao banco
+ * então o cliente paga saldo / (1 − taxa) (#50). Financiamento: acréscimo que o cliente paga ao banco
  * sobre o saldo, saldo × (1 + taxa).
  */
 export type TaxaDoSimulador = 'maquininha' | 'financiamento'
 
-function totalDoSaldo(saldo: number, taxa: number, modo: TaxaDoSimulador): number | null {
-  return modo === 'maquininha' ? brutoParaReceber(saldo, taxa) : saldo * (1 + taxa)
-}
+type Cobranca = { credito: number; parcela: number }
 
-// Na maquininha a parcela sobe ao centavo: cobrada n vezes, nunca fica abaixo do total e a loja
-// recebe o mínimo. O financiamento segue com o arredondamento comum.
-function parcelaDoTotal(total: number, parcelas: number, modo: TaxaDoSimulador): number {
-  return modo === 'maquininha' ? centavosParaCima(total / parcelas) : centavos(total / parcelas)
+const COBRANCA: Record<TaxaDoSimulador, (saldo: number, taxa: number, parcelas: number) => Cobranca | null> = {
+  // A parcela sobe ao centavo e o total é a soma das parcelas: o que o cliente paga nunca fica
+  // abaixo do bruto que deixa o mínimo para a loja.
+  maquininha: (saldo, taxa, parcelas) => {
+    const bruto = brutoParaReceber(saldo, taxa)
+    if (bruto === null) return null
+    const parcela = centavosParaCima(bruto / parcelas)
+    return { credito: centavos(parcela * parcelas), parcela }
+  },
+  financiamento: (saldo, taxa, parcelas) => {
+    const credito = saldo * (1 + taxa)
+    return { credito, parcela: centavos(credito / parcelas) }
+  },
 }
 
 /** Uma linha por parcela com taxa cadastrada, sobre o saldo (base menos entrada). */
@@ -103,7 +110,7 @@ export function linhasDoSimulador(
     .sort(([a], [b]) => parseInt(a) - parseInt(b))
     .flatMap(([n, taxa]) => {
       const parcelas = parseInt(n)
-      const credito = totalDoSaldo(saldo, taxa, modo)
-      return credito === null || credito <= 0 ? [] : [{ parcelas, credito, parcela: parcelaDoTotal(credito, parcelas, modo) }]
+      const cobranca = COBRANCA[modo](saldo, taxa, parcelas)
+      return cobranca === null || cobranca.credito <= 0 ? [] : [{ parcelas, ...cobranca }]
     })
 }
