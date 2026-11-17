@@ -41,12 +41,13 @@ export function getTransicoesStatusPermitidas(
 
 /**
  * Motivo pelo qual a pessoa não pode marcar a chegada desta moto (botão Chegou), ou null. A tela (mostra o
- * botão) e a action (grava) passam por aqui. A correção montada → caixa do admin não é chegada.
+ * botão) e a action (grava) passam por aqui com o usuário da sessão. A correção montada → caixa do admin não é chegada.
  */
-export function motivoParaNaoMarcarChegada(moto: { status: string; arquivada: boolean }, papel: Papel, isMinhaLoja: boolean): string | null {
+export function motivoParaNaoMarcarChegada(moto: { status: string; arquivada: boolean }, quem: { papel: Papel; papelReal: Papel }, isMinhaLoja: boolean): string | null {
   if (moto.arquivada) return MOTO_ARQUIVADA
   if (moto.status !== 'em_transporte') return 'Esta moto não está mais em transporte.'
-  if (!mudaStatusFisico(papel, isMinhaLoja)) return 'Sem permissão para marcar a chegada desta moto.'
+  // A sessão entrega o admin_rede como admin_socio (usuarioDaRede); a chegada olha o papel real (D2 do #11).
+  if (quem.papelReal === 'admin_rede' || !mudaStatusFisico(quem.papel, isMinhaLoja)) return 'Sem permissão para marcar a chegada desta moto.'
   return null
 }
 

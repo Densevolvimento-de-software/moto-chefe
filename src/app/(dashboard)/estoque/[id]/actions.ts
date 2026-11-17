@@ -122,7 +122,7 @@ async function marcarChegada(motoId: string) {
   // Status e loja vêm da linha travada, a mesma que a função do banco vai mudar: dois cliques não marcam duas vezes.
   await db.transaction(async tx => {
     const { status, lojaId, arquivadaEm } = await travarMotoNaoArquivada(tx, motoId)
-    const motivo = motivoParaNaoMarcarChegada({ status, arquivada: arquivadaEm !== null }, usuario.papel, usuario.lojaId === lojaId)
+    const motivo = motivoParaNaoMarcarChegada({ status, arquivada: arquivadaEm !== null }, usuario, usuario.lojaId === lojaId)
     if (motivo) throw new RecusaUsuario(motivo)
     await mudarStatusMoto({ motoId, novoStatus: 'caixa', usuarioId: usuario.id, observacao: 'Chegada marcada' }, tx)
   })

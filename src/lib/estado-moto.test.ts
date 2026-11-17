@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { MOTO_ARQUIVADA } from './arquivar-moto-regras'
+import type { PapelDoBanco as Papel } from '@/lib/rotulo-do-papel'
 import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, motivoParaNaoMarcarChegada, avisoVendaBarrada, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
 
 // A venda que estragou a LYDAE3936T1207627: efetivada em 20/08 e já faturada.
@@ -131,27 +132,37 @@ test('moto em transporte não tem transição na troca de status genérica, para
 const JA_CHEGOU = 'Esta moto não está mais em transporte.'
 const SEM_PERMISSAO_CHEGADA = 'Sem permissão para marcar a chegada desta moto.'
 const EM_TRANSPORTE = { status: 'em_transporte', arquivada: false }
+// Como a sessão entrega cada um (usuarioDaRede): o admin_rede chega com papel admin_socio e papelReal admin_rede.
+const pessoa = (papel: Papel) => ({ papel, papelReal: papel })
+const ADMIN_REDE = { papel: 'admin_socio', papelReal: 'admin_rede' } as const
 
 test('marcar chegada: só moto em transporte, por aux_adm da loja da moto ou admin_geral/admin_socio', () => {
-  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, 'aux_adm', true), null)
-  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, 'admin_socio', false), null)
-  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, 'admin_geral', false), null)
-  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, 'aux_adm', false), SEM_PERMISSAO_CHEGADA, 'aux_adm de outra loja')
-  for (const papel of ['admin_rede', 'vendedor', 'mecanico'] as const) {
-    assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, papel, true), SEM_PERMISSAO_CHEGADA, papel)
+  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, pessoa('aux_adm'), true), null)
+  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, pessoa('admin_socio'), false), null)
+  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, pessoa('admin_geral'), false), null)
+  assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, pessoa('aux_adm'), false), SEM_PERMISSAO_CHEGADA, 'aux_adm de outra loja')
+  for (const papel of ['vendedor', 'mecanico'] as const) {
+    assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, pessoa(papel), true), SEM_PERMISSAO_CHEGADA, papel)
+  }
+})
+
+// D2 do #11: o admin_rede opera como sócio no resto do app (Montar inclusive), mas não marca a chegada.
+test('marcar chegada: admin_rede recusa sem permissão, mesmo chegando como admin_socio', () => {
+  for (const isMinhaLoja of [true, false]) {
+    assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, ADMIN_REDE, isMinhaLoja), SEM_PERMISSAO_CHEGADA, String(isMinhaLoja))
   }
 })
 
 // D2 do #11: moto arquivada não ganha o botão; a tela e a action decidem pela mesma regra.
 test('marcar chegada de moto arquivada em transporte recusa com a frase de desarquivar, para qualquer papel', () => {
   for (const papel of ['admin_geral', 'admin_socio', 'aux_adm'] as const) {
-    assert.equal(motivoParaNaoMarcarChegada({ status: 'em_transporte', arquivada: true }, papel, true), MOTO_ARQUIVADA, papel)
+    assert.equal(motivoParaNaoMarcarChegada({ status: 'em_transporte', arquivada: true }, pessoa(papel), true), MOTO_ARQUIVADA, papel)
   }
 })
 
 test('marcar chegada de moto que não está em transporte recusa, inclusive a montada que o admin pode voltar para Caixa', () => {
   for (const status of ['caixa', 'montada', 'em_garantia', 'vendida']) {
-    assert.equal(motivoParaNaoMarcarChegada({ status, arquivada: false }, 'admin_socio', true), JA_CHEGOU, status)
+    assert.equal(motivoParaNaoMarcarChegada({ status, arquivada: false }, pessoa('admin_socio'), true), JA_CHEGOU, status)
   }
 })
 

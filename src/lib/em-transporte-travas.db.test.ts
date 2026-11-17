@@ -30,7 +30,7 @@ const mocks = [
 ]
 
 type Sessao = Record<string, unknown>
-const sessoes = { socioA: {} as Sessao, auxA: {} as Sessao, socioB: {} as Sessao, vendedorA: {} as Sessao, auxOutraLojaA: {} as Sessao }
+const sessoes = { socioA: {} as Sessao, auxA: {} as Sessao, socioB: {} as Sessao, vendedorA: {} as Sessao, auxOutraLojaA: {} as Sessao, redeA: {} as Sessao }
 const semente = { contaA: '', grupoA: '', lojaA: '', destinoA: '', contaB: '', grupoB: '', modeloId: '', origemId: '' }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,6 +54,10 @@ before(async () => {
   const auxOutraLojaA = await semearUsuario(db, { ...a, lojaId: destino.id }, { papel: 'aux_adm', rotulo: 'auxdestino' })
   sessoes.vendedorA = { id: vendedorA, papel: 'vendedor', lojaId: a.lojaId, gruposAcesso: [], contaId: a.contaId, grupoLiberado: null }
   sessoes.auxOutraLojaA = { id: auxOutraLojaA, papel: 'aux_adm', lojaId: destino.id, gruposAcesso: [], contaId: a.contaId, grupoLiberado: null }
+  // A sessão do admin_rede sai da mesma função que o getUsuarioLogado usa: ele chega como admin_socio.
+  const redeA = await semearUsuario(db, a, { papel: 'admin_rede', rotulo: 'rede', semLoja: true, comGrupo: true })
+  const { usuarioDaRede } = await import('@/lib/grupos-liberados')
+  sessoes.redeA = { id: redeA, ...usuarioDaRede({ papel: 'admin_rede', lojaId: null, gruposAcesso: [a.grupoId], gruposAprovacao: [], contaId: a.contaId }, [], null) }
   usuarioDaSessao = sessoes.socioA
 })
 
@@ -338,6 +342,15 @@ test('marcar de novo a chegada (clique duplo, ou outra pessoa já marcou): recus
 test('vendedor da loja não marca a chegada: recusa sem permissão; nada muda', async () => {
   usuarioDaSessao = sessoes.vendedorA
   const moto = await novaMoto('CHGVEN', 'em_transporte')
+  assert.deepEqual(await (await estoque()).marcarChegadaAction(moto), { ok: false, erro: SEM_PERMISSAO_CHEGADA })
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+  assert.deepEqual(await historicoDa(moto), [])
+})
+
+// D2 do #11: admin_rede sem o botão, embora opere como sócio no resto do app (Montar inclusive).
+test('admin_rede não marca a chegada: recusa sem permissão; nada muda', async () => {
+  usuarioDaSessao = sessoes.redeA
+  const moto = await novaMoto('CHGRED', 'em_transporte')
   assert.deepEqual(await (await estoque()).marcarChegadaAction(moto), { ok: false, erro: SEM_PERMISSAO_CHEGADA })
   assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
   assert.deepEqual(await historicoDa(moto), [])
