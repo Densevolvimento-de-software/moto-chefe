@@ -145,6 +145,21 @@ export function motivoParaNaoTransferir(status: string): string | null {
   return NAO_TRANSFERE_POR_STATUS[status] ?? null
 }
 
+// Os status de estoque que a função abrir_garantia do banco recusa. O banco continua como última rede
+// (e é quem recusa o legado 'reservada', sem motos hoje).
+const NAO_ABRE_GARANTIA_POR_STATUS: Partial<Record<string, string>> = {
+  em_transporte: 'Moto ainda em transporte. Garantia só depois da chegada.',
+  caixa: 'Moto ainda não foi montada. Garantia só depois da montagem.',
+}
+
+/**
+ * Motivo pelo qual o status físico da moto impede abrir garantia, ou null. A action e o botão da tela
+ * passam por aqui.
+ */
+export function motivoParaNaoAbrirGarantia(status: string): string | null {
+  return NAO_ABRE_GARANTIA_POR_STATUS[status] ?? null
+}
+
 /**
  * Motivo pelo qual a moto não pode receber um pedido de aprovação de venda, ou
  * null se pode. Moto 'reservada' é aceita de propósito: é assim que se finaliza

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, avisoVendaBarrada, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
+import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, avisoVendaBarrada, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
 
 // A venda que estragou a LYDAE3936T1207627: efetivada em 20/08 e já faturada.
 const VENDA_FATURADA: VendaVinculada = { numero: 31118, notaFiscalSaida: '2263' }
@@ -130,6 +130,14 @@ test('motivoParaNaoTransferir: barra a em transporte (marcar a chegada) e a vend
   assert.deepEqual(
     ['em_transporte', 'vendida', 'caixa', 'montada', 'em_garantia'].map(motivoParaNaoTransferir),
     ['Moto ainda em transporte. Marque a chegada antes de transferir.', 'Moto já foi vendida', null, null, null],
+  )
+})
+
+// Decisão do Luis (#9): garantia só depois da chegada e da montagem, como a função abrir_garantia do banco.
+test('motivoParaNaoAbrirGarantia: barra a em transporte e a caixa, cada uma com a sua frase; montada, em garantia e vendida abrem', () => {
+  assert.deepEqual(
+    ['em_transporte', 'caixa', 'montada', 'em_garantia', 'vendida'].map(motivoParaNaoAbrirGarantia),
+    ['Moto ainda em transporte. Garantia só depois da chegada.', 'Moto ainda não foi montada. Garantia só depois da montagem.', null, null, null],
   )
 })
 

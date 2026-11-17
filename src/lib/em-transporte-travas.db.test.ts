@@ -54,7 +54,7 @@ before(async () => {
 
 after(async () => {
   const daSemente = sql`(select id from motos where chassi like ${P + '%'})`
-  for (const t of ['vendas', 'reservas', 'aprovacoes_venda', 'pedidos_venda', 'transferencias', 'historico_estoque']) {
+  for (const t of ['vendas', 'reservas', 'aprovacoes_venda', 'pedidos_venda', 'transferencias', 'garantias', 'historico_estoque']) {
     await db.execute(sql`delete from ${sql.raw(t)} where moto_id in ${daSemente}`)
   }
   await db.execute(sql`delete from log_acoes where usuario_id in (select id from usuarios where email like ${'%-' + P.toLowerCase() + '-%'})`)
@@ -265,4 +265,19 @@ test('moto em transporte não vai direto para montada, nem pelo admin: a chegada
   await assert.rejects((await estoque()).alterarStatusAction(moto, 'montada', undefined, sessoes.socioA.id as string),
     { message: 'Transição em_transporte → montada não permitida' })
   assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+})
+
+// Decisão do Luis (#9): moto em transporte (e na caixa) não vai para garantia; a action recusa com a frase do status.
+test('abrir garantia de moto em transporte ou na caixa, pela action: recusa com a frase do status; nenhuma garantia', async () => {
+  usuarioDaSessao = sessoes.auxA
+  const { abrirGarantiaAction } = await import('@/app/(dashboard)/garantias/actions')
+  for (const [status, frase] of [
+    ['em_transporte', 'Moto ainda em transporte. Garantia só depois da chegada.'],
+    ['caixa', 'Moto ainda não foi montada. Garantia só depois da montagem.'],
+  ]) {
+    const moto = await novaMoto('GAR' + status.toUpperCase(), status)
+    assert.deepEqual(await abrirGarantiaAction({ motoId: moto, descricao: 'bateria', dataInicio: '2026-11-17' }), { ok: false, erro: frase }, status)
+    const [{ garantias }] = await linhas(sql`select count(*)::int as garantias from garantias where moto_id = ${moto}`)
+    assert.deepEqual({ garantias, status: (await estadoDa(moto)).status }, { garantias: 0, status }, status)
+  }
 })
