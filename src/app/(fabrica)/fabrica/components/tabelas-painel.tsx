@@ -240,12 +240,14 @@ function FaixaFaturamento({ v, lojas, impresso }: { v: ResumoVendas; lojas: Loja
     // Sem print-color-adjust o navegador some com a barra no papel (como em coletiva-view); a propriedade é herdada.
     <ul className="border-t px-4 py-3 space-y-2" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
       {lojasPorFaturamento(lojas).map(l => (
-        <li key={l.lojaId} className="grid grid-cols-[minmax(8rem,12rem)_1fr_auto_5rem] items-center gap-4 text-sm">
+        // Cada linha é uma grade própria: com a coluna do valor em `auto`, o trilho mudava de largura conforme os dígitos
+        // e a barra deixava de ser proporcional. 8rem cabe "R$ 12.345.678,90".
+        <li key={l.lojaId} className="grid grid-cols-[minmax(8rem,12rem)_1fr_8rem_5rem] items-center gap-4 text-sm">
           <span className="font-medium truncate">{l.lojaNome}</span>
           <span className="h-2 rounded-full bg-muted overflow-hidden" aria-hidden>
             <span className="block h-full rounded-full bg-primary" style={{ width: `${maior > 0 ? (l.valor / maior) * 100 : 0}%` }} />
           </span>
-          <span className="font-semibold tabular-nums text-right">{fmtBRL(l.valor)}</span>
+          <span className="font-semibold tabular-nums text-right whitespace-nowrap">{fmtBRL(l.valor)}</span>
           <span className="text-muted-foreground text-right">{textoMotos(l.motos)}</span>
         </li>
       ))}
