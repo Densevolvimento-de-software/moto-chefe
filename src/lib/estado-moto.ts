@@ -12,6 +12,7 @@ const isAdmin = (p: Papel) => p === 'admin_geral' || p === 'admin_socio'
 
 // Transições de status físico (Aux Adm + Admin)
 const transicoesNormais: Partial<Record<Status, Status[]>> = {
+  em_transporte: ['caixa'],
   caixa:       ['montada'],
   montada:     ['em_garantia'],
   em_garantia: ['montada'],
@@ -41,6 +42,18 @@ export function getTransicoesStatusPermitidas(
   }
 
   return []
+}
+
+/**
+ * Motivo pelo qual a pessoa não pode marcar a chegada desta moto (botão Chegou), ou null. A tela e a
+ * action passam por aqui. O status vem antes: a correção montada → caixa do admin não é chegada.
+ */
+export function motivoParaNaoMarcarChegada(status: string, papel: Papel, isMinhaLoja: boolean): string | null {
+  if (status !== 'em_transporte') return 'Esta moto não está mais em transporte.'
+  if (!getTransicoesStatusPermitidas(status, papel, isMinhaLoja).includes('caixa')) {
+    return 'Sem permissão para marcar a chegada desta moto.'
+  }
+  return null
 }
 
 // Transições de disponibilidade (Aux Adm + Admin, apenas motos montadas)

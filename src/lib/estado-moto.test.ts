@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, avisoVendaBarrada, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
+import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, motivoParaNaoAbrirGarantia, motivoParaNaoMarcarChegada, avisoVendaBarrada, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
 
 // A venda que estragou a LYDAE3936T1207627: efetivada em 20/08 e já faturada.
 const VENDA_FATURADA: VendaVinculada = { numero: 31118, notaFiscalSaida: '2263' }
@@ -120,9 +120,33 @@ test('avisoVendaBarrada: a caixa com o texto de sempre, a em transporte com o se
   assert.deepEqual(['montada', 'em_garantia'].map(avisoVendaBarrada), [null, null])
 })
 
-test('moto em transporte não tem transição de status nesta etapa, para nenhum papel (a chegada vem no botão Chegou)', () => {
+// Decisão do Luis (#11, P3): a chegada é a transição normal, como o Montar: aux_adm da loja e admins.
+test('moto em transporte só vai para Caixa (a chegada), por aux_adm da loja da moto e pelos admins', () => {
   for (const papel of ['admin_geral', 'admin_socio', 'aux_adm'] as const) {
+    assert.deepEqual(getTransicoesStatusPermitidas('em_transporte', papel, true), ['caixa'], papel)
+  }
+  assert.deepEqual(getTransicoesStatusPermitidas('em_transporte', 'aux_adm', false), [], 'aux_adm de outra loja')
+  for (const papel of ['admin_rede', 'vendedor', 'mecanico'] as const) {
     assert.deepEqual(getTransicoesStatusPermitidas('em_transporte', papel, true), [], papel)
+  }
+})
+
+const JA_CHEGOU = 'Esta moto não está mais em transporte.'
+const SEM_PERMISSAO_CHEGADA = 'Sem permissão para marcar a chegada desta moto.'
+
+test('marcar chegada: só moto em transporte, por aux_adm da loja da moto ou admin_geral/admin_socio', () => {
+  assert.equal(motivoParaNaoMarcarChegada('em_transporte', 'aux_adm', true), null)
+  assert.equal(motivoParaNaoMarcarChegada('em_transporte', 'admin_socio', false), null)
+  assert.equal(motivoParaNaoMarcarChegada('em_transporte', 'admin_geral', false), null)
+  assert.equal(motivoParaNaoMarcarChegada('em_transporte', 'aux_adm', false), SEM_PERMISSAO_CHEGADA, 'aux_adm de outra loja')
+  for (const papel of ['admin_rede', 'vendedor', 'mecanico'] as const) {
+    assert.equal(motivoParaNaoMarcarChegada('em_transporte', papel, true), SEM_PERMISSAO_CHEGADA, papel)
+  }
+})
+
+test('marcar chegada de moto que não está em transporte recusa, inclusive a montada que o admin pode voltar para Caixa', () => {
+  for (const status of ['caixa', 'montada', 'em_garantia', 'vendida']) {
+    assert.equal(motivoParaNaoMarcarChegada(status, 'admin_socio', true), JA_CHEGOU, status)
   }
 })
 
