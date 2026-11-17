@@ -6,6 +6,7 @@ import { freteDaVenda, type EntregaVenda } from '@/lib/notagateway/entrega'
 // a tela mostrava "Cancelar" ao sócio e o banco recusava).
 import { motivoParaNaoVender } from './estado-moto'
 import { MOTO_ARQUIVADA } from './arquivar-moto-regras'
+import { aprovacaoNecessaria, type TipoAprovacaoVenda } from './aprovacao-venda'
 
 const PAPEIS_QUE_CRIAM_PEDIDO = ['admin_geral', 'admin_socio', 'aux_adm', 'vendedor']
 
@@ -110,6 +111,51 @@ export function trocaDeMotos(atuais: readonly string[], pedidas: readonly string
     saem: atuais.filter(id => !ficam.includes(id)),
     principal: ficam.includes(principal) ? principal : ficam[0] ?? null,
   }
+}
+
+export type MotoComValor = { motoId: string; valor: number }
+
+export const ITENS_DO_PEDIDO_MUDARAM = 'Os itens do pedido mudaram. Recarregue a página.'
+
+// Até o #23, cancelar e editar são do pedido inteiro quando ele tem várias motos (D-F e D-I do #20).
+export const VENDA_DE_PEDIDO_NAO_CANCELA = 'Esta venda faz parte de um pedido com várias motos. O cancelamento é do pedido inteiro e ainda não está disponível.'
+export const VENDA_DE_PEDIDO_NAO_EDITA = 'Esta venda faz parte de um pedido com várias motos. A edição é do pedido inteiro e ainda não está disponível.'
+
+/** Valor da efetivação: o texto da tela de hoje (1 moto) ou a lista { motoId, valor } refeita campo a campo; null se não serve. */
+export function valorDaEfetivacao(x: unknown): number | MotoComValor[] | null {
+  if (typeof x === 'string') return parseFloat(x) > 0 ? parseFloat(x) : null
+  if (!listaDeMotosValida(x) || x.some(m => m.valor === undefined || valorDeMotoInvalido(m.valor))) return null
+  return x.map(m => ({ motoId: m.motoId, valor: m.valor! }))
+}
+
+/** Valores na ordem das motos do pedido; null se não são as mesmas motos. Número só no pedido de 1 moto (tela e aprovação de antes). */
+export function valoresDaEfetivacao(motoIds: readonly string[], recebido: number | readonly MotoComValor[]): MotoComValor[] | null {
+  if (typeof recebido === 'number') return motoIds.length === 1 ? [{ motoId: motoIds[0], valor: recebido }] : null
+  const valores = motoIds.map(motoId => recebido.find(m => m.motoId === motoId))
+  return recebido.length === motoIds.length && valores.every(v => v !== undefined) ? valores : null
+}
+
+/** Venda que leva frete e pagamento (D-A): com frete, a 1ª com NF pelo CNPJ da loja (D2 do #779); senão a 1ª. */
+export const vendaDoPagamento = (motos: readonly { outroCnpj: boolean }[], frete: number): number =>
+  frete > 0 ? Math.max(motos.findIndex(m => !m.outroCnpj), 0) : 0
+
+/** Líquido do pedido repartido entre as motos na proporção do valor (#20, D-C); a última fecha a soma em centavos. */
+export function liquidoPorMoto(liquido: number, valores: readonly number[]): number[] {
+  const total = valores.reduce((s, v) => s + v, 0)
+  const primeiras = valores.slice(0, -1).map(v => centavos(total > 0 ? (liquido * v) / total : 0))
+  return valores.length === 0 ? [] : [...primeiras, centavos(liquido - primeiras.reduce((s, v) => s + v, 0))]
+}
+
+/** Aprovação do pedido (D-C): pagamento sensível vale para o pedido; valor mínimo, por moto, com o líquido rateado. */
+export function aprovacaoDoPedido(p: {
+  sensivelSemPermissao: boolean; papel: string; liquido: number; motos: readonly { motoId: string; valor: number; minimo: number | null }[]
+}): { tipo: TipoAprovacaoVenda | null; abaixo: { motoId: string; minimo: number; liquido: number }[] } {
+  const liquidos = liquidoPorMoto(p.liquido, p.motos.map(m => m.valor))
+  const abaixo = p.motos.flatMap((m, i) => {
+    const preco = m.minimo == null ? null : { liquido: liquidos[i], minimo: m.minimo }
+    return preco && aprovacaoNecessaria({ sensivelSemPermissao: false, preco, papel: p.papel }) ? [{ motoId: m.motoId, ...preco }] : []
+  })
+  return { tipo: aprovacaoNecessaria({ sensivelSemPermissao: p.sensivelSemPermissao, preco: null, papel: p.papel }) ?? (abaixo.length > 0 ? 'valor_minimo' : null), abaixo }
 }
 
 /** Peça que entra no pedido (#778): brinde (R$ 0) ou acessório, do catálogo de peças da Conta. */
