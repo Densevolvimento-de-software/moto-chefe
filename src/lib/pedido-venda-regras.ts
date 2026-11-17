@@ -4,6 +4,7 @@ import { freteDaVenda, type EntregaVenda } from '@/lib/notagateway/entrega'
 // Regras puras do pedido de venda, sem banco: usadas pela action (servidor) e pelo
 // cartão do pedido (cliente), para a tela e o servidor não divergirem de novo (#181:
 // a tela mostrava "Cancelar" ao sócio e o banco recusava).
+import { motivoParaNaoVender } from './estado-moto'
 
 const PAPEIS_QUE_CRIAM_PEDIDO = ['admin_geral', 'admin_socio', 'aux_adm', 'vendedor']
 
@@ -38,7 +39,8 @@ export type MotoParaPedido = { status: string; disponibilidade: string | null }
 
 /** Motivo para não criar pedido com esta moto, ou null quando pode. */
 export function motivoBloqueioCriarPedido(moto: MotoParaPedido, temTransferenciaPendente: boolean): string | null {
-  if (moto.status === 'caixa') return 'Moto ainda não foi montada. Não pode ser vendida.'
+  const porStatus = motivoParaNaoVender(moto.status)
+  if (porStatus) return porStatus
   if (moto.status === 'vendida') return 'Moto já foi vendida'
   if (moto.disponibilidade !== 'disponivel') {
     return `Moto não está disponível (${moto.disponibilidade ?? 'sem disponibilidade'})`

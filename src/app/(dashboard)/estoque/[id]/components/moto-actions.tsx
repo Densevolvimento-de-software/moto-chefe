@@ -11,6 +11,7 @@ import { ResolverGarantiaButton } from './resolver-garantia-button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeftRight, Printer } from 'lucide-react'
 import { podeVendedorReservarForaDaLoja } from '@/lib/loja-galpao'
+import { motivoParaNaoVender } from '@/lib/estado-moto'
 import type { DemandaCompativel } from '@/lib/queries/demandas'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
 import type { PagamentoEntrada } from '@/lib/pagamentos-entrada'
@@ -89,7 +90,7 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
   const isAdmin = ADMINS.has(papel)
   const abrirVenda = useSearchParams().get('vender') === '1'
   // Guardado no primeiro render: o replace abaixo tira o ?vender=1 da URL logo em seguida.
-  const [vendaBarradaPorCaixa] = useState(() => abrirVenda && moto.status === 'caixa')
+  const [vendaBarradaPorCaixa] = useState(() => abrirVenda && motivoParaNaoVender(moto.status) !== null)
   const router = useRouter()
   const pathname = usePathname()
   // O VenderButton já leu o pedido ao montar; sem limpar, recarregar a página reabriria a venda.
@@ -122,7 +123,7 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
     }
 
     if (podeVenderAqui && podeVender.has(papel)) {
-      const podeVenderMoto = moto.status !== 'caixa' &&
+      const podeVenderMoto = motivoParaNaoVender(moto.status) === null &&
         moto.disponibilidade !== 'reservada' &&
         moto.disponibilidade !== 'aguardando_aprovacao' && (
           moto.disponibilidade === 'disponivel' ||

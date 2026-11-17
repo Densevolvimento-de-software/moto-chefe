@@ -3,7 +3,7 @@ import { useState, useTransition, useRef, useEffect } from 'react'
 import { Search, CheckCircle2, AlertCircle, Loader2, X, UserPlus } from 'lucide-react'
 import { buscarVeiculoGarantiaAction, cadastrarVeiculoGarantiaAction } from '../buscar-veiculo-action'
 import type { VeiculoGarantia } from '../buscar-veiculo-action'
-import { statusLabel_legado } from '@/lib/estado-moto'
+import { rotuloDoStatus } from '@/lib/status-moto'
 
 type Modelo = { id: string; marca: string; modelo: string }
 type Loja   = { id: string; nome: string }
@@ -144,7 +144,7 @@ export function VeiculoGarantiaLookup({ modelos, lojas, isAdmin, lojaUsuarioNome
                         )}
                       </div>
                       <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 bg-muted text-muted-foreground">
-                        {statusLabel_legado[r.status] ?? r.status}
+                        {rotuloDoStatus(r.status)}
                       </span>
                     </button>
                   </li>
@@ -258,7 +258,7 @@ function VeiculoCard({ veiculo, onLimpar }: { veiculo: VeiculoGarantia; onLimpar
         <p className="text-xs font-mono text-muted-foreground">{veiculo.chassi} · {veiculo.lojaNome}</p>
         {veiculo.clienteNome && <p className="text-xs text-info">{veiculo.clienteNome}</p>}
         <p className="text-[10px] mt-0.5 text-muted-foreground">
-          {statusLabel_legado[veiculo.status] ?? veiculo.status}
+          {rotuloDoStatus(veiculo.status)}
         </p>
       </div>
       <button type="button" onClick={onLimpar} className="text-muted-foreground hover:text-foreground">

@@ -7,11 +7,15 @@ type UsuarioFiltravel = { nome: string; email: string; papel: string; lojaNome: 
 
 const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export function filtrarUsuarios<U extends UsuarioFiltravel>(lista: U[], f: FiltrosUsuarios): U[] {
+/** Busca (sem acento, nos textos que a lista escolhe) e situação: o filtro comum das listas de logins. */
+export function filtrarPorBuscaESituacao<T extends { ativo: boolean }>(lista: T[], f: { busca: string; situacao: Situacao }, textos: (t: T) => string[]): T[] {
   const q = semAcento(f.busca.trim())
-  return lista.filter(u =>
-    (!q || semAcento([u.nome, u.email, u.lojaNome ?? ''].join(' ')).includes(q))
-    && (!f.papel || u.papel === f.papel)
-    && (!f.contaId || u.contaId === f.contaId)
-    && (f.situacao === 'todos' || (f.situacao === 'ativos') === u.ativo))
+  return lista.filter(t =>
+    (!q || semAcento(textos(t).join(' ')).includes(q))
+    && (f.situacao === 'todos' || (f.situacao === 'ativos') === t.ativo))
+}
+
+export function filtrarUsuarios<U extends UsuarioFiltravel>(lista: U[], f: FiltrosUsuarios): U[] {
+  return filtrarPorBuscaESituacao(lista, f, u => [u.nome, u.email, u.lojaNome ?? ''])
+    .filter(u => (!f.papel || u.papel === f.papel) && (!f.contaId || u.contaId === f.contaId))
 }

@@ -1,6 +1,7 @@
 'use server'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { senhaCurta } from '@/lib/senha'
 
 export async function trocarSenhaAction(formData: FormData) {
   const novaSenha = formData.get('nova_senha') as string
@@ -10,7 +11,7 @@ export async function trocarSenhaAction(formData: FormData) {
     redirect('/trocar-senha?error=mismatch')
   }
 
-  if (novaSenha.length < 8) {
+  if (senhaCurta(novaSenha)) {
     redirect('/trocar-senha?error=short')
   }
 

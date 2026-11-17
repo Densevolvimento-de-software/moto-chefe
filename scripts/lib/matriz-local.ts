@@ -1,6 +1,7 @@
 // Matriz rota × papel contra a cópia local da produção (#594): saiu do CI e roda na máquina.
 // Regras puras do scripts/e2e-acesso-rotas-local.ts: a trava do alvo e a escolha dos usuários.
-import { USUARIOS_MATRIZ, type UsuarioMatriz } from './acesso-rotas'
+import { PAPEIS_MATRIZ_LOCAL, type UsuarioMatriz } from './acesso-rotas'
+import { PAPEL_FABRICA } from '../../src/lib/login-fabrica'
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
 // Portas do `supabase start` do prod-local: banco e API.
@@ -61,10 +62,11 @@ export const mascararEmail = (email: string) => {
 export function escolherUsuarios(candidatos: Candidato[]): { escolhidos: (UsuarioMatriz & { id: string })[]; semCandidato: string[] } {
   const escolhidos: (UsuarioMatriz & { id: string })[] = []
   const semCandidato: string[] = []
-  for (const { papel } of USUARIOS_MATRIZ) {
+  for (const papel of PAPEIS_MATRIZ_LOCAL) {
     const c = candidatos.find(x => x.papel === papel &&
       x.papeisExtras.length === 0 && x.modulosExtras.length === 0 && x.modulosBloqueados.length === 0 &&
-      (papel === 'admin_geral' || (x.temDados && x.temLoja)))
+      // admin_geral e login da fábrica não têm loja nem passam pelo completar cadastro.
+      (papel === 'admin_geral' || papel === PAPEL_FABRICA || (x.temDados && x.temLoja)))
     if (c) escolhidos.push({ id: c.id, email: c.email, papel, rotulo: mascararEmail(c.email) })
     else semCandidato.push(papel)
   }

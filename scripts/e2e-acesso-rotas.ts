@@ -10,7 +10,7 @@
  */
 import { chromium, type Page } from 'playwright'
 import { motivoUrlRecusada } from './lib/smoke'
-import { ROTAS_MATRIZ, esperado, falhaDaVisita, usuariosDaMatriz } from './lib/acesso-rotas'
+import { ROTAS_MATRIZ, destinoSemAcesso, esperado, falhaDaVisita, usuariosDaMatriz } from './lib/acesso-rotas'
 import { fecharNovidadesSeAbrir } from './lib/janela-novidades'
 
 const base = (process.env.NAVEGACAO_URL ?? process.env.SMOKE_URL)?.replace(/\/$/, '')
@@ -63,7 +63,7 @@ async function main() {
           await pagina.waitForLoadState('networkidle', { timeout: LIMITE }).catch(() => {})
         } catch { /* sem resposta: status fica null */ }
         const telaDeErro = await pagina.getByText('Erro ao carregar a página').isVisible().catch(() => false)
-        const falha = falhaDaVisita(esp, { href, caminhoFinal: new URL(pagina.url()).pathname, status, telaDeErro })
+        const falha = falhaDaVisita(esp, { href, caminhoFinal: new URL(pagina.url()).pathname, status, telaDeErro }, destinoSemAcesso(u.papel))
         if (falha) {
           falhas++
           console.log(`  ✗ ${href} (${esp}): ${falha}`)

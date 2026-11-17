@@ -14,8 +14,9 @@ const tx = {
   update: () => ({ set: () => ({ where: async () => {} }) }),
   execute: async () => {},
   delete: () => ({ where: () => ({ returning: async () => { if (erroNoDelete) throw erroNoDelete; return [{ id: 'u1', nome: 'U', lojaId: null, contaId: null }] } }) }) }
+let erroNoInsert: unknown = null
 const db = {
-  insert: () => ({ values: async () => {} }),
+  insert: () => ({ values: async () => { if (erroNoInsert) throw erroNoInsert } }),
   select: () => ({ from: () => ({ where: consulta }) }),
   transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
 }
@@ -132,4 +133,17 @@ test('editar: cargo com base Admin Sócio confere os grupos de aprovação; base
   respostas = [[], CONTA_DA_LOJA, [], []]
   assert.deepEqual(await editarUsuarioAction('u1', doCargo), { ok: true }, 'a lista não vale para essa base: nem é conferida')
   cargoDoCadastro = { ok: true, cargoId: null, papelBase: null }
+})
+
+// Login sem cadastro entra no Auth e cai sem linha em `usuarios`: se a gravação falha, o login sai.
+test('criar: se a gravação do cadastro falha, o login criado no Auth é desfeito', async () => {
+  const { criarUsuarioAction } = await import('./actions')
+  respostas = []
+  usuariosCriados = 0
+  loginsApagados = 0
+  erroNoInsert = new Error('falha ao gravar')
+  await assert.rejects(criarUsuarioAction({ ...dados, gruposAcesso: [] }), /falha ao gravar/)
+  assert.equal(usuariosCriados, 1)
+  assert.equal(loginsApagados, 1)
+  erroNoInsert = null
 })

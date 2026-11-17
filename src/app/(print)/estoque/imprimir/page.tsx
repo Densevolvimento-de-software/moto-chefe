@@ -6,7 +6,8 @@ import { listarMotos } from '@/lib/queries/motos'
 import { precosParaImpressao } from '@/lib/queries/showroom-precos'
 import { filtrosDoShowroom, type ParamsShowroom } from '@/lib/showroom-filtros'
 import { agruparPorModelo } from '@/lib/showroom-impressao'
-import { disponibilidadeLabel, statusLabel_legado } from '@/lib/estado-moto'
+import { disponibilidadeLabel } from '@/lib/estado-moto'
+import { rotuloDoStatus } from '@/lib/status-moto'
 import { PrintButtons } from '../../relatorio-fabrica/imprimir/print-buttons'
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -32,7 +33,7 @@ export default async function EstoqueImprimirPage({ searchParams }: { searchPara
 
   const nomesLojas = lojasDoGrupo.filter(l => filtros.lojaId.includes(l.id)).map(l => l.nome)
   const ativos = [
-    filtros.status.length ? `Status: ${filtros.status.map(s => statusLabel_legado[s] ?? s).join(', ')}` : null,
+    filtros.status.length ? `Status: ${filtros.status.map(rotuloDoStatus).join(', ')}` : null,
     filtros.disponibilidade ? `Disponibilidade: ${filtros.disponibilidade.map(d => disponibilidadeLabel[d as keyof typeof disponibilidadeLabel] ?? d).join(', ')}` : null,
     filtros.cor.length ? `Cor: ${filtros.cor.join(', ')}` : null,
     filtros.modeloId.length ? `${filtros.modeloId.length} modelo(s) filtrado(s)` : null,
@@ -96,7 +97,7 @@ export default async function EstoqueImprimirPage({ searchParams }: { searchPara
                   <tr key={m.chassi}>
                     <td style={{ width: '22%' }}>{m.cor}</td>
                     <td className="mono">{m.chassi}</td>
-                    <td>{statusLabel_legado[m.status] ?? m.status}</td>
+                    <td>{rotuloDoStatus(m.status)}</td>
                     <td>{m.lojaNome}</td>
                     {comValores && <td className="num">{m.preco !== null ? fmt(m.preco) : <span className="marca">sem preço</span>}</td>}
                   </tr>

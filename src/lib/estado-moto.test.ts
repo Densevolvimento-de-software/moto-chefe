@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, type VendaVinculada } from './estado-moto'
+import { motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
 
 // A venda que estragou a LYDAE3936T1207627: efetivada em 20/08 e já faturada.
 const VENDA_FATURADA: VendaVinculada = { numero: 31118, notaFiscalSaida: '2263' }
@@ -95,4 +95,22 @@ test('reserva de moto disponível pode ser cancelada', () => {
 
 test('reserva de moto na caixa pode ser cancelada', () => {
   assert.equal(motivoBloqueioCancelarReserva({ disponibilidade: null }), null)
+})
+
+test('motivoParaNaoVender: só a moto na caixa é barrada pelo status, com a frase de sempre', () => {
+  assert.deepEqual(
+    ['caixa', 'montada', 'em_garantia', 'vendida'].map(motivoParaNaoVender),
+    ['Moto ainda não foi montada. Não pode ser vendida.', null, null, null],
+  )
+})
+
+test('disponibilidade depois de cancelar a reserva: nula na caixa, "disponivel" no resto', () => {
+  assert.deepEqual(
+    ['caixa', 'montada', 'em_garantia'].map(disponibilidadeAposCancelarReserva),
+    [null, 'disponivel', 'disponivel'],
+  )
+})
+
+test('statusLabel: os rótulos de hoje', () => {
+  assert.deepEqual(statusLabel, { caixa: 'Caixa', montada: 'Montada', em_garantia: 'Garantia' })
 })

@@ -8,6 +8,9 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { origemDaRequisicao, registrarSemFalhar } from '@/lib/log-acoes'
 import { getGrupoAtivo } from '@/lib/grupo'
+import { PAPEL_FABRICA } from '@/lib/login-fabrica'
+import { motivoDoErroDeLogin } from '@/lib/erro-de-login'
+import { ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
 
 export async function loginAction(formData: FormData) {
   const supabase = await createClient()
@@ -28,10 +31,7 @@ export async function loginAction(formData: FormData) {
     redirect('/login?error=indisponivel')
   }
 
-  if (error) {
-    const falhaDeRede = error.name === 'AuthRetryableFetchError' || !error.status
-    redirect(falhaDeRede ? '/login?error=indisponivel' : '/login?error=1')
-  }
+  if (error) redirect(`/login?error=${motivoDoErroDeLogin(error)}`)
 
   // Conta desativada não pode logar, mesmo com a senha certa. getUsuarioLogado
   // já pega isso mais adiante (redireciona pra /conta-desativada), mas checar
@@ -45,16 +45,20 @@ export async function loginAction(formData: FormData) {
   }
 
   // Grupo em que a pessoa cai (cookie ou padrão); a Conta é a do grupo, como nas outras linhas.
+  const ehFabrica = usuario?.papel === PAPEL_FABRICA
   if (usuario) {
-    const grupo = await getGrupoAtivo(usuario).catch(() => null)
+    // Login da fábrica não tem grupo nem Conta, mesmo que a linha traga uma (o servidor não confia
+    // nela, como no getUsuarioLogado): o log fica só com o usuário.
+    const grupo = ehFabrica ? null : await getGrupoAtivo(usuario).catch(() => null)
     await registrarSemFalhar({
-      tipo: 'login', usuarioId: usuario.id, contaId: grupo?.contaId ?? usuario.contaId, grupoId: grupo?.id ?? null,
+      tipo: 'login', usuarioId: usuario.id, contaId: ehFabrica ? null : grupo?.contaId ?? usuario.contaId, grupoId: grupo?.id ?? null,
       ...origemDaRequisicao(await headers()),
     })
   }
 
   // Senha provisória: vai direto para a troca. O middleware também leva, mas só na navegação
   // seguinte; sem isto a pessoa via o dashboard uma vez antes.
+  if (ehFabrica) redirect(ROTA_PAINEL_FABRICA)
   redirect(deveTrocarSenha ? '/trocar-senha' : '/dashboard')
 }
 
