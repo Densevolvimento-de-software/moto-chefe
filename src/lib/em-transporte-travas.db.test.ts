@@ -245,3 +245,24 @@ test('aprovação pedida com a moto montada, que depois foi posta em transporte:
   assert.equal(status, 'pendente')
   assert.equal((await estadoDa(moto)).vendas, 0)
 })
+
+// D4 (#9): a tela não oferece o Vender de finalizar a reserva dessas motos; chamando a action direto, o servidor recusa.
+test('finalizar a reserva de moto em transporte ou na caixa, pela action: recusa com a frase do status; a reserva continua', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const acoes = await vendas()
+  for (const [status, frase] of [['em_transporte', EM_TRANSPORTE_NAO_VENDE], ['caixa', 'Moto ainda não foi montada. Não pode ser vendida.']]) {
+    const moto = await novaMoto('FIN' + status.toUpperCase(), status)
+    assert.equal((await acoes.registrarReservaAction(reserva(moto))).ok, true, status)
+    assert.deepEqual(await acoes.registrarVendaCompletaAction(venda(moto)), { ok: false, erro: frase }, status)
+    const [{ ativas }] = await linhas(sql`select count(*)::int as ativas from reservas where moto_id = ${moto} and status = 'ativa'`)
+    assert.deepEqual({ ativas, ...(await estadoDa(moto)) }, { ativas: 1, ...intacta(status, 'reservada') }, status)
+  }
+})
+
+test('moto em transporte não vai direto para montada, nem pelo admin: a chegada vem antes', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const moto = await novaMoto('MNT', 'em_transporte')
+  await assert.rejects((await estoque()).alterarStatusAction(moto, 'montada', undefined, sessoes.socioA.id as string),
+    { message: 'Transição em_transporte → montada não permitida' })
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+})

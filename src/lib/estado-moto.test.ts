@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, avisoVendaBarrada, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
+import { getTransicoesStatusPermitidas, motivoBloqueioPorVenda, motivoBloqueioPedidoAprovacao, motivoBloqueioCancelarReserva, motivoParaNaoVender, motivoParaNaoTransferir, avisoVendaBarrada, disponibilidadeAposCancelarReserva, statusLabel, type VendaVinculada } from './estado-moto'
 
 // A venda que estragou a LYDAE3936T1207627: efetivada em 20/08 e já faturada.
 const VENDA_FATURADA: VendaVinculada = { numero: 31118, notaFiscalSaida: '2263' }
@@ -118,6 +118,12 @@ test('avisoVendaBarrada: a caixa com o texto de sempre, a em transporte com o se
     texto: 'Moto em transporte não pode ser vendida. Marque a chegada, monte e depois venda.',
   })
   assert.deepEqual(['montada', 'em_garantia'].map(avisoVendaBarrada), [null, null])
+})
+
+test('moto em transporte não tem transição de status nesta etapa, para nenhum papel (a chegada vem no botão Chegou)', () => {
+  for (const papel of ['admin_geral', 'admin_socio', 'aux_adm'] as const) {
+    assert.deepEqual(getTransicoesStatusPermitidas('em_transporte', papel, true), [], papel)
+  }
 })
 
 test('motivoParaNaoTransferir: barra a em transporte (marcar a chegada) e a vendida; o resto do estoque transfere', () => {
