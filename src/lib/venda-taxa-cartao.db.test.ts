@@ -20,6 +20,7 @@ let usuarioDaSessao: Record<string, unknown> = {}
 
 type Db = typeof import('@/lib/db')
 let db: Db['db']
+let execRows: Db['execRows']
 const mocks = [
   mock.module('@/lib/auth', { namedExports: { getUsuarioLogado: async () => usuarioDaSessao } }),
   mock.module('next/cache', { namedExports: { revalidatePath: () => {} } }),
@@ -34,23 +35,20 @@ type Conta = { base: Base; vendedorId: string; socioId: string; origemId: string
 let modeloId = ''
 const contas: Record<'A' | 'B', Conta> = {} as Record<'A' | 'B', Conta>
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const linhas = async (q: ReturnType<typeof sql>) => ((await db.execute(q)) as unknown as { rows: any[] }).rows
-
 async function semearConta(nome: 'A' | 'B', cnpj: string, taxa12x: number): Promise<Conta> {
   const base = await semearContaBase(db, { prefixo: P, nome, cnpj })
   const vendedorId = await semearUsuario(db, base, { papel: 'vendedor', comGrupo: true })
   const socioId = await semearUsuario(db, base, { papel: 'admin_socio', rotulo: 'socio', semLoja: true, comGrupo: true })
-  const [origem] = await linhas(sql`insert into origens_venda (grupo_id, nome) values (${base.grupoId}, ${'Loja ' + P}) returning id`)
+  const [origem] = await execRows(sql`insert into origens_venda (grupo_id, nome) values (${base.grupoId}, ${'Loja ' + P}) returning id`)
   await db.execute(sql`insert into precificacao (grupo_id, nome, valor_minimo) values (${base.grupoId}, ${P}, '10000.00')`)
   await db.execute(sql`insert into configuracao_taxas (grupo_id, taxas_cartao) values (${base.grupoId}, ${JSON.stringify({ '12': taxa12x })}::jsonb)`)
   return { base, vendedorId, socioId, origemId: origem.id }
 }
 
 before(async () => {
-  ;({ db } = await import('@/lib/db'))
+  ;({ db, execRows } = await import('@/lib/db'))
   acoes = await import('@/app/(dashboard)/vendas/actions')
-  const [modelo] = await linhas(sql`insert into modelos (marca, modelo, categoria, potencia_w, motor, velocidade_max) values ('M', ${P}, 'autopropelido', '1000', 'hub', '32') returning id`)
+  const [modelo] = await execRows(sql`insert into modelos (marca, modelo, categoria, potencia_w, motor, velocidade_max) values ('M', ${P}, 'autopropelido', '1000', 'hub', '32') returning id`)
   modeloId = modelo.id
   contas.A = await semearConta('A', '00000000005001', 0.09)
   contas.B = await semearConta('B', '00000000005002', 0)
@@ -84,7 +82,7 @@ after(async () => {
 })
 
 async function novaMoto(conta: Conta, rotulo: string) {
-  const [m] = await linhas(sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
+  const [m] = await execRows(sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
     values (${P + rotulo}, ${modeloId}, ${conta.base.lojaId}, 'CINZA', '1', 'montada', 'disponivel') returning id`)
   return m.id as string
 }
@@ -104,7 +102,7 @@ const vendaNoCartao12x = (conta: Conta, motoId: string, valor: number) => ({
   motoId, ...cliente, valorTotal: valor.toFixed(2), origemId: conta.origemId,
   pagamentos: [{ tipo: 'cartao_credito', valor, parcelas: 12 }],
 })
-const estadoDa = async (motoId: string) => (await linhas(sql`select m.disponibilidade,
+const estadoDa = async (motoId: string) => (await execRows(sql`select m.disponibilidade,
   (select count(*)::int from vendas v where v.moto_id = m.id) as vendas
   from motos m where m.id = ${motoId}`))[0]
 
@@ -130,7 +128,7 @@ test('vendedor: pedido de aprovação de 10.900 em 12x grava o líquido 9.919 e 
   usuarioDaSessao = sessaoDe(contas.A, 'vendedor')
   const r = await acoes.solicitarAprovacaoVendaAction(vendaNoCartao12x(contas.A, moto, 10900), 'Cliente pediu 12x')
   assert.equal(r.ok, true)
-  const [aprovacao] = await linhas(sql`select status, liquido_snapshot, valor_minimo_snapshot from aprovacoes_venda where moto_id = ${moto}`)
+  const [aprovacao] = await execRows(sql`select status, liquido_snapshot, valor_minimo_snapshot from aprovacoes_venda where moto_id = ${moto}`)
   assert.deepEqual(aprovacao, { status: 'pendente', liquido_snapshot: '9919.00', valor_minimo_snapshot: '10000.00' })
 })
 
