@@ -21,13 +21,16 @@ const items = [
   { key: 'aguardando_nf' as const, label: 'Ag. NF',      icon: FileCheck,    value: (c: Counts) => c.aguardando_nf, text: 'text-info',   bg: 'bg-info/10',   border: 'border-info/30',  icon_c: 'text-info'   },
 ]
 
-// Em transporte é status de poucas lojas: o card só aparece com moto no status no recorte (P8 do #7).
+// O card Em transporte só aparece com moto no status no recorte (P8 do #7); os outros, sempre.
 const aparece = (key: (typeof items)[number]['key'], counts: Counts) => key !== 'em_transporte' || counts.em_transporte > 0
+
+// Desktop: todos os cards numa linha. Classe escrita inteira para o Tailwind achar.
+const COLUNAS_XL: Record<number, string> = { 7: 'xl:grid-cols-7', 8: 'xl:grid-cols-8' }
 
 export function StatusCards({ counts }: Props) {
   const visiveis = items.filter(i => aparece(i.key, counts))
   return (
-    <div className={`grid grid-cols-2 sm:grid-cols-4 ${visiveis.length > 7 ? 'xl:grid-cols-8' : 'xl:grid-cols-7'} gap-3`}>
+    <div className={`grid grid-cols-2 sm:grid-cols-4 ${COLUNAS_XL[visiveis.length]} gap-3`}>
       {visiveis.map(({ key, label, icon: Icon, value, text, bg, border, icon_c }) => (
         <div key={key} className={`rounded-xl border ${border} ${bg} px-4 py-3`}>
           <div className="flex items-center justify-between mb-2">
