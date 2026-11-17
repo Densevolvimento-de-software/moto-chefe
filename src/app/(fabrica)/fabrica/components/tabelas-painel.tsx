@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { ChevronDown } from 'lucide-react'
 import {
   celulasDaVenda, finalDoChassi, nomeDaLoja, resumirEstoque, resumirVendas, urlDoFiltro, COLUNAS_VENDAS, ROTA_PAINEL_FABRICA,
-  type FiltroPainel, type LinhaEstoquePainel, type LojaPainel, type VendaPainel,
+  type Celula, type FiltroPainel, type LinhaEstoquePainel, type LojaPainel, type VendaPainel,
 } from '@/lib/painel-fabrica'
 import { diaBrt, diaCurtoBrt } from '@/lib/data-venda'
 import { fmtBRL } from '@/lib/preco-minimo'
@@ -27,8 +27,7 @@ const CLASSE_DA_COLUNA = [
   'whitespace-nowrap tabular-nums text-right',
 ]
 const COLUNA_VALOR = COLUNAS_VENDAS.indexOf('Valor da moto')
-// O valor chega como número, para o Excel; na tela e no papel, em reais.
-const textoDaCelula = (c: string | number, i: number) => (i === COLUNA_VALOR ? fmtBRL(Number(c)) : c)
+const textoDaCelula = (c: Celula) => (typeof c === 'object' ? fmtBRL(c.reais) : c)
 // Só na tela larga e no papel; no celular, a lista de toque.
 const SO_LARGA = 'hidden md:block print:block'
 const SO_CELULAR = 'md:hidden print:hidden'
@@ -219,7 +218,7 @@ export function TabelaVendas({ lojas, vendas, periodo, filtro, de, ate, impresso
               {vendas.length === 0 && <tr><td colSpan={COLUNAS_VENDAS.length} className={vazio}>{SEM_VENDA}</td></tr>}
               {vendas.map(x => (
                 <tr key={`${x.numero}-${x.chassi}`}>
-                  {celulasDaVenda(x, nomeLoja).map((c, i) => <td key={COLUNAS_VENDAS[i]} className={`${td} ${CLASSE_DA_COLUNA[i]}`}>{textoDaCelula(c, i)}</td>)}
+                  {celulasDaVenda(x, nomeLoja).map((c, i) => <td key={COLUNAS_VENDAS[i]} className={`${td} ${CLASSE_DA_COLUNA[i]}`}>{textoDaCelula(c)}</td>)}
                 </tr>
               ))}
             </tbody>

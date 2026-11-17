@@ -60,6 +60,10 @@ export const rotuloDaAba = (aba: Aba) => ABAS_PAINEL.find(a => a.id === aba)?.ro
 /** Colunas da lista de vendas: as mesmas na tela, no impresso e no Excel. */
 export const COLUNAS_VENDAS = ['Data', 'Venda', 'Loja', 'Modelo', 'Cor', 'Chassi', 'Valor da moto'] as const
 
+/** Célula em reais: a tela e o impresso mostram "R$ 9.990,00"; o Excel recebe o número com 2 casas. */
+export type Reais = { reais: number }
+export type Celula = string | number | Reais
+
 /** Nome da loja pelo id; vazio se a loja não está na lista. */
 export function nomeDaLoja(lojas: LojaPainel[]): (lojaId: string) => string {
   const nomes = new Map(lojas.map(l => [l.lojaId, l.lojaNome]))
@@ -71,8 +75,8 @@ export function nomeDaLoja(lojas: LojaPainel[]): (lojaId: string) => string {
  * Só a data: a venda é digitada sem hora (parseDataInput grava meio-dia UTC), então a hora
  * mostraria 09:00 em quase todas (decisão do Luis, #899).
  */
-export function celulasDaVenda(v: VendaPainel, nomeLoja: (lojaId: string) => string): (string | number)[] {
-  return [diaBrt(v.data), v.numero, nomeLoja(v.lojaId), v.modelo, v.cor, v.chassi, v.valor]
+export function celulasDaVenda(v: VendaPainel, nomeLoja: (lojaId: string) => string): Celula[] {
+  return [diaBrt(v.data), v.numero, nomeLoja(v.lojaId), v.modelo, v.cor, v.chassi, { reais: v.valor }]
 }
 
 /** "0001": o fim do chassi, que basta para achar a moto na lista do celular. */
@@ -175,7 +179,7 @@ export function resumirVendas(vendas: VendaPainel[]) {
   }
 }
 
-export type Planilha = { nome: string; cabecalho: string[]; linhas: (string | number)[][] }
+export type Planilha = { nome: string; cabecalho: string[]; linhas: Celula[][] }
 
 /**
  * Planilha da aba aberta, com as mesmas colunas da tela: só o que a fábrica pode ver
@@ -209,11 +213,12 @@ export function planilhaDoPainel(aba: Aba, d: {
 
 /**
  * CSV que o Excel em português abre direto: separador `;`, BOM UTF-8, número com vírgula
- * decimal e aspas em todo campo com `;`, aspas ou quebra de linha. Campo que começa com
+ * decimal (reais sempre com 2 casas) e aspas em todo campo com `;`, aspas ou quebra de linha. Campo que começa com
  * = + - @ ganha um apóstrofo, para o Excel não executar fórmula vinda de nome de loja ou modelo.
  */
-export function paraCsv(cabecalho: string[], linhas: (string | number)[][]): string {
-  const campo = (v: string | number) => {
+export function paraCsv(cabecalho: string[], linhas: Celula[][]): string {
+  const campo = (v: Celula) => {
+    if (typeof v === 'object') return v.reais.toFixed(2).replace('.', ',')
     if (typeof v === 'number') return String(v).replace('.', ',')
     const s = /^[=+\-@]/.test(v) ? `'${v}` : v
     return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s

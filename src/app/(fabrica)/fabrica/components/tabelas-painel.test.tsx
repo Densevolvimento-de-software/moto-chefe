@@ -52,7 +52,7 @@ test('vendas: a linha da tela tem as mesmas células da planilha; o valor, em re
     const celulas = celulasDaVenda(v, nomeDaLoja(lojas))
     const linha = linhaQueComecaCom(html, String(celulas[0]))
     assert.deepEqual(linha?.slice(0, -1), celulas.slice(0, -1).map(String))
-    assert.equal(celulas.at(-1), v.valor)
+    assert.deepEqual(celulas.at(-1), { reais: v.valor })
   }
 })
 

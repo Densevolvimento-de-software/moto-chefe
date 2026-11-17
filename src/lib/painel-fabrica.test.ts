@@ -113,8 +113,8 @@ test('Excel das vendas: data (dia de Brasília), número, loja, modelo, cor, cha
   assert.equal(p.nome, 'vendas-motochefe-2026-10-01-a-2026-10-31.csv')
   assert.deepEqual(p.cabecalho, ['Data', 'Venda', 'Loja', 'Modelo', 'Cor', 'Chassi', 'Valor da moto'])
   assert.deepEqual(p.linhas, [
-    ['31/10/2026', 201, 'Loja Norte', 'X12', 'PRETO', 'CH201', 9990],
-    ['02/10/2026', 101, 'Loja Centro', 'X12', 'PRETO', 'CH101', 13490.1],
+    ['31/10/2026', 201, 'Loja Norte', 'X12', 'PRETO', 'CH201', { reais: 9990 }],
+    ['02/10/2026', 101, 'Loja Centro', 'X12', 'PRETO', 'CH101', { reais: 13490.1 }],
   ])
 })
 
@@ -148,11 +148,11 @@ test('CSV abre no Excel pt-BR e não executa fórmula', () => {
   assert.ok(csv.includes('"Diz ""oi""";0\r\n'))
 })
 
-test('CSV: número com centavos sai com vírgula, que o Excel pt-BR lê como número', () => {
-  const csv = paraCsv(['Venda', 'Valor da moto'], [[101, 13490.1], [102, 9990], [103, 0.05]])
-  assert.ok(csv.includes('101;13490,1\r\n'))
-  assert.ok(csv.includes('102;9990\r\n'))
-  assert.ok(csv.includes('103;0,05\r\n'))
+test('CSV: valor em reais sai como número com vírgula e sempre 2 casas, sem R$, que o Excel pt-BR lê como número', () => {
+  const csv = paraCsv(['Venda', 'Valor da moto'], [[101, { reais: 13490.1 }], [102, { reais: 9990 }], [103, { reais: 0.05 }]])
+  assert.ok(csv.includes('101;13490,10\r\n'), csv)
+  assert.ok(csv.includes('102;9990,00\r\n'), csv)
+  assert.ok(csv.includes('103;0,05\r\n'), csv)
 })
 
 test('final do chassi: os 4 últimos caracteres', () => {
