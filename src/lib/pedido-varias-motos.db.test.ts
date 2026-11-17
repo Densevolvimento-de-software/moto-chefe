@@ -417,6 +417,20 @@ test('D17: o sócio da Conta B não aprova nem recusa a aprovação do pedido da
   assert.deepEqual(await disponibilidades([m1, m2]), { [m1]: 'aguardando_aprovacao', [m2]: 'aguardando_aprovacao' })
 })
 
+test('D22: a frase de moto de outra Conta vem antes da de arquivada e da de outra loja: quem não alcança a moto não fica sabendo nada dela', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const [daA] = await a.motos(1)
+  const [b1, arquivada] = await b.motos(2)
+  await execRows(sql`update motos set arquivada_em = now(), arquivada_por = ${b.socioId}, motivo_arquivo = 'golpe' where id = ${arquivada}`)
+  const doOutroGrupo = await b.novaMoto(randomUUID().slice(0, 8), b.outro.lojaId)
+  usuario = b.vendedor
+  assert.deepEqual(await actions.criarPedidoVendaAction([{ motoId: arquivada }, { motoId: daA }], '', RETIRA), recusa('Moto não encontrada'))
+  usuario = b.socioParcial
+  assert.deepEqual(await actions.criarPedidoVendaAction([{ motoId: b1 }, { motoId: doOutroGrupo }], '', RETIRA), recusa('Moto não encontrada'))
+  assert.deepEqual([...await pedidosDaMoto(b1), ...await pedidosDaMoto(arquivada), ...await pedidosDaMoto(daA)], [])
+})
+
 test('D3c: pedido com várias motos e uma de outra Conta, no criar e no trocar: recusa o pedido inteiro com a frase do inexistente', async () => {
   const a = await semearConta()
   const b = await semearConta()
