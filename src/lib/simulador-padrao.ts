@@ -1,10 +1,11 @@
 /**
  * Padrão de cards do simulador, escolhido por grupo na Precificação.
- * - 'taxas': 21x e 12x calculados pela taxa do cartão sobre o valor mínimo, e PIX.
+ * - 'taxas': 21x e 12x com a taxa do cartão embutida, para a loja receber o valor mínimo, e PIX.
  * - 'avista_12x': PIX/dinheiro (o valor mínimo) e o total em 12x que o administrador digita
  *   por modelo, sem taxa nenhuma.
  */
-import { centavos } from './centavos'
+import { centavos, centavosParaCima } from './centavos'
+import { brutoParaReceber } from './preco-minimo'
 
 export const PADROES_SIMULADOR = ['taxas', 'avista_12x'] as const
 export type PadraoSimulador = (typeof PADROES_SIMULADOR)[number]
@@ -70,4 +71,46 @@ export function destaqueAvista12x(valorMinimo: number, valor12x: number | null, 
       parcela12x: total12x !== null ? parcelaDe12x(total12x + frete) : null,
     },
   }
+}
+
+/** Linha da tabela de parcelas do padrão 'taxas': total cobrado (credito) e valor de cada parcela. */
+export type LinhaDoSimulador = { parcelas: number; credito: number; parcela: number }
+
+/**
+ * Como a taxa entra no total. Maquininha (crédito, débito, link): % que a operadora tira do bruto,
+ * então o cliente paga saldo / (1 − taxa) (#50). Financiamento: acréscimo que o cliente paga ao banco
+ * sobre o saldo, saldo × (1 + taxa).
+ */
+export type TaxaDoSimulador = 'maquininha' | 'financiamento'
+
+type Cobranca = { credito: number; parcela: number }
+
+const COBRANCA: Record<TaxaDoSimulador, (saldo: number, taxa: number, parcelas: number) => Cobranca | null> = {
+  // A parcela sobe ao centavo e o total é a soma das parcelas: o que o cliente paga nunca fica
+  // abaixo do bruto que deixa o mínimo para a loja.
+  maquininha: (saldo, taxa, parcelas) => {
+    const bruto = brutoParaReceber(saldo, taxa)
+    if (bruto === null) return null
+    const parcela = centavosParaCima(bruto / parcelas)
+    return { credito: centavos(parcela * parcelas), parcela }
+  },
+  financiamento: (saldo, taxa, parcelas) => {
+    const credito = saldo * (1 + taxa)
+    return { credito, parcela: centavos(credito / parcelas) }
+  },
+}
+
+/** Uma linha por parcela com taxa cadastrada, sobre o saldo (base menos entrada). */
+export function linhasDoSimulador(
+  taxas: Record<string, number>, base: number, entrada: number, modo: TaxaDoSimulador,
+): LinhaDoSimulador[] {
+  const saldo = base - entrada
+  return Object.entries(taxas)
+    .filter(([, taxa]) => taxa > 0)
+    .sort(([a], [b]) => parseInt(a) - parseInt(b))
+    .flatMap(([n, taxa]) => {
+      const parcelas = parseInt(n)
+      const cobranca = COBRANCA[modo](saldo, taxa, parcelas)
+      return cobranca === null || cobranca.credito <= 0 ? [] : [{ parcelas, ...cobranca }]
+    })
 }

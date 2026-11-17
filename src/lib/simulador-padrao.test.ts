@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { destaqueAvista12x, ehPadraoSimulador, lerTotal12x, usaValor12x } from './simulador-padrao'
+import { centavos } from './centavos'
+import { liquidoDoBruto } from './preco-minimo'
+import { destaqueAvista12x, ehPadraoSimulador, lerTotal12x, linhasDoSimulador, usaValor12x } from './simulador-padrao'
 
 test('à vista + 12x: o total digitado vira 12 parcelas, sem taxa', () => {
   const r = destaqueAvista12x(13990, 15600)
@@ -64,4 +66,42 @@ test('só os dois padrões existem, e só o novo usa o valor em 12x', () => {
   assert.equal(ehPadraoSimulador(undefined), false)
   assert.equal(usaValor12x('avista_12x'), true)
   assert.equal(usaValor12x('taxas'), false)
+})
+
+test('simulador, maquininha: a parcela embute a taxa como % do bruto e o total é a soma das parcelas (#50)', () => {
+  // Para a loja ficar com 10.000 a 9%: 10.000 / 0,91 = 10.989,01, em 12 de 915,76 (parcela para cima);
+  // o total mostrado é 12 × 915,76 = 10.989,12.
+  assert.deepEqual(linhasDoSimulador({ '12': 0.09 }, 10000, 0, 'maquininha'), [
+    { parcelas: 12, credito: 10989.12, parcela: 915.76 },
+  ])
+})
+
+test('simulador, maquininha com entrada: a taxa incide só sobre o saldo', () => {
+  // Saldo 8.000 / 0,91 = 8.791,21, em 12 de 732,61 (parcela para cima); total 12 × 732,61 = 8.791,32.
+  assert.deepEqual(linhasDoSimulador({ '12': 0.09 }, 10000, 2000, 'maquininha'), [
+    { parcelas: 12, credito: 8791.32, parcela: 732.61 },
+  ])
+})
+
+test('simulador, maquininha: total = parcela × n, e cobrando esse total a loja recebe o mínimo', () => {
+  // 13.990 a 14,99% em 21x: parcela 783,67, total 16.457,07. 10.000 a 9% em 12x: parcela 915,76, total 10.989,12.
+  for (const [base, taxa, n, parcela, total] of [[13990, 0.1499, 21, 783.67, 16457.07], [10000, 0.09, 12, 915.76, 10989.12]]) {
+    const [linha] = linhasDoSimulador({ [n]: taxa }, base, 0, 'maquininha')
+    assert.deepEqual(linha, { parcelas: n, credito: total, parcela })
+    assert.equal(centavos(linha.parcela * n), linha.credito)
+    assert.ok(liquidoDoBruto(linha.credito, taxa) >= base, `líquido de ${linha.credito} abaixo do mínimo ${base}`)
+  }
+})
+
+test('simulador, maquininha: parcela sem taxa ou com taxa de 100% ou mais não aparece', () => {
+  const linhas = linhasDoSimulador({ '3': 0, '6': 1.2, '12': 0.09 }, 10000, 0, 'maquininha')
+  assert.deepEqual(linhas.map(l => l.parcelas), [12])
+})
+
+test('simulador, financiamento: a taxa segue como acréscimo sobre o saldo, como antes do #50', () => {
+  // Saldo 8.000: 12x a 20% = 9.600; 24x a 140% = 19.200 (acréscimo acima de 100% vale aqui).
+  assert.deepEqual(linhasDoSimulador({ '24': 1.4, '12': 0.2 }, 10000, 2000, 'financiamento'), [
+    { parcelas: 12, credito: 9600, parcela: 800 },
+    { parcelas: 24, credito: 19200, parcela: 800 },
+  ])
 })
