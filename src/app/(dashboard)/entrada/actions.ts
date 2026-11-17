@@ -218,7 +218,7 @@ export async function registrarEntradaNota(dados: Omit<NotaComPecas, 'usuario' |
   revalidatePath('/pecas')
   revalidatePath('/dashboard')
   revalidatePath('/entrada')
-  return { success: `Nota lançada: ${total.motos} moto(s)${comoEntraram(status)} e ${total.pecas} item(ns) de peça.` }
+  return { success: `Nota lançada: ${total.motos} moto(s)${total.motos ? comoEntraram(status) : ''} e ${total.pecas} item(ns) de peça.` }
 }
 
 /**

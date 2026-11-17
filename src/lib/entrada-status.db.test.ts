@@ -202,3 +202,9 @@ test('Conta B com a loja da Conta A: mesma resposta da loja inexistente, e nada 
   assert.deepEqual(await motosGravadas([P + 'CB1']), [])
   assert.equal(await saldoDaPeca(), antes)
 })
+
+test('nota só de peças marcada Em transporte não diz "como Em transporte" (não entrou moto)', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const r = await nota([], { statusNaEntrada: 'em_transporte' })
+  assert.equal(r.success, 'Nota lançada: 0 moto(s) e 1 item(ns) de peça.')
+})

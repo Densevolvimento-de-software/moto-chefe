@@ -208,7 +208,7 @@ export async function inserirMotosUmaAUma(
   const erros: string[] = []
   for (const m of e.motos) {
     try {
-      const id = await exec.transaction(sp => inserirMotoDaEntrada(sp, { lojaId: e.lojaId, usuarioId: e.usuario.id, status: e.status, ...m }))
+      const id = await exec.transaction(sp => inserirMotoDaEntrada(sp, { ...m, lojaId: e.lojaId, usuarioId: e.usuario.id, status: e.status }))
       idPorChassi.set(m.chassi, id)
     } catch (erro) {
       erros.push(await recusaDoInsertDaMoto(exec, { lojaId: e.lojaId, usuario: e.usuario }, m.chassi, erro))
@@ -224,7 +224,7 @@ export async function gravarMotosConferidas(
 ): Promise<number> {
   const idPorChassi = new Map<string, string>()
   for (const p of e.prontas) {
-    idPorChassi.set(p.chassi, await inserirMotoDaEntrada(exec, { lojaId: e.lojaId, usuarioId: e.usuarioId, status: e.status, ...p }))
+    idPorChassi.set(p.chassi, await inserirMotoDaEntrada(exec, { ...p, lojaId: e.lojaId, usuarioId: e.usuarioId, status: e.status }))
   }
   return gravarFichaFiscalDasMotos(exec, e.fiscais
     .map(f => ({ ...f, motoId: idPorChassi.get(f.chassi.trim().toUpperCase()) }))
