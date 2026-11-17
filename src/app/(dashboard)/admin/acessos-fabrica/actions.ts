@@ -9,7 +9,7 @@ import { usuarios } from '@/lib/db/schema'
 import { exigirAdminGeral } from '@/lib/admin-geral'
 import { acao, RecusaUsuario, type ResultadoAction } from '@/lib/resultado-action'
 import { registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
-import { validarAcessoFabrica } from '@/lib/acessos-fabrica'
+import { ROTA_ACESSOS_FABRICA, validarAcessoFabrica } from '@/lib/acessos-fabrica'
 import { FRASE_SENHA_CURTA, senhaCurta } from '@/lib/senha'
 import { PAPEL_FABRICA } from '@/lib/login-fabrica'
 import { ehUuid } from '@/lib/uuid'
@@ -17,7 +17,6 @@ import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
 import { LOGIN_NAO_CRIADO, criarLoginComCadastro } from '@/lib/supabase/criar-login'
 import { bloquearLogin } from '@/lib/supabase/bloqueio-login'
 
-const ROTA = '/admin/acessos-fabrica'
 // Mesma frase para id de outro papel, de outra Conta e inexistente: não revela o que existe.
 const NAO_ENCONTRADO = 'Acesso não encontrado'
 const AUTH_FORA = 'Não foi possível mudar o acesso agora. Tente de novo.'
@@ -49,7 +48,7 @@ export async function criarAcessoFabricaAction(entrada: unknown): Promise<Result
       async (novoId) => { await db.insert(usuarios).values({ id: novoId, nome, email, papel: PAPEL_FABRICA }) })
     if (!id) throw new RecusaUsuario(LOGIN_NAO_CRIADO)
     await registrar(admin.id, { id, nome }, 'criado')
-    revalidatePath(ROTA)
+    revalidatePath(ROTA_ACESSOS_FABRICA)
     return { id }
   })
 }
@@ -66,7 +65,7 @@ export async function alternarAcessoFabricaAction(id: string, ativo: boolean): P
       if (!(await bloquearLogin(clienteSupabaseAdmin().auth.admin, alvo.id, ativo !== true))) throw new RecusaUsuario(AUTH_FORA)
     })
     await registrar(admin.id, alvo, ativo === true ? 'ativado' : 'desativado')
-    revalidatePath(ROTA)
+    revalidatePath(ROTA_ACESSOS_FABRICA)
   })
 }
 

@@ -4,6 +4,7 @@ import { ITENS, acessaModulo, itensDoMenu, itensVisiveis, liberavelPara, podeAce
 import { podeOperarNfSaida } from '@/app/(dashboard)/vendas/papeis-nf-saida'
 import { ROTA_PAINEL_FABRICA } from './painel-fabrica'
 import { PAPEL_FABRICA } from './login-fabrica'
+import { ROTA_ACESSOS_FABRICA } from './acessos-fabrica'
 
 const SEM_REGRA_PROPRIA = {}
 
@@ -271,4 +272,13 @@ test('painel da fábrica: admin_geral abre; sócio, aux_adm e admin_geral com o 
   assert.ok(!podeAcessar({ papel: 'admin_rede' }, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
   assert.ok(!podeAcessar({ papel: 'admin_socio', modulosExtras: ['painel-fabrica'] }, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
   assert.ok(!podeAcessar({ papel: 'admin_geral', modulosBloqueados: ['painel-fabrica'] }, ROTA_PAINEL_FABRICA, SEM_REGRA_PROPRIA))
+})
+
+test('Acessos da Fábrica (#3): só o admin_geral, nem com liberação individual; o login da fábrica não abre', async () => {
+  assert.ok(podeAcessar(ADMIN_GERAL, ROTA_ACESSOS_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(ids(ADMIN_GERAL).includes('acessos-fabrica'))
+  assert.ok(!podeAcessar(SOCIO, ROTA_ACESSOS_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar({ papel: 'admin_socio', modulosExtras: ['acessos-fabrica'] }, ROTA_ACESSOS_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar({ papel: 'admin_rede' }, ROTA_ACESSOS_FABRICA, SEM_REGRA_PROPRIA))
+  assert.ok(!podeAcessar({ papel: PAPEL_FABRICA }, ROTA_ACESSOS_FABRICA, SEM_REGRA_PROPRIA))
 })

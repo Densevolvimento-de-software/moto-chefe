@@ -3,6 +3,8 @@
 import { emailValido } from '@/lib/email-valido'
 import { FRASE_SENHA_CURTA, senhaCurta } from '@/lib/senha'
 
+export const ROTA_ACESSOS_FABRICA = '/admin/acessos-fabrica'
+
 export type DadosAcessoFabrica = { nome: string; email: string; senha: string }
 
 const texto = (v: unknown) => (typeof v === 'string' ? v : null)
