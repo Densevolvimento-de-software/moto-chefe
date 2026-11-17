@@ -135,6 +135,26 @@ test('cancelar a reserva de moto em transporte devolve sem disponibilidade (não
   assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
 })
 
+// P5 (#12): reservar moto em transporte, igual caixa. O pedido vem forjado com campos a mais (DevTools).
+test('aux_adm reserva moto em transporte pela action: reserva na loja da moto; a moto segue em transporte; campos a mais não mudam nada', async () => {
+  usuarioDaSessao = sessoes.auxA
+  const moto = await novaMoto('RSV', 'em_transporte')
+  const forjada = { ...reserva(moto), status: 'montada', disponibilidade: 'disponivel', lojaId: semente.destinoA }
+  assert.equal((await (await vendas()).registrarReservaAction(forjada)).ok, true)
+  assert.deepEqual(await linhas(sql`select loja_id, status from reservas where moto_id = ${moto}`), [{ loja_id: semente.lojaA, status: 'ativa' }])
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', 'reservada'))
+})
+
+test('Conta B não reserva moto em transporte da Conta A: a mesma frase do id inexistente; nenhuma reserva', async () => {
+  usuarioDaSessao = sessoes.socioB
+  const moto = await novaMoto('RSB', 'em_transporte')
+  for (const id of [moto, '00000000-0000-4000-8000-000000000012']) {
+    assert.deepEqual(await (await vendas()).registrarReservaAction(reserva(id)), { ok: false, erro: 'Moto não encontrada' })
+  }
+  assert.deepEqual(await linhas(sql`select id from reservas where moto_id = ${moto}`), [])
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+})
+
 const transferencias = () => import('@/app/(dashboard)/transferencias/actions')
 const EM_TRANSPORTE_NAO_TRANSFERE = 'Moto ainda em transporte. Marque a chegada antes de transferir.'
 
