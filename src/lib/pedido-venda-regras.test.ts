@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { motivoBloqueioCriarPedido, motivoBloqueioMotoNoPedido, motosDoPedido, motosSemRepetir, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDeMotoInvalido, podeCriarPedido, podeEfetivarPedido, totalDasPecas, totalDoPedido, valorDaPecaNoPedido } from './pedido-venda-regras'
+import { motivoBloqueioCriarPedido, motivoBloqueioMotoNoPedido, motosDoPedido, listaDeMotosValida, motosSemRepetir, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDeMotoInvalido, valorDePecaInvalido, podeCriarPedido, podeEfetivarPedido, totalDasPecas, totalDoPedido, valorDaPecaNoPedido } from './pedido-venda-regras'
 import { entregarSintetico } from '@/test/entrega-sintetica'
 
 const pedido = { status: 'pendente', lojaId: 'loja-a', vendedorId: 'vend-1' }
@@ -91,7 +91,12 @@ describe('totalDoPedido: a Entrega gravada de cada caso de quem paga dá o total
 })
 
 describe('motivoBloqueioMotoNoPedido (#20, Q14)', () => {
-  const livre = { status: 'montada', disponibilidade: 'disponivel', lojaId: 'loja-a' }
+  const livre = { status: 'montada', disponibilidade: 'disponivel', lojaId: 'loja-a', arquivadaEm: null }
+
+  test('moto que sumiu ou foi arquivada depois da conferência da action: as frases de sempre', () => {
+    assert.equal(motivoBloqueioMotoNoPedido(undefined, 'loja-a', false), 'Moto não encontrada')
+    assert.match(motivoBloqueioMotoNoPedido({ ...livre, arquivadaEm: new Date() }, 'loja-a', false)!, /arquivada/i)
+  })
 
   test('moto da loja do pedido, disponível: entra', () => {
     assert.equal(motivoBloqueioMotoNoPedido(livre, 'loja-a', false), null)
@@ -147,6 +152,25 @@ describe('valor da moto no pedido (#20, D-E)', () => {
 
   test('zero, negativo, NaN e infinito não servem', () => {
     for (const v of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) assert.equal(valorDeMotoInvalido(v), true)
+  })
+
+  test('menos de 1 centavo e acima do que numeric(12,2) guarda não servem; o maior que cabe serve', () => {
+    for (const v of [0.004, 1e10, 1e15]) assert.equal(valorDeMotoInvalido(v), true)
+    assert.equal(valorDeMotoInvalido(0.01), false)
+    assert.equal(valorDeMotoInvalido(9_999_999_999.99), false)
+  })
+
+  test('valor de peça (#778): zero serve (brinde, ajuste); acima do que a coluna guarda não', () => {
+    assert.equal(valorDePecaInvalido(0), false)
+    assert.equal(valorDePecaInvalido(undefined), false)
+    for (const v of [-0.01, 1e15, Number.NaN]) assert.equal(valorDePecaInvalido(v), true)
+  })
+
+  test('a lista que chega do navegador precisa ser de { motoId: texto, valor?: número }', () => {
+    assert.equal(listaDeMotosValida([{ motoId: 'm1' }, { motoId: 'm2', valor: 10 }]), true)
+    for (const x of [null, 'm1', {}, [null], [{}], [{ motoId: 1 }], [{ motoId: 'm1', valor: '10' }]]) {
+      assert.equal(listaDeMotosValida(x), false, JSON.stringify(x))
+    }
   })
 
   test('moto repetida vale uma vez, com o valor que veio primeiro', () => {

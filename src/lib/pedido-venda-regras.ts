@@ -5,6 +5,7 @@ import { freteDaVenda, type EntregaVenda } from '@/lib/notagateway/entrega'
 // cartão do pedido (cliente), para a tela e o servidor não divergirem de novo (#181:
 // a tela mostrava "Cancelar" ao sócio e o banco recusava).
 import { motivoParaNaoVender } from './estado-moto'
+import { MOTO_ARQUIVADA } from './arquivar-moto-regras'
 
 const PAPEIS_QUE_CRIAM_PEDIDO = ['admin_geral', 'admin_socio', 'aux_adm', 'vendedor']
 
@@ -59,14 +60,36 @@ export type MotoDoPedidoInput = { motoId: string; valor?: number }
 export const motosSemRepetir = (motos: readonly MotoDoPedidoInput[]): MotoDoPedidoInput[] =>
   motos.filter((m, i) => motos.findIndex(o => o.motoId === m.motoId) === i)
 
-/** Valor que veio e não serve (zero, negativo, não número); ausente é válido. */
-export const valorDeMotoInvalido = (valor: number | undefined): boolean => valor != null && !(Number.isFinite(valor) && valor > 0)
+// O maior valor que numeric(12,2) guarda: acima disso o banco recusa com erro cru.
+const MAIOR_VALOR_DO_ITEM = 9_999_999_999.99
+
+/** Valor em reais que veio e não serve: não número, abaixo do mínimo em centavos ou maior que a coluna. Ausente é válido. */
+const valorInvalido = (valor: number | undefined, minimo: number): boolean =>
+  valor != null && !(Number.isFinite(valor) && centavos(valor) >= minimo && valor <= MAIOR_VALOR_DO_ITEM)
+
+/** Valor da moto (#20, D-E): pelo menos 1 centavo. */
+export const valorDeMotoInvalido = (valor: number | undefined): boolean => valorInvalido(valor, 0.01)
+
+/** Valor ajustado da peça (#778): zero serve. */
+export const valorDePecaInvalido = (valor: number | undefined): boolean => valorInvalido(valor, 0)
+
+/** A lista de motos que chega do navegador tem a forma esperada (a Server Action recebe qualquer JSON). */
+export const listaDeMotosValida = (x: unknown): x is MotoDoPedidoInput[] =>
+  Array.isArray(x) && x.every(m => typeof m === 'object' && m !== null && typeof m.motoId === 'string'
+    && (m.valor === undefined || typeof m.valor === 'number'))
 
 /** Valor gravado no item moto: o que veio, já conferido, ou nulo. */
 export const valorDaMotoNoPedido = (valor: number | undefined): string | null => (valor == null ? null : valor.toFixed(2))
 
-/** Motivo para a moto não entrar num pedido da loja `lojaDoPedido` (#20, Q14), ou null quando pode. */
-export function motivoBloqueioMotoNoPedido(moto: MotoParaPedido & { lojaId: string }, lojaDoPedido: string, temTransferenciaPendente: boolean): string | null {
+/**
+ * Motivo para a moto, lida sob a trava, não entrar num pedido da loja `lojaDoPedido` (#20, Q14), ou null quando
+ * pode. Sumida ou arquivada depois da conferência da action: as frases de `travarMotoNaoArquivada`.
+ */
+export function motivoBloqueioMotoNoPedido(
+  moto: (MotoParaPedido & { lojaId: string; arquivadaEm: Date | null }) | undefined, lojaDoPedido: string, temTransferenciaPendente: boolean,
+): string | null {
+  if (!moto) return 'Moto não encontrada'
+  if (moto.arquivadaEm) return MOTO_ARQUIVADA
   if (moto.lojaId !== lojaDoPedido) return MOTO_DE_OUTRA_LOJA
   return motivoBloqueioCriarPedido(moto, temTransferenciaPendente)
 }
