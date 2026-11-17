@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { centavos } from './centavos'
 import { liquidoDoBruto } from './preco-minimo'
 import { destaqueAvista12x, ehPadraoSimulador, lerTotal12x, linhasDoSimulador, usaValor12x } from './simulador-padrao'
 
@@ -87,7 +88,7 @@ test('simulador, maquininha: cobrando a parcela n vezes, a loja ainda recebe o m
   for (const [base, taxa, n, parcelaEsperada] of [[13990, 0.1499, 21, 783.67], [10000, 0.09, 12, 915.76]]) {
     const [linha] = linhasDoSimulador({ [n]: taxa }, base, 0, 'maquininha')
     assert.equal(linha.parcela, parcelaEsperada)
-    const cobrado = Math.round(linha.parcela * n * 100) / 100
+    const cobrado = centavos(linha.parcela * n)
     assert.ok(cobrado >= linha.credito, `${n} × ${linha.parcela} = ${cobrado} abaixo do total ${linha.credito}`)
     assert.ok(liquidoDoBruto(cobrado, taxa) >= base, `líquido de ${cobrado} abaixo do mínimo ${base}`)
   }
