@@ -306,6 +306,17 @@ test('aux_adm da loja e sócio marcam a chegada: a moto vai para Caixa e o hist�
   }
 })
 
+test('a troca de status genérica não marca a chegada: Em transporte → Caixa só pelo botão Chegou', async () => {
+  const { alterarStatusAction } = await estoque()
+  for (const [rotulo, sessao] of [['CHGALTAUX', sessoes.auxA], ['CHGALTSOC', sessoes.socioA]] as const) {
+    usuarioDaSessao = sessao
+    const moto = await novaMoto(rotulo, 'em_transporte')
+    await assert.rejects(alterarStatusAction(moto, 'caixa'), { message: 'Transição em_transporte → caixa não permitida' }, rotulo)
+    assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null), rotulo)
+    assert.deepEqual(await historicoDa(moto), [], rotulo)
+  }
+})
+
 test('marcar a chegada de moto reservada: vai para Caixa e a reserva continua', async () => {
   usuarioDaSessao = sessoes.auxA
   const moto = await novaMoto('CHGRES', 'em_transporte')

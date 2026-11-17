@@ -10,9 +10,12 @@ type Papel = PapelDoBanco
 
 const isAdmin = (p: Papel) => p === 'admin_geral' || p === 'admin_socio'
 
-// Transições de status físico (Aux Adm + Admin)
+// Quem mexe no status físico da moto: admin em qualquer loja que vê, aux_adm só na própria.
+const mudaStatusFisico = (papel: Papel, isMinhaLoja: boolean) => isAdmin(papel) || (papel === 'aux_adm' && isMinhaLoja)
+
+// Transições de status físico (Aux Adm + Admin). Em transporte → Caixa fica fora: a chegada tem um caminho
+// só, o botão Chegou (motivoParaNaoMarcarChegada + marcarChegadaAction), que trava a moto e recusa a arquivada.
 const transicoesNormais: Partial<Record<Status, Status[]>> = {
-  em_transporte: ['caixa'],
   caixa:       ['montada'],
   montada:     ['em_garantia'],
   em_garantia: ['montada'],
@@ -28,20 +31,11 @@ export function getTransicoesStatusPermitidas(
   papel: Papel,
   isMinhaLoja: boolean
 ): Status[] {
-  if (!isMinhaLoja && !isAdmin(papel)) return []
-
-  if (isAdmin(papel)) {
-    return [
-      ...(transicoesNormais[statusAtual] ?? []),
-      ...(transicoesCorrecao[statusAtual] ?? []),
-    ]
-  }
-
-  if (papel === 'aux_adm') {
-    return transicoesNormais[statusAtual] ?? []
-  }
-
-  return []
+  if (!mudaStatusFisico(papel, isMinhaLoja)) return []
+  return [
+    ...(transicoesNormais[statusAtual] ?? []),
+    ...(isAdmin(papel) ? transicoesCorrecao[statusAtual] ?? [] : []),
+  ]
 }
 
 /**
@@ -50,9 +44,7 @@ export function getTransicoesStatusPermitidas(
  */
 export function motivoParaNaoMarcarChegada(status: string, papel: Papel, isMinhaLoja: boolean): string | null {
   if (status !== 'em_transporte') return 'Esta moto não está mais em transporte.'
-  if (!getTransicoesStatusPermitidas(status, papel, isMinhaLoja).includes('caixa')) {
-    return 'Sem permissão para marcar a chegada desta moto.'
-  }
+  if (!mudaStatusFisico(papel, isMinhaLoja)) return 'Sem permissão para marcar a chegada desta moto.'
   return null
 }
 

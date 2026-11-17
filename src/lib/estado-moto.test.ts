@@ -120,13 +120,9 @@ test('avisoVendaBarrada: a caixa com o texto de sempre, a em transporte com o se
   assert.deepEqual(['montada', 'em_garantia'].map(avisoVendaBarrada), [null, null])
 })
 
-// Decisão do Luis (#11, P3): a chegada é a transição normal, como o Montar: aux_adm da loja e admins.
-test('moto em transporte só vai para Caixa (a chegada), por aux_adm da loja da moto e pelos admins', () => {
+// A chegada tem um caminho só, o botão Chegou (#11): a troca de status genérica não tira a moto do transporte.
+test('moto em transporte não tem transição na troca de status genérica, para nenhum papel', () => {
   for (const papel of ['admin_geral', 'admin_socio', 'aux_adm'] as const) {
-    assert.deepEqual(getTransicoesStatusPermitidas('em_transporte', papel, true), ['caixa'], papel)
-  }
-  assert.deepEqual(getTransicoesStatusPermitidas('em_transporte', 'aux_adm', false), [], 'aux_adm de outra loja')
-  for (const papel of ['admin_rede', 'vendedor', 'mecanico'] as const) {
     assert.deepEqual(getTransicoesStatusPermitidas('em_transporte', papel, true), [], papel)
   }
 })
