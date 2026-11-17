@@ -124,7 +124,8 @@ test('faixa: "Ver por loja" recolhido mostra cada loja com o faturamento e as mo
   assert.deepEqual(linhasLoja, ['Loja Norte R$ 13.490,50 1 moto', 'Loja Centro R$ 9.990,00 1 moto'])
 })
 
-test('faixa no celular: só o total; o "Ver por loja" e a tabela de vendas por loja ficam para a tela larga', () => {
+// O jsdom não aplica media query: o que cada largura mostra de fato se confere no navegador (Etapa 6).
+test('marcação por largura: o "Ver por loja" e as tabelas de vendas por loja levam as classes que os escondem abaixo de md', () => {
   const tela = telaVendas()
   assert.ok(porRotulo(tela, 'Faturamento por loja')?.classList.contains('md:block'))
   assert.ok(porRotulo(tela, 'Faturamento por loja')?.classList.contains('hidden'))
