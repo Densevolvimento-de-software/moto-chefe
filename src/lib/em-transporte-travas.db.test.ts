@@ -163,3 +163,47 @@ test('a lista de motos para transferir deixa de fora a em transporte', async () 
   assert.equal(ids.includes(emTransporte), false)
   assert.equal(ids.includes(naCaixa), true)
 })
+
+const estoque = () => import('@/app/(dashboard)/estoque/[id]/actions')
+
+test('o admin corrige Caixa → Em transporte pelo Editar moto; o histórico guarda antes, depois e quem', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const moto = await novaMoto('EDT', 'caixa')
+  await (await estoque()).editarMotoAction(moto, { status: 'em_transporte' })
+  assert.equal((await estadoDa(moto)).status, 'em_transporte')
+  const historico = await linhas(sql`select status_anterior, status_novo, usuario_id from historico_estoque where moto_id = ${moto}`)
+  assert.deepEqual(historico, [{ status_anterior: 'caixa', status_novo: 'em_transporte', usuario_id: sessoes.socioA.id }])
+})
+
+test('aux_adm não põe moto em transporte: nem pela troca de status, nem pelo Editar moto', async () => {
+  usuarioDaSessao = sessoes.auxA
+  const moto = await novaMoto('AUX', 'caixa')
+  const acoes = await estoque()
+  await assert.rejects(acoes.alterarStatusAction(moto, 'em_transporte'), { message: 'Transição caixa → em_transporte não permitida' })
+  await assert.rejects(acoes.editarMotoAction(moto, { status: 'em_transporte' }), { message: 'Sem permissão para editar moto' })
+  assert.deepEqual(await estadoDa(moto), intacta('caixa', null))
+})
+
+test('status fora da lista, forjado: Editar moto e troca de status recusam; a moto não muda', async () => {
+  usuarioDaSessao = sessoes.socioA
+  const moto = await novaMoto('XYZ', 'em_transporte')
+  const acoes = await estoque()
+  await assert.rejects(acoes.editarMotoAction(moto, { status: 'xyz' }), { message: 'Status inválido' })
+  await assert.rejects(acoes.alterarStatusAction(moto, 'xyz'), { message: 'Status inválido' })
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
+})
+
+test('Conta B não vende, não transfere nem edita moto em transporte da Conta A: a mesma frase do id inexistente', async () => {
+  usuarioDaSessao = sessoes.socioB
+  const moto = await novaMoto('CTB', 'em_transporte', 'disponivel')
+  const inexistente = '00000000-0000-4000-8000-000000000009'
+  const { registrarVendaCompletaAction } = await vendas()
+  const { solicitarTransferenciaAction } = await transferencias()
+  const { editarMotoAction } = await estoque()
+  for (const id of [moto, inexistente]) {
+    assert.deepEqual(await registrarVendaCompletaAction(venda(id)), { ok: false, erro: 'Moto não encontrada' })
+    assert.deepEqual(await solicitarTransferenciaAction(id, semente.destinoA), { ok: false, erro: 'Moto não encontrada' })
+    await assert.rejects(editarMotoAction(id, { status: 'caixa' }), { message: 'Moto não encontrada' })
+  }
+  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', 'disponivel'))
+})
