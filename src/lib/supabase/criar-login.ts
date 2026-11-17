@@ -29,7 +29,10 @@ export async function criarLoginComCadastro(auth: AuthAdmin, login: LoginNovo, g
   try {
     await gravar(data.user.id)
   } catch (e) {
-    await auth.deleteUser(data.user.id).catch(() => {})
+    // O Auth devolve o erro (não lança). Sem desfazer, sobra um login sem cadastro e o e-mail
+    // fica ocupado: deixa rastro no log do servidor, só com o id.
+    const desfeito = await auth.deleteUser(data.user.id).catch((falha: unknown) => ({ error: falha }))
+    if (desfeito.error) console.error(`[criar-login] login ${data.user.id} criado no Auth e não desfeito depois da falha no cadastro`)
     throw e
   }
   return data.user.id

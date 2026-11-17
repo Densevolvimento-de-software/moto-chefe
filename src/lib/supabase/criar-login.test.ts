@@ -1,16 +1,19 @@
-import { test } from 'node:test'
+import { test, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { criarLoginComCadastro } from './criar-login'
 
 // Auth falso: a fronteira de fora. Anota o que recebeu e o que apagou.
-function authFalso(recusa = false) {
+function authFalso(recusa = false, falhaAoApagar = false) {
   const chamadas = { criados: [] as unknown[], apagados: [] as string[] }
   const auth = {
     createUser: async (dados: unknown) => {
       chamadas.criados.push(dados)
       return (recusa ? { data: { user: null }, error: new Error('email exists') } : { data: { user: { id: 'novo' } }, error: null }) as never
     },
-    deleteUser: async (id: string) => { chamadas.apagados.push(id); return { data: { user: null }, error: null } as never },
+    deleteUser: async (id: string) => {
+      chamadas.apagados.push(id)
+      return { data: { user: null }, error: falhaAoApagar ? new Error('auth fora') : null } as never
+    },
   }
   return { auth, chamadas }
 }
@@ -36,4 +39,16 @@ test('a gravação falha: o login sai do Auth e o erro segue', async () => {
   const { auth, chamadas } = authFalso()
   await assert.rejects(criarLoginComCadastro(auth, { email: 'a@b.co', senha: '12345678' }, async () => { throw new Error('falha ao gravar') }), /falha ao gravar/)
   assert.deepEqual(chamadas.apagados, ['novo'])
+})
+
+test('o desfazer falha no Auth: registra no log do servidor (sem e-mail nem senha) e o erro da gravação segue', async () => {
+  const { auth } = authFalso(false, true)
+  const avisos: string[] = []
+  const erro = mock.method(console, 'error', (...args: unknown[]) => { avisos.push(args.map(String).join(' ')) })
+  try {
+    await assert.rejects(criarLoginComCadastro(auth, { email: 'a@b.co', senha: 'senha-secreta' }, async () => { throw new Error('falha ao gravar') }), /falha ao gravar/)
+  } finally { erro.mock.restore() }
+  assert.equal(avisos.length, 1)
+  assert.match(avisos[0], /novo/)
+  assert.ok(!avisos[0].includes('a@b.co') && !avisos[0].includes('senha-secreta'))
 })
