@@ -1,6 +1,6 @@
 /**
  * Padrão de cards do simulador, escolhido por grupo na Precificação.
- * - 'taxas': 21x e 12x calculados pela taxa do cartão sobre o valor mínimo, e PIX.
+ * - 'taxas': 21x e 12x com a taxa do cartão embutida, para a loja receber o valor mínimo, e PIX.
  * - 'avista_12x': PIX/dinheiro (o valor mínimo) e o total em 12x que o administrador digita
  *   por modelo, sem taxa nenhuma.
  */
