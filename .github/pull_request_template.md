@@ -39,7 +39,7 @@ Sem dado real (nome, CPF, chassi, valores de loja): print do staging ou recortad
 
 Ordem sugerida dos arquivos, explicando o papel de cada um.
 
-Linhas alteradas de produção + testes: N / 500.
+Linhas alteradas de produção + testes: N / 400.
 Documentação não entra nessa contagem.
 
 Além do texto: código legível, PR pequeno, sem atribuição de autoria à IA e merge feito por você. O template ajuda a revisar; não substitui essas exigências.
