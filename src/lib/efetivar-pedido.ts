@@ -268,13 +268,15 @@ export async function pedirAprovacaoDoPedidoTx(tx: Tx, d: DadosEfetivarPedido & 
   const linhas = d.tipo === 'valor_minimo'
     ? d.abaixo.map(a => ({ motoId: a.motoId, snapshot: { valorMinimo: a.minimo, liquido: a.liquido } }))
     : [{ motoId: pedido.motoId, snapshot: null }]
-  for (const l of linhas) {
+  for (const [i, l] of linhas.entries()) {
     const moto = lista.find(m => m.motoId === l.motoId)
     if (!moto) throw new RecusaUsuario(ITENS_DO_PEDIDO_MUDARAM)
     await gravarPedidoDeAprovacaoTx(tx, {
       origem: 'pedido', moto: { id: moto.motoId, lojaId: pedido.lojaId, disponibilidade: travadas.get(moto.motoId)!.disponibilidade },
       // Valor da moto, sem o frete (#796): desconto, quadro do #878 e relatório seguem sobre a moto; o frete fica em dados_venda.
-      vendedorId: pedido.vendedorId, solicitadoPor: d.efetivadoPor, valor: moto.valor.toFixed(2), dadosVenda: guardado,
+      vendedorId: pedido.vendedorId, solicitadoPor: d.efetivadoPor, valor: moto.valor.toFixed(2),
+      // O frete guardado só aparece na tela (a venda usa o da Entrega): numa linha só, o painel não o soma duas vezes.
+      dadosVenda: i === 0 ? guardado : { ...guardado, frete: 0 },
       tipo: d.tipo, motivo: d.motivo, snapshot: l.snapshot,
       observacao: `Pedido #${d.numero} em aprovação — Cliente: ${d.clienteNome} — Total: R$ ${total.toFixed(2)} — Motivo: ${d.motivo}`,
     })
