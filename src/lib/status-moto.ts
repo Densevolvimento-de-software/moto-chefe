@@ -1,6 +1,6 @@
 // Lista única dos status da moto (#941): o resto (Editar moto, filtro e cards do Showroom, selo de
 // status, rótulos) deriva daqui. Status é lista igual para qualquer Conta (AGENTS.md, "Multi-grupo").
-import { CheckCircle2, Package, ShieldAlert, XCircle, Zap, type LucideIcon } from 'lucide-react'
+import { CheckCircle2, Package, ShieldAlert, Truck, XCircle, Zap, type LucideIcon } from 'lucide-react'
 
 /** Selo da lista e da transferência: ícone e classes do texto e do ícone. */
 type Selo = { icone: LucideIcon; texto: string; classeIcone?: string }
@@ -10,6 +10,12 @@ type Card = { rotulo: string; icone: LucideIcon; numero: string; fundo: string; 
 
 /** Status em que a moto ainda é estoque: os que o Editar moto e o filtro do Showroom oferecem. */
 export const STATUS_DE_ESTOQUE = [
+  {
+    // Variante 2 do protótipo (#7): selo em pílula e card tracejado, os dois na cor info.
+    valor: 'em_transporte', rotulo: 'Em transporte',
+    selo: { icone: Truck, texto: 'w-fit rounded-full border border-info/30 bg-info/10 px-2 py-0.5 text-info font-medium' },
+    card: { rotulo: 'Em transporte', icone: Truck, numero: 'text-info', fundo: 'bg-card', borda: 'border-dashed border-info', corIcone: 'text-info' },
+  },
   {
     valor: 'caixa', rotulo: 'Caixa',
     selo: { icone: Package, texto: 'text-muted-foreground' },

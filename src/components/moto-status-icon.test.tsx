@@ -23,6 +23,14 @@ test('selo de cada status: texto, cor e ícone de hoje', () => {
   }
 })
 
+// Variante 2 aprovada (#7): pílula na cor info com o caminhão, sem cor nova.
+test('selo de moto em transporte: pílula info com o caminhão', () => {
+  const html = selo('em_transporte')
+  assert.equal(texto(html), 'Em transporte')
+  assert.equal(html.match(/^<span class="([^"]*)"/)?.[1], 'flex items-center gap-1 w-fit rounded-full border border-info/30 bg-info/10 px-2 py-0.5 text-info font-medium text-sm')
+  assert.match(html, /<svg[^>]*class="lucide lucide-truck"/)
+})
+
 test('status fora da lista não vira "Caixa": mostra o próprio valor, sem o ícone da caixa', () => {
   const html = selo('xyz')
   assert.equal(texto(html), 'xyz')
