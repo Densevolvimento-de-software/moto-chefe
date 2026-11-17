@@ -10,14 +10,17 @@ const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
 
 type Resposta = { ok: true; dados: undefined } | { ok: false; erro: string }
-const criar = mock.fn(async (_motoId: string, _observacao: string, _entrega: unknown): Promise<Resposta> => ({ ok: true, dados: undefined }))
+const criar = mock.fn(async (_motos: unknown, _observacao: string, _entrega: unknown): Promise<Resposta> => ({ ok: true, dados: undefined }))
+let minimo: { valorMinimoPix: number } | null = null
 mock.module('../actions', { namedExports: {
-  criarPedidoVendaAction: (motoId: string, observacao: string, entrega: unknown) => criar(motoId, observacao, entrega),
+  criarPedidoVendaAction: (motos: unknown, observacao: string, entrega: unknown) => criar(motos, observacao, entrega),
+  buscarPrecoMinimoAction: async () => minimo,
 } })
 
 const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
   criar.mock.resetCalls()
+  minimo = null
   mock.restoreAll()
   for (const desmontar of montados.splice(0)) await desmontar()
 })
@@ -36,17 +39,20 @@ const opcaoDeEntrega = (nome: RegExp) => [...document.querySelectorAll<HTMLInput
   .find(r => nome.test(r.closest('label')?.textContent ?? ''))
 const resumo = () => document.querySelector('[aria-label="Resumo do pedido"]')?.textContent ?? ''
 
-const MOTO = { id: 'moto-1', chassi: 'LA2026X4131', marca: 'MC', modelo: 'JET', cor: 'CINZA', lojaNome: 'Loja Centro' }
+const MOTO = { id: 'moto-1', chassi: 'LA2026X4131', marca: 'MC', modelo: 'JET', cor: 'CINZA', lojaId: 'centro', lojaNome: 'Loja Centro' }
+const PITICA = { ...MOTO, id: 'moto-2', chassi: 'LA2026X0088', modelo: 'PITICA', cor: 'BRANCA' }
+const DO_NORTE = { ...MOTO, id: 'moto-3', chassi: 'LA2026X2217', modelo: 'JET MAX', lojaId: 'norte', lojaNome: 'Loja Norte' }
+const SO_A_MOTO = [{ motoId: MOTO.id }]
 const AVISO = 'Escolha a modalidade do frete. Sem ela a nota não sai.'
 
-async function montar() {
+async function montar(motos = [MOTO]) {
   const { act } = await import('react')
   const { createRoot } = await import('react-dom/client')
   const { CriarPedidoDialog } = await import('./criar-pedido-dialog')
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
-  await act(async () => { root.render(createElement(CriarPedidoDialog, { motos: [MOTO], papel: 'vendedor' })) })
+  await act(async () => { root.render(createElement(CriarPedidoDialog, { motos, papel: 'vendedor' })) })
   const clique = async (el: Element | null | undefined, ms = 50) => { await clicar(el); await act(() => esperar(ms)) }
   let montado = true
   montados.push(() => act(async () => { if (!montado) return; montado = false; root.unmount(); container.remove() }))
@@ -56,8 +62,17 @@ async function montar() {
     for (let i = 0; i < 40 && /Buscando o CEP/.test(textoDaTela()); i++) await act(() => esperar(5))
     assert.doesNotMatch(textoDaTela(), /Buscando o CEP/, 'a busca do CEP não terminou')
   }
-  return { clique, esperarBuscaDoCep }
+  // "+ Moto" (ícone + texto "Moto") abre o painel lateral; marca as motos pelo nome e adiciona (V3 do protótipo).
+  const adicionarMotos = async (...motos: typeof MOTO[]) => {
+    await clique(botao('Moto'))
+    for (const m of motos) await clique(caixaDaMoto(m))
+    await clique([...document.querySelectorAll('button')].find(b => /^Adicionar \d+ motos?$/.test((b.textContent ?? '').trim())))
+  }
+  return { clique, esperarBuscaDoCep, adicionarMotos }
 }
+const caixaDaMoto = (m: typeof MOTO) => [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+  .find(c => (c.closest('label')?.textContent ?? '').includes(m.chassi.slice(-4)))
+const nomesNoPainel = () => [...document.querySelectorAll('input[type="checkbox"]')].map(c => c.closest('label')?.querySelector('span')?.textContent)
 
 test('abre com "Retira na loja" marcada, "Entregar" desmarcada e sem nenhuma modalidade escolhida, avisando', async () => {
   await montar()
@@ -71,28 +86,28 @@ test('abre com "Retira na loja" marcada, "Entregar" desmarcada e sem nenhuma mod
 
 test('envia a moto e a Entrega com a modalidade escolhida; o aviso some e o resumo mostra a modalidade', async () => {
   const t = await montar()
-  await escolher(campo<HTMLSelectElement>(/^Moto disponível/), MOTO.id)
+  await t.adicionarMotos(MOTO)
   await escolher(campo<HTMLSelectElement>(/^Modalidade do frete na nota/), 'TransporteProprioPorContaDoDestinatario')
   assert.doesNotMatch(textoDaTela(), new RegExp(AVISO))
   assert.match(resumo(), /Cliente leva com veículo próprio/)
   await t.clique(botao('Criar pedido'))
   assert.deepEqual(criar.mock.calls.map(c => c.arguments), [
-    [MOTO.id, '', { modo: 'retira', modalidade: 'TransporteProprioPorContaDoDestinatario' }],
+    [SO_A_MOTO, '', { modo: 'retira', modalidade: 'TransporteProprioPorContaDoDestinatario' }],
   ])
 })
 
 test('sem modalidade o pedido sai assim mesmo (avisa, não bloqueia) com a modalidade vazia', async () => {
   const t = await montar()
-  await escolher(campo<HTMLSelectElement>(/^Moto disponível/), MOTO.id)
+  await t.adicionarMotos(MOTO)
   await t.clique(botao('Criar pedido'))
-  assert.deepEqual(criar.mock.calls.map(c => c.arguments), [[MOTO.id, '', { modo: 'retira', modalidade: '' }]])
+  assert.deepEqual(criar.mock.calls.map(c => c.arguments), [[SO_A_MOTO, '', { modo: 'retira', modalidade: '' }]])
 })
 
 test('o cabeçalho mostra a loja da moto escolhida', async () => {
-  await montar()
+  const t = await montar()
   const subtitulo = () => document.querySelector('[data-slot="dialog-description"]')?.textContent ?? ''
   assert.equal(subtitulo(), 'Escolha a moto para ver a loja do pedido.')
-  await escolher(campo<HTMLSelectElement>(/^Moto disponível/), MOTO.id)
+  await t.adicionarMotos(MOTO)
   assert.equal(subtitulo(), 'Loja Centro')
 })
 
@@ -106,7 +121,7 @@ function viaCep(resposta: object) {
 }
 
 async function entregarComCep(t: Awaited<ReturnType<typeof montar>>) {
-  await escolher(campo<HTMLSelectElement>(/^Moto disponível/), MOTO.id)
+  await t.adicionarMotos(MOTO)
   await t.clique(opcaoDeEntrega(/Entregar/))
   await digitar(campo<HTMLInputElement>(/^CEP/), '65000000')
   await t.esperarBuscaDoCep()
@@ -129,7 +144,7 @@ test('"Entregar": o CEP preenche rua, bairro, cidade, UF e o código IBGE; envia
   assert.equal([...document.querySelectorAll('label')].some(l => /Código IBGE/.test(l.textContent ?? '')), false)
   assert.match(resumo(), /Entregar em São Luís\/MA/)
   await t.clique(botao('Criar pedido'))
-  assert.deepEqual(criar.mock.calls.map(c => c.arguments), [[MOTO.id, '', {
+  assert.deepEqual(criar.mock.calls.map(c => c.arguments), [[SO_A_MOTO, '', {
     modo: 'entregar', modalidade: 'TransporteProprioPorContaDoRemetente', endereco: ENDERECO_SAO_LUIS, recebe: null,
   }]])
 })
@@ -315,14 +330,14 @@ test('"+ Frete" fica indisponível quando a loja não faz o frete, e trocar a mo
   await digitar(campo<HTMLInputElement>(/^Valor cobrado do cliente/), '35000')
   await escolher(campo<HTMLSelectElement>(/^Modalidade do frete na nota/), 'ContratacaoPorContaDoDestinatario')
   assert.equal(botaoFrete()?.disabled, true)
-  assert.doesNotMatch(resumo(), /R\$/)
+  assert.doesNotMatch(resumo(), /Frete/)
   await t.clique(botao('Criar pedido'))
   assert.equal('frete' in (criar.mock.calls[0].arguments[2] as object), false)
 })
 
 test('"+ Frete" na retirada marca "Entregar"', async () => {
   const t = await montar()
-  await escolher(campo<HTMLSelectElement>(/^Moto disponível/), MOTO.id)
+  await t.adicionarMotos(MOTO)
   await escolher(campo<HTMLSelectElement>(/^Modalidade do frete na nota/), 'TransporteProprioPorContaDoRemetente')
   await t.clique(botaoFrete())
   assert.equal(opcaoDeEntrega(/Entregar/)?.checked, true)
@@ -364,10 +379,53 @@ test('recusa do servidor aparece dentro do diálogo, sem fechar nem apagar o que
   const dialogo = () => document.querySelector('[role="dialog"]')
   assert.ok(dialogo(), 'o diálogo fechou')
   assert.match(dialogo()?.textContent ?? '', new RegExp(frase.replace(/\./g, '\\.')))
-  assert.equal(campo<HTMLSelectElement>(/^Moto disponível/).value, MOTO.id)
+  assert.match(document.querySelector('[aria-label="Motos do pedido"]')?.textContent ?? '', /MC JET/)
   assert.equal(campo<HTMLInputElement>(/^Número/).value, '100')
   assert.match(resumo(), /Entregar em São Luís\/MA/)
 
   await t.clique(botao('Criar pedido'))
   assert.doesNotMatch(textoDaTela(), new RegExp(frase.replace(/\./g, '\\.')))
+})
+
+// Várias motos (#24, 24a): painel lateral "Adicionar moto" (V3) e a lista do pedido com o valor de cada uma.
+test('marca 2 motos no painel; entram na ordem marcada, a 1ª com valor e a 2ª sem (D-E2); o resumo soma só o preenchido', async () => {
+  minimo = { valorMinimoPix: 9000 }
+  const t = await montar([MOTO, PITICA])
+  await t.adicionarMotos(MOTO, PITICA)
+  const lista = () => document.querySelector('[aria-label="Motos do pedido"]')?.textContent ?? ''
+  assert.match(lista(), /MC JET.*Chassi final 4131.*MC PITICA.*Chassi final 0088/)
+  assert.match(lista(), /Mínimo à vista\s*R\$\s*9\.000,00/)
+  await digitar(campo<HTMLInputElement>(/^Valor da MC JET/), '949000')
+  assert.match(resumo(), /Motos \(2\)\s*R\$\s*9\.490,00/)
+  await t.clique(botao('Criar pedido'))
+  assert.deepEqual(criar.mock.calls[0].arguments[0], [{ motoId: MOTO.id, valor: 9490 }, { motoId: PITICA.id }])
+})
+
+test('o painel só oferece a loja da 1ª moto e tira as que já estão no pedido; sem moto, de todas as lojas', async () => {
+  const t = await montar([MOTO, PITICA, DO_NORTE])
+  await t.clique(botao('Moto'))
+  assert.deepEqual(nomesNoPainel(), ['MC JET', 'MC PITICA', 'MC JET MAX'])
+  await t.clique(caixaDaMoto(MOTO))
+  assert.deepEqual(nomesNoPainel(), ['MC JET', 'MC PITICA'])
+  await t.clique(botao('Adicionar 1 moto'))
+  await t.clique(botao('Moto'))
+  assert.deepEqual(nomesNoPainel(), ['MC PITICA'])
+})
+
+test('a lixeira tira a moto do pedido; sem moto, "Criar pedido" fica desabilitado', async () => {
+  const t = await montar([MOTO, PITICA])
+  await t.adicionarMotos(MOTO, PITICA)
+  assert.match(document.querySelector('[aria-label="Motos do pedido"]')?.textContent ?? '', /MC JET.*MC PITICA/)
+  await t.clique(document.querySelector('[aria-label="Tirar a MC JET do pedido"]'))
+  assert.doesNotMatch(document.querySelector('[aria-label="Motos do pedido"]')?.textContent ?? '', /MC JET/)
+  await t.clique(document.querySelector('[aria-label="Tirar a MC PITICA do pedido"]'))
+  assert.equal(botao('Criar pedido')?.disabled, true)
+})
+
+test('valor zerado mostra "Valor inválido" e não deixa criar', async () => {
+  const t = await montar()
+  await t.adicionarMotos(MOTO)
+  await digitar(campo<HTMLInputElement>(/^Valor da MC JET/), '0')
+  assert.match(textoDaTela(), /Valor inválido/)
+  assert.equal(botao('Criar pedido')?.disabled, true)
 })
