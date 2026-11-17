@@ -42,7 +42,7 @@ test('sem moto em transporte no recorte: os 7 cards de hoje, sem o card Em trans
   assert.equal(g.className, 'grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3')
 })
 
-// Protótipo variante 2 (#7) e ordem do caminho da moto (decisão do Luis no #12): logo depois do Total.
+// Card tracejado do protótipo do #7 e ordem do caminho da moto (decisão do Luis no #12): logo depois do Total.
 test('com moto em transporte no recorte: card Em transporte tracejado em info depois do Total, 8 por linha no desktop', () => {
   const g = grade(3)
   const [total, ...resto] = CARDS_DE_HOJE
@@ -54,8 +54,8 @@ test('com moto em transporte no recorte: card Em transporte tracejado em info de
   assert.equal(g.className, 'grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3')
 })
 
-// Variante 3 (decisão do Luis no #12): o ícone dividia a linha com o rótulo e "Em transporte" quebrava em 1280/1366,
-// descendo o número. Aqui se prova a estrutura de todo card; a altura em px foi medida no navegador (Etapa 6).
+// Layout do card (decisão do Luis no #12): o ícone dividia a linha com o rótulo e "Em transporte" quebrava em 1280/1366.
+// O teste lê o DOM: rótulo sem quebra e sozinho na 1ª linha, número e ícone na 2ª. Não mede altura em px.
 test('todo card: rótulo sozinho na 1ª linha e sem quebra; número e ícone juntos na 2ª', () => {
   for (const emTransporte of [0, 3]) {
     for (const card of grade(emTransporte).children) {
