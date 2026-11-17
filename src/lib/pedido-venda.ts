@@ -2,14 +2,13 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { db } from '@/lib/db'
 import { historicoEstoque, motos, pecasCatalogo, pedidosVenda, pedidosVendaItens, reservas, transferencias } from '@/lib/db/schema'
 import {
-  motivoBloqueioMotoNoPedido, motosDoPedido, PEDIDO_SEM_MOTO, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDaPecaNoPedido,
+  motivoBloqueioMotoNoPedido, motosDoPedido, PEDIDO_SEM_MOTO, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDaPecaNoPedido, valorDePecaInvalido,
   type MotoDoPedidoInput, type PecaDoPedidoInput, type QuemCancela,
 } from '@/lib/pedido-venda-regras'
 import { daContaDaLoja } from '@/lib/pecas-da-conta'
 import { recusaDaQuantidadeVendida } from '@/lib/quantidade-vendida'
 import { ehUuid } from '@/lib/uuid'
 import { RecusaUsuario } from '@/lib/resultado-action'
-import { travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
 import { pedidoEmAprovacaoSql } from '@/lib/pedido-de-aprovacao'
 import type { EntregaVenda } from '@/lib/notagateway/entrega'
 
@@ -23,8 +22,7 @@ async function pecasConferidas(tx: Tx, lojaId: string, pecas: PecaDoPedidoInput[
   if (pecas.length === 0) return []
   const recusa = recusaDaQuantidadeVendida(pecas)
   if (recusa) throw new RecusaUsuario(recusa)
-  const valorInvalido = (v: number | undefined) => v != null && !(Number.isFinite(v) && v >= 0)
-  if (pecas.some(p => !['brinde', 'acessorio'].includes(p.tipo) || p.quantidade <= 0 || valorInvalido(p.valorUnitario))) {
+  if (pecas.some(p => !['brinde', 'acessorio'].includes(p.tipo) || p.quantidade <= 0 || valorDePecaInvalido(p.valorUnitario))) {
     throw new RecusaUsuario('Item do pedido inválido')
   }
   // Id que nem é uuid derrubaria a consulta com erro do banco; recebe a mesma frase de peça de outra Conta.
@@ -39,7 +37,7 @@ async function pecasConferidas(tx: Tx, lojaId: string, pecas: PecaDoPedidoInput[
   })
 }
 
-/** Motos do pedido (#20): a do `moto_id` e as dos itens, na ordem em que entraram. */
+/** Motos do pedido (#20): a do `moto_id` primeiro, depois as dos itens (as gravadas juntas não têm ordem entre si). */
 export async function motosDoPedidoTx(exec: Pick<Tx, 'select'>, pedidoId: string, motoIdDoPedido: string): Promise<string[]> {
   const itens = await exec.select({ motoId: pedidosVendaItens.motoId }).from(pedidosVendaItens)
     .where(and(eq(pedidosVendaItens.pedidoVendaId, pedidoId), eq(pedidosVendaItens.tipo, 'moto')))
@@ -47,26 +45,36 @@ export async function motosDoPedidoTx(exec: Pick<Tx, 'select'>, pedidoId: string
   return motosDoPedido(motoIdDoPedido, itens)
 }
 
-type MotoTravada = Awaited<ReturnType<typeof travarMotoNaoArquivada>>
-
-/** Trava as motos que entram, sempre em ordem de id: dois pedidos com motos em comum não se travam em cruz. */
-const travarMotosQueEntram = (tx: Tx, ids: readonly string[]) =>
-  [...ids].sort().reduce<Promise<Record<string, MotoTravada>>>(
-    async (travadas, id) => ({ ...(await travadas), [id]: await travarMotoNaoArquivada(tx, id) }), Promise.resolve({}))
+/**
+ * Trava as motos numa consulta só, em ordem de id: dois pedidos que mexem em motos em comum esperam um pelo
+ * outro em vez de se travarem em cruz. Quem chama já conferiu a Conta de cada uma.
+ */
+async function travarMotos(tx: Tx, ids: readonly string[]) {
+  const travadas = await tx
+    .select({ id: motos.id, lojaId: motos.lojaId, status: motos.status, disponibilidade: motos.disponibilidade, arquivadaEm: motos.arquivadaEm })
+    .from(motos).where(inArray(motos.id, [...ids])).orderBy(asc(motos.id)).for('update')
+  return new Map(travadas.map(m => [m.id, m]))
+}
+type MotosTravadas = Awaited<ReturnType<typeof travarMotos>>
 
 /**
- * Confere, sob a trava, que cada moto pode entrar no pedido da loja (Q14, status, disponibilidade, transferência).
- * Pedido novo: a loja é a da 1ª moto. Devolve a loja.
+ * Confere, nas motos já travadas, que cada uma das `ids` pode entrar no pedido da loja (Q14, status,
+ * disponibilidade, transferência). Pedido novo: a loja é a da 1ª moto. Devolve a loja.
  */
-async function conferirMotosQueEntram(tx: Tx, ids: readonly string[], lojaDoPedido?: string): Promise<string> {
-  const travadas = await travarMotosQueEntram(tx, ids)
-  const lojaId = lojaDoPedido ?? travadas[ids[0]].lojaId
+async function conferirMotosQueEntram(tx: Tx, travadas: MotosTravadas, ids: readonly string[], lojaDoPedido?: string): Promise<string> {
+  const lojaId = lojaDoPedido ?? travadas.get(ids[0])?.lojaId ?? ''
   const comTransferencia = new Set((await tx.select({ motoId: transferencias.motoId }).from(transferencias)
     .where(and(inArray(transferencias.motoId, [...ids]), eq(transferencias.status, 'pendente')))).map(t => t.motoId))
-  const motivo = ids.map(id => motivoBloqueioMotoNoPedido(travadas[id], lojaId, comTransferencia.has(id))).find(m => m !== null)
+  const motivo = ids.map(id => motivoBloqueioMotoNoPedido(travadas.get(id), lojaId, comTransferencia.has(id))).find(m => m !== null)
   if (motivo) throw new RecusaUsuario(motivo)
   return lojaId
 }
+
+/** Uma linha de histórico por moto, ligada ao pedido. */
+const historicoDoPedido = (d: { pedidoId: string; motoIds: readonly string[]; usuarioId: string; observacao: string }) =>
+  d.motoIds.map(motoId => ({
+    motoId, usuarioId: d.usuarioId, tipo: 'mudanca_status' as const, referenciaTipo: 'pedido_venda' as const, referenciaId: d.pedidoId, observacao: d.observacao,
+  }))
 
 /** Reserva as motos (já conferidas) e as grava como itens do pedido, cada uma com o seu histórico. */
 async function reservarMotosNoPedidoTx(tx: Tx, d: { pedidoId: string; lista: readonly MotoDoPedidoInput[]; usuarioId: string; observacao: string }) {
@@ -75,9 +83,7 @@ async function reservarMotosNoPedidoTx(tx: Tx, d: { pedidoId: string; lista: rea
   await tx.insert(pedidosVendaItens).values(d.lista.map(m => ({
     pedidoVendaId: d.pedidoId, tipo: 'moto' as const, motoId: m.motoId, valorUnitario: valorDaMotoNoPedido(m.valor),
   })))
-  await tx.insert(historicoEstoque).values(ids.map(motoId => ({
-    motoId, usuarioId: d.usuarioId, tipo: 'mudanca_status' as const, referenciaTipo: 'pedido_venda' as const, referenciaId: d.pedidoId, observacao: d.observacao,
-  })))
+  await tx.insert(historicoEstoque).values(historicoDoPedido({ ...d, motoIds: ids }))
 }
 
 /**
@@ -92,9 +98,7 @@ async function soltarMotosTx(tx: Tx, d: { pedidoId: string; motoIds: readonly st
     .where(and(inArray(reservas.motoId, ids), eq(reservas.status, 'ativa')))).map(r => r.motoId))
   const liberar = travadas.filter(m => m.disponibilidade === 'reservada' && !comReserva.has(m.id)).map(m => m.id)
   if (liberar.length > 0) await tx.update(motos).set({ disponibilidade: 'disponivel' }).where(inArray(motos.id, liberar))
-  await tx.insert(historicoEstoque).values(ids.map(motoId => ({
-    motoId, usuarioId: d.usuarioId, tipo: 'mudanca_status' as const, referenciaTipo: 'pedido_venda' as const, referenciaId: d.pedidoId, observacao: d.observacao,
-  })))
+  await tx.insert(historicoEstoque).values(historicoDoPedido(d))
 }
 
 /**
@@ -104,7 +108,7 @@ async function soltarMotosTx(tx: Tx, d: { pedidoId: string; motoIds: readonly st
  *
  * Contrato: lê as motos só pelo id, sem Conta. Quem chama confere antes que cada moto é da
  * pessoa (motoDoUsuario); só assim a recusa de moto arquivada (#688) não revela moto de
- * outra Conta. Aqui elas são conferidas de novo sob a trava (travarMotoNaoArquivada).
+ * outra Conta. Aqui elas são conferidas de novo sob a trava (sumida ou arquivada no meio também recusa).
  */
 export async function criarPedidoTx(
   tx: Tx,
@@ -112,7 +116,8 @@ export async function criarPedidoTx(
 ): Promise<{ pedidoId: string; lojaId: string }> {
   const [primeira] = d.motos
   if (!primeira) throw new RecusaUsuario(PEDIDO_SEM_MOTO)
-  const lojaId = await conferirMotosQueEntram(tx, d.motos.map(m => m.motoId))
+  const ids = d.motos.map(m => m.motoId)
+  const lojaId = await conferirMotosQueEntram(tx, await travarMotos(tx, ids), ids)
   const pecas = await pecasConferidas(tx, lojaId, d.pecas ?? [])
 
   const [pedido] = await tx.insert(pedidosVenda).values({
@@ -174,15 +179,16 @@ export async function cancelarPedidoTx(
 
 /**
  * Troca as motos do pedido pendente (#20): a que sai volta a disponível e deixa de ser item; a que entra passa
- * pelas conferências do criar e fica reservada. A lista é a do pedido inteiro: o valor de cada moto é o que veio
- * (sem valor, nulo; D-E). Se sai a moto do `moto_id`, ele passa para a 1ª que fica. Quem chama conferiu a Conta.
+ * pelas conferências do criar e fica reservada. A lista é a do pedido inteiro: a moto que entra sem valor fica nula
+ * (D-E); a que fica sem valor mandado guarda o que tinha. Se sai a moto do `moto_id`, ele passa para a 1ª que fica. Quem chama conferiu a Conta.
  */
 export async function trocarMotosDoPedidoTx(tx: Tx, d: { pedidoId: string; motos: MotoDoPedidoInput[]; usuario: QuemCancela }): Promise<void> {
   const pedido = await travarPedidoPendente(tx, d.pedidoId, d.usuario, { semPermissao: 'Sem permissão para alterar este pedido', emAprovacao: PEDIDO_EM_APROVACAO_PARA_TROCAR })
   const troca = trocaDeMotos(await motosDoPedidoTx(tx, d.pedidoId, pedido.motoId), d.motos.map(m => m.motoId), pedido.motoId)
   if (!troca.principal) throw new RecusaUsuario(PEDIDO_SEM_MOTO)
 
-  if (troca.entram.length > 0) await conferirMotosQueEntram(tx, troca.entram, pedido.lojaId)
+  const travadas = await travarMotos(tx, [...troca.entram, ...troca.saem])
+  if (troca.entram.length > 0) await conferirMotosQueEntram(tx, travadas, troca.entram, pedido.lojaId)
   if (troca.saem.length > 0) {
     await tx.delete(pedidosVendaItens).where(and(eq(pedidosVendaItens.pedidoVendaId, d.pedidoId), inArray(pedidosVendaItens.motoId, troca.saem)))
     await soltarMotosTx(tx, { pedidoId: d.pedidoId, motoIds: troca.saem, usuarioId: d.usuario.id, observacao: 'Moto saiu do pedido de venda' })
@@ -191,7 +197,8 @@ export async function trocarMotosDoPedidoTx(tx: Tx, d: { pedidoId: string; motos
   if (entram.length > 0) {
     await reservarMotosNoPedidoTx(tx, { pedidoId: d.pedidoId, lista: entram, usuarioId: d.usuario.id, observacao: 'Moto entrou no pedido de venda — moto reservada' })
   }
-  for (const m of d.motos.filter(m => !troca.entram.includes(m.motoId))) {
+  // A que fica sem valor mandado guarda o que já tinha (a do pedido de antes do #774, sem item, segue lida pelo moto_id).
+  for (const m of d.motos.filter(m => !troca.entram.includes(m.motoId) && m.valor != null)) {
     await gravarMotoDoPedido(tx, { pedidoId: d.pedidoId, motoId: m.motoId, valor: valorDaMotoNoPedido(m.valor) })
   }
   await tx.update(pedidosVenda).set({ motoId: troca.principal, dataAtualizacao: new Date() }).where(eq(pedidosVenda.id, d.pedidoId))

@@ -29,7 +29,7 @@ import { lerContribuinteIcms, tipoPessoaDoDocumento } from '@/lib/documento'
 import { STATUS_MORTOS } from '@/lib/notagateway/status'
 import { notasParaTravaDaVenda, vendaTemNfViva } from '@/lib/notagateway/nf-viva'
 import { travaDoCancelamentoDaVendaAction } from './nfe-propria-actions'
-import { podeCriarPedido, podeEfetivarPedido, foraDaMoto, motosSemRepetir, valorDeMotoInvalido, type MotoDoPedidoInput, type PecaDoPedidoInput } from '@/lib/pedido-venda-regras'
+import { podeCriarPedido, podeEfetivarPedido, foraDaMoto, listaDeMotosValida, motosSemRepetir, valorDeMotoInvalido, type MotoDoPedidoInput, type PecaDoPedidoInput } from '@/lib/pedido-venda-regras'
 import { podeGerirPecas } from '../pecas/papeis'
 import { PAPEIS_QUE_CANCELAM_VENDA, travaDoPapel } from '@/lib/cancelar-venda'
 import { alterarEntregaDoPedidoTx, efetivarPedidoTx, pecasDoPedido, pedirAprovacaoDoPedidoTx, type PedidoEmAprovacao } from '@/lib/efetivar-pedido'
@@ -174,9 +174,10 @@ export async function criarPedidoVendaAction(...a: Parameters<typeof criarPedido
 
 /**
  * Motos pedidas (#20), cada uma conferida na Conta e na loja de quem pede: outra Conta, id inexistente e id que
- * nem é uuid recebem a mesma frase. Valor que veio e não serve é recusado (D-E).
+ * nem é uuid recebem a mesma frase, como a lista com forma errada. Valor que veio e não serve é recusado (D-E).
  */
-async function motosPedidas(usuario: Awaited<ReturnType<typeof getUsuarioLogado>>, lista: MotoDoPedidoInput[]) {
+async function motosPedidas(usuario: Awaited<ReturnType<typeof getUsuarioLogado>>, lista: unknown) {
+  if (!listaDeMotosValida(lista)) throw new RecusaUsuario('Moto não encontrada')
   const pedidas = motosSemRepetir(lista)
   if (pedidas.some(m => valorDeMotoInvalido(m.valor))) throw new RecusaUsuario('Valor inválido')
   const doUsuario = await Promise.all(pedidas.map(m => (ehUuid(m.motoId) ? motoDoUsuario(usuario, m.motoId) : null)))
