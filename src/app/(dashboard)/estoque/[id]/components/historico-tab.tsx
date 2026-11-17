@@ -3,6 +3,7 @@ import { buscarHistoricoMoto } from '@/lib/queries/motos'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { FileText } from 'lucide-react'
+import { rotuloDoStatus } from '@/lib/status-moto'
 
 const tipoLabel: Record<string, string> = {
   entrada:                'Entrada no estoque',
@@ -10,16 +11,6 @@ const tipoLabel: Record<string, string> = {
   transferencia_enviada:  'Transferência enviada',
   transferencia_recebida: 'Transferência recebida',
   mudanca_status:         'Mudança de status',
-}
-
-const statusLabel: Record<string, string> = {
-  caixa:       'Caixa',
-  montada:     'Montada',
-  em_garantia: 'Garantia',
-  faturada:    'Caixa',
-  disponivel:  'Disponível',
-  reservada:   'Reservada',
-  vendida:     'Vendida',
 }
 
 type Props = {
@@ -49,9 +40,9 @@ export async function HistoricoTab({ motoId, notaFiscalEntrada }: Props) {
             <p className="text-sm font-medium">{tipoLabel[h.tipo] ?? h.tipo}</p>
             {h.statusAnterior && h.statusNovo && (
               <p className="text-xs text-muted-foreground">
-                {statusLabel[h.statusAnterior] ?? h.statusAnterior}
+                {rotuloDoStatus(h.statusAnterior)}
                 {' → '}
-                {statusLabel[h.statusNovo] ?? h.statusNovo}
+                {rotuloDoStatus(h.statusNovo)}
               </p>
             )}
             {h.observacao && (

@@ -1,7 +1,9 @@
 // src/lib/estado-moto.ts
-export type Status = 'caixa' | 'montada' | 'em_garantia'
-export type Disponibilidade = 'disponivel' | 'reservada' | 'vendida' | 'aguardando_aprovacao'
+import { STATUS_DE_ESTOQUE, type StatusDeEstoque } from './status-moto'
 import type { PapelDoBanco } from '@/lib/rotulo-do-papel'
+
+export type Status = StatusDeEstoque
+export type Disponibilidade = 'disponivel' | 'reservada' | 'vendida' | 'aguardando_aprovacao'
 
 // Do enum do banco: papel novo não precisa de outra lista aqui (só admin e aux_adm mudam estado).
 type Papel = PapelDoBanco
@@ -98,6 +100,16 @@ export function motivoBloqueioPorVenda(
 }
 
 /**
+ * Motivo pelo qual o status físico da moto impede a venda, ou null. Venda direta, pedido de venda,
+ * pedido de aprovação e o botão Vender da tela passam por aqui. Moto já vendida e disponibilidade
+ * ficam com cada chamador, que tem frase própria para elas.
+ */
+export function motivoParaNaoVender(status: string): string | null {
+  if (status === 'caixa') return 'Moto ainda não foi montada. Não pode ser vendida.'
+  return null
+}
+
+/**
  * Motivo pelo qual a moto não pode receber um pedido de aprovação de venda, ou
  * null se pode. Moto 'reservada' é aceita de propósito: é assim que se finaliza
  * uma reserva abaixo do mínimo ou com transferência. A aprovação converte a
@@ -106,7 +118,8 @@ export function motivoBloqueioPorVenda(
 export function motivoBloqueioPedidoAprovacao(
   moto: { status: string; disponibilidade: string | null },
 ): string | null {
-  if (moto.status === 'caixa') return 'Moto ainda não foi montada. Não pode ser vendida.'
+  const porStatus = motivoParaNaoVender(moto.status)
+  if (porStatus) return porStatus
   if (moto.status === 'vendida') return 'Moto já foi vendida'
   if (moto.disponibilidade === 'aguardando_aprovacao') return 'Esta moto já tem uma venda aguardando aprovação'
   return null
@@ -128,26 +141,19 @@ export function motivoBloqueioCancelarReserva(
   return null
 }
 
-export const statusLabel: Record<Status, string> = {
-  caixa:       'Caixa',
-  montada:     'Montada',
-  em_garantia: 'Garantia',
+/**
+ * Disponibilidade da moto quando a última reserva ativa é cancelada. Moto que ainda não foi
+ * montada volta sem disponibilidade; "disponivel" a poria à venda sem montagem.
+ */
+export function disponibilidadeAposCancelarReserva(status: string): Disponibilidade | null {
+  return status === 'caixa' ? null : 'disponivel'
 }
+
+export const statusLabel = Object.fromEntries(STATUS_DE_ESTOQUE.map(s => [s.valor, s.rotulo])) as Record<Status, string>
 
 export const disponibilidadeLabel: Record<Disponibilidade, string> = {
   disponivel:            'Disponível',
   reservada:             'Reservada',
   vendida:               'Vendida',
   aguardando_aprovacao:  'Aguardando aprovação',
-}
-
-// Compat: usado em lugares que ainda esperam a string antiga
-export const statusLabel_legado: Record<string, string> = {
-  faturada:    'Caixa',
-  caixa:       'Caixa',
-  montada:     'Montada',
-  disponivel:  'Disponível',
-  reservada:   'Reservada',
-  em_garantia: 'Garantia',
-  vendida:     'Vendida',
 }

@@ -13,8 +13,15 @@ after(desmontar)
 // O Link do Next precisa do roteador; para o teste basta um <a>.
 mock.module('next/link', { defaultExport: ({ href, children }: { href: string; children: React.ReactNode }) => createElement('a', { href }, children) })
 // Os outros botões da linha importam server actions com banco; o teste não passa por eles.
+// O Vender vira um marcador para o teste saber em que linha ele aparece e se é só reserva.
+mock.module('./vender-button', {
+  namedExports: {
+    VenderButton: ({ motoId, soReserva }: { motoId: string; soReserva?: boolean }) =>
+      createElement('button', { 'data-vender': motoId, 'data-modo': soReserva ? 'reserva' : 'venda' }, 'Vender'),
+  },
+})
 for (const [caminho, nome] of [
-  ['./vender-button', 'VenderButton'], ['./garantia-button', 'GarantiaButton'], ['./logistica-button', 'LogisticaButton'],
+  ['./garantia-button', 'GarantiaButton'], ['./logistica-button', 'LogisticaButton'],
   ['./montar-button', 'MontarButton'], ['./cancelar-reserva-button', 'CancelarReservaButton'],
 ]) mock.module(caminho, { namedExports: { [nome]: () => null } })
 // Como o diálogo real: o estado vive no useState; desmontar perde. Conta as montagens para
@@ -79,6 +86,22 @@ test('ao fechar, o diálogo sai; abrir de novo monta um novo', async () => {
   assert.equal(document.querySelector('[data-dialogo]'), null, 'onFechado limpa a moto aberta')
   await t.clicar('[data-nf]')
   assert.equal(t.montagem(), '2')
+  await t.desmontar()
+})
+
+test('Vender: montada disponível e garantia vendem; moto em caixa não vende, só reserva sem disponibilidade (#941)', async () => {
+  const t = await montar()
+  const linha = (id: string, status: string, disponibilidade: string | null) => ({ ...MOTO, id, chassi: `LXYTCK00000000${id}`, status, disponibilidade }) as unknown as MotoComDetalhes
+  await t.desenhar([
+    linha('m1', 'montada', 'disponivel'),
+    linha('m2', 'em_garantia', null),
+    linha('m3', 'caixa', 'disponivel'),
+    linha('m4', 'caixa', null),
+    linha('m5', 'montada', 'reservada'),
+  ])
+  const linhasCom = (modo: string) => [...document.querySelectorAll(`[data-modo=${modo}]`)].map(b => b.getAttribute('data-vender'))
+  assert.deepEqual(linhasCom('venda'), ['m1', 'm2'])
+  assert.deepEqual(linhasCom('reserva'), ['m4'])
   await t.desmontar()
 })
 
