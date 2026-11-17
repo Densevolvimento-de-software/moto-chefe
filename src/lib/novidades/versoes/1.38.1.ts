@@ -10,7 +10,7 @@ const novidade: NovidadeDaVersao = {
     },
     {
       titulo: 'Valor mínimo na venda com cartão',
-      texto: 'Na venda com cartão ou link, o valor que a loja recebe agora desconta a taxa da maquininha sobre o valor cobrado. Algumas vendas no cartão que antes passavam podem pedir aprovação de valor mínimo.',
+      texto: 'Na venda com cartão de crédito, débito ou link, o valor que a loja recebe agora desconta a taxa da maquininha sobre o valor cobrado. Algumas vendas no cartão que antes passavam podem pedir aprovação de valor mínimo.',
     },
   ],
 }
