@@ -21,7 +21,7 @@ const caixa = 'bg-card border rounded-lg overflow-x-auto'
 const vazio = `${td} py-6 text-center text-muted-foreground`
 const SEM_VENDA = 'Nenhuma venda no período com estes filtros.'
 const NOTA_DO_VALOR = 'Valor da moto, sem frete nem acessório'
-const motos = (q: number) => plural(q, 'moto', 'motos')
+const textoMotos = (q: number) => plural(q, 'moto', 'motos')
 // Estilo de cada coluna da lista, na ordem de COLUNAS_VENDAS.
 const CLASSE_DA_COLUNA = [
   'whitespace-nowrap tabular-nums', 'tabular-nums', 'whitespace-nowrap', 'whitespace-nowrap font-medium', '', 'font-mono text-xs whitespace-nowrap',
@@ -220,7 +220,7 @@ export function TabelaVendas({ lojas, vendas, periodo, filtro, de, ate, impresso
             {v.total > 0 && (
               <tfoot className="border-t-2">
                 <tr>
-                  <td className={`${td} font-semibold`} colSpan={COLUNA_VALOR}>Total, {motos(v.total)}</td>
+                  <td className={`${td} font-semibold`} colSpan={COLUNA_VALOR}>Total, {textoMotos(v.total)}</td>
                   <td className={`${td} text-right font-bold tabular-nums whitespace-nowrap`}>{fmtBRL(v.valor)}</td>
                 </tr>
               </tfoot>
@@ -237,19 +237,16 @@ export function TabelaVendas({ lojas, vendas, periodo, filtro, de, ate, impresso
 function FaixaFaturamento({ v, lojas, impresso }: { v: ResumoVendas; lojas: LojaComVenda[]; impresso: boolean }) {
   const maior = Math.max(0, ...lojas.map(l => l.valor))
   const porLoja = (
-    <ul className="border-t px-4 py-3 space-y-2">
+    // Sem print-color-adjust o navegador some com a barra no papel (como em coletiva-view); a propriedade é herdada.
+    <ul className="border-t px-4 py-3 space-y-2" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
       {lojasPorFaturamento(lojas).map(l => (
         <li key={l.lojaId} className="grid grid-cols-[minmax(8rem,12rem)_1fr_auto_5rem] items-center gap-4 text-sm">
           <span className="font-medium truncate">{l.lojaNome}</span>
-          <span className="h-2 rounded-full bg-muted overflow-hidden" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }} aria-hidden>
-            {/* Sem print-color-adjust o navegador some com a barra no papel (como em coletiva-view). */}
-            <span
-              className="block h-full rounded-full bg-primary"
-              style={{ width: `${maior > 0 ? (l.valor / maior) * 100 : 0}%`, printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}
-            />
+          <span className="h-2 rounded-full bg-muted overflow-hidden" aria-hidden>
+            <span className="block h-full rounded-full bg-primary" style={{ width: `${maior > 0 ? (l.valor / maior) * 100 : 0}%` }} />
           </span>
           <span className="font-semibold tabular-nums text-right">{fmtBRL(l.valor)}</span>
-          <span className="text-muted-foreground text-right">{motos(l.motos)}</span>
+          <span className="text-muted-foreground text-right">{textoMotos(l.motos)}</span>
         </li>
       ))}
     </ul>
@@ -262,7 +259,7 @@ function FaixaFaturamento({ v, lojas, impresso }: { v: ResumoVendas; lojas: Loja
           <p className="text-xs text-muted-foreground">Faturamento no período</p>
           <p className="text-2xl font-bold tabular-nums">{fmtBRL(v.valor)}</p>
         </div>
-        <p className="text-sm"><span className="font-semibold">{motos(v.total)}</span> em {plural(lojas.length, 'loja', 'lojas')}</p>
+        <p className="text-sm"><span className="font-semibold">{textoMotos(v.total)}</span> em {plural(lojas.length, 'loja', 'lojas')}</p>
         <p className="text-sm text-muted-foreground">{NOTA_DO_VALOR}</p>
       </div>
       {lojas.length > 0 && (impresso
@@ -291,7 +288,7 @@ function LojaModeloCelular({ v, lojas }: { v: ResumoVendas; lojas: LojaComVenda[
           <details className="group">
             <summary className={linhaDeToque}>
               <span className="flex-1 min-w-0 font-semibold">{l.lojaNome}</span>
-              <span className="text-sm text-muted-foreground whitespace-nowrap">{motos(l.motos)}</span>
+              <span className="text-sm text-muted-foreground whitespace-nowrap">{textoMotos(l.motos)}</span>
               {seta}
             </summary>
             <dl className="bg-muted/50 px-4 py-3 space-y-1 text-sm">
@@ -309,7 +306,7 @@ function LojaModeloCelular({ v, lojas }: { v: ResumoVendas; lojas: LojaComVenda[
         </li>
       ))}
       {v.total > 0 && (
-        <li className="flex justify-between gap-3 px-4 py-3 font-semibold"><span>Total</span><span>{motos(v.total)}</span></li>
+        <li className="flex justify-between gap-3 px-4 py-3 font-semibold"><span>Total</span><span>{textoMotos(v.total)}</span></li>
       )}
     </ul>
   )
@@ -346,7 +343,7 @@ function VendasCelular({ vendas, nomeLoja, v }: { vendas: VendaPainel[]; nomeLoj
       {v.total > 0 && (
         <li className="px-4 py-3">
           <div className="flex justify-between gap-3 font-semibold">
-            <span>Total, {motos(v.total)}</span><span className="text-lg font-bold tabular-nums whitespace-nowrap">{fmtBRL(v.valor)}</span>
+            <span>Total, {textoMotos(v.total)}</span><span className="text-lg font-bold tabular-nums whitespace-nowrap">{fmtBRL(v.valor)}</span>
           </div>
           <p className="text-xs text-muted-foreground">{NOTA_DO_VALOR}</p>
         </li>
