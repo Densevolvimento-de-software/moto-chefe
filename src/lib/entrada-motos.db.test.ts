@@ -170,7 +170,7 @@ test('Entrada manual e por planilha (#691): grava a moto nova; duplicada de outr
     await arquivar(tx, 'EMLOTE00000000C2', c.usuarioId)
     const socio = { id: c.usuarioId, grupoLiberado: null }
     const r = await entrada.inserirMotosUmaAUma(tx, {
-      lojaId: c.a.lojaId, usuario: socio,
+      lojaId: c.a.lojaId, status: 'caixa', usuario: socio,
       motos: ['EMLOTE00000000C1', 'EMLOTE00000000C2', 'EMLOTE00000000C3', 'EMLOTE00000000C4'].map(ch => pronta(c, ch)),
     })
     assert.deepEqual(r.erros, [
@@ -188,7 +188,7 @@ test('Entrada manual e por planilha (#691): moto e histórico entram juntos; se 
     const c = await cenarioLote(tx)
     // Usuário que não existe: a FK do histórico de estoque recusa depois de a moto ter sido inserida.
     const fantasma = { id: '0f8fad5b-d9cb-469f-a165-70867728950e', grupoLiberado: null }
-    const r = await entrada.inserirMotosUmaAUma(tx, { lojaId: c.a.lojaId, usuario: fantasma, motos: [pronta(c, 'EMLOTE00000000H1')] })
+    const r = await entrada.inserirMotosUmaAUma(tx, { lojaId: c.a.lojaId, status: 'caixa', usuario: fantasma, motos: [pronta(c, 'EMLOTE00000000H1')] })
     assert.equal(r.idPorChassi.size, 0)
     assert.equal(r.erros.length, 1)
     assert.match(r.erros[0], /^EMLOTE00000000H1: /)
@@ -220,7 +220,7 @@ async function cenarioPersona(tx: Tx) {
 test('admin_rede na persona (#517, #691), Entrada manual e por planilha: chassi do grupo irmão não liberado, ativo ou arquivado, recebe a frase neutra', async () => {
   await emTransacaoDesfeita(async tx => {
     const p = await cenarioPersona(tx)
-    const r = await entrada.inserirMotosUmaAUma(tx, { lojaId: p.c.a.lojaId, usuario: p.rede, motos: p.chassis.map(ch => pronta(p.c, ch)) })
+    const r = await entrada.inserirMotosUmaAUma(tx, { lojaId: p.c.a.lojaId, status: 'caixa', usuario: p.rede, motos: p.chassis.map(ch => pronta(p.c, ch)) })
     assert.deepEqual(r.erros, p.esperado)
   })
 })

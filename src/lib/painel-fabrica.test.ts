@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ehMarcaDoPainel, filtroDaUrl, urlDoFiltro, abaDaUrl, opcoesDoPainel, filtrarEstoque, filtrarVendas, resumirEstoque, resumirVendas,
-  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, periodoDoPainel, FILTRO_VAZIO,
+  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, periodoDoPainel, finalDoChassi, lojasComVendas, lojasPorFaturamento, FILTRO_VAZIO,
   type LinhaEstoquePainel, type LojaPainel, type VendaPainel,
 } from './painel-fabrica'
 
@@ -39,14 +39,14 @@ test('filtro vazio é tudo; cada filtro restringe e eles se combinam', () => {
   assert.deepEqual(filtrarEstoque(estoque, { lojas: ['a'], modelos: ['X12'], cores: ['PRETO'] }), [estoque[0]])
 })
 
-const venda = (numero: number, lojaId: string, modelo: string, cor: string, data: string): VendaPainel =>
-  ({ numero, data, lojaId, modelo, cor, chassi: `CH${numero}` })
+const venda = (numero: number, lojaId: string, modelo: string, cor: string, data: string, valor = 10000): VendaPainel =>
+  ({ numero, data, lojaId, modelo, cor, chassi: `CH${numero}`, valor })
 const vendas: VendaPainel[] = [
-  venda(101, 'a', 'X12', 'PRETO', '2026-10-02T15:00:00.000Z'),
-  venda(102, 'a', 'X12', 'BRANCO', '2026-10-20T15:00:00.000Z'),
-  venda(103, 'b', 'X12', 'PRETO', '2026-10-05T15:00:00.000Z'),
-  venda(104, 'b', 'JETMAX', 'AZUL', '2026-10-10T15:00:00.000Z'),
-  venda(105, 'b', 'JETMAX', 'AZUL', '2026-10-10T15:00:00.000Z'),
+  venda(101, 'a', 'X12', 'PRETO', '2026-10-02T15:00:00.000Z', 13490.1),
+  venda(102, 'a', 'X12', 'BRANCO', '2026-10-20T15:00:00.000Z', 9990.2),
+  venda(103, 'b', 'X12', 'PRETO', '2026-10-05T15:00:00.000Z', 16900),
+  venda(104, 'b', 'JETMAX', 'AZUL', '2026-10-10T15:00:00.000Z', 12000),
+  venda(105, 'b', 'JETMAX', 'AZUL', '2026-10-10T15:00:00.000Z', 11500.5),
 ]
 
 test('vendas: a matriz loja × modelo sai da lista, uma moto por venda, e os totais fecham', () => {
@@ -60,6 +60,49 @@ test('vendas: a matriz loja × modelo sai da lista, uma moto por venda, e os tot
   assert.equal(r.porModelo.get('X12'), 3)
   assert.equal(r.porModelo.get('JETMAX'), 2)
   assert.equal(r.total, 5)
+})
+
+test('faturamento: total do período e por loja, somados no centavo', () => {
+  const r = resumirVendas(vendas)
+  // 13.490,10 + 9.990,20 = 23.480,30 (somado em ponto flutuante dá 23480.300000000003).
+  assert.equal(r.valorPorLoja.get('a'), 23480.3)
+  assert.equal(r.valorPorLoja.get('b'), 40400.5)
+  assert.equal(r.valor, 63880.8)
+})
+
+test('faturamento: segue o filtro, porque soma só as vendas que chegam', () => {
+  const r = resumirVendas(filtrarVendas(vendas, { lojas: [], modelos: ['JETMAX'], cores: [] }))
+  assert.equal(r.valor, 23500.5)
+  assert.equal(r.valorPorLoja.get('a'), undefined)
+  assert.equal(resumirVendas([]).valor, 0)
+})
+
+// Loja Centro: 1 venda de R$ 20.000; Loja Norte: 2 de R$ 5.000; Loja Sul: nenhuma; Loja Oeste: 2 de R$ 4.000.
+const lojasQuatro: LojaPainel[] = [
+  { lojaId: 'c', lojaNome: 'Loja Sul' }, { lojaId: 'o', lojaNome: 'Loja Oeste' },
+  { lojaId: 'n', lojaNome: 'Loja Norte' }, { lojaId: 'a', lojaNome: 'Loja Centro' },
+]
+const vendasQuatro = [
+  venda(1, 'a', 'X12', 'PRETO', '2026-10-01T15:00:00.000Z', 20000),
+  venda(2, 'n', 'X12', 'PRETO', '2026-10-01T15:00:00.000Z', 5000),
+  venda(3, 'n', 'X12', 'PRETO', '2026-10-01T15:00:00.000Z', 5000),
+  venda(4, 'o', 'X12', 'PRETO', '2026-10-01T15:00:00.000Z', 4000),
+  venda(5, 'o', 'X12', 'PRETO', '2026-10-01T15:00:00.000Z', 4000),
+]
+
+test('lojas com venda: só as que venderam, com motos e faturamento, da que mais vendeu motos; empate pelo nome', () => {
+  const l = lojasComVendas(lojasQuatro, resumirVendas(vendasQuatro))
+  assert.deepEqual(l, [
+    { lojaId: 'n', lojaNome: 'Loja Norte', motos: 2, valor: 10000 },
+    { lojaId: 'o', lojaNome: 'Loja Oeste', motos: 2, valor: 8000 },
+    { lojaId: 'a', lojaNome: 'Loja Centro', motos: 1, valor: 20000 },
+  ])
+})
+
+test('lojas por faturamento: do maior valor para o menor, sem mexer na lista recebida', () => {
+  const porMotos = lojasComVendas(lojasQuatro, resumirVendas(vendasQuatro))
+  assert.deepEqual(lojasPorFaturamento(porMotos).map(l => l.lojaNome), ['Loja Centro', 'Loja Norte', 'Loja Oeste'])
+  assert.deepEqual(porMotos.map(l => l.lojaNome), ['Loja Norte', 'Loja Oeste', 'Loja Centro'])
 })
 
 test('vendas: loja, modelo e cor filtram; da mais recente para a mais antiga, empate pelo número maior', () => {
@@ -92,14 +135,14 @@ test('opções juntam modelos e cores do estoque e das vendas, sem repetir', () 
 const lojas: LojaPainel[] = [{ lojaId: 'a', lojaNome: 'Loja Centro' }, { lojaId: 'b', lojaNome: 'Loja Norte' }]
 const dadosPlanilha = { lojas, estoque, de: '2026-10-01', ate: '2026-10-31', hoje: '2026-11-14' }
 
-test('Excel das vendas: só a data (dia de Brasília), número, loja, modelo, cor e chassi, na ordem da lista', () => {
-  const tarde = venda(201, 'b', 'X12', 'PRETO', '2026-11-01T01:30:00.000Z') // 31/10 em Brasília; a hora não é real (#899)
+test('Excel das vendas: data (dia de Brasília), número, loja, modelo, cor, chassi e o valor da moto como número, sem linha de total', () => {
+  const tarde = venda(201, 'b', 'X12', 'PRETO', '2026-11-01T01:30:00.000Z', 9990) // 31/10 em Brasília; a hora não é real (#899)
   const p = planilhaDoPainel('vendas', { ...dadosPlanilha, vendas: [tarde, vendas[0]] })
   assert.equal(p.nome, 'vendas-motochefe-2026-10-01-a-2026-10-31.csv')
-  assert.deepEqual(p.cabecalho, ['Data', 'Venda', 'Loja', 'Modelo', 'Cor', 'Chassi'])
+  assert.deepEqual(p.cabecalho, ['Data', 'Venda', 'Loja', 'Modelo', 'Cor', 'Chassi', 'Valor da moto'])
   assert.deepEqual(p.linhas, [
-    ['31/10/2026', 201, 'Loja Norte', 'X12', 'PRETO', 'CH201'],
-    ['02/10/2026', 101, 'Loja Centro', 'X12', 'PRETO', 'CH101'],
+    ['31/10/2026', 201, 'Loja Norte', 'X12', 'PRETO', 'CH201', { reais: 9990 }],
+    ['02/10/2026', 101, 'Loja Centro', 'X12', 'PRETO', 'CH101', { reais: 13490.1 }],
   ])
 })
 
@@ -131,6 +174,18 @@ test('CSV abre no Excel pt-BR e não executa fórmula', () => {
   assert.ok(csv.includes('"Loja; Centro";3\r\n'))
   assert.ok(csv.includes(`"'=HYPERLINK(""x"")";1\r\n`))
   assert.ok(csv.includes('"Diz ""oi""";0\r\n'))
+})
+
+test('CSV: valor em reais sai como número com vírgula e sempre 2 casas, sem R$, que o Excel pt-BR lê como número', () => {
+  const csv = paraCsv(['Venda', 'Valor da moto'], [[101, { reais: 13490.1 }], [102, { reais: 9990 }], [103, { reais: 0.05 }]])
+  assert.ok(csv.includes('101;13490,10\r\n'), csv)
+  assert.ok(csv.includes('102;9990,00\r\n'), csv)
+  assert.ok(csv.includes('103;0,05\r\n'), csv)
+})
+
+test('final do chassi: os 4 últimos caracteres', () => {
+  assert.equal(finalDoChassi('LA9EXEMPLO0000001'), '0001')
+  assert.equal(finalDoChassi('AB1'), 'AB1')
 })
 
 // Teto de 92 dias da aba Vendas (#901). 14/11/2026 às 12h de Brasília.
