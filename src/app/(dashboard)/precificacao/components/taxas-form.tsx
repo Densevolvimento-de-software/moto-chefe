@@ -110,7 +110,6 @@ function ExemploPix({ taxa }: { taxa: number }) {
   return (
     <div className="max-w-lg rounded-lg border overflow-hidden">
       <p className="bg-muted px-3 py-2 text-xs font-semibold text-foreground">Como fica um PIX de {fmtBRL(PIX_DO_EXEMPLO)}</p>
-      {/* No celular cada linha é rótulo e valor; a partir do sm, três colunas. */}
       <dl className="grid divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {linhas.map(l => (
           <div key={l.rotulo} className="flex items-center justify-between gap-2 px-3 py-2 sm:block">
