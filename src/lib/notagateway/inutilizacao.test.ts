@@ -215,7 +215,7 @@ test('conflitos: nota que ocupa o número e pedido vivo que cruza a faixa avisam
   assert.deepEqual(conflitosDaFaixa(f, [], []), { numerosDeNotas: [], pedidos: [] })
 })
 
-test('rotina: só entra a pendente criada há mais de 4 h (o aviso da NG já parou de chegar)', () => {
+test('rotina: o limite é 4 h antes da hora da rodada (o aviso da NG já parou de chegar)', () => {
   assert.deepEqual(limiteDaRotina(new Date('2026-11-18T15:00:00Z')), new Date('2026-11-18T11:00:00Z'))
 })
 
