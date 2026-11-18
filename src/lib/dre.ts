@@ -50,6 +50,8 @@ export type EntradaDre = {
   receitaPecas: number
   /** Já é um número positivo; a linha o mostra como dedução. */
   taxasCartao: number
+  /** Tarifa do Pix da maquininha Mercado Pago (#51): dedução própria, fora das taxas de cartão. */
+  tarifaPix: number
   /** Custo das motos vendidas. Peça e serviço não têm custo cadastrado. */
   cmvMotos: number
   despesasPorGrupo: Partial<Record<GrupoDre, number>>
@@ -83,7 +85,7 @@ export type LinhaDre = {
  */
 export function montarDre(e: EntradaDre): LinhaDre[] {
   const receitaBruta = e.receitaMotos + e.receitaServicos + e.receitaPecas
-  const receitaLiquida = receitaBruta - e.taxasCartao
+  const receitaLiquida = receitaBruta - e.taxasCartao - e.tarifaPix
   const lucroBruto = receitaLiquida - e.cmvMotos
   const totalDespesas = GRUPOS_DRE.reduce((s, g) => s + (e.despesasPorGrupo[g.valor] ?? 0), 0)
   const resultado = lucroBruto - totalDespesas
@@ -103,6 +105,7 @@ export function montarDre(e: EntradaDre): LinhaDre[] {
     linha('receita_servicos',  'Serviços (OS)',        'receita',  1, e.receitaServicos),
     linha('receita_pecas',     'Peças',                'receita',  1, e.receitaPecas),
     linha('taxas_cartao',      '(−) Taxas de cartão',  'deducao',  0, e.taxasCartao),
+    linha('tarifa_pix',        '(−) Tarifa do PIX na maquininha', 'deducao', 0, e.tarifaPix),
     linha('receita_liquida',   'RECEITA LÍQUIDA',      'subtotal', 0, receitaLiquida),
     linha('cmv',               '(−) CMV — motos',      'deducao',  0, e.cmvMotos),
     linha('lucro_bruto',       'LUCRO BRUTO',          'subtotal', 0, lucroBruto),
@@ -139,6 +142,7 @@ export function somarEntradas(a: EntradaDre, b: EntradaDre): EntradaDre {
     receitaServicos: a.receitaServicos + b.receitaServicos,
     receitaPecas:    a.receitaPecas + b.receitaPecas,
     taxasCartao:     a.taxasCartao + b.taxasCartao,
+    tarifaPix:       a.tarifaPix + b.tarifaPix,
     cmvMotos:        a.cmvMotos + b.cmvMotos,
     despesasPorGrupo,
     memorando: {
@@ -152,7 +156,7 @@ export function somarEntradas(a: EntradaDre, b: EntradaDre): EntradaDre {
 
 export const ENTRADA_VAZIA: EntradaDre = {
   receitaMotos: 0, receitaServicos: 0, receitaPecas: 0,
-  taxasCartao: 0, cmvMotos: 0, despesasPorGrupo: {},
+  taxasCartao: 0, tarifaPix: 0, cmvMotos: 0, despesasPorGrupo: {},
   memorando: {},
 }
 

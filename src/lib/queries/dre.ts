@@ -12,6 +12,7 @@ import { chaveCategoria, somarDespesas, type TotalDespesas } from '@/lib/despesa
 import { configDespesas } from './config-despesas'
 import { categoriasDespesaDoGrupo } from '@/lib/categorias-do-grupo'
 import { grupoOuOutras, somarEntradas, type EntradaDre, type GrupoDre, ENTRADA_VAZIA } from '@/lib/dre'
+import { somaTarifaPor, tarifaPixDoPeriodo } from './tarifa-pix'
 
 /**
  * Os números do DRE. Nada de regra nova aqui: as mesmas consultas do /financeiro,
@@ -80,7 +81,7 @@ export async function dreDoMes(opts: {
   if (lojaIds.length === 0) return { colunas: [], semGrupo: [] }
   const { inicio, fim } = bordas(ano, mes)
 
-  const [nomes, porLojaVendas, porLojaOS, porLojaPecas, taxaOutras, resumo, mapa] = await Promise.all([
+  const [nomes, porLojaVendas, porLojaOS, porLojaPecas, taxaOutras, resumo, mapa, tarifas] = await Promise.all([
     db.select({ id: lojas.id, nome: lojas.nome }).from(lojas).where(inArray(lojas.id, lojaIds)),
 
     db.select({
@@ -150,6 +151,7 @@ export async function dreDoMes(opts: {
 
     resumoDespesasDoPeriodo(grupoId, lojaIds, inicio, fim),
     mapaGrupoPorCategoria(grupoId),
+    tarifaPixDoPeriodo(lojaIds, inicio, fim),
   ])
 
   const num = (v: unknown) => Number(v ?? 0)
@@ -160,6 +162,7 @@ export async function dreDoMes(opts: {
   const taxaPorLoja = new Map(
     (taxaOutras as { loja_id: string; taxa: string }[]).map(r => [r.loja_id, num(r.taxa)]),
   )
+  const tarifaPorLoja = somaTarifaPor(tarifas, t => t.lojaId)
 
   const semGrupo = new Set<string>()
   const colunas: ColunaDre[] = []
@@ -173,11 +176,14 @@ export async function dreDoMes(opts: {
     faltando.forEach(c => semGrupo.add(c))
 
     const bruto = num(v?.bruto)
+    // A taxa do líquido e das outras receitas inclui a tarifa do Pix da maquininha: ela sai daqui para a linha própria.
+    const tarifaPix = tarifaPorLoja.get(loja.id) ?? 0
     const entrada: EntradaDre = {
       receitaMotos: bruto,
       receitaServicos: num(os?.servicos),
       receitaPecas: num(pecas?.total) + num(os?.pecas),
-      taxasCartao: bruto - num(v?.liquido) + (taxaPorLoja.get(loja.id) ?? 0),
+      taxasCartao: bruto - num(v?.liquido) + (taxaPorLoja.get(loja.id) ?? 0) - tarifaPix,
+      tarifaPix,
       cmvMotos: num(v?.custo),
       despesasPorGrupo: porGrupo,
     }
@@ -229,7 +235,7 @@ export async function dreEvolucao(opts: {
   const fim = new Date(Date.UTC(ano, mes, 1))
   const chaveDe = (d: Date) => `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}`
 
-  const [vendasMes, osMes, pecasMes, taxaMes, linhasDespesa, mapa] = await Promise.all([
+  const [vendasMes, osMes, pecasMes, taxaMes, linhasDespesa, mapa, tarifas] = await Promise.all([
     db.select({
         mes:     sql<string>`to_char(${vendas.dataVenda} AT TIME ZONE 'UTC', 'YYYY-FMMM')`,
         bruto:   sql<string>`COALESCE(SUM(${vendas.valor}::numeric), 0)`,
@@ -293,6 +299,7 @@ export async function dreEvolucao(opts: {
 
     despesasPorMes(grupoId, lojaIds, inicio, fim),
     mapaGrupoPorCategoria(grupoId),
+    tarifaPixDoPeriodo(lojaIds, inicio, fim),
   ])
 
   const num = (v: unknown) => Number(v ?? 0)
@@ -301,12 +308,14 @@ export async function dreEvolucao(opts: {
   const os = porChave(osMes)
   const pc = porChave(pecasMes)
   const tx = new Map((taxaMes as { mes: string; taxa: string }[]).map(r => [r.mes, num(r.taxa)]))
+  const tarifaPorMes = somaTarifaPor(tarifas, t => t.mes)
 
   const saida: MesDre[] = []
   for (let i = 0; i < meses; i++) {
     const d = new Date(Date.UTC(ano, mes - meses + i, 1))
     const chave = chaveDe(d)
     const bruto = num(v.get(chave)?.bruto)
+    const tarifaPix = tarifaPorMes.get(chave) ?? 0
     const resumo = linhasDespesa.get(chave)
     const { porGrupo } = resumo
       ? agruparDespesas(resumo.porCategoria, mapa)
@@ -319,7 +328,8 @@ export async function dreEvolucao(opts: {
         receitaMotos: bruto,
         receitaServicos: num(os.get(chave)?.servicos),
         receitaPecas: num(pc.get(chave)?.total) + num(os.get(chave)?.pecas),
-        taxasCartao: bruto - num(v.get(chave)?.liquido) + (tx.get(chave) ?? 0),
+        taxasCartao: bruto - num(v.get(chave)?.liquido) + (tx.get(chave) ?? 0) - tarifaPix,
+        tarifaPix,
         cmvMotos: num(v.get(chave)?.custo),
         despesasPorGrupo: porGrupo,
         memorando: resumo ? memorandoDe(resumo) : {},
