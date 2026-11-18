@@ -12,9 +12,12 @@ after(desmontarDom)
 
 const enviados: TaxasPayload[] = []
 let resposta: { ok: true; dados: undefined } | { ok: false; erro: string } = { ok: true, dados: undefined }
-mock.module('../actions', { namedExports: { salvarTaxasAction: async (t: TaxasPayload) => { enviados.push(t); return resposta } } })
 const avisos: string[] = []
-mock.module('sonner', { namedExports: { toast: { error: (m: string) => { avisos.push(m) }, success: () => {} } } })
+const mocks = [
+  mock.module('../actions', { namedExports: { salvarTaxasAction: async (t: TaxasPayload) => { enviados.push(t); return resposta } } }),
+  mock.module('sonner', { namedExports: { toast: { error: (m: string) => { avisos.push(m) }, success: () => {} } } }),
+]
+after(() => { for (const m of mocks) m.restore() })
 
 const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
