@@ -909,11 +909,13 @@ test('aviso: NF-e, corpo desconhecido, não JSON, id inexistente e ambiente dife
       { tipo: 'NF-e', empresaId: 'emp-1', nfeId: f.idExterno, nfeStatus: 'Autorizada' },
       {}, 'isto nao e json', avisoDe('faixa-que-nao-existe'), avisoDe(f.idExterno, { ambienteEmissao: 'Producao' }), semAmbiente,
     ]
-    consoleDe(t)
+    const escrito = consoleDe(t)
 
     for (const corpo of corpos) assert.equal((await receber(tx, corpo, { consultar: ng.consultar })).status, 200, JSON.stringify(corpo))
     assert.equal((await f.linha()).situacao, 'pendente')
     assert.equal(ng.chamadas.length, 0)
+    const motivos = ['aviso com tipo', 'corpo desconhecido', 'corpo desconhecido', 'id desconhecido', 'ambiente diferente', 'ambiente diferente']
+    assert.deepEqual(escrito(), motivos.map(m => `[webhook notagateway] ignorado: ${m}`))
   })
 })
 

@@ -13,15 +13,16 @@ test('aviso de inutilização: devolve só o id e o ambiente, nada do resultado'
   assert.deepEqual(avisoDeInutilizacao(AVISO), { id: 'mova-31953-1-inut-1', ambienteEmissao: 'Homologacao' })
 })
 
-test('aviso de NF-e (com tipo) não é de inutilização, mesmo com os campos dela', () => {
-  assert.equal(avisoDeInutilizacao({ ...AVISO, tipo: 'NF-e', nfeId: 'mova-31953-1', nfeStatus: 'Autorizada' }), null)
+test('aviso com tipo (NF-e ou outro) não é de inutilização, mesmo com os campos dela, e diz que veio com tipo', () => {
+  assert.deepEqual(avisoDeInutilizacao({ ...AVISO, tipo: 'NF-e', nfeId: 'mova-31953-1', nfeStatus: 'Autorizada' }), { ignorar: 'aviso com tipo' })
+  assert.deepEqual(avisoDeInutilizacao({ ...AVISO, tipo: 'InutilizacaoNumeracaoNFe' }), { ignorar: 'aviso com tipo' })
 })
 
-test('corpo sem id, sem numeroInicial, sem numeroFinal, vazio ou que não é objeto: não é aviso de inutilização', () => {
+test('corpo sem id, sem numeroInicial, sem numeroFinal, vazio ou que não é objeto: corpo desconhecido', () => {
   const { numeroInicial: _i, ...semInicial } = AVISO
   const { numeroFinal: _f, ...semFinal } = AVISO
   for (const corpo of [{ ...AVISO, id: '' }, { ...AVISO, id: 7 }, semInicial, semFinal, {}, null, 'texto', [AVISO]]) {
-    assert.equal(avisoDeInutilizacao(corpo), null, JSON.stringify(corpo))
+    assert.deepEqual(avisoDeInutilizacao(corpo), { ignorar: 'corpo desconhecido' }, JSON.stringify(corpo))
   }
 })
 

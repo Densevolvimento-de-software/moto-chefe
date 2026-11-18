@@ -24,7 +24,7 @@ export async function receberAvisoDaNg(req: Request, deps: DependenciasAviso): P
   if (!token || !iguaisEmTempoConstante(token, deps.tokenEsperado)) return responder(401, 'recusado: x-token inválido')
 
   const aviso = avisoDeInutilizacao(await req.json().catch(() => null))
-  if (!aviso) return responder(200, 'ignorado: não é aviso de inutilização')
+  if ('ignorar' in aviso) return responder(200, `ignorado: ${aviso.ignorar}`)
 
   try {
     const decisao = decidirAviso(aviso, await inutilizacaoPeloIdExterno(deps.exec, aviso.id))

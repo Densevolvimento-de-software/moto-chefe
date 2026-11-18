@@ -10,10 +10,12 @@ export type AvisoDeInutilizacao = { id: string; ambienteEmissao: string | null }
  * (https://docs.notagateway.com.br/v2/docs/webhook). O status tem os mesmos nomes nos dois,
  * por isso a separação é pelo formato.
  */
-export function avisoDeInutilizacao(corpo: unknown): AvisoDeInutilizacao | null {
-  if (typeof corpo !== 'object' || corpo === null || Array.isArray(corpo) || 'tipo' in corpo) return null
+export function avisoDeInutilizacao(corpo: unknown): AvisoDeInutilizacao | { ignorar: 'aviso com tipo' | 'corpo desconhecido' } {
+  if (typeof corpo !== 'object' || corpo === null || Array.isArray(corpo)) return { ignorar: 'corpo desconhecido' }
+  // Separado no log: se o aviso real de inutilização vier com algum `tipo`, a validação da release vê aqui.
+  if ('tipo' in corpo) return { ignorar: 'aviso com tipo' }
   const c = corpo as Record<string, unknown>
-  if (typeof c.id !== 'string' || !c.id || c.numeroInicial == null || c.numeroFinal == null) return null
+  if (typeof c.id !== 'string' || !c.id || c.numeroInicial == null || c.numeroFinal == null) return { ignorar: 'corpo desconhecido' }
   return { id: c.id, ambienteEmissao: typeof c.ambienteEmissao === 'string' ? c.ambienteEmissao : null }
 }
 
