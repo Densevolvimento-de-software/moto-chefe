@@ -10,3 +10,11 @@ export function iguaisEmTempoConstante(recebido: string, esperado: string): bool
   const b = Buffer.from(esperado)
   return a.length === b.length && timingSafeEqual(a, b)
 }
+
+const PREFIXO_BEARER = 'Bearer '
+
+/** `Authorization: Bearer <segredo>` com o segredo esperado, comparado em tempo constante. */
+export function bearerConfere(authorization: string | null, esperado: string): boolean {
+  return authorization !== null && authorization.startsWith(PREFIXO_BEARER)
+    && iguaisEmTempoConstante(authorization.slice(PREFIXO_BEARER.length), esperado)
+}
