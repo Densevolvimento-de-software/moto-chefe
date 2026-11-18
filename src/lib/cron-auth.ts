@@ -1,6 +1,4 @@
-import { iguaisEmTempoConstante } from '@/lib/tempo-constante'
-
-const PREFIXO = 'Bearer '
+import { bearerConfere, iguaisEmTempoConstante } from '@/lib/tempo-constante'
 
 /**
  * Confere o CRON_SECRET das rotas de cron e da conciliação. O cron da Vercel manda
@@ -10,8 +8,6 @@ const PREFIXO = 'Bearer '
 export function cronAutorizado(req: Request): boolean {
   const segredo = process.env.CRON_SECRET
   if (!segredo) return false
-  const bearer = req.headers.get('authorization')
   const manual = req.headers.get('x-cron-secret')
-  return (bearer?.startsWith(PREFIXO) === true && iguaisEmTempoConstante(bearer.slice(PREFIXO.length), segredo))
-    || (manual !== null && iguaisEmTempoConstante(manual, segredo))
+  return bearerConfere(req.headers.get('authorization'), segredo) || (manual !== null && iguaisEmTempoConstante(manual, segredo))
 }
