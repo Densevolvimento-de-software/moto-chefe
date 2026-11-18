@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { salvarTaxasAction, type TaxasPayload } from '../actions'
-import { pixComCusto } from '@/lib/custo-pix'
+import { creditoDoPix } from '@/lib/custo-pix'
 import { fmtBRL } from '@/lib/preco-minimo'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { ChevronDown, Save } from 'lucide-react'
@@ -101,7 +101,7 @@ const PIX_DO_EXEMPLO = 10000
 
 /** A conta inteira de um PIX de exemplo com o custo digitado: valor, custo e o que entra na conta. */
 function ExemploPix({ taxa }: { taxa: number }) {
-  const { custo, entra } = pixComCusto(PIX_DO_EXEMPLO, taxa)
+  const { custo, entra } = creditoDoPix(PIX_DO_EXEMPLO, taxa)
   const linhas = [
     { rotulo: 'Valor do PIX', valor: PIX_DO_EXEMPLO, cor: '' },
     { rotulo: 'Custo do PIX', valor: custo, cor: 'text-destructive' },

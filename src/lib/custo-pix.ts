@@ -9,8 +9,8 @@ export function custoDoPixRecebido(credito: number, taxa: number): { bruto: numb
   return { bruto, custo: centavos(bruto - credito) }
 }
 
-/** De um PIX de `valor`: quanto o banco cobra e quanto entra na conta (o esperado líquido). */
-export function pixComCusto(valor: number, taxa: number): { custo: number; entra: number } {
+/** Do valor do PIX ao crédito: quanto o banco cobra e quanto entra na conta (o esperado líquido). */
+export function creditoDoPix(valor: number, taxa: number): { custo: number; entra: number } {
   const entra = liquidoDoBruto(valor, taxa)
   return { custo: centavos(valor - entra), entra }
 }
