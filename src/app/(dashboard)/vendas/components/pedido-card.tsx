@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { EfetivarPedidoDialog } from './efetivar-pedido-dialog'
+import { CriarPedidoDialog } from './criar-pedido-dialog'
+import type { MotoDisponivel } from '@/lib/novo-pedido'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
 import { cancelarPedidoAction } from '../actions'
 import { podeCancelarPedido } from '@/lib/pedido-venda-regras'
@@ -31,9 +33,11 @@ type Props = {
   /** Origens ativas do grupo — a venda só efetiva com uma escolhida. */
   origens: OrigemParaEscolher[]
   podeAprovarSensivel: boolean
+  /** Motos que o Editar pedido oferece (as disponíveis da página; o painel mostra só as da loja do pedido). */
+  motosDisponiveis: MotoDisponivel[]
 }
 
-export function PedidoCard({ pedido: p, papel, usuarioId, lojaIdUsuario, origens, podeAprovarSensivel }: Props) {
+export function PedidoCard({ pedido: p, papel, usuarioId, lojaIdUsuario, origens, podeAprovarSensivel, motosDisponiveis }: Props) {
   const [cancelarOpen, setCancelarOpen] = useState(false)
   const [observacao, setObservacao] = useState('')
   const [loading, setLoading] = useState(false)
@@ -147,6 +151,10 @@ export function PedidoCard({ pedido: p, papel, usuarioId, lojaIdUsuario, origens
             <div className="flex gap-2 pt-1 border-t border-border">
               {podeEfetivar && (
                 <EfetivarPedidoDialog pedidoId={p.id} numero={p.numero} origens={origens} entrega={p.entrega} papel={papel} podeAprovarSensivel={podeAprovarSensivel} />
+              )}
+              {/* Quem edita é quem cancela, e em aprovação nenhum dos dois (#25, decisões 3 e 5 do Luis). */}
+              {podeCancelar && (
+                <CriarPedidoDialog motos={motosDisponiveis} papel={papel} editar={{ pedidoId: p.id, numero: p.numero, entrega: p.entrega }} />
               )}
               {podeCancelar && (
                 <Button size="sm" variant="ghost"

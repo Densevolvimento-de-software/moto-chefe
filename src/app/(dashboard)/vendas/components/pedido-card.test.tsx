@@ -6,8 +6,10 @@ import assert from 'node:assert/strict'
 import type { PedidoComDetalhes } from '@/lib/queries/vendas'
 import { montarDom } from '@/test/montar-dom'
 
-const { desmontar } = montarDom()
+const { dom, desmontar } = montarDom()
 after(desmontar)
+// O botão "Editar pedido" (#25) traz o diálogo do Novo pedido, que escolhe o layout por matchMedia; o JSDOM não tem.
+;(dom.window as unknown as { matchMedia: unknown }).matchMedia = () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} })
 
 mock.module('../actions', { namedExports: {
   cancelarPedidoAction: async () => ({ ok: true }), efetivarVendaAction: async () => ({ ok: true }), buscarPrecoMinimoAction: async () => null,
@@ -26,7 +28,7 @@ const PEDIDO = {
 let desmontarCard: (() => Promise<void>) | null = null
 afterEach(async () => { await desmontarCard?.(); desmontarCard = null; document.body.innerHTML = '' })
 
-async function desenhar(pedido: PedidoComDetalhes) {
+async function desenhar(pedido: PedidoComDetalhes, papel = 'aux_adm') {
   const { act } = await import('react')
   const { createRoot } = await import('react-dom/client')
   const { PedidoCard } = await import('./pedido-card')
@@ -34,7 +36,7 @@ async function desenhar(pedido: PedidoComDetalhes) {
   document.body.appendChild(container)
   const root = createRoot(container)
   await act(async () => {
-    root.render(createElement(PedidoCard, { pedido, papel: 'aux_adm', usuarioId: 'u1', lojaIdUsuario: 'loja-1', origens: [], podeAprovarSensivel: false }))
+    root.render(createElement(PedidoCard, { pedido, papel, usuarioId: 'u1', lojaIdUsuario: 'loja-1', origens: [], podeAprovarSensivel: false, motosDisponiveis: [] } as never))
   })
   desmontarCard = () => act(async () => { root.unmount() })
 }
@@ -78,4 +80,17 @@ test('pedido de 1 moto: o card segue como antes (modelo, chassi e cor), sem a li
   await desenhar(PEDIDO)
   assert.match(textoDe(document.body), /MOTOCHEFE JET/)
   assert.ok(!document.querySelector('[aria-label="Motos do pedido"]'))
+})
+
+const trocarDeCard = async () => { const d = desmontarCard; desmontarCard = null; await d?.() }
+// Editar pedido (#25, 25c, decisões 3 e 5 do Luis): quem cancela edita; em aprovação o botão some.
+test('"Editar pedido" aparece para quem cancela o pedido pendente; some em aprovação e para o vendedor que não o criou', async () => {
+  await desenhar(PEDIDO)
+  assert.ok(botoes().includes('Editar pedido'))
+  await trocarDeCard()
+  await desenhar({ ...PEDIDO, emAprovacao: true } as PedidoComDetalhes)
+  assert.ok(!botoes().includes('Editar pedido'))
+  await trocarDeCard()
+  await desenhar(PEDIDO, 'vendedor')
+  assert.ok(!botoes().includes('Editar pedido'), 'vendedor u1 não criou o pedido (v1)')
 })
