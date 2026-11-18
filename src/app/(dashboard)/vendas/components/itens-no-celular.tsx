@@ -1,12 +1,12 @@
 'use client'
 import { useState, type ReactNode } from 'react'
-import { Bike, ChevronUp, Gift, Package, Plus, Search, type LucideIcon } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { Bike, ChevronUp, Gift, Package, Plus, type LucideIcon } from 'lucide-react'
+import { CampoBusca } from '@/components/ui/campo-busca'
 import { filtrarPecas } from '@/lib/busca-peca'
 import { brl } from '@/lib/dashboard-painel'
 import { finalDoChassi } from '@/lib/painel-fabrica'
 import type { PecaComSaldo } from '@/lib/pecas-da-conta'
-import { motosParaAdicionar, totalDasMotos, totalDasPecasNaTela, type MotoDisponivel, type MotoNoPedido, type PecaNoPedido } from '@/lib/novo-pedido'
+import { motosParaAdicionar, textoDeMaisMotos, totalDasMotos, totalDasPecasNaTela, type MotoDisponivel, type MotoNoPedido, type PecaNoPedido } from '@/lib/novo-pedido'
 
 type Bloco = 'motos' | PecaNoPedido['tipo']
 type Props = {
@@ -32,16 +32,17 @@ export function ItensNoCelular({ disponiveis, noPedido, pecas, catalogo, onPorMo
   const [busca, setBusca] = useState('')
   const abrir = (b: Bloco) => { setBusca(''); setAberto(atual => (atual === b ? null : b)) }
   const semMoto = noPedido.length === 0
-  const motos = motosParaAdicionar(disponiveis, { lojaId: noPedido[0]?.lojaId, fora: noPedido.map(m => m.id) }, busca)
+  const { motos, mais } = motosParaAdicionar(disponiveis, { lojaId: noPedido[0]?.lojaId, fora: noPedido.map(m => m.id) }, busca)
 
   return (
     <div className="space-y-3">
       <BlocoDoPedido titulo="Motos" Icone={Bike} resumo={itens(noPedido.length)} valor={brl(totalDasMotos(noPedido))} aberto={aberto === 'motos'} onAbrir={() => abrir('motos')}>
         {noPedido.length > 0 && <ul aria-label="Motos do pedido" className="divide-y divide-border">{noPedido.map(moto)}</ul>}
-        <Busca rotulo="Buscar moto" dica="Modelo, cor ou final do chassi" valor={busca} onBusca={setBusca} />
+        <CampoBusca aria-label="Buscar moto" placeholder="Modelo, cor ou final do chassi" value={busca} onChange={e => setBusca(e.target.value)} />
         <Resultados vazio="Nenhuma moto disponível com essa busca." itens={motos.map(m => ({
           id: m.id, nome: `${m.marca} ${m.modelo} (final ${finalDoChassi(m.chassi)})`, detalhe: `${m.cor.toLowerCase()}, ${m.lojaNome}`, onPor: () => onPorMoto(m),
         }))} />
+        {mais > 0 && <p className="text-xs text-muted-foreground">{textoDeMaisMotos(mais)}</p>}
       </BlocoDoPedido>
       {(['acessorio', 'brinde'] as const).map(tipo => {
         const doTipo = pecas.map((p, i) => [p, i] as const).filter(([p]) => p.tipo === tipo)
@@ -52,7 +53,7 @@ export function ItensNoCelular({ disponiveis, noPedido, pecas, catalogo, onPorMo
             valor={tipo === 'brinde' ? 'Sem cobrança' : brl(totalDasPecasNaTela(doTipo.map(([p]) => p)))}
             aberto={aberto === tipo} onAbrir={() => abrir(tipo)}>
             {doTipo.length > 0 && <ul aria-label={tipo === 'brinde' ? 'Brindes do pedido' : 'Acessórios do pedido'} className="divide-y divide-border">{doTipo.map(([p, i]) => peca(p, i))}</ul>}
-            <Busca rotulo="Buscar peça" dica="Digite o nome da peça" valor={busca} onBusca={setBusca} />
+            <CampoBusca aria-label="Buscar peça" placeholder="Digite o nome da peça" value={busca} onChange={e => setBusca(e.target.value)} />
             {catalogo.erro
               ? <p role="alert" className="text-sm text-destructive">Não deu para carregar as peças: {catalogo.erro}</p>
               : busca.trim() && <Resultados vazio="Nenhuma peça com esse nome." itens={achadas.map(p => ({
@@ -80,15 +81,6 @@ function BlocoDoPedido({ titulo, Icone, resumo, valor, aberto, desabilitado, onA
       </button>
       {aberto && <div className="space-y-3 border-t border-border p-3">{children}</div>}
     </section>
-  )
-}
-
-function Busca({ rotulo, dica, valor, onBusca }: { rotulo: string; dica: string; valor: string; onBusca: (v: string) => void }) {
-  return (
-    <div className="relative">
-      <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-      <Input aria-label={rotulo} placeholder={dica} className="h-11 pl-9" value={valor} onChange={e => onBusca(e.target.value)} />
-    </div>
   )
 }
 

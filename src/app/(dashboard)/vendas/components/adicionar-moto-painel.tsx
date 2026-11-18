@@ -1,10 +1,9 @@
 'use client'
 import { useState } from 'react'
-import { Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { CampoBusca } from '@/components/ui/campo-busca'
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { detalheDaMoto, motosParaAdicionar, type MotoDisponivel } from '@/lib/novo-pedido'
+import { detalheDaMoto, motosParaAdicionar, textoDeMaisMotos, type MotoDisponivel } from '@/lib/novo-pedido'
 
 type Props = {
   aberto: boolean
@@ -21,7 +20,7 @@ export function AdicionarMotoPainel({ aberto, onAbertoChange, disponiveis, lojaI
   const [busca, setBusca] = useState('')
   const [marcadas, setMarcadas] = useState<MotoDisponivel[]>([])
   const loja = lojaId ?? marcadas[0]?.lojaId
-  const lista = motosParaAdicionar(disponiveis, { lojaId: loja, fora: noPedido }, busca)
+  const { motos: lista, mais } = motosParaAdicionar(disponiveis, { lojaId: loja, fora: noPedido }, busca)
   const nomeDaLoja = disponiveis.find(m => m.lojaId === loja)?.lojaNome
 
   const fechar = (aberto: boolean) => {
@@ -39,11 +38,7 @@ export function AdicionarMotoPainel({ aberto, onAbertoChange, disponiveis, lojaI
           <SheetDescription>{nomeDaLoja ? `${nomeDaLoja}. ` : ''}Marque quantas quiser.</SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4">
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-            <Input aria-label="Buscar moto" placeholder="Modelo, cor ou final do chassi" className="h-11 pl-9"
-              value={busca} onChange={e => setBusca(e.target.value)} />
-          </div>
+          <CampoBusca aria-label="Buscar moto" placeholder="Modelo, cor ou final do chassi" value={busca} onChange={e => setBusca(e.target.value)} />
           {lista.length === 0
             ? <p className="text-sm text-muted-foreground">Nenhuma moto disponível com essa busca.</p>
             : (
@@ -66,6 +61,7 @@ export function AdicionarMotoPainel({ aberto, onAbertoChange, disponiveis, lojaI
                 })}
               </ul>
             )}
+          {mais > 0 && <p className="text-xs text-muted-foreground">{textoDeMaisMotos(mais)}</p>}
           <p className="text-xs text-muted-foreground">
             Só motos disponíveis{nomeDaLoja ? ` da ${nomeDaLoja}` : ''}. Moto de outra loja entra depois de transferida; moto em transferência não aparece.
           </p>
