@@ -63,3 +63,13 @@ test('consultarConta devolve id como string', async () => {
   assert.deepEqual(await consultarConta(TOKEN), { id: '123456', nickname: 'LOJA BH' })
   assert.equal(chamadas[0].url.pathname, '/users/me')
 })
+
+test('sem paging.total segue até vir página incompleta', async () => {
+  const chamadas = mockFetch([
+    { body: { results: pagamentos(100) } },
+    { body: { results: pagamentos(20, 100) } },
+  ])
+  const r = await buscarPagamentosAlterados(TOKEN, periodo)
+  assert.equal(r.length, 120)
+  assert.equal(chamadas.length, 2)
+})

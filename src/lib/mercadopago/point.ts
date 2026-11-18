@@ -65,7 +65,9 @@ export async function buscarPagamentosAlterados(
     const pagina = r.results ?? []
     todos.push(...pagina)
     offset += pagina.length
-    if (pagina.length === 0 || offset >= (r.paging?.total ?? 0)) break
+    // Página incompleta é a última; o total, quando vem, também encerra (resposta sem total não corta a busca).
+    const total = r.paging?.total
+    if (pagina.length < POR_PAGINA || (total !== undefined && offset >= total)) break
   }
   return todos
 }
