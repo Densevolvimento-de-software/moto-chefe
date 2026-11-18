@@ -28,7 +28,9 @@ before(async () => {
   ;({ default: Pagina } = await import('./page'))
   const a = await semearContaBase(db, { prefixo: 'PP089', nome: 'A', cnpj: '00000000008901' })
   const b = await semearContaBase(db, { prefixo: 'PP089', nome: 'B', cnpj: '00000000008902' })
-  contas.push(a, b)
+  // C não tem linha em configuracao_taxas.
+  const c = await semearContaBase(db, { prefixo: 'PP089', nome: 'C', cnpj: '00000000008903' })
+  contas.push(a, b, c)
   await db.execute(sql`insert into configuracao_taxas (grupo_id, custo_pix_taxa) values (${a.grupoId}, 0.002), (${b.grupoId}, 0.005)`)
 })
 
@@ -59,4 +61,9 @@ test('o sócio de cada Conta vê só o custo do PIX do próprio grupo', async ()
   const [a, b] = contas
   assert.equal(await abrirComoSocio(b, 'socio-b'), '0.5')
   assert.equal(await abrirComoSocio(a, 'socio-a'), '0.2')
+})
+
+test('grupo sem taxas cadastradas abre o custo do PIX vazio, como 0', async () => {
+  const c = contas[2]
+  assert.equal(await abrirComoSocio(c, 'socio-c'), '')
 })
