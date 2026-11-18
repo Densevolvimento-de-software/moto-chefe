@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { inspect } from 'node:util'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { limiteDaRotina } from '@/lib/notagateway/inutilizacao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -850,7 +851,7 @@ async function inutilizacaoComIdade(tx: Tx, grupoId: string, idadeMs: number, si
 /** A rotina conta todas as pendentes vencidas do banco: o teste só vale se não houver nenhuma de fora (test:db em paralelo, #640). */
 async function semPendenteVencidaDeFora(tx: Tx) {
   const [{ n }] = await linhas(tx, sql`select count(*)::int as n from notas_fiscais_saida_inutilizacoes
-    where situacao = 'pendente' and criado_em < ${new Date(AGORA.getTime() - 4 * HORA).toISOString()}`)
+    where situacao = 'pendente' and criado_em < ${limiteDaRotina(AGORA).toISOString()}`)
   assert.equal(n, 0, 'há inutilização pendente vencida de fora deste teste no banco')
 }
 
