@@ -348,8 +348,9 @@ export async function vincularVendaAction(conciliacaoId: string, alvoId: string,
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
   if (tipo === 'peca') {
-    const [pecaVenda] = await db.select({ lojaId: vendasPecas.lojaId }).from(vendasPecas).where(eq(vendasPecas.id, alvoId)).limit(1)
-    if (!pecaVenda || !lojaIdsGrupo.includes(pecaVenda.lojaId)) {
+    const [pecaVenda] = await db.select({ id: vendasPecas.id }).from(vendasPecas)
+      .where(and(eq(vendasPecas.id, alvoId), inArray(vendasPecas.lojaId, lojaIdsGrupo))).limit(1)
+    if (!pecaVenda) {
       throw new Error('Venda de peça não pertence ao grupo ativo')
     }
     const atualizadas = await db.update(conciliacoesCartao)
@@ -362,8 +363,9 @@ export async function vincularVendaAction(conciliacaoId: string, alvoId: string,
   }
 
   if (tipo === 'os') {
-    const [os] = await db.select({ lojaId: ordensServico.lojaId }).from(ordensServico).where(eq(ordensServico.id, alvoId)).limit(1)
-    if (!os || !lojaIdsGrupo.includes(os.lojaId)) {
+    const [os] = await db.select({ id: ordensServico.id }).from(ordensServico)
+      .where(and(eq(ordensServico.id, alvoId), inArray(ordensServico.lojaId, lojaIdsGrupo))).limit(1)
+    if (!os) {
       throw new Error('Ordem de serviço não pertence ao grupo ativo')
     }
     const atualizadas = await db.update(conciliacoesCartao)
@@ -377,11 +379,11 @@ export async function vincularVendaAction(conciliacaoId: string, alvoId: string,
 
   // Garante que a venda a ser vinculada pertence a uma loja do grupo ativo
   const [venda] = await db
-    .select({ lojaId: vendas.lojaId })
+    .select({ id: vendas.id })
     .from(vendas)
-    .where(eq(vendas.id, alvoId))
+    .where(and(eq(vendas.id, alvoId), inArray(vendas.lojaId, lojaIdsGrupo)))
     .limit(1)
-  if (!venda || !lojaIdsGrupo.includes(venda.lojaId)) {
+  if (!venda) {
     throw new Error('Venda não pertence ao grupo ativo')
   }
 

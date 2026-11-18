@@ -101,3 +101,19 @@ test('vincular cartão estornado é recusado com a frase de "não encontrada" e 
   assert.equal(depois.conciliado, true)
   assert.equal(depois.venda_id, vendaId)
 })
+
+// Isolamento (#891): o alvo do vínculo e a linha só valem na Conta de quem vincula.
+test('vincular a venda, peça ou OS de outra Conta é recusado e a linha não muda', async () => {
+  const b = await semear()
+  const [pecaB] = await linhas(sql`insert into vendas_pecas (loja_id, vendedor_id, forma_pagamento, pagamentos, valor_total)
+    values (${b.base.lojaId}, ${usuario.id}, 'cartao_credito', '[]'::jsonb, 100) returning id`)
+  const [osB] = await linhas(sql`insert into ordens_servico (loja_id, aberta_por, descricao) values (${b.base.lojaId}, ${usuario.id}, 'revisão') returning id`)
+  const { base } = await semear()
+  const linhaA = await cartao(base.grupoId, 1000, 'aprovado', null)
+  const antes = await linhaDe(linhaA)
+
+  await assert.rejects(actions.vincularVendaAction(linhaA, b.vendaId, 'moto'), { message: 'Venda não pertence ao grupo ativo' })
+  await assert.rejects(actions.vincularVendaAction(linhaA, pecaB.id, 'peca'), { message: 'Venda de peça não pertence ao grupo ativo' })
+  await assert.rejects(actions.vincularVendaAction(linhaA, osB.id, 'os'), { message: 'Ordem de serviço não pertence ao grupo ativo' })
+  assert.deepEqual(await linhaDe(linhaA), antes)
+})
