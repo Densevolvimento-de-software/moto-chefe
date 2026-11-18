@@ -10,17 +10,26 @@ const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
 
 type Resposta = { ok: true; dados: undefined } | { ok: false; erro: string }
-const criar = mock.fn(async (_motos: unknown, _observacao: string, _entrega: unknown): Promise<Resposta> => ({ ok: true, dados: undefined }))
+const criar = mock.fn(async (_motos: unknown, _observacao: string, _entrega: unknown, _pecas?: unknown): Promise<Resposta> => ({ ok: true, dados: undefined }))
 let minimo: { valorMinimoPix: number } | null = null
+const CATALOGO = [
+  { id: 'cap', nome: 'Capacete fechado', valor: '289.90', quantidadeEstoque: 1 },
+  { id: 'bau', nome: 'Baú traseiro', valor: '249.00', quantidadeEstoque: 2 },
+  { id: 'capa', nome: 'Capa de chuva', valor: '79.90', quantidadeEstoque: 0 },
+]
+let catalogo: { ok: true; dados: typeof CATALOGO } | { ok: false; erro: string } = { ok: true, dados: CATALOGO }
 mock.module('../actions', { namedExports: {
-  criarPedidoVendaAction: (motos: unknown, observacao: string, entrega: unknown) => criar(motos, observacao, entrega),
+  criarPedidoVendaAction: (motos: unknown, observacao: string, entrega: unknown, pecas?: unknown) =>
+    (pecas === undefined ? criar(motos, observacao, entrega) : criar(motos, observacao, entrega, pecas)),
   buscarPrecoMinimoAction: async () => minimo,
+  pecasDaLojaParaPedidoAction: async () => catalogo,
 } })
 
 const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
   criar.mock.resetCalls()
   minimo = null
+  catalogo = { ok: true, dados: CATALOGO }
   mock.restoreAll()
   for (const desmontar of montados.splice(0)) await desmontar()
 })
@@ -45,14 +54,14 @@ const DO_NORTE = { ...MOTO, id: 'moto-3', chassi: 'LA2026X2217', modelo: 'JET MA
 const SO_A_MOTO = [{ motoId: MOTO.id }]
 const AVISO = 'Escolha a modalidade do frete. Sem ela a nota não sai.'
 
-async function montar(motos = [MOTO]) {
+async function montar(motos = [MOTO], papel = 'vendedor') {
   const { act } = await import('react')
   const { createRoot } = await import('react-dom/client')
   const { CriarPedidoDialog } = await import('./criar-pedido-dialog')
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
-  await act(async () => { root.render(createElement(CriarPedidoDialog, { motos, papel: 'vendedor' })) })
+  await act(async () => { root.render(createElement(CriarPedidoDialog, { motos, papel })) })
   const clique = async (el: Element | null | undefined, ms = 50) => { await clicar(el); await act(() => esperar(ms)) }
   let montado = true
   montados.push(() => act(async () => { if (!montado) return; montado = false; root.unmount(); container.remove() }))
@@ -68,8 +77,20 @@ async function montar(motos = [MOTO]) {
     for (const m of motos) await clique(caixaDaMoto(m))
     await clique([...document.querySelectorAll('button')].find(b => /^Adicionar \d+ motos?$/.test((b.textContent ?? '').trim())))
   }
-  return { clique, esperarBuscaDoCep, adicionarMotos }
+  // "+ Acessório" / "+ Brinde": marca as peças pelo nome e, se pedido, soma na quantidade com o "+" da linha.
+  const adicionarPecas = async (botaoDoTipo: string, ...pecas: [string, number?][]) => {
+    await clique(botao(botaoDoTipo))
+    for (const [nome, extra = 0] of pecas) {
+      await clique(caixaDaPeca(nome))
+      for (let i = 0; i < extra; i++) await clique(document.querySelector(`[aria-label="Mais um ${nome}"]`))
+    }
+    await clique([...document.querySelectorAll('button')].find(b => /^Adicionar \d+ peças?$/.test((b.textContent ?? '').trim())))
+  }
+  return { clique, esperarBuscaDoCep, adicionarMotos, adicionarPecas }
 }
+const caixaDaPeca = (nome: string) => [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+  .find(c => c.closest('label')?.querySelector('span')?.textContent === nome)
+const itens = () => document.querySelector('[aria-label="Itens do pedido"]')?.textContent ?? ''
 const caixaDaMoto = (m: typeof MOTO) => [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
   .find(c => (c.closest('label')?.textContent ?? '').includes(m.chassi.slice(-4)))
 const nomesNoPainel = () => [...document.querySelectorAll('input[type="checkbox"]')].map(c => c.closest('label')?.querySelector('span')?.textContent)
@@ -427,4 +448,52 @@ test('valor zerado mostra "Valor inválido" e não deixa criar', async () => {
   await digitar(campo<HTMLInputElement>(/^Valor da MC JET/), '0')
   assert.match(textoDaTela(), /Valor inválido/)
   assert.equal(botao('Criar pedido')?.disabled, true)
+})
+
+test('"+ Brinde" e "+ Acessório" ficam desabilitados até a 1ª moto, com a dica', async () => {
+  const t = await montar()
+  assert.equal(botao('Brinde')?.disabled, true)
+  assert.equal(botao('Acessório')?.disabled, true)
+  assert.match(textoDaTela(), /Escolha a moto primeiro/)
+  await t.adicionarMotos(MOTO)
+  assert.equal(botao('Acessório')?.disabled, false)
+  assert.doesNotMatch(textoDaTela(), /Escolha a moto primeiro/)
+})
+
+test('vendedor: acessórios pelo painel com quantidade e o preço do catálogo sem campo; brinde "Sem cobrança"; aviso de saldo; envio e resumo', async () => {
+  const t = await montar()
+  await t.adicionarMotos(MOTO)
+  await t.clique(botao('Acessório'))
+  assert.match(textoDaTela(), /Capacete fechado.*Saldo 1.*Baú traseiro.*Saldo 2.*Capa de chuva.*Saldo 0/)
+  await t.clique(botao('Só com saldo na loja'))
+  assert.equal(caixaDaPeca('Capa de chuva'), undefined)
+  await t.clique(document.querySelector('[data-slot="sheet-close"]'))
+  await t.adicionarPecas('Acessório', ['Capacete fechado', 1])
+  await t.adicionarPecas('Brinde', ['Baú traseiro'])
+  assert.match(itens(), /Capacete fechado.*Fica em -1 depois deste pedido; não trava a venda/)
+  assert.match(itens(), /Baú traseiro.*Sem cobrança \(catálogo R\$\s*249,00\)/)
+  assert.equal([...document.querySelectorAll('label')].some(l => /Valor de cada/.test(l.textContent ?? '')), false)
+  assert.match(resumo(), /1 moto sem valor.*Acessórios \(2\)\s*R\$\s*579,80.*Brindes \(1\)\s*Sem cobrança/)
+  assert.match(resumo(), /Total\s*R\$\s*579,80/)
+  await t.clique(botao('Criar pedido'))
+  assert.deepEqual(criar.mock.calls[0].arguments[3], [
+    { tipo: 'acessorio', pecaId: 'cap', quantidade: 2 }, { tipo: 'brinde', pecaId: 'bau', quantidade: 1 },
+  ])
+})
+
+test('quem gere peças ajusta o valor do acessório, que vai no envio', async () => {
+  const t = await montar([MOTO], 'aux_adm')
+  await t.adicionarMotos(MOTO)
+  await t.adicionarPecas('Acessório', ['Capacete fechado'])
+  await digitar(campo<HTMLInputElement>(/^Valor de cada Capacete fechado/), '25000')
+  await t.clique(botao('Criar pedido'))
+  assert.deepEqual(criar.mock.calls[0].arguments[3], [{ tipo: 'acessorio', pecaId: 'cap', quantidade: 1, valorUnitario: 250 }])
+})
+
+test('catálogo que não carrega avisa por quê, sem sumir com o botão', async () => {
+  catalogo = { ok: false, erro: 'Loja não encontrada' }
+  const t = await montar()
+  await t.adicionarMotos(MOTO)
+  await t.clique(botao('Acessório'))
+  assert.match(textoDaTela(), /Não deu para carregar as peças: Loja não encontrada/)
 })
