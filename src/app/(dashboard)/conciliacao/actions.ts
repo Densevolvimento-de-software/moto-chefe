@@ -3,6 +3,7 @@ import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { maquininhasDoGrupo } from '@/lib/maquininhas'
 import { gruposDoTerminalNaConta } from '@/lib/terminal-da-conta'
 import { db } from '@/lib/db'
+import { cartaoNaoEstornado, cartaoPendente } from '@/lib/cartao-status'
 import { conciliacoesCartao, pixRecebimentosMcp, vendas, modelos, motos, vendasPecas, ordensServico, clientes } from '@/lib/db/schema'
 import { eq, and, or, desc, gte, sql, isNull, ilike, inArray } from 'drizzle-orm'
 import { getUsuarioLogado } from '@/lib/auth'
@@ -302,6 +303,10 @@ async function importarRelatorio(formData: FormData) {
   return { importadas, duplicadas, conciliadas, semCodigo, incompletas }
 }
 
+// Linha de outro grupo, inexistente ou estornada recebem a mesma frase: estornada não se vincula
+// (vincular poria o valor devolvido de volta nas somas), e a frase não revela mais que "não achei".
+const CONCILIACAO_NAO_ENCONTRADA = 'Conciliação não encontrada'
+
 export async function vincularVendaAction(conciliacaoId: string, alvoId: string, tipo: 'moto' | 'peca' | 'os' = 'moto') {
   const usuario = await getUsuarioLogado()
   if (!['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)) throw new Error('Sem permissão')
@@ -309,49 +314,51 @@ export async function vincularVendaAction(conciliacaoId: string, alvoId: string,
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
   if (tipo === 'peca') {
-    const [pecaVenda] = await db.select({ lojaId: vendasPecas.lojaId }).from(vendasPecas).where(eq(vendasPecas.id, alvoId)).limit(1)
-    if (!pecaVenda || !lojaIdsGrupo.includes(pecaVenda.lojaId)) {
+    const [pecaVenda] = await db.select({ id: vendasPecas.id }).from(vendasPecas)
+      .where(and(eq(vendasPecas.id, alvoId), inArray(vendasPecas.lojaId, lojaIdsGrupo))).limit(1)
+    if (!pecaVenda) {
       throw new Error('Venda de peça não pertence ao grupo ativo')
     }
     const atualizadas = await db.update(conciliacoesCartao)
       .set({ pecaVendaId: alvoId, vendaId: null, osId: null, conciliado: true, conciliadoEm: new Date() })
-      .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id)))
+      .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
       .returning({ id: conciliacoesCartao.id })
-    if (atualizadas.length === 0) throw new Error('Conciliação não encontrada')
+    if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
     revalidatePath('/conciliacao')
     return
   }
 
   if (tipo === 'os') {
-    const [os] = await db.select({ lojaId: ordensServico.lojaId }).from(ordensServico).where(eq(ordensServico.id, alvoId)).limit(1)
-    if (!os || !lojaIdsGrupo.includes(os.lojaId)) {
+    const [os] = await db.select({ id: ordensServico.id }).from(ordensServico)
+      .where(and(eq(ordensServico.id, alvoId), inArray(ordensServico.lojaId, lojaIdsGrupo))).limit(1)
+    if (!os) {
       throw new Error('Ordem de serviço não pertence ao grupo ativo')
     }
     const atualizadas = await db.update(conciliacoesCartao)
       .set({ osId: alvoId, vendaId: null, pecaVendaId: null, conciliado: true, conciliadoEm: new Date() })
-      .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id)))
+      .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
       .returning({ id: conciliacoesCartao.id })
-    if (atualizadas.length === 0) throw new Error('Conciliação não encontrada')
+    if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
     revalidatePath('/conciliacao')
     return
   }
 
   // Garante que a venda a ser vinculada pertence a uma loja do grupo ativo
   const [venda] = await db
-    .select({ lojaId: vendas.lojaId })
+    .select({ id: vendas.id })
     .from(vendas)
-    .where(eq(vendas.id, alvoId))
+    .where(and(eq(vendas.id, alvoId), inArray(vendas.lojaId, lojaIdsGrupo)))
     .limit(1)
-  if (!venda || !lojaIdsGrupo.includes(venda.lojaId)) {
+  if (!venda) {
     throw new Error('Venda não pertence ao grupo ativo')
   }
 
   const atualizadas = await db.update(conciliacoesCartao)
     .set({ vendaId: alvoId, pecaVendaId: null, osId: null, conciliado: true, conciliadoEm: new Date() })
-    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id)))
+    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
     .returning({ id: conciliacoesCartao.id })
 
-  if (atualizadas.length === 0) throw new Error('Conciliação não encontrada')
+  if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
 
   revalidatePath('/conciliacao')
 }
@@ -363,10 +370,11 @@ export async function desvincularVendaAction(conciliacaoId: string) {
 
   const atualizadas = await db.update(conciliacoesCartao)
     .set({ vendaId: null, pecaVendaId: null, osId: null, conciliado: false, conciliadoEm: null })
-    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id)))
+    // Estornada mantém o vínculo com a venda: desvincular recebe a mesma frase de linha inexistente.
+    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
     .returning({ id: conciliacoesCartao.id })
 
-  if (atualizadas.length === 0) throw new Error('Conciliação não encontrada')
+  if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
 
   revalidatePath('/conciliacao')
 }
@@ -394,6 +402,7 @@ export async function buscarConciliacoesPorValor(valor: number) {
         // Fora do período de conciliação não é candidato — ver INICIO_CONCILIACAO.
         gte(conciliacoesCartao.dataTransacao, INICIO_CONCILIACAO),
         sql`${conciliacoesCartao.vendaId} IS NULL`,
+        cartaoNaoEstornado,
         sql`ABS(${conciliacoesCartao.valorBruto}::numeric - ${valor}) <= 0.05`,
       )
     )
@@ -520,7 +529,7 @@ export async function buscarConciliacoesLivres(query: string) {
     .where(and(
       eq(conciliacoesCartao.grupoId, grupo.id),
       gte(conciliacoesCartao.dataTransacao, INICIO_CONCILIACAO),
-      eq(conciliacoesCartao.conciliado, false),
+      cartaoPendente,
       filtro,
     ))
     .orderBy(desc(conciliacoesCartao.dataTransacao))
