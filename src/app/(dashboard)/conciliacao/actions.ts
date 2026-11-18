@@ -688,53 +688,70 @@ export async function desvincularPixAlvoAction(pixId: string) {
 // A marcação mora no próprio item do array `pagamentos` — ver
 // docs/superpowers/specs/2026-07-31-forcar-conciliacao-design.md.
 
-async function alvoParaEdicao(alvo: AlvoConciliacao) {
-  const usuario = await getUsuarioLogado()
-  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+// Registro de outro grupo (ou de outra Conta) e id inexistente recebem a mesma frase: a
+// resposta não pode revelar que o registro existe.
+function alvoNaoEncontrado(tipo: AlvoTipo) {
+  return new RecusaUsuario(tipo === 'peca' ? 'Venda de peça não encontrada'
+    : tipo === 'os'                         ? 'Ordem de serviço não encontrada'
+    :                                         'Venda não encontrada')
+}
 
-  const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
-
+// Pagamentos do alvo, só se ele for de uma loja do grupo ativo (escopo dentro da consulta).
+async function pagamentosDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo: string[]): Promise<PgtoOS[] | null> {
   if (alvo.tipo === 'peca') {
     const [r] = await db
-      .select({ lojaId: vendasPecas.lojaId, pagamentos: vendasPecas.pagamentos })
-      .from(vendasPecas).where(eq(vendasPecas.id, alvo.id)).limit(1)
-    if (!r) throw new Error('Venda de peça não encontrada')
-    if (!lojaIdsGrupo.includes(r.lojaId)) throw new Error('Venda de peça não pertence ao grupo ativo')
-    return { usuario, pgtos: ((r.pagamentos ?? []) as PgtoOS[]) }
+      .select({ pagamentos: vendasPecas.pagamentos })
+      .from(vendasPecas)
+      .where(and(eq(vendasPecas.id, alvo.id), inArray(vendasPecas.lojaId, lojaIdsGrupo)))
+      .limit(1)
+    return r ? ((r.pagamentos ?? []) as PgtoOS[]) : null
   }
 
   if (alvo.tipo === 'os') {
     const [r] = await db
       .select({
-        lojaId:         ordensServico.lojaId,
         pagamentos:     ordensServico.pagamentos,
         formaPagamento: ordensServico.formaPagamento,
         valorTotal:     ordensServico.valorTotal,
       })
-      .from(ordensServico).where(eq(ordensServico.id, alvo.id)).limit(1)
-    if (!r) throw new Error('Ordem de serviço não encontrada')
-    if (!lojaIdsGrupo.includes(r.lojaId)) throw new Error('Ordem de serviço não pertence ao grupo ativo')
+      .from(ordensServico)
+      .where(and(eq(ordensServico.id, alvo.id), inArray(ordensServico.lojaId, lojaIdsGrupo)))
+      .limit(1)
     // OS antiga só tem `formaPagamento` em texto — materializa o array sintetizado
     // para que a marcação tenha onde morar.
-    return { usuario, pgtos: pagamentosEfetivosOS(r.formaPagamento, r.pagamentos, r.valorTotal) }
+    return r ? pagamentosEfetivosOS(r.formaPagamento, r.pagamentos, r.valorTotal) : null
   }
 
   const [r] = await db
-    .select({ lojaId: vendas.lojaId, pagamentos: vendas.pagamentos })
-    .from(vendas).where(eq(vendas.id, alvo.id)).limit(1)
-  if (!r) throw new Error('Venda não encontrada')
-  if (!lojaIdsGrupo.includes(r.lojaId)) throw new Error('Venda não pertence ao grupo ativo')
-  return { usuario, pgtos: ((r.pagamentos ?? []) as PgtoOS[]) }
+    .select({ pagamentos: vendas.pagamentos })
+    .from(vendas)
+    .where(and(eq(vendas.id, alvo.id), inArray(vendas.lojaId, lojaIdsGrupo)))
+    .limit(1)
+  return r ? ((r.pagamentos ?? []) as PgtoOS[]) : null
 }
 
-async function gravarPagamentos(alvo: AlvoConciliacao, pgtos: PgtoOS[]) {
+async function alvoParaEdicao(alvo: AlvoConciliacao) {
+  const usuario = await getUsuarioLogado()
+  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+
+  const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
+  const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo)
+  if (!pgtos) throw alvoNaoEncontrado(alvo.tipo)
+  return { usuario, lojaIdsGrupo, pgtos }
+}
+
+// Grava com o mesmo escopo da leitura: o update não confia só no id.
+async function gravarPagamentos(alvo: AlvoConciliacao, lojaIdsGrupo: string[], pgtos: PgtoOS[]) {
   if (alvo.tipo === 'peca') {
-    await db.update(vendasPecas).set({ pagamentos: pgtos }).where(eq(vendasPecas.id, alvo.id))
+    await db.update(vendasPecas).set({ pagamentos: pgtos })
+      .where(and(eq(vendasPecas.id, alvo.id), inArray(vendasPecas.lojaId, lojaIdsGrupo)))
   } else if (alvo.tipo === 'os') {
-    await db.update(ordensServico).set({ pagamentos: pgtos }).where(eq(ordensServico.id, alvo.id))
+    await db.update(ordensServico).set({ pagamentos: pgtos })
+      .where(and(eq(ordensServico.id, alvo.id), inArray(ordensServico.lojaId, lojaIdsGrupo)))
     revalidatePath(`/ordens-servico/${alvo.id}`)
   } else {
-    await db.update(vendas).set({ pagamentos: pgtos }).where(eq(vendas.id, alvo.id))
+    await db.update(vendas).set({ pagamentos: pgtos })
+      .where(and(eq(vendas.id, alvo.id), inArray(vendas.lojaId, lojaIdsGrupo)))
   }
 
   revalidatePathsConciliacao()
@@ -748,7 +765,7 @@ async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: str
   const texto = motivo.trim()
   if (texto.length < 3) throw new RecusaUsuario('Informe o motivo da conciliação forçada')
 
-  const { usuario, pgtos } = await alvoParaEdicao(alvo)
+  const { usuario, lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
   const alvoPgto = pgtos[idx]
   if (!alvoPgto) throw new RecusaUsuario('Pagamento não encontrado')
   if (!precisaConciliar(alvoPgto.tipo)) throw new RecusaUsuario('Esse pagamento não precisa de conciliação')
@@ -765,14 +782,14 @@ async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: str
       }
     : p)
 
-  await gravarPagamentos(alvo, atualizados)
+  await gravarPagamentos(alvo, lojaIdsGrupo, atualizados)
 }
 
 export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, idx: number) {
   return acao(() => desfazerConciliacaoForcada(alvo, idx))
 }
 async function desfazerConciliacaoForcada(alvo: AlvoConciliacao, idx: number) {
-  const { pgtos } = await alvoParaEdicao(alvo)
+  const { lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
   if (!pgtos[idx]) throw new RecusaUsuario('Pagamento não encontrado')
 
   const atualizados = pgtos.map((p, i) => {
@@ -781,7 +798,7 @@ async function desfazerConciliacaoForcada(alvo: AlvoConciliacao, idx: number) {
     return resto
   })
 
-  await gravarPagamentos(alvo, atualizados)
+  await gravarPagamentos(alvo, lojaIdsGrupo, atualizados)
 }
 
 export async function buscarVendasParaVincular(valorRef: number) {
