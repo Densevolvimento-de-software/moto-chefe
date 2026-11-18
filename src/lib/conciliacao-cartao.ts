@@ -69,3 +69,15 @@ export function chaveDedup(t: TransacaoCartao): { campo: 'nsu' | 'id'; valor: st
   if (id != null && id !== '') return { campo: 'id', valor: String(id) }
   return null
 }
+
+// Rótulos da linha da conciliação de cartão: a lista (curto) e a sugestão do painel de pagamentos.
+// O tipo 'pix' é o Pix da maquininha Mercado Pago (#51).
+export function rotuloCurtoDaLinha(tipo: string, parcelas: number): string {
+  if (tipo === 'credito') return `Cré ${parcelas}x`
+  return tipo === 'pix' ? 'PIX' : 'Déb'
+}
+
+export function rotuloDaLinha(tipo: string): string {
+  if (tipo === 'debito') return 'Débito'
+  return tipo === 'pix' ? 'PIX' : 'Crédito'
+}

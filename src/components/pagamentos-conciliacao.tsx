@@ -19,6 +19,7 @@ import {
   type PixLivre,
 } from '@/app/(dashboard)/conciliacao/actions'
 import { dataPuraBr } from '@/lib/data-venda'
+import { rotuloDaLinha } from '@/lib/conciliacao-cartao'
 
 type Conc      = Awaited<ReturnType<typeof buscarConciliacoesDoAlvo>>[number]
 type PixRec    = Awaited<ReturnType<typeof buscarPixDoAlvo>>[number]
@@ -213,7 +214,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
 
   function renderCandidato(c: Candidato) {
     const raw = c.rawData as { bandeira?: string; portador?: string } | null
-    const titulo = `${nomeOperadora(c.operadora)}${raw?.bandeira ? ` · ${raw.bandeira}` : ''} · ${c.tipo === 'debito' ? 'Débito' : 'Crédito'}`
+    const titulo = `${nomeOperadora(c.operadora)}${raw?.bandeira ? ` · ${raw.bandeira}` : ''} · ${rotuloDaLinha(c.tipo)}`
     const data = c.dataTransacao ? dataPuraBr(c.dataTransacao) : '—'
     return (
       <Sugestao
