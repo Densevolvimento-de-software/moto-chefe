@@ -1,6 +1,6 @@
 'use server'
 import { db } from '@/lib/db'
-import { motos, modelos, motosFiscal, vendas, regrasFiscaisSaida, notasFiscaisSaida, usuarios } from '@/lib/db/schema'
+import { motos, modelos, motosFiscal, vendas, regrasFiscaisSaida, notasFiscaisSaida, pedidosVenda, usuarios } from '@/lib/db/schema'
 import { and, desc, eq, inArray, notInArray, sql, type SQL } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { getUsuarioLogado } from '@/lib/auth'
@@ -23,6 +23,7 @@ import { diaEHoraBrt, hojeBrt } from '@/lib/data-venda'
 import { espera } from '@/lib/espera'
 import { divergenciaDeAmbiente } from '@/lib/notagateway/ambiente'
 import { travaDoPapel } from '@/lib/cancelar-venda'
+import { vendasDoPedidoTx } from '@/lib/cancelar-pedido-efetivado'
 import { disponibilidadeDoGrupo, SEM_EMISSAO, type DisponibilidadeNf } from '@/lib/notagateway/disponibilidade'
 import { formatarCpfCnpj, isIndicadorIe } from '@/lib/documento'
 import { conferirRenave, exigeRenave, montarVeiculoNovo, operacaoExigeEntrega, type DadosRenave, type OrigemRenave } from '@/lib/notagateway/veiculo'
@@ -763,20 +764,32 @@ const ORIENTACAO_CANCELAR_VENDA: Record<TravaDoCancelamento, (n: NotaResumo) => 
   sem_data: n => `Não deu para confirmar o prazo de cancelamento da NF ${n.numero}. Abra a NF pelo número dela, consulte e tente de novo.`,
 }
 
-/** A orientação da trava do "Cancelar venda" (ADR-0014 e, para o aux_adm, #191), ou null se a venda pode ser cancelada. */
-export async function travaDoCancelamentoDaVendaAction(vendaId: string): Promise<{ ok: true; trava: string | null } | { ok: false; error: string }> {
+/**
+ * A orientação da trava do "Cancelar venda" (ADR-0014 e, para o aux_adm, #191), ou null se a venda pode ser cancelada. Cancelar é
+ * do pedido inteiro (#23): a NF de qualquer venda dele trava. `motosNoPedido` e `numeroDoPedido` são o aviso do diálogo.
+ */
+export async function travaDoCancelamentoDaVendaAction(vendaId: string): Promise<
+  { ok: true; trava: string | null; motosNoPedido: number; numeroDoPedido: number | null } | { ok: false; error: string }
+> {
   try {
     const usuario = await exigirPapel('consultar')
     const venda = await exigirGrupoDaVenda(vendaId, usuario)
-    let r = travaDoCancelamentoDaVenda(await notasDaVenda(vendaId), new Date())
+    const doPedido = await vendasDoPedidoTx(db, venda.pedidoVendaId)
+    const notasDoPedido = () => resumos(inArray(notasFiscaisSaida.vendaId, doPedido.map(v => v.id)))
+    let r = travaDoCancelamentoDaVenda(await notasDoPedido(), new Date())
     if (r?.trava === 'sem_data') {
       // Sem a data de autorização, o prazo não se calcula: a consulta traz e grava.
       await carregarNota(r.nota.id, usuario).then(reconsultar).catch(() => null)
-      r = travaDoCancelamentoDaVenda(await notasDaVenda(vendaId), new Date())
+      r = travaDoCancelamentoDaVenda(await notasDoPedido(), new Date())
     }
     // A NF do MOVA autorizada também preenche notaFiscalSaida; a orientação dela
     // (cancelar a NF) vem antes da recusa pelo papel.
-    return { ok: true, trava: r ? ORIENTACAO_CANCELAR_VENDA[r.trava](r.nota) : travaDoPapel(usuario.papel, venda.notaFiscalSaida) }
+    const doPapel = doPedido.map(v => travaDoPapel(usuario.papel, v.notaFiscalSaida)).find(t => t !== null) ?? null
+    const [pedido] = await db.select({ numero: pedidosVenda.numero }).from(pedidosVenda).where(eq(pedidosVenda.id, venda.pedidoVendaId))
+    return {
+      ok: true, trava: r ? ORIENTACAO_CANCELAR_VENDA[r.trava](r.nota) : doPapel,
+      motosNoPedido: doPedido.length, numeroDoPedido: pedido?.numero ?? null,
+    }
   } catch (err) {
     return { ok: false, error: (err as Error).message }
   }

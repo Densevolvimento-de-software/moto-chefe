@@ -20,6 +20,17 @@ export function caminhosDosArquivos(docs: { selfiePath: string | null; assinatur
 
 const somaValores = (linhas: { valor: string | number }[]) => linhas.reduce((a, l) => a + Number(l.valor), 0)
 
+type Desvinculados = VendaApagada['desvinculados']
+
+/** O que o cancelar de várias vendas (as do pedido, #23) soltou, somado campo a campo. */
+export function somarDesvinculados(lista: readonly Desvinculados[]): Desvinculados {
+  const zero: Desvinculados = { cartao: 0, pix: 0, demandas: 0, valor: 0, documentosAssinados: 0 }
+  return lista.reduce((s, d) => ({
+    cartao: s.cartao + d.cartao, pix: s.pix + d.pix, demandas: s.demandas + d.demandas,
+    valor: s.valor + d.valor, documentosAssinados: s.documentosAssinados + d.documentosAssinados,
+  }), zero)
+}
+
 /**
  * Apaga a venda dentro da transação recebida. Não confere nada; quem chama TEM de, antes:
  * - buscar a venda com a Conta e o alcance do usuário no where (como `vendaDoUsuario`);
