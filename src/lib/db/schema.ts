@@ -402,7 +402,7 @@ export const nfeBlingArquivo = pgTable('nfe_bling_arquivo', {
 export const mercadopagoConfig = pgTable('mercadopago_config', {
   grupoId:       uuid('grupo_id').primaryKey().references(() => grupos.id, { onDelete: 'cascade' }),
   token:         text('token').notNull(),
-  userId:        text('user_id').notNull(),
+  userId:        text('user_id').notNull().unique(), // uma conta do Mercado Pago em um grupo só
   publicKey:     text('public_key'),
   atualizadoPor: uuid('atualizado_por').references(() => usuarios.id, { onDelete: 'set null' }),
   atualizadoEm:  timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
