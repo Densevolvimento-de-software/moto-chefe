@@ -225,6 +225,12 @@ export function limiteDaRotina(agora: Date): Date {
 /** O que a consulta deu para cada pendente da rotina; `pendente` = a NG ainda processa. */
 export type DesfechoDaRotina = 'resolvida' | 'pendente' | 'falha'
 
+/** `ok: false` = grupo sem credencial no ambiente da linha (a consulta nem vai à NG). */
+export function desfechoDaConsulta(r: { ok: true; situacao: SituacaoInutilizacao } | { ok: false }): DesfechoDaRotina {
+  if (!r.ok) return 'falha'
+  return r.situacao === 'pendente' ? 'pendente' : 'resolvida'
+}
+
 export function resumoDaRotina(desfechos: readonly DesfechoDaRotina[]) {
   const quantas = (d: DesfechoDaRotina) => desfechos.filter(x => x === d).length
   return { consultadas: desfechos.length, resolvidas: quantas('resolvida'), falhas: quantas('falha') }

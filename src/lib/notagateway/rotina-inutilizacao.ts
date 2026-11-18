@@ -1,4 +1,4 @@
-import { limiteDaRotina, resumoDaRotina, type DesfechoDaRotina } from './inutilizacao'
+import { desfechoDaConsulta, limiteDaRotina, resumoDaRotina, type DesfechoDaRotina } from './inutilizacao'
 import {
   consultarResultadoDaLinha, DEPENDENCIAS_CONSULTA, inutilizacoesPendentesAntesDe, type DependenciasConsulta, type InutilizacaoParaConsultar,
 } from './inutilizar'
@@ -6,12 +6,9 @@ import {
 /** A consulta de uma pendente; o console vê só o nome do erro, nunca a mensagem, que pode ecoar o caminho com o `empresaId` (#607). */
 async function desfechoDaPendente(linha: InutilizacaoParaConsultar, deps: DependenciasConsulta): Promise<DesfechoDaRotina> {
   try {
-    const r = await consultarResultadoDaLinha(linha, deps)
-    if (!r.ok) {
-      console.error('[rotina inutilizacao] falha numa pendente (sem credencial no ambiente)')
-      return 'falha'
-    }
-    return r.situacao === 'pendente' ? 'pendente' : 'resolvida'
+    const desfecho = desfechoDaConsulta(await consultarResultadoDaLinha(linha, deps))
+    if (desfecho === 'falha') console.error('[rotina inutilizacao] falha numa pendente (sem credencial no ambiente)')
+    return desfecho
   } catch (e) {
     console.error(`[rotina inutilizacao] falha numa pendente (${e instanceof Error ? e.name : 'erro'})`)
     return 'falha'
