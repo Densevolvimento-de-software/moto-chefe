@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { iguaisEmTempoConstante } from '@/lib/tempo-constante'
+import { ehEstornoMp } from './status'
 
 // Webhook do Mercado Pago (#208). A notificação não traz valor nem status: só diz
 // que algo mudou. A baixa vem de uma consulta à API (spec, seção 5).
@@ -34,7 +35,7 @@ export type Baixa =
 /** Decide se o pagamento consultado quita a mensalidade. */
 export function decidirBaixa(pg: Pagamento, m: { status: string; valorDevido: number } | null): Baixa {
   // Estorno e chargeback não revertem a baixa sozinhos, mas ficam no log para alguém olhar.
-  if (pg.status === 'refunded' || pg.status === 'charged_back') return { acao: 'erro', motivo: `pagamento ${pg.status}` }
+  if (ehEstornoMp(pg.status)) return { acao: 'erro', motivo: `pagamento ${pg.status}` }
   if (pg.status !== 'approved') return { acao: 'ignorar', motivo: `pagamento ${pg.status}` }
   if (!m) return { acao: 'erro', motivo: 'mensalidade da external_reference não encontrada' }
   if (m.status === 'paga') return { acao: 'ignorar', motivo: 'mensalidade já paga' }

@@ -264,3 +264,22 @@ test('semForcado tira só a marcação da posição e mantém o resto do pagamen
     dados: [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }, { tipo: 'cartao_credito', valor: 500, parcelas: 3 }],
   })
 })
+
+// Pix da maquininha Mercado Pago é linha tipo pix da conciliação de cartão (#51).
+test('linha pix da conciliação de cartão cobre o pagamento Pix, não o de cartão', () => {
+  const pgtos: PgtoOS[] = [
+    { tipo: 'cartao_credito', valor: 500 },
+    { tipo: 'pix', valor: 300 },
+  ]
+  const concs = [{ id: 'c1', autorizacao: null, valorBruto: 300, tipo: 'pix' }]
+  assert.deepEqual(matchPagamentos(pgtos, concs, []), [
+    { conciliado: false, coberto: 0 },
+    { conciliado: true, coberto: 300 },
+  ])
+})
+
+test('linha de crédito não cobre pagamento Pix', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 300 }]
+  const concs = [{ id: 'c1', autorizacao: null, valorBruto: 300, tipo: 'credito' }]
+  assert.deepEqual(matchPagamentos(pgtos, concs, []), [{ conciliado: false, coberto: 0 }])
+})

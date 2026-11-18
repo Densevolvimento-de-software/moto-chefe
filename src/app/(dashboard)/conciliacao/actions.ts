@@ -3,7 +3,7 @@ import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { maquininhasDoGrupo } from '@/lib/maquininhas'
 import { gruposDoTerminalNaConta } from '@/lib/terminal-da-conta'
 import { db } from '@/lib/db'
-import { cartaoNaoEstornado, cartaoPendente } from '@/lib/cartao-status'
+import { cartaoNaoEstornado, cartaoPendente, linhaDeCartao } from '@/lib/cartao-status'
 import { conciliacoesCartao, pixRecebimentosMcp, vendas, modelos, motos, vendasPecas, ordensServico, clientes } from '@/lib/db/schema'
 import { eq, and, or, desc, gte, sql, isNull, ilike, inArray } from 'drizzle-orm'
 import { getUsuarioLogado } from '@/lib/auth'
@@ -14,7 +14,7 @@ import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-per
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
-import { casarPorAutorizacao } from '@/lib/conciliacao-casamento'
+import { casarPorAutorizacao, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
 import { detectarFormato } from '@/lib/conciliacao-formato'
 import type { TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
 import { lerRelatorioCielo } from '@/lib/conciliacao-cielo'
@@ -403,6 +403,7 @@ export async function buscarConciliacoesPorValor(valor: number) {
         gte(conciliacoesCartao.dataTransacao, INICIO_CONCILIACAO),
         sql`${conciliacoesCartao.vendaId} IS NULL`,
         cartaoNaoEstornado,
+        linhaDeCartao,
         sql`ABS(${conciliacoesCartao.valorBruto}::numeric - ${valor}) <= 0.05`,
       )
     )
@@ -528,6 +529,7 @@ export async function buscarConciliacoesLivres(query: string) {
       eq(conciliacoesCartao.grupoId, grupo.id),
       gte(conciliacoesCartao.dataTransacao, INICIO_CONCILIACAO),
       cartaoPendente,
+      linhaDeCartao,
       filtro,
     ))
     .orderBy(desc(conciliacoesCartao.dataTransacao))
@@ -753,12 +755,25 @@ async function desfazerConciliacaoForcada(alvo: AlvoConciliacao, idx: number) {
   await gravarPagamentos(alvo, lojaIdsGrupo, r.dados)
 }
 
-export async function buscarVendasParaVincular(valorRef: number) {
+export async function buscarVendasParaVincular(conciliacaoId: string) {
   const usuario = await getUsuarioLogado()
+  // Mesmos papéis de quem vincula (vincularVendaAction) e da busca manual: a lista traz cliente e valor.
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+  const grupo = await getGrupoAtivo(usuario)
+  // Valor e tipo saem da linha, lida com o grupo no where: linha de outra Conta, inexistente ou estornada
+  // (o vincular recusa) dão lista vazia.
+  const [linha] = await db.select({ valorBruto: conciliacoesCartao.valorBruto, tipo: conciliacoesCartao.tipo })
+    .from(conciliacoesCartao)
+    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
+    .limit(1)
+  if (!linha) return []
+  const valorRef = Number(linha.valorBruto)
+  const tipos = [...tiposDoPagamentoDaLinha(linha.tipo)]
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
-  // Busca vendas (motos e peças/acessórios) onde algum lançamento de cartão tem valor
-  // exato (tolerância de R$0,01), restrito às lojas do grupo ativo do usuário.
+  // Busca vendas (motos, peças/acessórios e OS) onde algum lançamento do tipo que a linha cobre
+  // (cartão, ou Pix para a linha pix do Mercado Pago) tem valor exato (tolerância de R$0,01),
+  // restrito às lojas do grupo ativo do usuário.
   const [motosRows, pecasRows, osRows] = await Promise.all([
     db
       .select({
@@ -778,7 +793,7 @@ export async function buscarVendasParaVincular(valorRef: number) {
           sql`EXISTS (
             SELECT 1 FROM jsonb_array_elements(${vendas.pagamentos}) AS p
             WHERE (p->>'valor')::numeric BETWEEN ${valorRef - 0.01} AND ${valorRef + 0.01}
-            AND p->>'tipo' IN ('cartao_credito', 'cartao_debito', 'link_pagamento')
+            AND p->>'tipo' IN ${tipos}
           )`,
         )
       )
@@ -802,7 +817,7 @@ export async function buscarVendasParaVincular(valorRef: number) {
           sql`EXISTS (
             SELECT 1 FROM jsonb_array_elements(${vendasPecas.pagamentos}) AS p
             WHERE (p->>'valor')::numeric BETWEEN ${valorRef - 0.01} AND ${valorRef + 0.01}
-            AND p->>'tipo' IN ('cartao_credito', 'cartao_debito', 'link_pagamento')
+            AND p->>'tipo' IN ${tipos}
           )`,
         )
       )
@@ -827,7 +842,7 @@ export async function buscarVendasParaVincular(valorRef: number) {
           sql`EXISTS (
             SELECT 1 FROM jsonb_array_elements(${ordensServico.pagamentos}) AS p
             WHERE (p->>'valor')::numeric BETWEEN ${valorRef - 0.01} AND ${valorRef + 0.01}
-            AND p->>'tipo' IN ('cartao_credito', 'cartao_debito', 'link_pagamento')
+            AND p->>'tipo' IN ${tipos}
           )`,
         )
       )

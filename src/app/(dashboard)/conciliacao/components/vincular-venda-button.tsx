@@ -42,7 +42,7 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
     setBuscouManual(false)
     setCarregando(true)
     try {
-      const lista = await buscarVendasParaVincular(valorRef)
+      const lista = await buscarVendasParaVincular(conciliacaoId)
       setVendas(lista)
     } finally {
       setCarregando(false)

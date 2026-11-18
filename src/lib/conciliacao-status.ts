@@ -1,8 +1,9 @@
 import type { ResultadoAction } from '@/lib/resultado-action'
-
+import { LINHA_PIX } from './conciliacao-cartao'
 export type StatusConc = 'na' | 'pendente' | 'parcial' | 'conciliada'
 
 export const TIPOS_CARTAO = new Set(['cartao_credito', 'cartao_debito', 'link_pagamento'])
+export const PAGAMENTO_PIX: ReadonlySet<string> = new Set(['pix'])
 
 // Conciliação forçada na mão (quem pode: podeGerirConciliacao): o dinheiro entrou, mas não existe
 // lançamento correspondente no sistema (relatório da operadora não importado, PIX
@@ -37,7 +38,7 @@ type PgtoItem = { tipo: string; valor: number; conciliadoManual?: ConciliadoManu
  * depósito a esperar, e cobrá-los criaria pendência que nunca fecha.
  */
 export function precisaConciliar(tipo: string): boolean {
-  return TIPOS_CARTAO.has(tipo) || tipo === 'pix' || tipo === 'financiamento'
+  return TIPOS_CARTAO.has(tipo) || PAGAMENTO_PIX.has(tipo) || tipo === 'financiamento'
 }
 
 // `idx` vem do navegador: só índice inteiro conta ("length" ou "0" em texto acharia outra coisa).
@@ -79,7 +80,7 @@ export function valorConciliadoManual(pagamentos: unknown): number {
     .reduce((a, p) => a + (Number(p.valor) || 0), 0)
 }
 
-type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number }
+type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number; tipo?: string }
 type PixMatch  = { id: string; valor: string | number }
 
 /** Quanto do pagamento foi coberto por dinheiro que realmente entrou. */
@@ -94,7 +95,14 @@ export type CoberturaPgto = { conciliado: boolean; coberto: number }
 // por autorização fechava mesmo vindo com valor menor. O resultado era a tela de
 // detalhes toda verde enquanto o badge da listagem — que sempre comparou valores —
 // dizia "Parcial". Quem manda é o valor; ver calcStatusMultiPagamento.
-export function matchPagamentos(pgtos: PgtoOS[], concs: ConcMatch[], pixRecs: PixMatch[]): CoberturaPgto[] {
+export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[]): CoberturaPgto[] {
+  // A linha 'pix' da conciliação de cartão é o Pix da maquininha Mercado Pago (#51): é dinheiro de
+  // Pix e cobre o pagamento Pix, como o recebimento do banco.
+  const concs = linhasDoAlvo.filter(c => c.tipo !== LINHA_PIX)
+  const pixRecs: PixMatch[] = [
+    ...pixDoBanco,
+    ...linhasDoAlvo.filter(c => c.tipo === LINHA_PIX).map(c => ({ id: c.id, valor: c.valorBruto })),
+  ]
   const usados    = new Set<string>()
   const resultado: CoberturaPgto[] = pgtos.map(() => ({ conciliado: false, coberto: 0 }))
 
@@ -138,7 +146,7 @@ export function matchPagamentos(pgtos: PgtoOS[], concs: ConcMatch[], pixRecs: Pi
   // recebimentos conciliados eram justamente os de 5.000 e 1.000.
   const pixUsados = new Set<string>()
   pgtos.forEach((p, i) => {
-    if (p.tipo !== 'pix' || resultado[i].conciliado) return
+    if (!PAGAMENTO_PIX.has(p.tipo) || resultado[i].conciliado) return
     const m = pixRecs.find(r => !pixUsados.has(r.id) && Math.abs(Number(r.valor) - p.valor) <= 0.05)
     if (m) { resultado[i].coberto += Number(m.valor); pixUsados.add(m.id) }
   })
@@ -147,7 +155,7 @@ export function matchPagamentos(pgtos: PgtoOS[], concs: ConcMatch[], pixRecs: Pi
   // lançados e um só recebimento fecham um, não os dois.
   let poolPix = pixRecs.filter(r => !pixUsados.has(r.id)).reduce((a, r) => a + (Number(r.valor) || 0), 0)
   pgtos.forEach((p, i) => {
-    if (p.tipo !== 'pix' || resultado[i].conciliado || poolPix <= 0) return
+    if (!PAGAMENTO_PIX.has(p.tipo) || resultado[i].conciliado || poolPix <= 0) return
     const falta = p.valor - resultado[i].coberto
     if (falta <= 0.05) return
     const usa = Math.min(falta, poolPix)
