@@ -682,14 +682,15 @@ export async function desvincularPixAlvoAction(pixId: string) {
   revalidatePathsConciliacao()
 }
 
-// ─── Forçar conciliação na mão (admin_geral) ─────────────────────────────────
+// ─── Forçar conciliação na mão ───────────────────────────────────────────────
 // Fecha a pendência quando o dinheiro entrou mas não existe lançamento no sistema.
+// Quem gere a conciliação força e desfaz (podeGerirConciliacao, #79).
 // A marcação mora no próprio item do array `pagamentos` — ver
 // docs/superpowers/specs/2026-07-31-forcar-conciliacao-design.md.
 
 async function alvoParaEdicao(alvo: AlvoConciliacao) {
   const usuario = await getUsuarioLogado()
-  if (usuario.papel !== 'admin_geral') throw new Error('Sem permissão')
+  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
 
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
@@ -739,14 +740,18 @@ async function gravarPagamentos(alvo: AlvoConciliacao, pgtos: PgtoOS[]) {
   revalidatePathsConciliacao()
 }
 
+// Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
 export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string) {
+  return acao(() => forcarConciliacao(alvo, idx, motivo))
+}
+async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: string) {
   const texto = motivo.trim()
-  if (texto.length < 3) throw new Error('Informe o motivo da conciliação forçada')
+  if (texto.length < 3) throw new RecusaUsuario('Informe o motivo da conciliação forçada')
 
   const { usuario, pgtos } = await alvoParaEdicao(alvo)
   const alvoPgto = pgtos[idx]
-  if (!alvoPgto) throw new Error('Pagamento não encontrado')
-  if (!precisaConciliar(alvoPgto.tipo)) throw new Error('Esse pagamento não precisa de conciliação')
+  if (!alvoPgto) throw new RecusaUsuario('Pagamento não encontrado')
+  if (!precisaConciliar(alvoPgto.tipo)) throw new RecusaUsuario('Esse pagamento não precisa de conciliação')
 
   const atualizados = pgtos.map((p, i) => i === idx
     ? {
@@ -764,8 +769,11 @@ export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number
 }
 
 export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, idx: number) {
+  return acao(() => desfazerConciliacaoForcada(alvo, idx))
+}
+async function desfazerConciliacaoForcada(alvo: AlvoConciliacao, idx: number) {
   const { pgtos } = await alvoParaEdicao(alvo)
-  if (!pgtos[idx]) throw new Error('Pagamento não encontrado')
+  if (!pgtos[idx]) throw new RecusaUsuario('Pagamento não encontrado')
 
   const atualizados = pgtos.map((p, i) => {
     if (i !== idx) return p

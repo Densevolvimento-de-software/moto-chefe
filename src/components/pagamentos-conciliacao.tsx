@@ -78,8 +78,8 @@ type Props = {
 export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteConciliaveis = false }: Props) {
   const { concs, pixRecs, loading, recarregar } = dados
 
-  const podeBuscar = podeGerirConciliacao(papel)
-  const podeForcar = papel === 'admin_geral'
+  // Buscar, vincular, forçar e desfazer: a mesma regra das actions (#79).
+  const podeGerir = podeGerirConciliacao(papel)
 
   const [buscandoIdx, setBuscandoIdx]   = useState<number | null>(null)
   // Cartão e PIX moram em tabelas diferentes; a linha aberta manda qual das duas
@@ -178,14 +178,16 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     const idx = forcandoIdx
     setSalvando(true)
     try {
-      await forcarConciliacaoAction(alvo, idx, motivo)
+      const r = await forcarConciliacaoAction(alvo, idx, motivo)
+      if (!r.ok) { toast.error(r.erro); return }
       setForcandoIdx(null)
       setMotivo('')
       setBuscandoIdx(null)
       // Desfazer no próprio aviso: um toque errado não vira retrabalho.
       toast.success('Pagamento marcado como recebido', { action: { label: 'Desfazer', onClick: () => desfazer(idx) } })
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao forçar conciliação')
+    } catch {
+      // A recusa com frase já voltou em `r.erro`; aqui só cai falha interna, sem frase legível.
+      toast.error('Erro ao forçar conciliação')
     } finally {
       setSalvando(false)
     }
@@ -194,10 +196,11 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   async function desfazer(idx: number) {
     setSalvando(true)
     try {
-      await desfazerConciliacaoForcadaAction(alvo, idx)
+      const r = await desfazerConciliacaoForcadaAction(alvo, idx)
+      if (!r.ok) { toast.error(r.erro); return }
       toast.success('Conciliação forçada desfeita')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao desfazer')
+    } catch {
+      toast.error('Erro ao desfazer')
     } finally {
       setSalvando(false)
     }
@@ -207,7 +210,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     if (buscandoIdx === i || forcandoIdx === i) { setBuscandoIdx(null); setForcandoIdx(null); return }
     setForcandoIdx(null)
     // Financiamento não tem o que buscar: o banco deposita e nada no sistema registra.
-    if (podeBuscar && p.tipo !== 'financiamento') abrirBusca(i, p.valor, p.tipo === 'pix')
+    if (podeGerir && p.tipo !== 'financiamento') abrirBusca(i, p.valor, p.tipo === 'pix')
     else setBuscandoIdx(i)
   }
 
@@ -290,9 +293,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
       <ul className="space-y-2">
         {itens.map(({ p, i, situacao, coberto }) => {
           const resolvivel = RESOLVIVEL.has(situacao)
-          // Sem ação possível para este papel e tipo (ex.: aux_adm com financiamento), a linha não abre.
-          const temAcao = podeForcar || (podeBuscar && p.tipo !== 'financiamento')
-          const mostraBusca = buscandoIdx === i && podeBuscar && p.tipo !== 'financiamento'
+          const mostraBusca = buscandoIdx === i && podeGerir && p.tipo !== 'financiamento'
           const aberto = resolvivel && (buscandoIdx === i || forcandoIdx === i)
           const detalhe = [p.operadora, p.parcelas ? `${p.parcelas}x` : '', p.autorizacao ? `#${p.autorizacao}` : ''].filter(Boolean).join(' · ')
           const complemento =
@@ -305,7 +306,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
             <li key={i} className={cn('overflow-hidden rounded-xl border border-l-4 border-border', SITUACAO[situacao].borda, aberto && 'shadow-sm')}>
               <button
                 type="button"
-                disabled={!resolvivel || !temAcao}
+                disabled={!resolvivel || !podeGerir}
                 aria-expanded={resolvivel ? aberto : undefined}
                 onClick={() => abrirOuFechar(i, p)}
                 className="flex min-h-14 w-full items-center gap-3 p-3 text-left disabled:cursor-default"
@@ -318,12 +319,12 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                   </p>
                 </div>
                 <span className="text-sm font-semibold tabular-nums">{fmt(p.valor)}</span>
-                {resolvivel && temAcao && (
+                {resolvivel && podeGerir && (
                   <ChevronDown aria-hidden className={cn('size-4 text-muted-foreground transition-transform', aberto && 'rotate-180')} />
                 )}
               </button>
 
-              {situacao === 'forcado' && podeForcar && (
+              {situacao === 'forcado' && podeGerir && (
                 <div className="flex justify-end border-t border-border px-3">
                   <button type="button" onClick={() => desfazer(i)} disabled={salvando} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50">
                     {salvando && <Loader2 className="size-4 animate-spin" />} Desfazer forçado
@@ -412,7 +413,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                         </>
                       )}
 
-                      {podeForcar && (
+                      {podeGerir && (
                         <div className={cn('flex items-center gap-3', mostraBusca && 'border-t border-border pt-3')}>
                           <p className="min-w-0 flex-1 text-xs text-muted-foreground">
                             {p.tipo === 'financiamento'
