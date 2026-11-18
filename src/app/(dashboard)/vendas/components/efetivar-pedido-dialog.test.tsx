@@ -131,6 +131,20 @@ test('uma moto abaixo do mínimo: selo, aviso com a moto, motivo obrigatório e 
   assert.equal(enviados[0][8], 'Cliente fiel')
 })
 
+test('com frete, a moto no mínimo não pede aprovação (o frete não conta); 1 real abaixo na moto, mesmo com o frete, pede', async () => {
+  itens = { lojaId: 'loja-do-pedido', motos: [{ ...JET, minimo: 9490 }], pecas: [], taxas: SEM_TAXA }
+  await abrir({ ...ENTREGAR, frete: 180 } as EntregaVenda)
+  await preencherCliente()
+  await pagar('PIX', '967000', 1)
+  assert.match(reciboNaTela(), /No mínimo/)
+  assert.equal(document.querySelector('[role="status"]'), null)
+  assert.equal(botao('Confirmar venda')?.disabled, false)
+  await clicar(campo('Alterar valor da MC JET'))
+  await digitar(campo('Valor da MC JET'), '948900')
+  await digitar(campo('Valor da forma 1'), '966900')
+  assert.match(document.querySelector('[role="status"]')?.textContent ?? '', /MC JET: líquido R\$\s*9\.489,00, mínimo R\$\s*9\.490,00/)
+})
+
 test('sócio abaixo do mínimo vê o selo e efetiva direto, como no servidor', async () => {
   itens = { lojaId: 'loja-do-pedido', motos: [{ ...JET, minimo: 12000 }], pecas: [], taxas: SEM_TAXA }
   await abrir(ENTREGAR, { papel: 'admin_socio', podeAprovarSensivel: false })
