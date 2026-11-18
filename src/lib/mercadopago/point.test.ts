@@ -111,3 +111,13 @@ test('juntarPorId: a mesma lista 2 vezes não repete nada', () => {
   const lista = [alterado(1, 'approved', '2026-11-10T10:00:00Z'), alterado(2, 'approved', '2026-11-10T11:00:00Z')]
   assert.deepEqual(juntarPorId([lista, lista]), lista)
 })
+
+// A importação busca tudo antes de gravar: a 2ª busca falhando não pode deixar passar só a 1ª.
+test('rodada: a 2ª busca recusada rejeita, sem devolver a 1ª', async () => {
+  const chamadas = mockFetch([
+    { body: { paging: { total: 1 }, results: pagamentos(1) } },
+    { status: 401, body: { message: 'unauthorized' } },
+  ])
+  await assert.rejects(buscarPagamentosDaRodada(TOKEN, periodo), (err: unknown) => err instanceof ErroMercadoPago && err.status === 401)
+  assert.equal(chamadas.length, 2)
+})
