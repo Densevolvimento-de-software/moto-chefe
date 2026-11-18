@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   montarDre, somarEntradas, grupoOuOutras, rotuloGrupo,
-  GRUPOS_DRE, ENTRADA_VAZIA, montarMatriz, type EntradaDre,
+  GRUPOS_DRE, ENTRADA_VAZIA, montarMatriz, taxasDaReceita, type EntradaDre,
 } from './dre'
 
 const valor = (linhas: ReturnType<typeof montarDre>, chave: string) =>
@@ -13,6 +13,7 @@ const BASE: EntradaDre = {
   receitaServicos: 15_260,
   receitaPecas: 5_644,
   taxasCartao: 38_204,
+  tarifaPix: 0,
   cmvMotos: 915_205,
   despesasPorGrupo: { pessoal: 102_300, ocupacao: 41_200, administrativas: 31_400 },
 }
@@ -130,4 +131,41 @@ test('a matriz alinha as mesmas linhas em todas as colunas', () => {
 
 test('matriz sem coluna nenhuma é lista vazia, não estouro', () => {
   assert.deepEqual(montarMatriz([]), [])
+})
+
+// Decisão do Luis (#51): a tarifa do Pix da maquininha Mercado Pago é linha própria, não taxa de cartão.
+test('tarifa do PIX na maquininha é linha própria logo após as taxas de cartão e sai da receita líquida', () => {
+  const l = montarDre({ ...BASE, tarifaPix: 1_250 })
+  const chaves = l.map(x => x.chave)
+  assert.equal(chaves[chaves.indexOf('taxas_cartao') + 1], 'tarifa_pix')
+  const linha = l.find(x => x.chave === 'tarifa_pix')
+  assert.equal(linha?.rotulo, '(−) Tarifa do PIX na maquininha')
+  assert.equal(linha?.tipo, 'deducao')
+  assert.equal(valor(l, 'taxas_cartao'), 38_204)
+  assert.equal(valor(l, 'tarifa_pix'), 1_250)
+  assert.equal(valor(l, 'receita_liquida'), 1_526_094 - 38_204 - 1_250)
+})
+
+test('somar entradas soma a tarifa do PIX', () => {
+  const soma = somarEntradas({ ...BASE, tarifaPix: 100 }, { ...BASE, tarifaPix: 25 })
+  assert.equal(soma.tarifaPix, 125)
+})
+
+test('taxas da receita: a parte Pix do bruto − líquido das motos e das outras receitas vira tarifa', () => {
+  assert.deepEqual(
+    taxasDaReceita({ brutoMotos: 10_000, liquidoMotos: 9_796, tarifaPixMotos: 4, taxaCartaoOutras: 9, tarifaPixOutras: 5 }),
+    { taxasCartao: 209, tarifaPix: 9 },
+  )
+})
+
+test('taxas da receita sem resíduo de ponto flutuante quando o recorte só tem Pix com centavos', () => {
+  // 1000,56 − 1000,19 − 0,37 em float dá −1,09e−13: a tela mostraria "−R$ 0,00" em vez de zero.
+  assert.deepEqual(
+    taxasDaReceita({ brutoMotos: 1000.56, liquidoMotos: 1000.19, tarifaPixMotos: 0.37, taxaCartaoOutras: 0, tarifaPixOutras: 0 }),
+    { taxasCartao: 0, tarifaPix: 0.37 },
+  )
+  assert.deepEqual(
+    taxasDaReceita({ brutoMotos: 0.3, liquidoMotos: 0.1, tarifaPixMotos: 0.1, taxaCartaoOutras: 0.1, tarifaPixOutras: 0.2 }),
+    { taxasCartao: 0.2, tarifaPix: 0.3 },
+  )
 })

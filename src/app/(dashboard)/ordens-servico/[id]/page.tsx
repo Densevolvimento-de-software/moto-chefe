@@ -25,6 +25,7 @@ import { ExcluirOSButton } from './components/excluir-os-button'
 import { CancelarOSButton } from './components/cancelar-os-button'
 import { OSTemposPanel } from './components/os-tempos-panel'
 import { motivoBloqueioCancelamento, podeCancelarOS } from '@/lib/os-cancelamento'
+import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 
 const statusLabel: Record<string, string> = {
   aberta: 'Aberta', em_andamento: 'Em Andamento', concluida: 'Concluída',
@@ -246,7 +247,7 @@ export default async function OSDetalhePage({ params }: { params: Promise<{ id: 
             />
           )}
 
-          {podeFechar && os.status === 'concluida' && pagamentosOS.length > 0 && (
+          {podeGerirConciliacao(usuario.papel) && os.status === 'concluida' && pagamentosOS.length > 0 && (
             <OSConciliacaoPanel
               osId={id}
               osNumero={os.numero}
