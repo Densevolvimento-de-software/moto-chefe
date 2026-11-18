@@ -959,22 +959,38 @@ test('aviso de pendente: grava o que a consulta devolveu, não o corpo; o consol
     const a = await semearContaFaixa(tx, 'A', '00000000066001', 'Homologacao', 'emp-A')
     const autorizada = await faixaPendente(tx, a, CHAVE_1)
     const negada = await faixaPendente(tx, a, CHAVE_2)
-    const andando = await faixaPendente(tx, a, CHAVE_3)
     const recusa = { status: 'Negada', motivoStatus: '241 - Rejeicao: Um numero da faixa ja foi utilizado', protocolo: null }
     const escrito = consoleDe(t)
 
     // O corpo diz Negada com motivo e protocolo próprios; a consulta diz Autorizada (e vice-versa).
     assert.equal((await receber(tx, avisoDe(autorizada.idExterno), { consultar: ngQueResponde(AUTORIZADA).consultar })).status, 200)
     assert.equal((await receber(tx, avisoDe(negada.idExterno, { status: 'Autorizada', motivoStatus: null }), { consultar: ngQueResponde(recusa).consultar })).status, 200)
-    assert.equal((await receber(tx, avisoDe(andando.idExterno), { consultar: ngQueResponde({ status: 'Processando', motivoStatus: null, protocolo: null }).consultar })).status, 200)
 
     const [la, ln] = [await autorizada.linha(), await negada.linha()]
     assert.deepEqual([la.situacao, la.status, la.motivo_status, la.protocolo], ['autorizada', 'Autorizada', null, AUTORIZADA.protocolo])
     assert.deepEqual([ln.situacao, ln.status, ln.motivo_status, ln.protocolo], ['negada', 'Negada', recusa.motivoStatus, null])
-    assert.equal((await andando.linha()).situacao, 'pendente')
     const linhasDoConsole = escrito()
-    assert.equal(linhasDoConsole.length, 3)
+    assert.equal(linhasDoConsole.length, 2)
     for (const linha of linhasDoConsole) assert.doesNotMatch(linha, /faixa-|emp-A|token|tok-cifrado|PROTOCOLO|353190000062124/)
+  })
+})
+
+test('aviso com a consulta ainda pendente (Processando, ou 404 dentro do prazo): 500 para a NG reenviar, e a linha segue pendente (decisão do Luis)', async t => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001')
+    const processando = await faixaPendente(tx, a, CHAVE_1)
+    const naoAchada = await faixaPendente(tx, a, CHAVE_2)
+    const antesN = await naoAchada.linha()
+    const escrito = consoleDe(t)
+
+    const r1 = await receber(tx, avisoDe(processando.idExterno), { consultar: ngQueResponde({ status: 'Processando', motivoStatus: null, protocolo: null }).consultar })
+    const r2 = await receber(tx, avisoDe(naoAchada.idExterno), { consultar: ngQueResponde(null).consultar })
+
+    assert.deepEqual([r1.status, r2.status], [500, 500])
+    const p = await processando.linha()
+    assert.deepEqual([p.situacao, p.status, p.protocolo], ['pendente', 'Processando', null])
+    assert.deepEqual(await naoAchada.linha(), antesN)
+    assert.deepEqual(escrito(), ['[webhook notagateway] ainda pendente na consulta: a NG reenvia', '[webhook notagateway] ainda pendente na consulta: a NG reenvia'])
   })
 })
 

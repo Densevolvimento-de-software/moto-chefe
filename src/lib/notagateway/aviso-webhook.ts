@@ -33,6 +33,10 @@ export async function receberAvisoDaNg(req: Request, deps: DependenciasAviso): P
     const r = await consultarResultadoDaLinha(decisao.linha, deps)
     // Sem credencial no ambiente da linha: segue pendente, como no clique; reenviar não muda nada.
     if (!r.ok) return responder(200, 'ignorado: grupo sem credencial no ambiente da inutilização')
+    // A NG avisou, mas a consulta ainda diz pendente (atraso dela): 500 para reenviar. Ela tenta "até receber o
+    // status HTTP 200", 15 vezes em cerca de 4 h (https://docs.notagateway.com.br/v2/docs/webhook); depois
+    // disso resolve o clique ou a rotina do #67. Decisão do Luis no #66.
+    if (r.situacao === 'pendente') return responder(500, 'ainda pendente na consulta: a NG reenvia')
     return responder(200, `situação: ${r.situacao}`)
   } catch (e) {
     // Banco fora ou NG com erro (5xx, 4xx, rede): 500 para a NG reenviar (D2, #66). Só o nome do erro.
