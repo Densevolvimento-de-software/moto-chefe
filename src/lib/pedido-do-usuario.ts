@@ -1,10 +1,15 @@
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { pedidosVenda, pedidosVendaItens } from '@/lib/db/schema'
+import { lojas, modelos, motos, pecasCatalogo, pedidosVenda, pedidosVendaItens } from '@/lib/db/schema'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { lojasDoEscopo } from '@/lib/conta'
+import { motosDoPedido } from '@/lib/pedido-venda-regras'
+import type { MotoNoPedido } from '@/lib/novo-pedido'
 
 type Executor = Pick<typeof db, 'select'>
+
+/** Brinde ou acessório gravado no pedido, como a tela mostra (#25); `valor` é o de cada unidade. */
+export type PecaDoPedidoNaTela = { tipo: 'brinde' | 'acessorio'; pecaId: string; nome: string; quantidade: number; valor: string }
 
 /**
  * Pedido de venda que o usuário pode ver, ou null. A Conta entra no where; o grupo da
@@ -30,24 +35,43 @@ export async function pedidoDoUsuario(
 }
 
 /**
- * Itens do pedido (#774), ou null quando o pedido não é visível para o usuário: a Conta é a
- * do pedido, conferida no pedidoDoUsuario, então outra Conta e id inexistente dão o mesmo null.
+ * Itens do pedido (#774) com o que a tela mostra (#25), ou null quando o pedido não é visível para o usuário: a Conta é a do
+ * pedido, conferida no pedidoDoUsuario, então outra Conta e id inexistente dão o mesmo null. Motos no formato do Novo pedido,
+ * na ordem do `motosDoPedido` (o pedido de antes do #774 só tem a do `moto_id`, sem linha de item: entra sem valor).
  */
 export async function itensDoPedido(
   usuario: Parameters<typeof podeAbrirRegistroDaLoja>[0],
   pedidoId: string,
   exec: Executor = db,
-) {
-  if (!(await pedidoDoUsuario(usuario, pedidoId, exec))) return null
-  return exec
+): Promise<{ motos: MotoNoPedido[]; pecas: PecaDoPedidoNaTela[] } | null> {
+  const pedido = await pedidoDoUsuario(usuario, pedidoId, exec)
+  if (!pedido) return null
+  const itens = await exec
     .select({
       tipo: pedidosVendaItens.tipo,
       motoId: pedidosVendaItens.motoId,
       pecaId: pedidosVendaItens.pecaId,
+      nome: pecasCatalogo.nome,
       quantidade: pedidosVendaItens.quantidade,
       valorUnitario: pedidosVendaItens.valorUnitario,
     })
     .from(pedidosVendaItens)
+    .leftJoin(pecasCatalogo, eq(pecasCatalogo.id, pedidosVendaItens.pecaId))
     .where(eq(pedidosVendaItens.pedidoVendaId, pedidoId))
     .orderBy(asc(pedidosVendaItens.criadoEm), asc(pedidosVendaItens.id))
+  const motoIds = motosDoPedido(pedido.motoId, itens)
+  const fichas = await exec
+    .select({ id: motos.id, chassi: motos.chassi, marca: modelos.marca, modelo: modelos.modelo, cor: motos.cor, lojaId: motos.lojaId, lojaNome: lojas.nome })
+    .from(motos)
+    .innerJoin(modelos, eq(modelos.id, motos.modeloId))
+    .innerJoin(lojas, eq(lojas.id, motos.lojaId))
+    .where(inArray(motos.id, motoIds))
+  return {
+    motos: motoIds.flatMap(id => fichas.filter(f => f.id === id).map(f => ({
+      ...f, valor: itens.find(i => i.motoId === id)?.valorUnitario ?? '',
+    }))),
+    pecas: itens.flatMap(i => (i.tipo !== 'moto' && i.pecaId
+      ? [{ tipo: i.tipo, pecaId: i.pecaId, nome: i.nome ?? '', quantidade: Number(i.quantidade), valor: i.valorUnitario ?? '0.00' }]
+      : [])),
+  }
 }
