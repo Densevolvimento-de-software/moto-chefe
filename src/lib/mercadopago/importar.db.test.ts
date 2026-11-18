@@ -156,7 +156,7 @@ test('segunda rodada não duplica nem desfaz o vínculo', async () => {
   assert.deepEqual(await linhasDoGrupo(a.grupoId), antes)
 })
 
-test('estorno: estornada e conciliado false no mesmo update, a venda fica ligada e não conta de novo', async () => {
+test('estorno: a linha fica estornada, não conciliada e ligada à venda, e não conta de novo', async () => {
   const a = await semearConta('A')
   const vendaId = await venda(a, [{ tipo: 'cartao_credito', valor: 200, parcelas: 1 }])
   const id = novoId()
@@ -179,7 +179,7 @@ test('estorno: estornada e conciliado false no mesmo update, a venda fica ligada
 test('isolamento: Conta B não casa com a venda de A, não estorna a linha de A e o mesmo nsu vira uma linha em cada', async () => {
   const a = await semearConta('A')
   const b = await semearConta('B')
-  await venda(a, [{ tipo: 'cartao_credito', valor: 200, parcelas: 1, autorizacao: '654321' }])
+  await venda(a, [{ tipo: 'cartao_credito', valor: 200, parcelas: 1 }])
   const id = novoId()
   await importar(a, [aprovado(creditoEstornado, id)])
   const deA = await linhasDoGrupo(a.grupoId)
