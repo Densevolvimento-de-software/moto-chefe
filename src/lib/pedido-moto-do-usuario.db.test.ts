@@ -115,3 +115,15 @@ test('itens do pedido de antes do #774 (#25): sem linha de item, a moto do pedid
     assert.deepEqual([itens?.motos.map(m => [m.id, m.valor]), itens?.pecas], [[[a.motoId, '']], []])
   })
 })
+
+test('item que aponta para moto ou peça de outra Conta (gravado por fora) não aparece nos itens do pedido (#25)', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A', '00000000040427')
+    const b = await semearConta(tx, 'B', '00000000040428')
+    const [pecaDaB] = await linhas(tx, sql`insert into pecas_catalogo (conta_id, nome, valor) values (${b.contaId}, 'Peça da B PV404', '10.00') returning id`)
+    await linhas(tx, sql`insert into pedidos_venda_itens (pedido_venda_id, tipo, moto_id) values (${a.pedidoId}, 'moto', ${b.motoId}) returning id`)
+    await linhas(tx, sql`insert into pedidos_venda_itens (pedido_venda_id, tipo, peca_id, valor_unitario) values (${a.pedidoId}, 'acessorio', ${pecaDaB.id}, 10) returning id`)
+    const itens = await itensDoPedido(a.aux, a.pedidoId, tx)
+    assert.deepEqual([itens?.motos.map(m => m.id), itens?.pecas.map(p => p.nome)], [[a.motoId], ['']])
+  })
+})

@@ -1,15 +1,20 @@
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, type AnyColumn } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { lojas, modelos, motos, pecasCatalogo, pedidosVenda, pedidosVendaItens } from '@/lib/db/schema'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { lojasDoEscopo } from '@/lib/conta'
 import { motosDoPedido } from '@/lib/pedido-venda-regras'
+import { daContaDaLoja } from '@/lib/pecas-da-conta'
 import type { MotoNoPedido } from '@/lib/novo-pedido'
 
 type Executor = Pick<typeof db, 'select'>
 
 /** Brinde ou acessório gravado no pedido, como a tela mostra (#25); `valor` é o de cada unidade. */
 export type PecaDoPedidoNaTela = { tipo: 'brinde' | 'acessorio'; pecaId: string; nome: string; quantidade: number; valor: string }
+
+/** A loja na Conta de quem lê (admin_geral vê todas); null quando o usuário não tem Conta. */
+const lojaDaConta = (usuario: Parameters<typeof podeAbrirRegistroDaLoja>[0], coluna: AnyColumn) => (usuario.papel === 'admin_geral' ? undefined
+  : usuario.contaId ? inArray(coluna, lojasDoEscopo(usuario)) : null)
 
 /**
  * Pedido de venda que o usuário pode ver, ou null. A Conta entra no where; o grupo da
@@ -22,8 +27,7 @@ export async function pedidoDoUsuario(
   pedidoId: string,
   exec: Executor = db,
 ) {
-  const daConta = usuario.papel === 'admin_geral' ? undefined
-    : usuario.contaId ? inArray(pedidosVenda.lojaId, lojasDoEscopo(usuario)) : null
+  const daConta = lojaDaConta(usuario, pedidosVenda.lojaId)
   if (daConta === null) return null
   const [pedido] = await exec
     .select({ lojaId: pedidosVenda.lojaId, status: pedidosVenda.status, motoId: pedidosVenda.motoId, numero: pedidosVenda.numero, entrega: pedidosVenda.entrega })
@@ -36,7 +40,8 @@ export async function pedidoDoUsuario(
 
 /**
  * Itens do pedido (#774) com o que a tela mostra (#25), ou null quando o pedido não é visível para o usuário: a Conta é a do
- * pedido, conferida no pedidoDoUsuario, então outra Conta e id inexistente dão o mesmo null. Motos no formato do Novo pedido,
+ * pedido, conferida no pedidoDoUsuario, então outra Conta e id inexistente dão o mesmo null; as fichas das motos e o nome da
+ * peça também levam a Conta no SQL, mesmo vindo de itens já conferidos na gravação. Motos no formato do Novo pedido,
  * na ordem do `motosDoPedido` (o pedido de antes do #774 só tem a do `moto_id`, sem linha de item: entra sem valor). A loja é
  * a do pedido: o mínimo de cada moto se lê nela, como no efetivar.
  */
@@ -57,7 +62,7 @@ export async function itensDoPedido(
       valorUnitario: pedidosVendaItens.valorUnitario,
     })
     .from(pedidosVendaItens)
-    .leftJoin(pecasCatalogo, eq(pecasCatalogo.id, pedidosVendaItens.pecaId))
+    .leftJoin(pecasCatalogo, and(eq(pecasCatalogo.id, pedidosVendaItens.pecaId), daContaDaLoja(pedido.lojaId)))
     .where(eq(pedidosVendaItens.pedidoVendaId, pedidoId))
     .orderBy(asc(pedidosVendaItens.criadoEm), asc(pedidosVendaItens.id))
   const motoIds = motosDoPedido(pedido.motoId, itens)
@@ -66,7 +71,7 @@ export async function itensDoPedido(
     .from(motos)
     .innerJoin(modelos, eq(modelos.id, motos.modeloId))
     .innerJoin(lojas, eq(lojas.id, motos.lojaId))
-    .where(inArray(motos.id, motoIds))
+    .where(and(inArray(motos.id, motoIds), lojaDaConta(usuario, motos.lojaId) ?? undefined))
   return {
     lojaId: pedido.lojaId,
     motos: motoIds.flatMap(id => fichas.filter(f => f.id === id).map(f => ({
