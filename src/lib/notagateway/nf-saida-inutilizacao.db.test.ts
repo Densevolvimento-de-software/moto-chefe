@@ -978,9 +978,7 @@ test('aviso de pendente: grava o que a consulta devolveu, não o corpo; o consol
     const [la, ln] = [await autorizada.linha(), await negada.linha()]
     assert.deepEqual([la.situacao, la.status, la.motivo_status, la.protocolo], ['autorizada', 'Autorizada', null, AUTORIZADA.protocolo])
     assert.deepEqual([ln.situacao, ln.status, ln.motivo_status, ln.protocolo], ['negada', 'Negada', recusa.motivoStatus, null])
-    const linhasDoConsole = escrito()
-    assert.equal(linhasDoConsole.length, 2)
-    for (const linha of linhasDoConsole) assert.doesNotMatch(linha, /faixa-|emp-A|token|tok-cifrado|PROTOCOLO|353190000062124/)
+    assert.deepEqual(escrito(), linhasDoAviso('situação: autorizada', 'situação: negada'))
   })
 })
 
@@ -1016,8 +1014,7 @@ test('aviso com a consulta à NG lançando erro ou a configuração sem ler: 500
     assert.equal((await receber(tx, avisoDe(f.idExterno), { consultar: ngFora })).status, 500)
     assert.equal((await receber(tx, avisoDe(f.idExterno), { consultar: ngQueResponde(AUTORIZADA).consultar, config: configQuebrada })).status, 500)
     assert.equal((await f.linha()).situacao, 'pendente')
-    assert.equal(escrito().length, 2)
-    for (const linha of escrito()) assert.doesNotMatch(linha, /segredo|emp-A|token-A|tok-cifrado|faixa-/)
+    assert.deepEqual(escrito(), linhasDoAviso('falha passageira (Error)', 'falha passageira (Error)'))
   })
 })
 
