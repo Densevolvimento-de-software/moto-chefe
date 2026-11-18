@@ -13,7 +13,7 @@ import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-per
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { pagamentosEfetivosOS, precisaConciliar, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
-import { casarPorAutorizacao } from '@/lib/conciliacao-casamento'
+import { casarPorAutorizacao, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
 import { detectarFormato } from '@/lib/conciliacao-formato'
 import type { TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
 import { lerRelatorioCielo } from '@/lib/conciliacao-cielo'
@@ -753,12 +753,22 @@ export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, id
   await gravarPagamentos(alvo, atualizados)
 }
 
-export async function buscarVendasParaVincular(valorRef: number) {
+export async function buscarVendasParaVincular(conciliacaoId: string) {
   const usuario = await getUsuarioLogado()
+  const grupo = await getGrupoAtivo(usuario)
+  // Valor e tipo saem da linha, lida com o grupo no where: linha de outra Conta e inexistente dão lista vazia.
+  const [linha] = await db.select({ valorBruto: conciliacoesCartao.valorBruto, tipo: conciliacoesCartao.tipo })
+    .from(conciliacoesCartao)
+    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id)))
+    .limit(1)
+  if (!linha) return []
+  const valorRef = Number(linha.valorBruto)
+  const tipos = [...tiposDoPagamentoDaLinha(linha.tipo)]
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
-  // Busca vendas (motos e peças/acessórios) onde algum lançamento de cartão tem valor
-  // exato (tolerância de R$0,01), restrito às lojas do grupo ativo do usuário.
+  // Busca vendas (motos, peças/acessórios e OS) onde algum lançamento do tipo que a linha cobre
+  // (cartão, ou Pix para a linha pix do Mercado Pago) tem valor exato (tolerância de R$0,01),
+  // restrito às lojas do grupo ativo do usuário.
   const [motosRows, pecasRows, osRows] = await Promise.all([
     db
       .select({
@@ -778,7 +788,7 @@ export async function buscarVendasParaVincular(valorRef: number) {
           sql`EXISTS (
             SELECT 1 FROM jsonb_array_elements(${vendas.pagamentos}) AS p
             WHERE (p->>'valor')::numeric BETWEEN ${valorRef - 0.01} AND ${valorRef + 0.01}
-            AND p->>'tipo' IN ('cartao_credito', 'cartao_debito', 'link_pagamento')
+            AND p->>'tipo' IN ${tipos}
           )`,
         )
       )
@@ -802,7 +812,7 @@ export async function buscarVendasParaVincular(valorRef: number) {
           sql`EXISTS (
             SELECT 1 FROM jsonb_array_elements(${vendasPecas.pagamentos}) AS p
             WHERE (p->>'valor')::numeric BETWEEN ${valorRef - 0.01} AND ${valorRef + 0.01}
-            AND p->>'tipo' IN ('cartao_credito', 'cartao_debito', 'link_pagamento')
+            AND p->>'tipo' IN ${tipos}
           )`,
         )
       )
@@ -827,7 +837,7 @@ export async function buscarVendasParaVincular(valorRef: number) {
           sql`EXISTS (
             SELECT 1 FROM jsonb_array_elements(${ordensServico.pagamentos}) AS p
             WHERE (p->>'valor')::numeric BETWEEN ${valorRef - 0.01} AND ${valorRef + 0.01}
-            AND p->>'tipo' IN ('cartao_credito', 'cartao_debito', 'link_pagamento')
+            AND p->>'tipo' IN ${tipos}
           )`,
         )
       )
