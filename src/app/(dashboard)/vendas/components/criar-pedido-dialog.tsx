@@ -1,20 +1,23 @@
 'use client'
-import { useState } from 'react'
-import { Bike, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Bike, Gift, Package, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { buscarPrecoMinimoAction, criarPedidoVendaAction } from '../actions'
+import { buscarPrecoMinimoAction, criarPedidoVendaAction, pecasDaLojaParaPedidoAction } from '../actions'
+import { podeGerirPecas } from '../../pecas/papeis'
 import { podeCriarPedido } from '@/lib/pedido-venda-regras'
 import { textoDaModalidade } from '@/lib/notagateway/transporte'
 import { textoDaEntrega } from '@/lib/notagateway/entrega'
 import { brl } from '@/lib/dashboard-painel'
 import { centavos } from '@/lib/numero-br'
-import { detalheDaMoto, motosDoEnvio, totalDasMotos, type MotoDisponivel, type MotoNoPedido } from '@/lib/novo-pedido'
+import { avisoDeSaldo, comPecas, detalheDaMoto, motosDoEnvio, motosSemValor, pecasDoEnvio, totalDasMotos, totalDasPecasNaTela, type MotoDisponivel, type MotoNoPedido, type PecaNoPedido } from '@/lib/novo-pedido'
+import type { PecaComSaldo } from '@/lib/pecas-da-conta'
 import { EntregaEModalidade, ENTREGA_DO_FORMULARIO_INICIAL, FreteCobrado, entregaDoFormulario, freteDoFormulario, quemRecebeInvalido, type EntregaDoFormulario } from './entrega-campos'
 import { AdicionarMotoPainel } from './adicionar-moto-painel'
+import { AdicionarPecaPainel, Quantidade } from './adicionar-peca-painel'
 
 type Props = { motos: MotoDisponivel[]; papel: string }
 
@@ -27,6 +30,9 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
   const [painel, setPainel] = useState(false)
   const [noPedido, setNoPedido] = useState<MotoNoPedido[]>([])
   const [minimos, setMinimos] = useState<Minimos>({})
+  const [pecas, setPecas] = useState<PecaNoPedido[]>([])
+  const [painelPeca, setPainelPeca] = useState<PecaNoPedido['tipo'] | null>(null)
+  const [catalogo, setCatalogo] = useState<{ lista: PecaComSaldo[] | null; erro: string | null }>({ lista: null, erro: null })
   const [observacao, setObservacao] = useState('')
   const [entrega, setEntrega] = useState<EntregaDoFormulario>(ENTREGA_DO_FORMULARIO_INICIAL)
   const [loading, setLoading] = useState(false)
@@ -40,20 +46,41 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
         .catch(() => setMinimos(atual => ({ ...atual, [m.id]: 'erro' })))
     }
   }
+  // O catálogo e o saldo são os da loja do pedido, a da 1ª moto (decisão 4 do Luis, #24).
+  const lojaDoPedido = noPedido[0]?.lojaId
+  useEffect(() => {
+    if (!lojaDoPedido) return
+    let vivo = true
+    setCatalogo({ lista: null, erro: null })
+    pecasDaLojaParaPedidoAction(lojaDoPedido)
+      .then(r => {
+        if (!vivo) return
+        setCatalogo(r.ok ? { lista: r.dados, erro: null } : { lista: null, erro: r.erro })
+        // Outra 1ª moto pode ser de outra loja: as peças já escolhidas passam a mostrar o saldo dela.
+        if (r.ok) setPecas(atual => atual.map(p => ({ ...p, peca: r.dados.find(x => x.id === p.peca.id) ?? p.peca })))
+      })
+      .catch(() => { if (vivo) setCatalogo({ lista: null, erro: 'tente de novo em instantes' }) })
+    return () => { vivo = false }
+  }, [lojaDoPedido])
+  const mudarPeca = (i: number, muda: (p: PecaNoPedido) => Partial<PecaNoPedido>) => setPecas(atual => atual.map((p, j) => (j === i ? { ...p, ...muda(p) } : p)))
   const mudarValor = (id: string, valor: string) => setNoPedido(atual => atual.map(m => (m.id === id ? { ...m, valor } : m)))
   const tirar = (id: string) => setNoPedido(atual => atual.filter(m => m.id !== id))
 
   async function handleCriar() {
     const envio = motosDoEnvio(noPedido)
-    if (!envio?.length) return
+    const envioPecas = pecasDoEnvio(pecas, podeGerirPecas(papel))
+    if (!envio?.length || !envioPecas) return
     setLoading(true)
     setErro(null)
     try {
-      const r = await criarPedidoVendaAction(envio, observacao, entregaDoFormulario(entrega))
+      const r = pecas.length > 0
+        ? await criarPedidoVendaAction(envio, observacao, entregaDoFormulario(entrega), envioPecas)
+        : await criarPedidoVendaAction(envio, observacao, entregaDoFormulario(entrega))
       // A recusa fica no diálogo, junto do que foi digitado, para corrigir sem redigitar (#848).
       if (!r.ok) { setErro(r.erro); return }
       setOpen(false)
       setNoPedido([])
+      setPecas([])
       setObservacao('')
       setEntrega(ENTREGA_DO_FORMULARIO_INICIAL)
     } catch (e: any) {
@@ -68,7 +95,10 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
   const primeira = noPedido[0]
   const frete = freteDoFormulario(entrega)
   const envio = motosDoEnvio(noPedido)
-  const total = centavos(totalDasMotos(noPedido) + frete)
+  const envioPecas = pecasDoEnvio(pecas, podeGerirPecas(papel))
+  const total = centavos(totalDasMotos(noPedido) + totalDasPecasNaTela(pecas) + frete)
+  const qtd = (tipo: PecaNoPedido['tipo']) => pecas.filter(p => p.tipo === tipo).reduce((n, p) => n + p.quantidade, 0)
+  const semValor = motosSemValor(noPedido)
 
   return (
     <>
@@ -80,7 +110,7 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
             <DialogDescription>{primeira ? primeira.lojaNome : 'Escolha a moto para ver a loja do pedido.'}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-6 md:grid-cols-[1.2fr_1fr]">
-            <section className="space-y-4">
+            <section aria-label="Itens do pedido" className="space-y-4">
               <div className="flex items-baseline justify-between">
                 <h3 className="text-sm font-semibold">Itens do pedido</h3>
                 <span className="text-xs text-muted-foreground">{noPedido.length === 1 ? '1 moto' : `${noPedido.length} motos`}</span>
@@ -93,9 +123,21 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
                   ))}
                 </ul>
               )}
-              <Button variant="outline" className="h-11 border-dashed" onClick={() => setPainel(true)}>
-                <Plus aria-hidden />Moto
-              </Button>
+              {pecas.length > 0 && (
+                <ul aria-label="Peças do pedido" className="divide-y divide-border rounded-lg border border-border">
+                  {pecas.map((p, i) => (
+                    <ItemPeca key={`${p.tipo}-${p.peca.id}`} item={p} aviso={avisoDeSaldo(pecas, p.peca.id)} ajustaPreco={podeGerirPecas(papel)}
+                      onQuantidade={mais => mudarPeca(i, atual => ({ quantidade: Math.max(1, atual.quantidade + mais) }))}
+                      onValor={valor => mudarPeca(i, () => ({ valor }))} onTirar={() => setPecas(atual => atual.filter((_, j) => j !== i))} />
+                  ))}
+                </ul>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" className="h-11 border-dashed" onClick={() => setPainel(true)}><Plus aria-hidden />Moto</Button>
+                <Button variant="outline" className="h-11 border-dashed" disabled={!primeira} onClick={() => setPainelPeca('brinde')}><Plus aria-hidden />Brinde</Button>
+                <Button variant="outline" className="h-11 border-dashed" disabled={!primeira} onClick={() => setPainelPeca('acessorio')}><Plus aria-hidden />Acessório</Button>
+                {!primeira && <span className="text-xs text-muted-foreground">Escolha a moto primeiro</span>}
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="pedido-observacao">Observação (opcional)</Label>
                 <Textarea id="pedido-observacao" value={observacao} onChange={e => setObservacao(e.target.value)} />
@@ -111,6 +153,9 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
                   <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
                     <dt className="text-muted-foreground">Motos ({noPedido.length})</dt>
                     <dd className="text-right">{brl(totalDasMotos(noPedido))}</dd>
+                    {semValor && <><dt className="sr-only">Motos sem valor</dt><dd className="col-span-2 text-right text-xs text-warning">{semValor}</dd></>}
+                    {qtd('acessorio') > 0 && <><dt className="text-muted-foreground">Acessórios ({qtd('acessorio')})</dt><dd className="text-right">{brl(totalDasPecasNaTela(pecas))}</dd></>}
+                    {qtd('brinde') > 0 && <><dt className="text-muted-foreground">Brindes ({qtd('brinde')})</dt><dd className="text-right">Sem cobrança</dd></>}
                     <dt className="text-muted-foreground">Entrega</dt>
                     <dd className="text-right">{textoDaEntrega(entregaDoFormulario(entrega))}</dd>
                     <dt className="text-muted-foreground">Modalidade</dt>
@@ -132,7 +177,7 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
             <p className="text-sm text-muted-foreground">Total do pedido <strong className="block text-lg text-foreground">{brl(total)}</strong></p>
             <div className="flex gap-2">
               <Button variant="outline" className="h-11" onClick={() => setOpen(false)}>Cancelar</Button>
-              <Button className="h-11" onClick={handleCriar} disabled={loading || !envio?.length || quemRecebeInvalido(entrega)}>
+              <Button className="h-11" onClick={handleCriar} disabled={loading || !envio?.length || !envioPecas || quemRecebeInvalido(entrega)}>
                 {loading ? 'Criando...' : 'Criar pedido'}
               </Button>
             </div>
@@ -141,6 +186,8 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
       </Dialog>
       <AdicionarMotoPainel aberto={painel} onAbertoChange={setPainel} disponiveis={motos} lojaId={primeira?.lojaId}
         noPedido={noPedido.map(m => m.id)} onAdicionar={adicionar} />
+      <AdicionarPecaPainel tipo={painelPeca} onFechar={() => setPainelPeca(null)} catalogo={catalogo.lista} erro={catalogo.erro}
+        lojaNome={primeira?.lojaNome} onAdicionar={(tipo, marcadas) => setPecas(atual => comPecas(atual, tipo, marcadas))} />
     </>
   )
 }
@@ -173,6 +220,45 @@ function ItemMoto({ moto, minimo, invalido, onValor, onTirar }: {
           )}
         </div>
         {invalido && <p className="text-xs text-destructive">Valor inválido</p>}
+      </div>
+    </li>
+  )
+}
+
+function ItemPeca({ item, aviso, ajustaPreco, onQuantidade, onValor, onTirar }: {
+  item: PecaNoPedido; aviso: string | null; ajustaPreco: boolean; onQuantidade: (mais: number) => void; onValor: (v: string) => void; onTirar: () => void
+}) {
+  const { peca, tipo } = item
+  const idValor = `pedido-${tipo}-${peca.id}`
+  const doCatalogo = brl(Number(peca.valor))
+  const Icone = tipo === 'brinde' ? Gift : Package
+  return (
+    <li className="flex gap-3 p-3">
+      <Icone className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden />
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="font-medium">{peca.nome}</p>
+            <p className="text-xs text-muted-foreground">{tipo === 'brinde' ? 'Brinde' : 'Acessório'}</p>
+            {aviso && <p className="text-xs text-warning">{aviso}</p>}
+          </div>
+          <Button variant="ghost" size="icon" aria-label={`Tirar ${peca.nome} do pedido`} onClick={onTirar}><Trash2 aria-hidden /></Button>
+        </div>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <Quantidade nome={peca.nome} valor={item.quantidade} onMudar={onQuantidade} />
+          {/* Decisões 2 e 3 do Luis (#24): só quem gere peças ajusta o preço; o brinde mostra o catálogo só de referência. */}
+          {tipo === 'brinde'
+            ? <p className="text-sm text-muted-foreground">Sem cobrança (catálogo {doCatalogo})</p>
+            : ajustaPreco
+              ? (
+                <div className="space-y-1">
+                  <Label htmlFor={idValor}>Valor de cada<span className="sr-only"> {peca.nome}</span></Label>
+                  <CurrencyInput id={idValor} className="h-11 w-32 text-right" placeholder={doCatalogo} value={item.valor} onChange={onValor} />
+                </div>
+              )
+              : <p className="text-sm">{doCatalogo} cada</p>}
+        </div>
+        {tipo === 'acessorio' && <p className="text-right text-xs text-muted-foreground">Subtotal <strong className="text-sm text-foreground">{brl(totalDasPecasNaTela([item]))}</strong></p>}
       </div>
     </li>
   )
