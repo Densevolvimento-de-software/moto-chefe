@@ -15,6 +15,9 @@ export function creditoDoPix(valor: number, taxa: number): { custo: number; entr
   return { custo: centavos(valor - entra), entra }
 }
 
+/** Recusa da tela e do servidor quando o custo do PIX sai da faixa de lerCustoPixTaxa. */
+export const CUSTO_PIX_FORA_DA_FAIXA = 'O custo do PIX precisa ser de 0 até menos de 100%'
+
 /**
  * Custo do PIX vindo da tela, em fração (0.002 = 0,20%), já nas 6 casas da coluna: de 0 até menos
  * de 1. Fora disso, null. Arredonda antes de conferir porque o banco arredonda ao gravar.

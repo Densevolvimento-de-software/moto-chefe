@@ -10,7 +10,7 @@ import { ehPadraoSimulador } from '@/lib/simulador-padrao'
 import { ehMatrizDePlanilha } from '@/lib/planilha-precos'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { gravarImportacao, previaDaImportacao } from '@/lib/importar-precos'
-import { lerCustoPixTaxa } from '@/lib/custo-pix'
+import { CUSTO_PIX_FORA_DA_FAIXA, lerCustoPixTaxa } from '@/lib/custo-pix'
 
 const ADMINS = ['admin_geral', 'admin_socio']
 
@@ -37,7 +37,7 @@ export async function salvarTaxasAction(data: TaxasPayload) {
   return acao(async () => {
     const grupo = await checarAdmin()
     const custoPixTaxa = lerCustoPixTaxa(data.custoPixTaxa)
-    if (custoPixTaxa === null) throw new RecusaUsuario('O custo do PIX precisa ser de 0 até menos de 100%')
+    if (custoPixTaxa === null) throw new RecusaUsuario(CUSTO_PIX_FORA_DA_FAIXA)
     // Só os campos do formulário; o grupo é sempre o ativo do servidor.
     const taxas = {
       taxasCartao: data.taxasCartao,

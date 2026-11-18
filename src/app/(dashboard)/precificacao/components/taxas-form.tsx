@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { salvarTaxasAction, type TaxasPayload } from '../actions'
-import { creditoDoPix } from '@/lib/custo-pix'
+import { CUSTO_PIX_FORA_DA_FAIXA, creditoDoPix, lerCustoPixTaxa } from '@/lib/custo-pix'
 import { fmtBRL } from '@/lib/preco-minimo'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { ChevronDown, Save } from 'lucide-react'
@@ -136,6 +136,8 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: TaxasPayload; r
   const [freteValorFixo, setFreteValorFixo] = useState(taxas.freteValorFixo)
   const [imposto, setImposto] = useState(toStr(Number(taxas.imposto)))
   const [custoPix, setCustoPix] = useState(toStr(Number(taxas.custoPixTaxa)))
+  // Mesma regra do servidor: fora da faixa avisa (o Salvar continua e o servidor recusa).
+  const custoPixValido = lerCustoPixTaxa(toDecimal(custoPix))
   const [loading, setLoading] = useState(false)
 
   function setCartaoRate(n: number, v: string) { setCartao(prev => ({ ...prev, [String(n)]: v })) }
@@ -215,7 +217,6 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: TaxasPayload; r
                   type="number"
                   step="0.01"
                   min="0"
-                  max="99.99"
                   className="h-9 text-sm"
                   placeholder="0,00"
                   value={custoPix}
@@ -223,7 +224,9 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: TaxasPayload; r
                 />
                 <p className="text-xs text-muted-foreground">Tarifa do banco em cada PIX recebido. Deixe 0 se o banco não cobra.</p>
               </div>
-              <ExemploPix taxa={toDecimal(custoPix)} />
+              {custoPixValido === null
+                ? <p role="alert" className="text-xs text-destructive">{CUSTO_PIX_FORA_DA_FAIXA}</p>
+                : <ExemploPix taxa={custoPixValido} />}
             </div>
           </TabsContent>
 

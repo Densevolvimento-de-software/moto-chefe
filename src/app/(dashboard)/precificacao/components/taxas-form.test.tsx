@@ -102,3 +102,16 @@ test('a recusa da action aparece com a frase dela', async () => {
   await clicar(botao('Salvar taxas'))
   assert.deepEqual(avisos, ['O custo do PIX precisa ser de 0 até menos de 100%'])
 })
+
+test('custo fora da faixa: no lugar do exemplo, o aviso com a frase do servidor, e o Salvar continua', async () => {
+  await montar(false)
+  for (const digitado of ['100', '-1']) {
+    await digitar(campoCustoPix()!, digitado)
+    assert.deepEqual(exemplo(), {}, digitado)
+    assert.equal(document.querySelector('[role="alert"]')?.textContent, 'O custo do PIX precisa ser de 0 até menos de 100%', digitado)
+  }
+  assert.equal(botao('Salvar taxas')?.disabled, false)
+  await digitar(campoCustoPix()!, '0.2')
+  assert.equal(document.querySelector('[role="alert"]'), null)
+  assert.equal(exemplo()['Entra na conta'], 'R$ 9.980,00')
+})
