@@ -53,8 +53,8 @@ describe('classificarPagamento', () => {
     if (c.tipo === 'cartao') assert.equal(c.transacao.dataTransacao, '2026-11-12')
   })
 
-  it('refunded, charged_back e cancelled viram estorno', () => {
-    for (const status of ['refunded', 'charged_back', 'cancelled']) {
+  it('refunded e charged_back viram estorno', () => {
+    for (const status of ['refunded', 'charged_back']) {
       assert.deepEqual(classificarPagamento(pg(creditoEstornado, { status })), {
         tipo: 'estorno', meio: 'cartao', chave: String(creditoEstornado.id),
       })
@@ -75,6 +75,13 @@ describe('classificarPagamento', () => {
   it('pagamento sem point_of_interaction de maquininha é ignorado', () => {
     assert.equal(classificarPagamento(pg(linkCheckout)).tipo, 'ignorar')
     assert.equal(classificarPagamento(pg(linkCheckout, { point_of_interaction: undefined })).tipo, 'ignorar')
+  })
+
+  // Doc do MP: "Cancelamentos acontecem quando uma compra é realizada mas o pagamento ainda não foi
+  // aprovado" (checkout-api-payments/payment-management/cancellations-and-refunds/introduction).
+  it('cancelled é ignorado: cancelado antes de aprovar, não houve dinheiro', () => {
+    assert.deepEqual(classificarPagamento(pg(credito3x, { status: 'cancelled' })), { tipo: 'ignorar', motivo: 'status cancelled' })
+    assert.deepEqual(classificarPagamento(pg(pix, { status: 'cancelled' })), { tipo: 'ignorar', motivo: 'status cancelled' })
   })
 
   it('pending/in_process é ignorado', () => {

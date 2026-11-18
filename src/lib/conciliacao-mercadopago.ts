@@ -1,5 +1,6 @@
 import type { PagamentoMp } from './mercadopago/point'
 import { dataBrt, type TransacaoCartao } from './conciliacao-cartao'
+import { ehEstornoMp } from './mercadopago/status'
 
 export type PixMp = { transacaoId: string; data: string; valor: number; pagadorNome: string | null; serial: string | null }
 
@@ -19,8 +20,6 @@ export function ehDaMaquininha(p: PagamentoMp): boolean {
   return poi?.type === 'POINT' || Boolean(poi?.device?.serial_number)
 }
 
-const STATUS_ESTORNO = ['refunded', 'charged_back', 'cancelled']
-
 export function classificarPagamento(p: PagamentoMp): Classificacao {
   if (!ehDaMaquininha(p)) return { tipo: 'ignorar', motivo: 'não é da maquininha' }
 
@@ -29,7 +28,7 @@ export function classificarPagamento(p: PagamentoMp): Classificacao {
     : p.payment_type_id === 'debit_card' ? 'debito' : null
   if (!ehPix && !tipoCartao) return { tipo: 'ignorar', motivo: `meio não tratado: ${p.payment_type_id}` }
 
-  if (STATUS_ESTORNO.includes(p.status)) {
+  if (ehEstornoMp(p.status)) {
     return { tipo: 'estorno', meio: ehPix ? 'pix' : 'cartao', chave: ehPix ? `mp-${p.id}` : String(p.id) }
   }
   if (p.status !== 'approved') return { tipo: 'ignorar', motivo: `status ${p.status}` }
