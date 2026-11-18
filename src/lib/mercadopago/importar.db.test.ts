@@ -108,6 +108,23 @@ test('casa pela autorização quando o valor não bate; a Conta B não acha a ve
   assert.equal((await linhasDoGrupo(b.grupoId))[0].venda_id, null)
 })
 
+// Código de autorização de 6 caracteres se repete com o tempo: só vale a venda da janela de ±1 dia, a mesma do valor.
+test('autorização igual numa venda antiga do grupo não casa; a venda do dia com a mesma autorização casa', async () => {
+  const a = await semearConta('A')
+  const autorizacao = credito3x.authorization_code
+  const antiga = await semearVendaMoto(db, { ...a, em: '2026-10-01 12:00:00-03' }, [{ tipo: 'cartao_credito', valor: 905, parcelas: 3, autorizacao }])
+  const id = novoId()
+  assert.deepEqual(await importar(a, [pg(credito3x, { id })]), { ...NADA, pendentes: 1 })
+  assert.equal((await linhasDoGrupo(a.grupoId))[0].venda_id, null)
+
+  const doDia = await venda(a, [{ tipo: 'cartao_credito', valor: 905, parcelas: 3, autorizacao }])
+  const outro = novoId()
+  assert.deepEqual(await importar(a, [pg(credito3x, { id: outro })]), { ...NADA, conciliadas: 1 })
+  const [linha] = await execRows(sql`select venda_id from conciliacoes_cartao where grupo_id = ${a.grupoId} and nsu = ${String(outro)}`)
+  assert.equal(linha.venda_id, doDia)
+  assert.notEqual(doDia, antiga)
+})
+
 test('Pix da maquininha vira linha pix com o valor líquido e casa com o pagamento Pix da venda', async () => {
   const a = await semearConta('A')
   const vendaId = await venda(a, [{ tipo: 'pix', valor: 80 }])

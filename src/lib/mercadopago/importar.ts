@@ -85,7 +85,7 @@ async function gravarLinha(tx: Tx, grupoId: string, lojaIds: string[], t: Transa
     .where(chaveDaLinha(grupoId, nsu)).limit(1)
   if (existente) return 'duplicadas'
 
-  const porAutorizacao = t.autorizacao ? await casarPorAutorizacao(tx, lojaIds, t.autorizacao) : null
+  const porAutorizacao = t.autorizacao ? await casarPorAutorizacao(tx, lojaIds, t.autorizacao, t.dataTransacao) : null
   const alvos = porAutorizacao && casou(porAutorizacao) ? porAutorizacao : await casarPorValor(tx, lojaIds, t)
   const linha = linhaDaTransacao(grupoId, OPERADORA, t, alvos, agora)
 
