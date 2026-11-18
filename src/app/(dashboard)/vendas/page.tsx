@@ -13,6 +13,7 @@ import { db } from '@/lib/db'
 import { motos, modelos, lojas } from '@/lib/db/schema'
 import { eq, inArray, and } from 'drizzle-orm'
 import { PedidoCard } from './components/pedido-card'
+import { MotosDisponiveisProvider } from './components/motos-disponiveis'
 import { CriarPedidoDialog } from './components/criar-pedido-dialog'
 import { VendasFiltros } from './components/vendas-filtros'
 import { VendasTable } from './components/vendas-table'
@@ -196,17 +197,20 @@ export default async function VendasPage({
           <h2 className="font-semibold text-sm text-foreground">
             Pedidos Pendentes ({pendentes.length})
           </h2>
-          {pendentes.map(p => (
-            <PedidoCard
-              key={p.id}
-              pedido={p}
-              papel={usuario.papel}
-              usuarioId={usuario.id}
-              lojaIdUsuario={usuario.lojaId ?? null}
-              origens={origens}
-              podeAprovarSensivel={podeAprovarSensivel}
-            />
-          ))}
+          {/* As motos do "Editar pedido" vão uma vez só para todos os cards (#25). */}
+          <MotosDisponiveisProvider motos={motosDisponiveis}>
+            {pendentes.map(p => (
+              <PedidoCard
+                key={p.id}
+                pedido={p}
+                papel={usuario.papel}
+                usuarioId={usuario.id}
+                lojaIdUsuario={usuario.lojaId ?? null}
+                origens={origens}
+                podeAprovarSensivel={podeAprovarSensivel}
+              />
+            ))}
+          </MotosDisponiveisProvider>
         </section>
       )}
 

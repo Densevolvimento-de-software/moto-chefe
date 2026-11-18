@@ -22,16 +22,32 @@ const CATALOGO = [
   { id: 'capa', nome: 'Capa de chuva', valor: '79.90', quantidadeEstoque: 0 },
 ]
 let catalogo: { ok: true; dados: typeof CATALOGO } | { ok: false; erro: string } = { ok: true, dados: CATALOGO }
+// Editar pedido (#25, 25c): os itens que o servidor devolve e a gravação.
+const ITENS_DO_PEDIDO = {
+  lojaId: 'centro', taxas: null,
+  motos: [
+    { id: 'moto-1', chassi: 'LA2026X4131', marca: 'MC', modelo: 'JET', cor: 'CINZA', lojaId: 'centro', lojaNome: 'Loja Centro', valor: '9490.00', minimo: null },
+    { id: 'moto-2', chassi: 'LA2026X0088', marca: 'MC', modelo: 'PITICA', cor: 'BRANCA', lojaId: 'centro', lojaNome: 'Loja Centro', valor: '5200.00', minimo: null },
+  ],
+  pecas: [{ tipo: 'acessorio', pecaId: 'cap', nome: 'Capacete fechado', quantidade: 2, valor: '289.90' }],
+}
+let itensDoPedido: { ok: true; dados: unknown } | { ok: false; erro: string } = { ok: true, dados: ITENS_DO_PEDIDO }
+const salvar = mock.fn(async (..._a: unknown[]): Promise<Resposta> => ({ ok: true, dados: undefined }))
 mock.module('../actions', { namedExports: {
   criarPedidoVendaAction: (motos: unknown, observacao: string, entrega: unknown, pecas?: unknown) =>
     (pecas === undefined ? criar(motos, observacao, entrega) : criar(motos, observacao, entrega, pecas)),
   buscarPrecoMinimoAction: async () => minimo,
   pecasDaLojaParaPedidoAction: async (lojaId: string) => (lojaId === 'norte' ? { ok: true, dados: CATALOGO.map(p => ({ ...p, quantidadeEstoque: 5 })) } : catalogo),
+  itensDoPedidoAction: async () => itensDoPedido,
+  salvarPedidoPendenteAction: (...a: unknown[]) => salvar(...a),
 } })
 
 const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
   criar.mock.resetCalls()
+  salvar.mock.resetCalls()
+  salvar.mock.mockImplementation(async () => ({ ok: true, dados: undefined }))
+  itensDoPedido = { ok: true, dados: ITENS_DO_PEDIDO }
   minimo = null
   catalogo = { ok: true, dados: CATALOGO }
   desktop = true
@@ -564,4 +580,97 @@ test('celular: valor inválido num bloco fechado avisa no rodapé, que fica à v
   assert.equal(bloco('Motos')?.getAttribute('aria-expanded'), 'false')
   assert.equal(botao('Criar pedido')?.disabled, true)
   assert.match(document.querySelector('[data-slot="dialog-footer"]')?.textContent ?? '', /Há um valor inválido no pedido/)
+})
+
+// ── Editar pedido pendente (#25, 25c): o mesmo formulário, aberto com os itens do pedido; "Salvar pedido" manda tudo ──
+const ENTREGAR_COM_FRETE = {
+  modo: 'entregar', modalidade: 'TransporteProprioPorContaDoRemetente', recebe: null, frete: 180,
+  endereco: { cep: '01001000', logradouro: 'Rua Sintética', numero: '1', complemento: '', bairro: 'Centro', cidade: '3550308', nomeCidade: 'São Paulo', uf: 'SP' },
+}
+async function montarEditar(papel = 'vendedor', motos = [{ ...MOTO, id: 'moto-3', chassi: 'LA2026X7777', modelo: 'X12' }]) {
+  const { act } = await import('react')
+  const { createRoot } = await import('react-dom/client')
+  const { CriarPedidoDialog } = await import('./criar-pedido-dialog')
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  const editar = { pedidoId: 'ped-1', numero: 30158, entrega: ENTREGAR_COM_FRETE }
+  await act(async () => { root.render(createElement(CriarPedidoDialog, { motos, papel, editar } as never)) })
+  montados.push(() => act(async () => { root.unmount(); container.remove() }))
+  const clique = async (el: Element | null | undefined, ms = 50) => { await clicar(el); await act(() => esperar(ms)) }
+  await clique(botao('Editar pedido'), 100)
+  return { clique }
+}
+
+test('editar: abre com as motos, o acessório e a Entrega do pedido; título e botão do editar', async () => {
+  await montarEditar()
+  assert.match(textoDaTela(), /Editar pedido 30158/)
+  assert.match(textoDaTela(), /Pedido ainda não efetivado: dá para tirar ou pôr itens\. Loja Centro/)
+  const motos = document.querySelector('[aria-label="Motos do pedido"]')?.textContent ?? ''
+  assert.match(motos, /MC JET/)
+  assert.match(motos, /MC PITICA/)
+  assert.match(document.querySelector('[aria-label="Peças do pedido"]')?.textContent ?? '', /Capacete fechado/)
+  assert.match(resumo(), /Motos \(2\)/)
+  assert.match(resumo(), /Acessórios \(2\)/)
+  assert.match(resumo(), /Frete/)
+  assert.ok(botao('Salvar pedido'), 'o botão do editar')
+  assert.ok(!botao('Criar pedido'))
+})
+
+test('editar: trocar a moto (tira uma, põe outra da loja) e salvar manda a lista inteira, as peças e a Entrega', async () => {
+  const t = await montarEditar()
+  await t.clique(document.querySelector('[aria-label="Tirar a MC PITICA do pedido"]'))
+  await t.clique(botao('Moto'))
+  await t.clique([...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find(c => (c.closest('label')?.textContent ?? '').includes('7777')))
+  await t.clique(botao('Adicionar 1 moto'))
+  await digitar(campo<HTMLInputElement>(/^Valor da MC X12$/), '700000')
+  await t.clique(botao('Salvar pedido'), 100)
+  assert.equal(salvar.mock.callCount(), 1)
+  const [pedidoId, motos, pecas, entrega] = salvar.mock.calls[0].arguments as [string, unknown, unknown, { frete?: number; modo: string }]
+  assert.equal(pedidoId, 'ped-1')
+  assert.deepEqual(motos, [{ motoId: 'moto-1', valor: 9490 }, { motoId: 'moto-3', valor: 7000 }])
+  assert.deepEqual(pecas, [{ tipo: 'acessorio', pecaId: 'cap', quantidade: 2 }])
+  assert.deepEqual([entrega.modo, entrega.frete], ['entregar', 180])
+})
+
+test('editar: a recusa do servidor fica no diálogo, com o que foi mudado', async () => {
+  salvar.mock.mockImplementation(async () => ({ ok: false, erro: 'Este pedido está aguardando aprovação. Aprove ou recuse antes de editar o pedido.' }))
+  const t = await montarEditar()
+  await t.clique(botao('Salvar pedido'), 100)
+  assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /aguardando aprovação/)
+  assert.match(textoDaTela(), /Editar pedido 30158/)
+})
+
+test('editar: itens que não carregam mostram o motivo e não deixam salvar', async () => {
+  itensDoPedido = { ok: false, erro: 'Pedido não encontrado' }
+  await montarEditar()
+  assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /Não deu para carregar os itens do pedido: Pedido não encontrado/)
+  assert.equal(botao('Salvar pedido')?.disabled, true)
+})
+
+test('editar no celular: os blocos N3 do Novo pedido com as motos do pedido', async () => {
+  desktop = false
+  await montarEditar()
+  assert.match(document.querySelector('[aria-label="Motos do pedido"]')?.textContent ?? '', /MC PITICA/)
+  assert.ok(!botao('Moto'), 'no celular não há o "+ Moto" do painel')
+})
+
+test('editar: enquanto salva, "Salvar" e "Cancelar" travados e Escape não fecha; ao responder, fecha', async () => {
+  let responder!: () => void
+  salvar.mock.mockImplementation(() => new Promise(r => { responder = () => r({ ok: true, dados: undefined }) }))
+  const t = await montarEditar()
+  await t.clique(botao('Salvar pedido'))
+  assert.equal(botao('Salvando...')?.disabled, true)
+  assert.equal(botao('Cancelar')?.disabled, true)
+  const { act } = await import('react')
+  await act(async () => { document.activeElement?.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+  assert.match(textoDaTela(), /Editar pedido 30158/, 'Escape não fecha enquanto salva')
+  await act(async () => { responder(); await esperar(20) })
+  assert.doesNotMatch(textoDaTela(), /Editar pedido 30158/)
+})
+
+test('editar: quem gere peças manda o valor da peça (a outra metade da decisão 4)', async () => {
+  const t = await montarEditar('aux_adm')
+  await t.clique(botao('Salvar pedido'), 100)
+  assert.deepEqual(salvar.mock.calls[0].arguments[2], [{ tipo: 'acessorio', pecaId: 'cap', quantidade: 2, valorUnitario: 289.9 }])
 })
