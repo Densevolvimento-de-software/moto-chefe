@@ -397,6 +397,17 @@ export const nfeBlingArquivo = pgTable('nfe_bling_arquivo', {
   criadoEm:    timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({ pk: primaryKey({ columns: [t.grupoId, t.blingNfeId] }) }))
 
+// Credencial do Mercado Pago (maquininha Point) do grupo, uma linha por grupo (#51, ADR 0010).
+// token é CIFRADO (src/lib/cripto.ts) e nunca sai do servidor: a tela só recebe se está cadastrada.
+export const mercadopagoConfig = pgTable('mercadopago_config', {
+  grupoId:       uuid('grupo_id').primaryKey().references(() => grupos.id, { onDelete: 'cascade' }),
+  token:         text('token').notNull(),
+  userId:        text('user_id').notNull(),
+  publicKey:     text('public_key'),
+  atualizadoPor: uuid('atualizado_por').references(() => usuarios.id, { onDelete: 'set null' }),
+  atualizadoEm:  timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const notagatewayConfig = pgTable('notagateway_config', {
   grupoId:              uuid('grupo_id').primaryKey().references(() => grupos.id, { onDelete: 'cascade' }),
   token:                text('token').notNull(),
