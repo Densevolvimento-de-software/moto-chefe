@@ -3,8 +3,8 @@
 // resto da resposta fica de fora, inclusive um 4xx que ecoe o caminho com o empresaId.
 import { afterEach, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { consultarInutilizacaoNaNg, InutilizacaoRecusada, NotaGatewayIndisponivel, pedirInutilizacao, serieEUfDaEmpresaNaNg, ufDaEmpresa } from './client'
-import { cfgDeTeste as cfg, responderComFetch as responder, restaurarFetch } from './fetch-de-teste'
+import { cancelarNfe, consultarInutilizacaoNaNg, InutilizacaoRecusada, NotaGatewayIndisponivel, pedirInutilizacao, serieEUfDaEmpresaNaNg, ufDaEmpresa } from './client'
+import { cfgDeTeste as cfg, pendurarFetch, responderComFetch as responder, restaurarFetch } from './fetch-de-teste'
 
 const pedido = { idExterno: 'nfe-31601-1-inut-1', serie: '1', numeroInicial: 974, numeroFinal: 974, justificativa: 'Venda cancelada apos a rejeicao' }
 afterEach(restaurarFetch)
@@ -86,4 +86,16 @@ test('UF da empresa (venda): lê o endereço da mesma consulta e o erro HTTP nã
   assert.equal(await ufDaEmpresa(cfg), 'MG')
   responder(404, 'Rota /empresas/EMPRESA-SECRETA-456 nao encontrada')
   await assert.rejects(ufDaEmpresa(cfg), (e: Error) => e.message === 'Consultar Empresa respondeu HTTP 404')
+})
+
+test('consulta sem resposta da NG: desiste no tempo limite com TimeoutError, sem ficar presa', { timeout: 2_000 }, async () => {
+  pendurarFetch()
+  await assert.rejects(consultarInutilizacaoNaNg(cfg, 'nfe-31601-1-inut-1', 20), { name: 'TimeoutError' })
+})
+
+test('o pedido (POST) e o cancelamento (DELETE) não têm tempo limite: sem resposta, não se sabe se a NG recebeu', async () => {
+  const pedidos = responder(200)
+  await pedirInutilizacao(cfg, pedido)
+  await cancelarNfe(cfg, 'mova-31601-1')
+  assert.deepEqual(pedidos.map(p => [p.init.method, p.init.signal]), [['POST', undefined], ['DELETE', undefined]])
 })

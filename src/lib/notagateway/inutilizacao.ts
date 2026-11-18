@@ -210,3 +210,39 @@ export function decidirInutilizacao(ctx: ContextoInutilizacao): DecisaoInutiliza
   const ultima = [...pedidos].sort(maisRecentePrimeiro)[0]
   return { tipo: 'pode', serie: elegivel.serie, numero: elegivel.numero, ultimaNegada: ultima ? ultima.motivoStatus?.trim() || 'sem motivo informado' : null }
 }
+
+/**
+ * A NG reenvia o aviso "15 tentativas com intervalos de tempo progressivos entre cada uma delas, totalizando,
+ * em média, 4 horas" (https://docs.notagateway.com.br/v2/docs/webhook). Pendente mais velha que isso não
+ * vai receber aviso: a rotina de hora em hora consulta (#67).
+ */
+const HORAS_DO_REENVIO_DO_AVISO = 4
+
+export function limiteDaRotina(agora: Date): Date {
+  return new Date(agora.getTime() - HORAS_DO_REENVIO_DO_AVISO * 3_600_000)
+}
+
+/** O que a consulta deu para cada pendente da rotina; `pendente` = a NG ainda processa; `adiada` = nem consultou. */
+export type DesfechoDaRotina = 'resolvida' | 'pendente' | 'falha' | 'adiada'
+
+/**
+ * Depois de 240 s a rotina não começa outra consulta; o resto fica para a hora seguinte. É estimativa: a rota tem
+ * 300 s (maxDuration) e o fetch da consulta para em 15 s (client.ts), mas ler a credencial e gravar não têm limite.
+ * Sobram 60 s: até 15 s para a última consulta e ~45 s para ler, gravar e o resumo.
+ */
+const ORCAMENTO_DA_ROTINA_MS = 240_000
+
+export function orcamentoEsgotado(decorridoMs: number): boolean {
+  return decorridoMs >= ORCAMENTO_DA_ROTINA_MS
+}
+
+/** `ok: false` = grupo sem credencial no ambiente da linha (a consulta nem vai à NG). */
+export function desfechoDaConsulta(r: { ok: true; situacao: SituacaoInutilizacao } | { ok: false }): DesfechoDaRotina {
+  if (!r.ok) return 'falha'
+  return r.situacao === 'pendente' ? 'pendente' : 'resolvida'
+}
+
+export function resumoDaRotina(desfechos: readonly DesfechoDaRotina[]) {
+  const quantas = (d: DesfechoDaRotina) => desfechos.filter(x => x === d).length
+  return { consultadas: desfechos.length - quantas('adiada'), resolvidas: quantas('resolvida'), falhas: quantas('falha'), adiadas: quantas('adiada') }
+}
