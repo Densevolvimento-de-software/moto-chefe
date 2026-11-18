@@ -103,13 +103,15 @@ test('admin_geral segue forçando e desfazendo no grupo ativo (sem vermelho: já
   assert.deepEqual(await pagamentosDe('peca', alvo.id), JSON.parse(PAGAMENTOS))
 })
 
-test('vendedor e mecânico não forçam nem desfazem, nem na própria loja (sem vermelho: a recusa já valia)', async () => {
+test('vendedor e mecânico recebem Sem permissão antes de qualquer validação, nem na própria loja, e nada grava', async () => {
   const a = await contaComAlvos()
   for (const papel of ['vendedor', 'mecanico']) {
     usuario = sessao(a, papel)
     for (const tipo of TIPOS) {
       const alvo = { tipo, id: a.alvos[tipo] }
       assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, MOTIVO), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo}`)
+      // Papel antes de qualquer validação: motivo curto não pode responder outra coisa.
+      assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 'ok'), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo} sem motivo`)
       assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, 0), { ok: false, erro: 'Sem permissão' }, `${papel} desfaz ${tipo}`)
       assert.deepEqual(await pagamentosDe(tipo, alvo.id), JSON.parse(PAGAMENTOS))
     }

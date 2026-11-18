@@ -765,10 +765,9 @@ export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number
   return acao(() => forcarConciliacao(alvo, idx, motivo))
 }
 async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: string) {
+  const { usuario, lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
   const texto = motivo.trim()
   if (texto.length < 3) throw new RecusaUsuario('Informe o motivo da conciliação forçada')
-
-  const { usuario, lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
   const alvoPgto = pagamentoNo(pgtos, idx)
   if (!alvoPgto) throw new RecusaUsuario('Pagamento não encontrado')
   if (!precisaConciliar(alvoPgto.tipo)) throw new RecusaUsuario('Esse pagamento não precisa de conciliação')
