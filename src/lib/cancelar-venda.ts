@@ -8,3 +8,10 @@ export function travaDoPapel(papel: string, notaFiscalSaida: string | null): str
   }
   return null
 }
+
+/** A linha do diálogo quando o pedido tem várias motos (#23): cancelar uma venda dele cancela todas. */
+export function avisoDoPedidoNoCancelar(numeroDoPedido: number | null, motos: number): string | null {
+  if (motos < 2) return null
+  const pedido = numeroDoPedido == null ? 'de um pedido' : `do pedido nº ${numeroDoPedido},`
+  return `Esta venda é ${pedido} com ${motos} motos: as ${motos} vendas são canceladas juntas e as ${motos} motos voltam ao estoque.`
+}

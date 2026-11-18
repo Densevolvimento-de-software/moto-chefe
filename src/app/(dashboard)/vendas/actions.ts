@@ -27,11 +27,11 @@ import { situacaoNfDaVenda } from '@/lib/assinatura/consulta'
 import { motivoBloqueioNf } from '@/lib/assinatura/nf'
 import { lerContribuinteIcms, tipoPessoaDoDocumento } from '@/lib/documento'
 import { STATUS_MORTOS } from '@/lib/notagateway/status'
-import { notasParaTravaDaVenda, vendaTemNfViva } from '@/lib/notagateway/nf-viva'
+import { notasParaTravaDaVenda } from '@/lib/notagateway/nf-viva'
 import { travaDoCancelamentoDaVendaAction } from './nfe-propria-actions'
-import { podeCriarPedido, podeEfetivarPedido, foraDaMoto, listaDeMotosValida, motosSemRepetir, valorDeMotoInvalido, aprovacaoDoPedido, valorDaEfetivacao, valoresDaEfetivacao, ITENS_DO_PEDIDO_MUDARAM, VENDA_DE_PEDIDO_NAO_CANCELA, VENDA_DE_PEDIDO_NAO_EDITA, type MotoComValor, type MotoDoPedidoInput, type PecaDoPedidoInput } from '@/lib/pedido-venda-regras'
+import { podeCriarPedido, podeEfetivarPedido, foraDaMoto, listaDeMotosValida, motosSemRepetir, valorDeMotoInvalido, aprovacaoDoPedido, valorDaEfetivacao, valoresDaEfetivacao, ITENS_DO_PEDIDO_MUDARAM, VENDA_DE_PEDIDO_NAO_EDITA, type MotoComValor, type MotoDoPedidoInput, type PecaDoPedidoInput } from '@/lib/pedido-venda-regras'
 import { podeGerirPecas } from '../pecas/papeis'
-import { PAPEIS_QUE_CANCELAM_VENDA, travaDoPapel } from '@/lib/cancelar-venda'
+import { PAPEIS_QUE_CANCELAM_VENDA } from '@/lib/cancelar-venda'
 import { alterarEntregaDoPedidoTx, efetivarPedidoTx, pecasDoPedido, pedirAprovacaoDoPedidoTx, type PedidoEmAprovacao } from '@/lib/efetivar-pedido'
 import { cancelarPedidoTx, criarPedidoTx, gravarMotoDoPedido, motosDoPedidoTx, salvarPedidoPendenteTx, trocarMotosDoPedidoTx, vendaDePedidoComVariasMotos } from '@/lib/pedido-venda'
 import { conferirEntrega, entregaParaLog, freteDaVenda, motoNaNota, recusaDoFreteDaVendaEfetivada, totalComFrete, travaDaAlteracaoDaEntrega, travaDaEntregaEmOutroEstado, type EntregaVenda } from '@/lib/notagateway/entrega'
@@ -49,7 +49,7 @@ import { vendedorDaConta } from '@/lib/vendedor-da-conta'
 import { reservaDoUsuario } from '@/lib/reserva-do-usuario'
 import { vendaDoUsuario, vendaDoUsuarioParaNf } from '@/lib/venda-do-usuario'
 import { podeOperarNfSaida } from './papeis-nf-saida'
-import { apagarVendaTx } from '@/lib/apagar-venda'
+import { cancelarPedidoEfetivadoTx } from '@/lib/cancelar-pedido-efetivado'
 import { abaixoDoMinimo, aprovacaoNecessaria, MOTIVO_OBRIGATORIO, motivoDaAprovacao, podeVenderAbaixoDoMinimo, temPagamentoSensivel, type TipoAprovacaoVenda } from '@/lib/aprovacao-venda'
 import { gravarPedidoDeAprovacaoTx, linhasPendentesDoPedido } from '@/lib/pedido-de-aprovacao'
 import { apagarArquivosAssinatura } from '@/lib/assinatura/infra'
@@ -1149,54 +1149,15 @@ export async function cancelarVendaCompletaAction(vendaId: string, motivo: strin
   if (usuario.papel === 'aux_adm' && vendaRecord.lojaId !== usuario.lojaId) {
     return { ok: false as const, error: 'Sem permissão para cancelar venda de outra loja' }
   }
-  if (await vendaDePedidoComVariasMotos(db, vendaRecord.pedidoVendaId)) return { ok: false as const, error: VENDA_DE_PEDIDO_NAO_CANCELA }
 
   // ADR-0014. A recusa volta como valor porque, em produção, o Next não leva ao
-  // cliente a mensagem de um erro lançado na action.
+  // cliente a mensagem de um erro lançado na action. A trava olha todas as vendas do pedido (#23).
   const t = await travaDoCancelamentoDaVendaAction(vendaId)
   if (!t.ok) return { ok: false as const, error: t.error }
   if (t.trava) return { ok: false as const, error: t.trava, travada: true }
 
-  // null: uma NF entrou na venda entre a conferência acima e a trava da linha.
-  const apagada = await db.transaction(async (tx) => {
-    // Uma emissão na mesma hora gravaria a nota e iria à SEFAZ, e o DELETE da
-    // venda a deixaria órfã e viva. Com a linha da venda travada, a emissão
-    // espera e falha na chave; a que chegou antes aparece na conferência abaixo.
-    const [travada] = await tx.select({ notaFiscalSaida: vendas.notaFiscalSaida }).from(vendas).where(eq(vendas.id, vendaId)).for('update')
-    // Um "Confirmar NF" entre a conferência e aqui também trava o aux_adm (#191).
-    if (travada && travaDoPapel(usuario.papel, travada.notaFiscalSaida)) return null
-    if (await vendaTemNfViva(tx, vendaId)) return null
-
-    // Reverter moto para montada/disponível
-    await tx.update(motos)
-      .set({ status: 'montada', disponibilidade: 'disponivel' })
-      .where(eq(motos.id, vendaRecord.motoId))
-
-    // Cancelar o pedido de venda
-    await tx.update(pedidosVenda)
-      .set({ status: 'cancelado' })
-      .where(eq(pedidosVenda.id, vendaRecord.pedidoVendaId))
-
-    const { desvinculados, arquivosAssinatura } = await apagarVendaTx(tx, vendaId)
-
-    // Registrar no histórico
-    const recebido = desvinculados.valor > 0
-      ? ` — Recebimentos desvinculados: ${desvinculados.cartao} cartão + ${desvinculados.pix} PIX (R$ ${desvinculados.valor.toFixed(2)})`
-      : ''
-    const assinaturas = desvinculados.documentosAssinados > 0
-      ? ` — ${desvinculados.documentosAssinados} documento(s) ASSINADO(S) removido(s) com a venda`
-      : ''
-    await tx.insert(historicoEstoque).values({
-      motoId: vendaRecord.motoId,
-      lojaDestinoId: vendaRecord.lojaId,
-      usuarioId: usuario.id,
-      tipo: 'mudanca_status',
-      statusAnterior: 'vendida',
-      statusNovo: 'montada',
-      observacao: `Venda cancelada — Cliente: ${vendaRecord.clienteNome} — Valor: R$ ${Number(vendaRecord.valor).toFixed(2)}${recebido}${assinaturas} — Motivo: ${motivo}`,
-    })
-    return { desvinculados, arquivosAssinatura }
-  })
+  // O pedido inteiro sai junto (#23, Q16). null: uma NF entrou numa venda dele entre a conferência acima e a trava das linhas.
+  const apagada = await db.transaction(tx => cancelarPedidoEfetivadoTx(tx, { pedidoVendaId: vendaRecord.pedidoVendaId, usuario, motivo }))
   if (!apagada) {
     const agora = await travaDoCancelamentoDaVendaAction(vendaId)
     if (agora.ok && agora.trava) return { ok: false as const, error: agora.trava, travada: true }
@@ -1205,11 +1166,11 @@ export async function cancelarVendaCompletaAction(vendaId: string, motivo: strin
 
   await apagarArquivosAssinatura(apagada.arquivosAssinatura)
 
-  // A venda foi apagada: o detalhe precisa bastar sozinho.
-  await registrarAcaoSensivelSemFalhar({
-    tipo: 'venda_cancelada', usuarioId: usuario.id, lojaId: vendaRecord.lojaId,
-    detalhe: { vendaId, numeroVenda: vendaRecord.numero, cliente: vendaRecord.clienteNome, valor: vendaRecord.valor, motivo: motivo.trim() },
-  })
+  // As vendas foram apagadas: o detalhe de cada uma precisa bastar sozinho.
+  await Promise.all(apagada.vendas.map(v => registrarAcaoSensivelSemFalhar({
+    tipo: 'venda_cancelada', usuarioId: usuario.id, lojaId: v.lojaId,
+    detalhe: { vendaId: v.id, numeroVenda: v.numero, cliente: v.clienteNome, valor: v.valor, motivo: motivo.trim() },
+  })))
 
   revalidatePath('/vendas')
   revalidatePath('/estoque')

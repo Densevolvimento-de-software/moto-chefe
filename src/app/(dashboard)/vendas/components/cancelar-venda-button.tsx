@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Loader2, XCircle } from 'lucide-react'
 import { cancelarVendaCompletaAction } from '../actions'
 import { travaDoCancelamentoDaVendaAction } from '../nfe-propria-actions'
+import { avisoDoPedidoNoCancelar } from '@/lib/cancelar-venda'
 
 type Props = {
   vendaId: string
@@ -35,7 +36,7 @@ const MOTIVOS = ['Cliente desistiu', 'Financiamento negado', 'Lançada errada', 
 
 type Conferencia =
   | { estado: 'conferindo' }
-  | { estado: 'livre' }
+  | { estado: 'livre'; acontece: readonly string[] }
   | { estado: 'travada'; trava: string }
   | { estado: 'falhou'; erro: string }
 
@@ -59,7 +60,9 @@ export function CancelarVendaButton({ vendaId, descricao, valorRecebido = 0, not
     setConferencia({ estado: 'conferindo' })
     try {
       const t = await travaDoCancelamentoDaVendaAction(vendaId)
-      setConferencia(!t.ok ? { estado: 'falhou', erro: t.error } : t.trava ? { estado: 'travada', trava: t.trava } : { estado: 'livre' })
+      const aviso = t.ok ? avisoDoPedidoNoCancelar(t.numeroDoPedido, t.motosNoPedido) : null
+      setConferencia(!t.ok ? { estado: 'falhou', erro: t.error } : t.trava ? { estado: 'travada', trava: t.trava }
+        : { estado: 'livre', acontece: aviso ? [aviso, ...ACONTECE] : ACONTECE })
     } catch {
       setConferencia({ estado: 'falhou', erro: 'sem resposta do servidor' })
     }
@@ -127,7 +130,7 @@ export function CancelarVendaButton({ vendaId, descricao, valorRecebido = 0, not
             <div>
               <p className="font-medium">Ao cancelar</p>
               <ul className="mt-2 space-y-1.5 text-sm">
-                {ACONTECE.map(t => (
+                {conferencia.acontece.map(t => (
                   <li key={t} className="flex gap-2"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-muted-foreground" />{t}</li>
                 ))}
               </ul>

@@ -568,15 +568,13 @@ test('D13: 2ª moto vendida por fora ou em transporte depois do pedido: recusa c
   }
 })
 
-test('D21: cancelar e editar uma venda do pedido de 2 motos são recusados até o #23 (D-F, D-I); nada muda', async () => {
+test('D21: editar uma venda do pedido de 2 motos é recusado até a tela do pedido (D-I); nada muda. O cancelar é do pedido inteiro (#23)', async () => {
   const c = await semearConta()
   const [m1, m2] = await c.motos(2)
   const pedidoId = await criarPedido(c, [m1, m2])
   usuario = c.aux
   assert.deepEqual(await efetivarMotos(c, pedidoId, [{ motoId: m1, valor: 10000 }, { motoId: m2, valor: 10000 }], [{ tipo: 'pix', valor: 20000 }]), OK)
   const [{ id: vendaId }] = await execRows(sql`select id from vendas where moto_id = ${m2}`)
-  assert.deepEqual(await actions.cancelarVendaCompletaAction(vendaId as string, 'desistiu'),
-    { ok: false, error: 'Esta venda faz parte de um pedido com várias motos. O cancelamento é do pedido inteiro e ainda não está disponível.' })
   assert.deepEqual(await actions.editarVendaAction(vendaId as string, { valor: '10000', dataVenda: '2026-11-17', pagamentos: [{ tipo: 'pix', valor: 10000 }], clienteNome: 'Outro', clienteCpf: CPF }),
     recusa('Esta venda faz parte de um pedido com várias motos. A edição é do pedido inteiro e ainda não está disponível.'))
   assert.deepEqual((await vendasDoPedido(pedidoId)).map(v => ({ moto_id: v.moto_id, forma_pagamento: v.forma_pagamento })),
