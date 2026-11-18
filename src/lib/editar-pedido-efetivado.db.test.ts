@@ -23,10 +23,12 @@ type Actions = typeof import('@/app/(dashboard)/vendas/actions')
 let db: Db['db']
 let execRows: Db['execRows']
 let actions: Actions
+let listarVendas: typeof import('@/lib/queries/vendas')['listarVendas']
 
 before(async () => {
   ;({ db, execRows } = await import('@/lib/db'))
   actions = await import('@/app/(dashboard)/vendas/actions')
+  ;({ listarVendas } = await import('@/lib/queries/vendas'))
 })
 after(async () => {
   authMock.restore()
@@ -200,9 +202,99 @@ test('E9: a leitura do Editar traz o pedido para a tela (cliente, pagamento, mot
 
   await nfAutorizada(a, p.vendaDa(m2))
   const comNota = await actions.pedidoEfetivadoAction(p.vendaDa(m1))
-  assert.deepEqual(comNota.ok && comNota.dados.notaQueTrava, { numero: '27' })
+  assert.deepEqual(comNota.ok && comNota.dados.notaQueTrava, { numero: '27', por: 'nota' })
 
   usuario = b.aux
   assert.deepEqual(await actions.pedidoEfetivadoAction(p.vendaDa(m1)), recusa('Venda não encontrada'))
   assert.deepEqual(await actions.pedidoEfetivadoAction(randomUUID()), recusa('Venda não encontrada'))
+})
+
+const BRINDE = (c: ContaDoPedido) => [{ tipo: 'brinde' as const, pecaId: c.capacete, quantidade: 1 }]
+
+test('S2: a lista de vendas traz quantas vendas e quantas peças o pedido de cada venda tem', async () => {
+  const c = await semearConta()
+  const [m1, m2, m3, m4] = await c.motos(4)
+  const duas = await pedidoEfetivado(c, [m1, m2])
+  const soBrinde = await efetivarPedidoSintetico({ execRows }, actions, p => { usuario = p }, c, [m3], 0, BRINDE(c))
+  const semPeca = await efetivarPedidoSintetico({ execRows }, actions, p => { usuario = p }, c, [m4], 0, [])
+  const lista = await listarVendas({ lojaId: [c.base.lojaId] })
+  const doPedido = (vendaId: string) => { const v = lista.find(x => x.id === vendaId)!; return [v.vendasNoPedido, v.pecasNoPedido] }
+  assert.deepEqual([doPedido(duas.vendaDa(m1)), doPedido(duas.vendaDa(m2)), doPedido(soBrinde.vendaDa(m3)), doPedido(semPeca.vendaDa(m4))],
+    [[2, 1], [2, 1], [1, 1], [1, 0]])
+})
+
+test('S3: o Editar venda recusa venda de pedido com peça (só brinde também) e de 2 motos; venda de 1 moto sem peça edita como hoje', async () => {
+  const c = await semearConta()
+  const [m1, m2, m3, m4] = await c.motos(4)
+  const comBrinde = await efetivarPedidoSintetico({ execRows }, actions, p => { usuario = p }, c, [m1], 0, BRINDE(c))
+  const comAcessorio = await efetivarPedidoSintetico({ execRows }, actions, p => { usuario = p }, c, [m2])
+  const semPeca = await efetivarPedidoSintetico({ execRows }, actions, p => { usuario = p }, c, [m3], 0, [])
+  const duas = await pedidoEfetivado(c, [m4, (await c.motos(1))[0]])
+  usuario = c.aux
+  const editar = (vendaId: string, valor: number) => actions.editarVendaAction(vendaId, {
+    valor: String(valor), dataVenda: '2026-11-18', pagamentos: [{ tipo: 'pix', valor }], clienteNome: 'Outro', clienteCpf: CPF_SINTETICO,
+  })
+  const frase = recusa('Esta venda faz parte de um pedido com várias motos, brinde ou acessório. A edição é do pedido inteiro.')
+  for (const vendaId of [comBrinde.vendaDa(m1), comAcessorio.vendaDa(m2), duas.vendaDa(m4)]) assert.deepEqual(await editar(vendaId, 10000), frase)
+  assert.deepEqual(await editar(semPeca.vendaDa(m3), 10000), OK)
+  assert.deepEqual((await execRows(sql`select cliente_nome from vendas where id = ${comBrinde.vendaDa(m1)}`))[0], { cliente_nome: 'Cliente sintético' })
+})
+
+test('S4: a leitura do Editar traz o mínimo de cada moto (do modelo, na loja do pedido) e as taxas, para o selo', async () => {
+  const c = await semearConta()
+  const [m1, m2] = (await c.motos(2)).sort()
+  const p = await pedidoEfetivado(c, [m1, m2])
+  usuario = c.aux
+  const semPreco = await actions.pedidoEfetivadoAction(p.vendaDa(m1))
+  assert.deepEqual(semPreco.ok && [semPreco.dados.motos.map(m => m.minimo), semPreco.dados.taxas], [[null, null], null])
+  const [{ modelo }] = await execRows(sql`select mo.modelo from motos m join modelos mo on mo.id = m.modelo_id where m.id = ${m1}`)
+  await execRows(sql`insert into precificacao (grupo_id, nome, valor_minimo) values (${c.base.grupoId}, ${modelo}, '8000')`)
+  await execRows(sql`insert into configuracao_taxas (grupo_id) values (${c.base.grupoId})`)
+  const comPreco = await actions.pedidoEfetivadoAction(p.vendaDa(m1))
+  assert.deepEqual(comPreco.ok && comPreco.dados.motos.map(m => m.minimo), [8000, 8000])
+  assert.equal(comPreco.ok && comPreco.dados.taxas !== null, true)
+})
+
+test('S5: data da venda fora do formato é recusada com frase; nada muda', async () => {
+  const c = await semearConta()
+  const motoIds = await c.motos(2)
+  const p = await pedidoEfetivado(c, motoIds)
+  usuario = c.socio
+  for (const dataVenda of ['18/11/2026', '', 'amanhã']) {
+    assert.deepEqual(await actions.editarPedidoEfetivadoAction(p.vendaDa(motoIds[0]), { ...formulario(c, motoIds, 20500), clienteNome: 'Outro', dataVenda }),
+      recusa('Data da venda inválida'), dataVenda)
+  }
+  assert.deepEqual((await vendasDoPedido(p.pedidoId)).map(v => v.cliente_nome), ['Cliente sintético', 'Cliente sintético'])
+})
+
+test('S6: aux_adm com nº de NF numa venda do pedido não muda o cliente: frase do papel; leitura diz que a trava é do papel', async () => {
+  const c = await semearConta()
+  const motoIds = await c.motos(2)
+  const p = await pedidoEfetivado(c, motoIds)
+  await execRows(sql`update vendas set nota_fiscal_saida = '4321' where id = ${p.vendaDa(motoIds[1])}`)
+  usuario = c.aux
+  assert.deepEqual(await actions.editarPedidoEfetivadoAction(p.vendaDa(motoIds[0]), { ...formulario(c, motoIds, 20500), clienteNome: 'Outro' }),
+    recusa('Esta venda tem NF registrada (nº 4321). Cliente e valores só mudam com os administradores. Dá para corrigir o pagamento.'))
+  const lido = await actions.pedidoEfetivadoAction(p.vendaDa(motoIds[0]))
+  assert.deepEqual(lido.ok && lido.dados.notaQueTrava, { numero: '4321', por: 'papel' })
+})
+
+test('S7: trocar CPF por CNPJ e de volta: o documento e o representante mudam; indicador de IE e endereço seguem gravados', async () => {
+  const c = await semearConta()
+  const motoIds = (await c.motos(2)).sort()
+  const p = await pedidoEfetivado(c, motoIds)
+  await execRows(sql`update vendas set cliente_cidade = 'Timon', cliente_indicador_ie = 'nao_contribuinte' where pedido_venda_id = ${p.pedidoId}`)
+  usuario = c.socio
+  const base = formulario(c, motoIds, 20500)
+  const cliente = () => execRows(sql`select cliente_cpf, representante_nome, cliente_indicador_ie, cliente_cidade from vendas
+    where pedido_venda_id = ${p.pedidoId} order by moto_id`)
+
+  assert.deepEqual(await actions.editarPedidoEfetivadoAction(p.vendaDa(motoIds[0]), { ...base, clienteNome: 'Empresa Sintética', clienteCpf: '11.222.333/0001-81' }), OK)
+  const pj = { cliente_cpf: '11.222.333/0001-81', representante_nome: null, cliente_indicador_ie: 'nao_contribuinte', cliente_cidade: 'Timon' }
+  assert.deepEqual(await cliente(), [pj, pj])
+
+  await execRows(sql`update vendas set representante_nome = 'Sócio Sintético' where pedido_venda_id = ${p.pedidoId}`)
+  assert.deepEqual(await actions.editarPedidoEfetivadoAction(p.vendaDa(motoIds[0]), base), OK)
+  const pf = { cliente_cpf: CPF_SINTETICO, representante_nome: null, cliente_indicador_ie: null, cliente_cidade: 'Timon' }
+  assert.deepEqual(await cliente(), [pf, pf])
 })

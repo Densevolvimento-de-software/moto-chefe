@@ -51,7 +51,7 @@ export async function podeAgirNaLoja(
 
 // Editar venda: sócio (e a persona do admin_rede) em qualquer loja do grupo que vê, como
 // abrir o registro; aux_adm preso à própria loja. Tela e action usam esta mesma regra (#576).
-const PAPEIS_EDITAM_VENDA = new Set(['admin_geral', 'admin_socio', 'aux_adm'])
+export const PAPEIS_EDITAM_VENDA: ReadonlySet<string> = new Set(['admin_geral', 'admin_socio', 'aux_adm'])
 
 export async function podeEditarVendaDaLoja(
   usuario: { papel: string; lojaId: string | null; gruposAcesso?: readonly string[] | null; contaId: string | null; grupoLiberado?: string | null },

@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 import type { db } from '@/lib/db'
 import { historicoEstoque, motos, pecasCatalogo, pedidosVenda, pedidosVendaItens, reservas, transferencias, vendas } from '@/lib/db/schema'
 import {
@@ -254,8 +254,17 @@ export async function gravarMotoDoPedido(
     })
 }
 
-/** A venda é de um pedido efetivado com várias motos (#20): o Editar venda recusa; a edição é a do pedido (#23), pela tela do 25d. */
-export async function vendaDePedidoComVariasMotos(exec: Pick<Tx, 'select'>, pedidoVendaId: string): Promise<boolean> {
-  const [{ n }] = await exec.select({ n: count() }).from(vendas).where(eq(vendas.pedidoVendaId, pedidoVendaId))
-  return n > 1
+/**
+ * Quantas vendas e quantas vendas de peça (brinde e acessório, #778) o pedido tem: o que `editaPeloPedido` (P6 do #23) lê, na lista
+ * de vendas e no Editar venda. `pedidoId` é a coluna de fora já qualificada (sql.raw): numa consulta sem join o Drizzle a deixaria
+ * sem tabela, e ela casaria com a de dentro.
+ */
+export const contagemDoPedidoSql = (pedidoId: SQL) => ({
+  vendas: sql<number>`(select count(*)::int from vendas v where v.pedido_venda_id = ${pedidoId})`,
+  pecas: sql<number>`(select count(*)::int from vendas_pecas vp where vp.pedido_venda_id = ${pedidoId})`,
+})
+
+export async function contagemDoPedido(exec: Pick<Tx, 'select'>, pedidoVendaId: string): Promise<{ vendas: number; pecas: number }> {
+  const [c] = await exec.select(contagemDoPedidoSql(sql.raw('"pedidos_venda"."id"'))).from(pedidosVenda).where(eq(pedidosVenda.id, pedidoVendaId))
+  return c ?? { vendas: 0, pecas: 0 }
 }

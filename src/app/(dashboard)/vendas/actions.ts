@@ -11,7 +11,7 @@ import { revalidatePath } from 'next/cache'
 import { liquidoDaMoto, validarReserva } from '@/lib/preco-minimo'
 import { pagamentosFecham, descreverPagamentos, formaPagamentoDaVenda, pagamentosIncompletos, projetarPagamentos, PAGAMENTO_INCOMPLETO, SOMA_PAGAMENTOS_DIFERE, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
 import { lancamentosDinheiroDaVenda } from '@/lib/caixa-venda-moto'
-import { podeAbrirRegistroDaLoja, podeEditarVendaDaLoja, podeVenderMotoDaLoja } from '@/lib/acesso-registro'
+import { PAPEIS_EDITAM_VENDA, podeAbrirRegistroDaLoja, podeEditarVendaDaLoja, podeVenderMotoDaLoja } from '@/lib/acesso-registro'
 import { clientesDoEscopo, contaDaLoja, lojasDoEscopo } from '@/lib/conta'
 import { conferirComprador, conferirCompradorDaVenda, gravarCompradorDaVenda, type CompradorVenda } from '@/lib/venda-comprador'
 import { contaDoGrupoAtivo, getGrupoIdDaLoja, podeAprovarVendaBaixoValor, podeAprovarPagamentoSensivelNaLoja, podeUsuarioVerGrupo } from '@/lib/grupo'
@@ -19,7 +19,7 @@ import { aplicarPagamentoOS, type DadosPagamentoOS } from '@/lib/pagamento-os'
 import { aplicarVendaPeca, type DadosVendaPeca } from '@/lib/venda-peca'
 import { virarLeadKommo, type ResultadoVirarLead } from '@/lib/kommo'
 import { notificarVendaWhatsapp, type ResultadoAvisoVenda } from '@/lib/whatsapp/venda'
-import { parseDataInput, hojeBrt } from '@/lib/data-venda'
+import { diaValido, parseDataInput, hojeBrt } from '@/lib/data-venda'
 import { disponibilidadeAposCancelarReserva, motivoBloqueioCancelarReserva, motivoBloqueioPedidoAprovacao, motivoParaNaoVender } from '@/lib/estado-moto'
 import { validarOrigemVenda, normalizarDetalhe } from '@/lib/origem-venda'
 import { buscarOrigemParaValidar } from '@/lib/queries/origens-venda'
@@ -33,7 +33,7 @@ import { podeCriarPedido, podeEfetivarPedido, foraDaMoto, listaDeMotosValida, mo
 import { podeGerirPecas } from '../pecas/papeis'
 import { PAPEIS_QUE_CANCELAM_VENDA } from '@/lib/cancelar-venda'
 import { alterarEntregaDoPedidoTx, efetivarPedidoTx, pecasDoPedido, pedirAprovacaoDoPedidoTx, type PedidoEmAprovacao } from '@/lib/efetivar-pedido'
-import { cancelarPedidoTx, criarPedidoTx, gravarMotoDoPedido, motosDoPedidoTx, salvarPedidoPendenteTx, trocarMotosDoPedidoTx, vendaDePedidoComVariasMotos } from '@/lib/pedido-venda'
+import { cancelarPedidoTx, contagemDoPedido, criarPedidoTx, gravarMotoDoPedido, motosDoPedidoTx, salvarPedidoPendenteTx, trocarMotosDoPedidoTx } from '@/lib/pedido-venda'
 import { conferirEntrega, entregaParaLog, freteDaVenda, motoNaNota, recusaDoFreteDaVendaEfetivada, totalComFrete, travaDaAlteracaoDaEntrega, travaDaEntregaEmOutroEstado, type EntregaVenda } from '@/lib/notagateway/entrega'
 import { ufDoEmissorDaMoto } from '@/lib/notagateway/grupo-emissor'
 import { travaDoValorVenda } from '@/lib/valor-venda'
@@ -51,7 +51,7 @@ import { vendaDoUsuario, vendaDoUsuarioParaNf } from '@/lib/venda-do-usuario'
 import { podeOperarNfSaida } from './papeis-nf-saida'
 import { cancelarPedidoEfetivadoTx } from '@/lib/cancelar-pedido-efetivado'
 import { editarPedidoEfetivadoTx, vendasETravaDoPedido } from '@/lib/editar-pedido-efetivado'
-import { acessoriosDoFormulario, CAMPOS_DO_COMPRADOR, compradorDoFormulario } from '@/lib/pedido-efetivado-regras'
+import { acessoriosDoFormulario, CAMPOS_DO_COMPRADOR, compradorDoFormulario, editaPeloPedido } from '@/lib/pedido-efetivado-regras'
 import { abaixoDoMinimo, aprovacaoNecessaria, MOTIVO_OBRIGATORIO, motivoDaAprovacao, podeVenderAbaixoDoMinimo, temPagamentoSensivel, type TipoAprovacaoVenda } from '@/lib/aprovacao-venda'
 import { gravarPedidoDeAprovacaoTx, linhasPendentesDoPedido } from '@/lib/pedido-de-aprovacao'
 import { apagarArquivosAssinatura } from '@/lib/assinatura/infra'
@@ -1446,8 +1446,6 @@ export type PagamentoEditar = {
   autorizacao?: string
 }
 
-const PAPEIS_QUE_EDITAM_VENDA = ['admin_geral', 'admin_socio', 'aux_adm']
-
 export async function editarVendaAction(...a: Parameters<typeof editarVenda>) {
   return acao(() => editarVenda(...a))
 }
@@ -1480,7 +1478,7 @@ async function editarVenda(vendaId: string, dados: {
 }) {
   const usuario = await getUsuarioLogado()
 
-  if (!PAPEIS_QUE_EDITAM_VENDA.includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  if (!PAPEIS_EDITAM_VENDA.has(usuario.papel)) throw new RecusaUsuario('Sem permissão')
 
   // Busca venda atual para validações de acesso e sincronização
   const vendaAtual = await vendaDoUsuario(usuario, eq(vendas.id, vendaId))
@@ -1489,7 +1487,7 @@ async function editarVenda(vendaId: string, dados: {
   if (!(await podeEditarVendaDaLoja(usuario, vendaAtual.lojaId))) {
     throw new RecusaUsuario('Sem permissão para editar vendas de outra loja')
   }
-  if (await vendaDePedidoComVariasMotos(db, vendaAtual.pedidoVendaId)) throw new RecusaUsuario(VENDA_DE_PEDIDO_NAO_EDITA)
+  if (editaPeloPedido(await contagemDoPedido(db, vendaAtual.pedidoVendaId))) throw new RecusaUsuario(VENDA_DE_PEDIDO_NAO_EDITA)
   await conferirMaquininhas(db, vendaAtual.lojaId, dados.pagamentos, operadorasGravadas(vendaAtual.pagamentos))
 
   // Origem é corrigível: campo obrigatório que só pudesse ser preenchido uma vez
@@ -1579,7 +1577,7 @@ async function editarVenda(vendaId: string, dados: {
 
 /** A venda que o usuário pode editar (Conta no SQL, loja como no Editar venda); outra Conta e id inexistente dão a mesma frase. */
 async function vendaParaEditar(usuario: Awaited<ReturnType<typeof getUsuarioLogado>>, vendaId: string) {
-  if (!PAPEIS_QUE_EDITAM_VENDA.includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  if (!PAPEIS_EDITAM_VENDA.has(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const venda = ehUuid(vendaId) ? await vendaDoUsuario(usuario, eq(vendas.id, vendaId)) : null
   if (!venda) throw new RecusaUsuario('Venda não encontrada')
   if (!(await podeEditarVendaDaLoja(usuario, venda.lojaId))) throw new RecusaUsuario('Sem permissão para editar vendas de outra loja')
@@ -1597,8 +1595,11 @@ export async function pedidoEfetivadoAction(vendaId: string) {
     const itens = await itensDoPedido(usuario, venda.pedidoVendaId)
     if (!itens) throw new RecusaUsuario('Venda não encontrada')
     const { doPagamento: v, frete, trava } = await vendasETravaDoPedido(db, venda.pedidoVendaId, usuario.papel)
+    // O selo "No mínimo/Abaixo do mínimo" do protótipo: a mesma leitura do Efetivar.
+    const { minimo, taxas } = await precosDasMotos(itens.motos.map(m => m.id), itens.lojaId)
     return {
-      ...itens, frete, notaQueTrava: trava, pagamentos: projetarPagamentos(v.pagamentos ?? []),
+      ...itens, motos: itens.motos.map(m => ({ ...m, minimo: minimo(m.id) })), taxas,
+      frete, notaQueTrava: trava, pagamentos: projetarPagamentos(v.pagamentos ?? []),
       comprador: Object.fromEntries(CAMPOS_DO_COMPRADOR.map(k => [k, v[k]])) as Record<(typeof CAMPOS_DO_COMPRADOR)[number], string | null>,
       dataVenda: hojeBrt(v.dataVenda), vendedorId: v.vendedorId, origemId: v.origemId, origemDetalhe: v.origemDetalhe,
     }
@@ -1619,6 +1620,8 @@ async function editarPedidoEfetivado(vendaId: string, dados: CompradorVenda & {
 }) {
   const usuario = await getUsuarioLogado()
   const venda = await vendaParaEditar(usuario, vendaId)
+  // parseDataInput lança erro cru dentro da transação: a data se confere antes, com frase.
+  if (!diaValido(dados.dataVenda)) throw new RecusaUsuario('Data da venda inválida')
   const motos = valorDaEfetivacao(dados.motos)
   const acessorios = acessoriosDoFormulario(dados.acessorios)
   if (!Array.isArray(motos) || !acessorios) throw new RecusaUsuario('Valor inválido')
@@ -1632,7 +1635,7 @@ async function editarPedidoEfetivado(vendaId: string, dados: CompradorVenda & {
 
   await db.transaction(tx => editarPedidoEfetivadoTx(tx, {
     pedidoVendaId: venda.pedidoVendaId, usuario,
-    edicao: { comprador, dataVenda: String(dados.dataVenda), vendedorId: dados.vendedorId ?? null, origem, pagamentos, motos, acessorios },
+    edicao: { comprador, dataVenda: dados.dataVenda, vendedorId: dados.vendedorId ?? null, origem, pagamentos, motos, acessorios },
   }))
   revalidatePath('/vendas')
   revalidatePath('/caixa')
