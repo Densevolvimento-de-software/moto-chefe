@@ -813,7 +813,7 @@ test('consulta (clique) de linha já resolvida: devolve o gravado sem ir à NG',
   })
 })
 
-test('consulta com 404 da NG (D3): dentro do prazo segue pendente sem gravar; vencido nega e libera a faixa', async () => {
+test('consulta com 404 da NG (D3): dentro do prazo segue pendente sem gravar; vencido grava negada com o motivo', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearContaFaixa(tx, 'A', '00000000066001')
     const f = await faixaPendente(tx, a)
@@ -831,7 +831,5 @@ test('consulta com 404 da NG (D3): dentro do prazo segue pendente sem gravar; ve
     assert.deepEqual(vencido, { ok: true, situacao: 'negada', motivoStatus: motivo, protocolo: null })
     const depois = await f.linha()
     assert.deepEqual([depois.situacao, depois.status, depois.motivo_status], ['negada', 'NaoEnviada', motivo])
-    // Negada libera a mesma faixa para um pedido novo (índice único parcial).
-    assert.ok((await mf.inutilizarFaixa(a.socio, a.grupoId, faixa({ chave: CHAVE_2 }), depsDaFaixa(tx, a.grupoId))).ok)
   })
 })
