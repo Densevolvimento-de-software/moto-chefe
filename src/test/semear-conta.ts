@@ -9,7 +9,7 @@ import { sql } from 'drizzle-orm'
  * Não importa `@/lib/db`: a URL do banco só vale depois do `before` de cada teste. Por isso `tx` é
  * tipado pelo que o helper usa (`execute`), que serve ao `Tx` de qualquer arquivo.
  */
-type Executor = { execute(q: ReturnType<typeof sql>): Promise<unknown> }
+export type Executor = { execute(q: ReturnType<typeof sql>): Promise<unknown> }
 
 export type Base = { prefixo: string; nome: string; contaId: string; grupoId: string; lojaId: string }
 
@@ -28,8 +28,14 @@ export function emailDeTeste(prefixo: string, nome: string, rotulo: string): str
   return `${rotulo}-${prefixo}-${nome}@teste.invalid`.toLowerCase()
 }
 
-const idDoInsert = async (tx: Executor, q: ReturnType<typeof sql>) =>
+/** Id da linha do `insert ... returning id`. */
+export const idDoInsert = async (tx: Executor, q: ReturnType<typeof sql>) =>
   ((await tx.execute(q)) as unknown as { rows: { id: string }[] }).rows[0].id
+
+/** Modelo de moto para os testes de banco; o `rotulo` vira o nome do modelo. */
+export const semearModelo = (tx: Executor, rotulo: string) =>
+  idDoInsert(tx, sql`insert into modelos (marca, modelo, categoria, potencia_w, motor, velocidade_max)
+    values ('M', ${rotulo}, 'autopropelido', '1000', 'hub', '32') returning id`)
 
 export const semearLoja = (tx: Executor, grupoId: string, nome: string) =>
   idDoInsert(tx, sql`insert into lojas (nome, cidade, endereco, grupo_id) values (${nome}, 'C', 'R', ${grupoId}) returning id`)
