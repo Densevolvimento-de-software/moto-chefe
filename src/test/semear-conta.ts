@@ -32,6 +32,11 @@ export function emailDeTeste(prefixo: string, nome: string, rotulo: string): str
 export const idDoInsert = async (tx: Executor, q: ReturnType<typeof sql>) =>
   ((await tx.execute(q)) as unknown as { rows: { id: string }[] }).rows[0].id
 
+/** Modelo de moto para os testes de banco; o `rotulo` vira o nome do modelo. */
+export const semearModelo = (tx: Executor, rotulo: string) =>
+  idDoInsert(tx, sql`insert into modelos (marca, modelo, categoria, potencia_w, motor, velocidade_max)
+    values ('M', ${rotulo}, 'autopropelido', '1000', 'hub', '32') returning id`)
+
 export const semearLoja = (tx: Executor, grupoId: string, nome: string) =>
   idDoInsert(tx, sql`insert into lojas (nome, cidade, endereco, grupo_id) values (${nome}, 'C', 'R', ${grupoId}) returning id`)
 

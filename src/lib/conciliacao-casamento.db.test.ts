@@ -3,8 +3,8 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { semearContaBase, semearUsuario } from '@/test/semear-conta'
-import { semearModelo, semearOs, semearVendaMoto, semearVendaPeca, type Pagamentos } from '@/test/semear-alvos-conciliacao'
+import { semearContaBase, semearModelo, semearUsuario } from '@/test/semear-conta'
+import { semearOs, semearVendaMoto, semearVendaPeca, type Pagamentos } from '@/test/semear-alvos-conciliacao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')

@@ -15,10 +15,6 @@ const formaDe = (p: Pagamentos) => String(p[0]?.tipo ?? 'dinheiro')
 const totalDe = (p: Pagamentos) => p.reduce((soma, x) => soma + Number(x.valor ?? 0), 0)
 const dataOuPadrao = (em?: string) => em ? sql`${em}::timestamptz` : sql`default`
 
-export const semearModelo = (tx: Executor, rotulo: string) =>
-  idDoInsert(tx, sql`insert into modelos (marca, modelo, categoria, potencia_w, motor, velocidade_max)
-    values ('M', ${rotulo}, 'autopropelido', '1000', 'hub', '32') returning id`)
-
 export async function semearVendaMoto(tx: Executor, b: Balcao, pagamentos: Pagamentos) {
   const moto = await idDoInsert(tx, sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
     values (${randomUUID()}, ${b.modeloId}, ${b.lojaId}, 'CINZA', '1', 'vendida', 'vendida') returning id`)

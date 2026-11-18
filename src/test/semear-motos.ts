@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { idDoInsert, semearContaBase, semearGrupo, semearUsuario, type Executor } from '@/test/semear-conta'
+import { idDoInsert, semearContaBase, semearGrupo, semearModelo, semearUsuario, type Executor } from '@/test/semear-conta'
 
 /**
  * Conta com dois grupos, sócio de todos, sócio "parcial" (só o 1º grupo), aux_adm e um modelo, para os
@@ -11,7 +11,7 @@ export async function semearContaComMotos(tx: Executor, prefixo: string, nome: s
   const outro = await semearGrupo(tx, base.contaId, { prefixo, nome: nome + '2', cnpj: cnpj2 })
   const auxId = await semearUsuario(tx, base, { papel: 'aux_adm', rotulo: 'aux' })
   const socioId = await semearUsuario(tx, base, { papel: 'admin_socio', rotulo: 'socio', semLoja: true, comGrupo: true })
-  const modeloId = await idDoInsert(tx, sql`insert into modelos (marca, modelo, categoria, potencia_w, motor, velocidade_max) values ('M', ${prefixo + ' ' + nome}, 'autopropelido', '1000', 'hub', '32') returning id`)
+  const modeloId = await semearModelo(tx, prefixo + ' ' + nome)
   const novaMoto = (sufixo: string, lojaId = base.lojaId, disp = 'disponivel') =>
     idDoInsert(tx, sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
       values (${`${prefixo}${nome}${sufixo}`}, ${modeloId}, ${lojaId}, 'CINZA', ${'NF' + nome + '77'}, 'montada', ${disp}::disponibilidade_moto) returning id`)
