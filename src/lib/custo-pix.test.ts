@@ -1,7 +1,7 @@
 // Custo do PIX (#89): o banco credita o valor do PIX menos a porcentagem do grupo.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { creditoDoPix, custoDoPixRecebido, lerCustoPixTaxa } from './custo-pix'
+import { creditoDoPix, custoDoPixRecebido, custoPixDoCampo, lerCustoPixTaxa } from './custo-pix'
 
 test('crédito de R$ 9.980,00 com 0,20%: o PIX foi de R$ 10.000,00 e custou R$ 20,00', () => {
   assert.deepEqual(custoDoPixRecebido(9980, 0.002), { bruto: 10000, custo: 20 })
@@ -45,4 +45,16 @@ test('lerCustoPixTaxa: arredonda às 6 casas do banco antes de conferir a faixa'
 test('taxa de 100% ou mais não tem valor do PIX que pague: fica sem custo', () => {
   assert.deepEqual(custoDoPixRecebido(9980, 1), { bruto: 9980, custo: 0 })
   assert.deepEqual(custoDoPixRecebido(9980, 1.5), { bruto: 9980, custo: 0 })
+})
+
+test('custoPixDoCampo: o texto do campo, em %, vira a fração; vazio vale 0', () => {
+  assert.equal(custoPixDoCampo(''), 0)
+  assert.equal(custoPixDoCampo('  '), 0)
+  assert.equal(custoPixDoCampo('0,20'), 0.002)
+  assert.equal(custoPixDoCampo('0.2'), 0.002)
+  assert.equal(custoPixDoCampo('99,99'), 0.9999)
+})
+
+test('custoPixDoCampo: ilegível ou fora da faixa é null', () => {
+  for (const texto of ['abc', '0,2%', '100', '1.000', '-1']) assert.equal(custoPixDoCampo(texto), null, texto)
 })
