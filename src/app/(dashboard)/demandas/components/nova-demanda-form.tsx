@@ -10,7 +10,7 @@ import { CurrencyInput } from '@/components/ui/currency-input'
 import { CheckCircle2 } from 'lucide-react'
 import { criarDemandaAction } from '../actions'
 import { ClienteCampos, CLIENTE_VAZIO, clienteCompleto, type ClienteForm } from './cliente-campos'
-import { pagamentosDoFormulario, PagamentosFields, pgtoIncompleto, pgtosFecham, type Pgto } from '../../estoque/components/pagamentos-fields'
+import { pagamentosDoFormulario, PagamentosFields, pgtoHandlers, pgtoIncompleto, pgtosFecham, type Pgto } from '../../estoque/components/pagamentos-fields'
 
 type Loja = { id: string; nome: string }
 type Modelo = { id: string; marca: string; modelo: string }
@@ -25,6 +25,7 @@ export function NovaDemandaForm({ lojas, lojaIdFixa, modelos, cores }: Props) {
   const [valorSinal, setValorSinal] = useState('')
   // O sinal pode ser dividido em mais de uma forma — mesmas linhas da venda.
   const [pgtosSinal, setPgtosSinal] = useState<Pgto[]>([{ id: '1', tipo: '', valor: '' }])
+  const pgtosSinalAcoes = pgtoHandlers(setPgtosSinal)
   const [cliente, setCliente] = useState<ClienteForm>(CLIENTE_VAZIO)
   const [loading, setLoading] = useState(false)
   const [reciboId, setReciboId] = useState<string | null>(null)
@@ -172,12 +173,9 @@ export function NovaDemandaForm({ lojas, lojaIdFixa, modelos, cores }: Props) {
             <PagamentosFields
               maquininhas={maquininhas}
               pgtos={pgtosSinal}
-              onAdd={() => setPgtosSinal(p => [...p, { id: Date.now().toString(), tipo: '', valor: '' }])}
-              onRemove={id => setPgtosSinal(p => p.filter(x => x.id !== id))}
-              onUpdate={(id, campo, val) => setPgtosSinal(p => p.map(x => x.id === id
-                ? { ...x, [campo]: val, ...(campo === 'tipo' ? { operadora: undefined, parcelas: undefined } : {}) }
-                : x
-              ))}
+              onAdd={pgtosSinalAcoes.add}
+              onRemove={pgtosSinalAcoes.remove}
+              onUpdate={pgtosSinalAcoes.update}
               taxasVenda={null}
             />
           </div>
