@@ -64,3 +64,18 @@ export function resumoDoPedidoEmAprovacao(a: { origem: string; valor: string | n
   const d = (a.dadosVenda ?? {}) as { numero?: unknown }
   return { numero: typeof d.numero === 'number' ? d.numero : null, ...contaDaAprovacao(a) }
 }
+
+/** Painel de aprovações (#25, V2): as linhas do mesmo pedido (uma por moto abaixo do mínimo, D-D) num grupo só. */
+export function aprovacoesPorPedido<A extends { id: string; origem: string; dadosVenda: unknown }>(aprovacoes: readonly A[]): { pedidoId: string | null; linhas: A[] }[] {
+  const pedidoDe = (a: A) => {
+    const id = a.origem === 'pedido' ? (a.dadosVenda as { pedidoId?: unknown } | null)?.pedidoId : null
+    return typeof id === 'string' ? id : null
+  }
+  return aprovacoes.reduce<{ pedidoId: string | null; linhas: A[] }[]>((grupos, a) => {
+    const pedidoId = pedidoDe(a)
+    const doPedido = pedidoId ? grupos.find(g => g.pedidoId === pedidoId) : undefined
+    return doPedido
+      ? grupos.map(g => (g === doPedido ? { ...g, linhas: [...g.linhas, a] } : g))
+      : [...grupos, { pedidoId, linhas: [a] }]
+  }, [])
+}

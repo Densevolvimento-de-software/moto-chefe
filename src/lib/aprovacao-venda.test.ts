@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { abaixoDoMinimo, aprovacaoNecessaria, motivoDaAprovacao, podeVenderAbaixoDoMinimo, contaDaAprovacao, resumoDoPedidoEmAprovacao, temPagamentoSensivel } from './aprovacao-venda'
+import { abaixoDoMinimo, aprovacaoNecessaria, aprovacoesPorPedido, motivoDaAprovacao, podeVenderAbaixoDoMinimo, contaDaAprovacao, resumoDoPedidoEmAprovacao, temPagamentoSensivel } from './aprovacao-venda'
 import { liquidoDaMoto } from './preco-minimo'
 
 test('abaixoDoMinimo: 1 centavo abaixo ainda passa; 2 centavos abaixo pede aprovação', () => {
@@ -57,4 +57,12 @@ test('contaDaAprovacao: o pedido guarda o frete à parte; o Vender, na Entrega; 
   assert.deepEqual(contaDaAprovacao({ origem: 'moto', valor: '11900.00', dadosVenda: { entrega: ENTREGAR } }), { moto: 11900, frete: 150, total: 12050 })
   assert.deepEqual(contaDaAprovacao({ origem: 'moto', valor: '11900.00', dadosVenda: { entrega: { modo: 'retira', modalidade: '' } } }), { moto: 11900, frete: 0, total: 11900 })
   assert.deepEqual(contaDaAprovacao({ origem: 'moto', valor: '11900.00', dadosVenda: null }), { moto: 11900, frete: 0, total: 11900 })
+})
+
+test('painel (#25): as linhas do mesmo pedido viram um grupo na ordem da lista; OS, peça e pedido sem id ficam sozinhos', () => {
+  const linha = (id: string, origem: string, pedidoId?: string) => ({ id, origem, dadosVenda: pedidoId ? { pedidoId, numero: 7 } : {} })
+  const lista = [linha('a', 'pedido', 'p1'), linha('b', 'os'), linha('c', 'pedido', 'p2'), linha('d', 'pedido', 'p1'), linha('e', 'pedido'), linha('f', 'peca')]
+  assert.deepEqual(aprovacoesPorPedido(lista).map(g => [g.pedidoId, g.linhas.map(l => l.id)]), [
+    ['p1', ['a', 'd']], [null, ['b']], ['p2', ['c']], [null, ['e']], [null, ['f']],
+  ])
 })
