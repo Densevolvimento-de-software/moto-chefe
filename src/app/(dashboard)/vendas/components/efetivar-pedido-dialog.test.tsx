@@ -19,7 +19,7 @@ const PECAS = [
   { tipo: 'acessorio', pecaId: 'c1', nome: 'Capacete fechado', quantidade: 1, valor: '290.00' },
   { tipo: 'brinde', pecaId: 'b1', nome: 'Baú traseiro', quantidade: 1, valor: '0.00' },
 ]
-let itens: unknown = { motos: [JET], pecas: [], taxas: SEM_TAXA }
+let itens: unknown = { lojaId: 'loja-do-pedido', motos: [JET], pecas: [], taxas: SEM_TAXA }
 let respostaDosItens: () => Promise<unknown> = async () => ({ ok: true, dados: itens })
 const enviados: unknown[][] = []
 let respostaDoEfetivar: () => Promise<unknown> = async () => ({ ok: true, dados: undefined })
@@ -31,7 +31,8 @@ mock.module('../actions', { namedExports: {
   alterarEntregaDoPedidoAction: async (...a: unknown[]) => { alteracoes.push(a); return respostaDoAlterarFn() },
   itensDoPedidoAction: () => respostaDosItens(),
 } })
-mock.module('@/app/(dashboard)/maquininhas-actions', { namedExports: { maquininhasDoRegistroAction: async () => [] } })
+const lojasDasMaquininhas: unknown[] = []
+mock.module('@/app/(dashboard)/maquininhas-actions', { namedExports: { maquininhasDoRegistroAction: async (r: unknown) => { lojasDasMaquininhas.push(r); return [] } } })
 mock.module('@/app/(dashboard)/clientes/actions', { namedExports: {
   buscarClientesAction: async () => [], criarClienteAction: async () => ({ ok: true, dados: undefined }),
 } })
@@ -40,7 +41,7 @@ const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const desmontar of montados.splice(0)) await desmontar()
   enviados.length = 0; alteracoes.length = 0; respostaDoEfetivar = async () => ({ ok: true, dados: undefined })
-  itens = { motos: [JET], pecas: [], taxas: SEM_TAXA }; respostaDosItens = async () => ({ ok: true, dados: itens })
+  itens = { lojaId: 'loja-do-pedido', motos: [JET], pecas: [], taxas: SEM_TAXA }; lojasDasMaquininhas.length = 0; respostaDosItens = async () => ({ ok: true, dados: itens })
   respostaDoAlterar = { ok: true, dados: undefined }; respostaDoAlterarFn = async () => respostaDoAlterar
 })
 
@@ -83,7 +84,7 @@ async function pagar(forma: string, centavos: string, linha: number) {
 }
 
 test('2 motos, acessório, brinde e frete: o recibo mostra cada item e o total; pagar em 2 formas fecha, mostra o selo e envia a lista', async () => {
-  itens = { motos: [JET, PITICA], pecas: PECAS, taxas: SEM_TAXA }
+  itens = { lojaId: 'loja-do-pedido', motos: [JET, PITICA], pecas: PECAS, taxas: SEM_TAXA }
   await abrir({ ...ENTREGAR, frete: 180 } as EntregaVenda)
   assert.match(texto(), /Efetivar pedido 32140/)
   const recibo = reciboNaTela()
@@ -113,7 +114,7 @@ test('pagamento que passa do total: a barra diz quanto passou e o botão fica tr
 })
 
 test('uma moto abaixo do mínimo: selo, aviso com a moto, motivo obrigatório e o motivo vai junto ao pedir aprovação', async () => {
-  itens = { motos: [JET, { ...PITICA, minimo: 5490 }], pecas: [], taxas: SEM_TAXA }
+  itens = { lojaId: 'loja-do-pedido', motos: [JET, { ...PITICA, minimo: 5490 }], pecas: [], taxas: SEM_TAXA }
   await abrir(ENTREGAR)
   await preencherCliente()
   await pagar('PIX', '1469000', 1)
@@ -129,7 +130,7 @@ test('uma moto abaixo do mínimo: selo, aviso com a moto, motivo obrigatório e 
 })
 
 test('sócio abaixo do mínimo vê o selo e efetiva direto, como no servidor', async () => {
-  itens = { motos: [{ ...JET, minimo: 12000 }], pecas: [], taxas: SEM_TAXA }
+  itens = { lojaId: 'loja-do-pedido', motos: [{ ...JET, minimo: 12000 }], pecas: [], taxas: SEM_TAXA }
   await abrir(ENTREGAR, { papel: 'admin_socio', podeAprovarSensivel: false })
   await preencherCliente()
   await pagar('PIX', '949000', 1)
@@ -153,7 +154,7 @@ test('transferência sem a permissão pede aprovação sem exigir motivo; com a 
 })
 
 test('moto sem valor já abre o campo e trava; "Alterar" muda o valor de outra; o total e o envio seguem os valores novos', async () => {
-  itens = { motos: [{ ...JET, valor: '' }, PITICA], pecas: [], taxas: SEM_TAXA }
+  itens = { lojaId: 'loja-do-pedido', motos: [{ ...JET, valor: '' }, PITICA], pecas: [], taxas: SEM_TAXA }
   await abrir(ENTREGAR)
   await preencherCliente()
   assert.ok(campo('Valor da MC JET'), 'a moto sem valor abre o campo')
@@ -196,12 +197,17 @@ test('enquanto efetiva: Confirmar e Cancelar travados e Escape não fecha; ao re
 })
 
 test('grupo sem taxas cadastradas: sem mínimo nem selo, e a venda segue', async () => {
-  itens = { motos: [{ ...JET, minimo: null }], pecas: [], taxas: null }
+  itens = { lojaId: 'loja-do-pedido', motos: [{ ...JET, minimo: null }], pecas: [], taxas: null }
   await abrir(ENTREGAR)
   await preencherCliente()
   await pagar('PIX', '949000', 1)
   assert.doesNotMatch(reciboNaTela(), /Mínimo|No mínimo|Abaixo do mínimo/)
   assert.equal(botao('Confirmar venda')?.disabled, false)
+})
+
+test('as maquininhas vêm da loja do pedido, a que o servidor confere, não da loja da 1ª moto', async () => {
+  await abrir(ENTREGAR)
+  assert.deepEqual(lojasDasMaquininhas, [{ loja: 'loja-do-pedido' }])
 })
 
 const ENTREGAR: EntregaVenda = {
