@@ -10,18 +10,24 @@ import { lojasDoGrupo } from '@/lib/conta'
 import { RecusaUsuario } from '@/lib/resultado-action'
 import type { TransacaoCartao } from '@/lib/conciliacao-cartao'
 import { casarPorAutorizacao, casarPorValor, casou, linhaDaTransacao } from '@/lib/conciliacao-casamento'
-import { classificarPagamento } from '@/lib/conciliacao-mercadopago'
+import { classificarPagamento, type Classificacao } from '@/lib/conciliacao-mercadopago'
 import { buscarPagamentosDaRodada } from './point'
 
-export type ResultadoImportacaoMp = {
-  importadas: number; duplicadas: number; conciliadas: number; estornos: number; naoTratados: number; ignorados: number
-}
+// O desfecho de cada pagamento é uma destas contagens; o resumo da importação e o da rodada saem desta lista.
+export const CONTAGENS = ['conciliadas', 'pendentes', 'duplicadas', 'estornos', 'naoTratados', 'ignorados'] as const
+export type Contagem = (typeof CONTAGENS)[number]
+export type ResultadoImportacaoMp = Record<Contagem, number>
+
+const contarDesfechos = (desfechos: readonly (Contagem | null)[]): ResultadoImportacaoMp =>
+  Object.fromEntries(CONTAGENS.map(k => [k, desfechos.filter(d => d === k).length])) as ResultadoImportacaoMp
+
+const contarMotivos = (motivos: readonly string[]): Record<string, number> =>
+  motivos.reduce<Record<string, number>>((m, x) => ({ ...m, [x]: (m[x] ?? 0) + 1 }), {})
 
 const OPERADORA = 'mercadopago'
 const JANELA_MS = 7 * 24 * 60 * 60 * 1000
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
-type Gravacao = 'duplicada' | 'conciliada' | 'pendente'
 
 /** Grupos ativos com credencial do Mercado Pago, para a rodada diária. */
 export function gruposComMercadoPago(): Promise<{ id: string; nome: string }[]> {
@@ -47,38 +53,37 @@ export async function importarMercadoPagoDoGrupo(
   const pagamentos = await (opts.buscar ?? buscarPagamentosDaRodada)(token, { inicio, fim })
   const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
 
-  const r: ResultadoImportacaoMp = { importadas: 0, duplicadas: 0, conciliadas: 0, estornos: 0, naoTratados: 0, ignorados: 0 }
-  const motivos = new Map<string, number>()
-  const contarMotivo = (m: string) => motivos.set(m, (motivos.get(m) ?? 0) + 1)
-
-  await db.transaction(async tx => {
-    for (const p of pagamentos) {
-      const c = classificarPagamento(p)
-      if (c.tipo === 'ignorar') { r.ignorados++; contarMotivo(c.motivo) }
-      else if (c.tipo === 'nao_tratado') { r.naoTratados++; contarMotivo(c.motivo) }
-      else if (c.tipo === 'estorno') { if (await marcarEstorno(tx, grupoId, c.chave)) r.estornos++ }
-      else {
-        const g = await gravarLinha(tx, grupoId, lojaIds, c.transacao)
-        if (g === 'duplicada') r.duplicadas++
-        else { r.importadas++; if (g === 'conciliada') r.conciliadas++ }
-      }
-    }
-  })
+  const classificacoes = pagamentos.map(classificarPagamento)
+  // Um pagamento por vez, na ordem: o mesmo nsu duas vezes não pode correr em paralelo.
+  const desfechos = await db.transaction(tx => classificacoes.reduce<Promise<(Contagem | null)[]>>(
+    async (anteriores, c) => [...await anteriores, await desfechoDoPagamento(tx, grupoId, lojaIds, c)],
+    Promise.resolve([]),
+  ))
 
   // Só motivos e contagens: nada do pagamento nem do token vai para o log.
-  if (motivos.size > 0) console.info('[mercadopago-importar]', JSON.stringify(Object.fromEntries(motivos)))
-  return r
+  const motivos = classificacoes.flatMap(c => (c.tipo === 'ignorar' || c.tipo === 'nao_tratado' ? [c.motivo] : []))
+  if (motivos.length > 0) console.info('[mercadopago-importar]', JSON.stringify(contarMotivos(motivos)))
+  return contarDesfechos(desfechos)
+}
+
+async function desfechoDoPagamento(tx: Tx, grupoId: string, lojaIds: string[], c: Classificacao): Promise<Contagem | null> {
+  switch (c.tipo) {
+    case 'ignorar': return 'ignorados'
+    case 'nao_tratado': return 'naoTratados'
+    case 'estorno': return (await marcarEstorno(tx, grupoId, c.chave)) ? 'estornos' : null
+    case 'transacao': return gravarLinha(tx, grupoId, lojaIds, c.transacao)
+  }
 }
 
 const chaveDaLinha = (grupoId: string, nsu: string) =>
   and(eq(conciliacoesCartao.grupoId, grupoId), eq(conciliacoesCartao.operadora, OPERADORA), eq(conciliacoesCartao.nsu, nsu))
 
-async function gravarLinha(tx: Tx, grupoId: string, lojaIds: string[], t: TransacaoCartao): Promise<Gravacao> {
+async function gravarLinha(tx: Tx, grupoId: string, lojaIds: string[], t: TransacaoCartao): Promise<Contagem> {
   const nsu = t.nsu!
   // Já gravada neste grupo: não casa de novo nem mexe no vínculo.
   const [existente] = await tx.select({ id: conciliacoesCartao.id }).from(conciliacoesCartao)
     .where(chaveDaLinha(grupoId, nsu)).limit(1)
-  if (existente) return 'duplicada'
+  if (existente) return 'duplicadas'
 
   const porAutorizacao = t.autorizacao ? await casarPorAutorizacao(tx, lojaIds, t.autorizacao) : null
   const alvos = porAutorizacao && casou(porAutorizacao) ? porAutorizacao : await casarPorValor(tx, lojaIds, t)
@@ -91,8 +96,8 @@ async function gravarLinha(tx: Tx, grupoId: string, lojaIds: string[], t: Transa
       where: sql`nsu is not null`,
     })
     .returning({ id: conciliacoesCartao.id })
-  if (inseridas.length === 0) return 'duplicada'
-  return linha.conciliado ? 'conciliada' : 'pendente'
+  if (inseridas.length === 0) return 'duplicadas'
+  return linha.conciliado ? 'conciliadas' : 'pendentes'
 }
 
 /**

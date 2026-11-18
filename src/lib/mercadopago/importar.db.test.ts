@@ -67,7 +67,7 @@ const buscarFixo = (pagamentos: PagamentoMp[]) => async () => pagamentos
 const importar = (c: Conta, pagamentos: PagamentoMp[]) =>
   mod.importarMercadoPagoDoGrupo(c.grupoId, { agora: AGORA, buscar: buscarFixo(pagamentos) })
 
-const NADA = { importadas: 0, duplicadas: 0, conciliadas: 0, estornos: 0, naoTratados: 0, ignorados: 0 }
+const NADA = { conciliadas: 0, pendentes: 0, duplicadas: 0, estornos: 0, naoTratados: 0, ignorados: 0 }
 
 async function linhasDoGrupo(grupoId: string) {
   return execRows(sql`select nsu, tipo, status, conciliado, venda_id, valor_bruto::float as bruto, valor_liquido::float as liquido
@@ -84,7 +84,7 @@ test('grava o cartão e casa com a venda do grupo, com o token só deste grupo',
     agora: AGORA,
     buscar: async (token, p) => { chamada = { token, ...p }; return [pg(credito3x, { id })] },
   })
-  assert.deepEqual(r, { ...NADA, importadas: 1, conciliadas: 1 })
+  assert.deepEqual(r, { ...NADA, conciliadas: 1 })
   assert.equal(chamada?.token, a.token)
   assert.equal(chamada?.fim.toISOString(), AGORA.toISOString())
   assert.equal(chamada?.inicio.toISOString(), '2026-11-05T12:00:00.000Z')
@@ -97,7 +97,7 @@ test('Pix da maquininha vira linha pix com o valor líquido e casa com o pagamen
   const a = await semearConta('A')
   const vendaId = await venda(a, [{ tipo: 'pix', valor: 80 }])
   const id = novoId()
-  assert.deepEqual(await importar(a, [pg(pixFixture, { id })]), { ...NADA, importadas: 1, conciliadas: 1 })
+  assert.deepEqual(await importar(a, [pg(pixFixture, { id })]), { ...NADA, conciliadas: 1 })
   assert.deepEqual(await linhasDoGrupo(a.grupoId), [
     { nsu: String(id), tipo: 'pix', status: 'aprovado', conciliado: true, venda_id: vendaId, bruto: 80, liquido: 79.5 },
   ])
@@ -138,7 +138,7 @@ test('isolamento: Conta B não casa com a venda de A, não estorna a linha de A 
   const deA = await linhasDoGrupo(a.grupoId)
   assert.equal(deA[0].conciliado, true)
 
-  assert.deepEqual(await importar(b, [aprovado(creditoEstornado, id)]), { ...NADA, importadas: 1 })
+  assert.deepEqual(await importar(b, [aprovado(creditoEstornado, id)]), { ...NADA, pendentes: 1 })
   const [deB] = await linhasDoGrupo(b.grupoId)
   assert.deepEqual([deB.nsu, deB.venda_id, deB.conciliado], [String(id), null, false])
 
