@@ -50,7 +50,7 @@ export async function itensDoPedido(
   usuario: Parameters<typeof podeAbrirRegistroDaLoja>[0],
   pedidoId: string,
   exec: Executor = db,
-): Promise<{ lojaId: string; motos: MotoNoPedido[]; pecas: PecaDoPedidoNaTela[] } | null> {
+): Promise<{ lojaId: string; numero: number; motos: MotoNoPedido[]; pecas: PecaDoPedidoNaTela[] } | null> {
   const pedido = await pedidoDoUsuario(usuario, pedidoId, exec)
   if (!pedido) return null
   const itens = await exec
@@ -77,6 +77,7 @@ export async function itensDoPedido(
     .where(and(inArray(motos.id, motoIds), motoDaConta === null ? sql`false` : motoDaConta))
   return {
     lojaId: pedido.lojaId,
+    numero: pedido.numero,
     motos: motoIds.flatMap(id => fichas.filter(f => f.id === id).map(f => ({
       ...f, valor: itens.find(i => i.motoId === id)?.valorUnitario ?? '',
     }))),

@@ -299,3 +299,13 @@ test('S7: trocar CPF por CNPJ e de volta: o documento e o representante mudam; i
   const pf = { cliente_cpf: CPF_SINTETICO, representante_nome: null, cliente_indicador_ie: null, cliente_cidade: 'Timon' }
   assert.deepEqual(await cliente(), [pf, pf])
 })
+
+test('S8: a leitura do Editar traz o número do pedido e a Entrega da venda do pagamento (título, total e endereço da tela)', async () => {
+  const c = await semearConta()
+  const motoIds = await c.motos(2)
+  const p = await pedidoEfetivado(c, motoIds, 300)
+  usuario = c.aux
+  const lido = await actions.pedidoEfetivadoAction(p.vendaDa(motoIds[0]))
+  const [{ numero }] = await execRows(sql`select numero from pedidos_venda where id = ${p.pedidoId}`)
+  assert.deepEqual(lido.ok && [lido.dados.numero, lido.dados.entrega?.modo, lido.dados.frete], [numero, 'entregar', 300])
+})
