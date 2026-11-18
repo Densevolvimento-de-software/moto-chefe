@@ -228,7 +228,7 @@ export type DesfechoDaRotina = 'resolvida' | 'pendente' | 'falha' | 'adiada'
 /**
  * Depois de 240 s a rotina não começa outra consulta; o resto fica para a hora seguinte. É estimativa: a rota tem
  * 300 s (maxDuration) e o fetch da consulta para em 15 s (client.ts), mas ler a credencial e gravar não têm limite.
- * A folga de ~45 s é para a última consulta e o resumo.
+ * Sobram 60 s: até 15 s para a última consulta e ~45 s para ler, gravar e o resumo.
  */
 const ORCAMENTO_DA_ROTINA_MS = 240_000
 

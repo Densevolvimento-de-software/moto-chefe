@@ -276,9 +276,9 @@ export async function pedirInutilizacao(
 export type InutilizacaoConsultada = { status: string; motivoStatus: string | null; protocolo: string | null }
 
 /**
- * Só a consulta tem tempo limite: o GET não muda nada na NG, então desistir e consultar de novo é seguro. POST e
- * DELETE não têm, porque sem resposta não se sabe se a NG recebeu. Com o limite, a rotina de hora em hora (#67)
- * não fica presa numa consulta até o fim da função.
+ * Tempo limite só nesta consulta, da qual a rotina de hora em hora (#67) depende para não ficar presa até o fim da
+ * função. O GET não muda nada na NG, então desistir e consultar de novo é seguro. POST e DELETE não têm, porque sem
+ * resposta não se sabe se a NG recebeu.
  */
 const TEMPO_LIMITE_DA_CONSULTA_MS = 15_000
 
