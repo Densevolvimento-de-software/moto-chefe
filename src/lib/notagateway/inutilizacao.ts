@@ -226,8 +226,9 @@ export function limiteDaRotina(agora: Date): Date {
 export type DesfechoDaRotina = 'resolvida' | 'pendente' | 'falha' | 'adiada'
 
 /**
- * A rota tem 300 s (maxDuration) e cada consulta leva até 15 s (tempo limite do GET, client.ts). Depois de 240 s
- * a rotina não começa outra consulta: o resumo sai antes de a função ser cortada, e o resto fica para a hora seguinte.
+ * Depois de 240 s a rotina não começa outra consulta; o resto fica para a hora seguinte. É estimativa: a rota tem
+ * 300 s (maxDuration) e o fetch da consulta para em 15 s (client.ts), mas ler a credencial e gravar não têm limite.
+ * A folga de ~45 s é para a última consulta e o resumo.
  */
 const ORCAMENTO_DA_ROTINA_MS = 240_000
 

@@ -224,7 +224,7 @@ test('rotina: conta consultadas, resolvidas, com falha e adiadas; a que segue em
   assert.deepEqual(resumoDaRotina([]), { consultadas: 0, resolvidas: 0, falhas: 0, adiadas: 0 })
 })
 
-test('rotina: depois de 240 s não começa outra consulta (a rota tem 300 s e cada consulta, até 15 s)', () => {
+test('rotina: o orçamento acaba aos 240 s de rodada', () => {
   assert.equal(orcamentoEsgotado(239_999), false)
   assert.equal(orcamentoEsgotado(240_000), true)
 })
