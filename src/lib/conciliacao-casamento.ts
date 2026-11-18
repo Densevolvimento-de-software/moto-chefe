@@ -7,7 +7,7 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { and, between, inArray, sql } from 'drizzle-orm'
 import type { db } from '@/lib/db'
 import { ordensServico, vendas, vendasPecas } from '@/lib/db/schema'
-import { TIPOS_CARTAO, type PgtoOS } from '@/lib/conciliacao-status'
+import { PAGAMENTO_PIX, TIPOS_CARTAO, type PgtoOS } from '@/lib/conciliacao-status'
 import { addDias } from '@/lib/calendario'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 
@@ -28,7 +28,6 @@ const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
 export function tiposDoPagamentoDaLinha(tipoLinha: string | undefined): ReadonlySet<string> {
   return tipoLinha === LINHA_PIX ? PAGAMENTO_PIX : TIPOS_CARTAO
 }
-const PAGAMENTO_PIX: ReadonlySet<string> = new Set(['pix'])
 
 /** Um lançamento do tipo que a linha cobre, do mesmo valor (±R$ 0,05) e mesmas parcelas. */
 function casaPagamento(pagamentos: unknown, tipos: ReadonlySet<string>, valorBruto: number, parcelas: number): boolean {
