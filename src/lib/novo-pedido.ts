@@ -2,6 +2,7 @@ import { filtrarPecas } from './busca-peca'
 import { centavos } from './numero-br'
 import { finalDoChassi } from './painel-fabrica'
 import type { PecaComSaldo } from './pecas-da-conta'
+import type { PecaDoPedidoNaTela } from './pedido-do-usuario'
 import { totalDasPecas, valorDeMotoInvalido, valorDePecaInvalido, type MotoDoPedidoInput, type PecaDoPedidoInput } from './pedido-venda-regras'
 
 /** Moto disponível que o Novo pedido oferece (#24). */
@@ -69,4 +70,15 @@ export const totalDasPecasNaTela = (pecas: readonly PecaNoPedido[]): number =>
 export function motosSemValor(motos: readonly MotoNoPedido[]): string | null {
   const n = motos.filter(m => m.valor === '').length
   return n === 0 ? null : n === 1 ? '1 moto sem valor' : `${n} motos sem valor`
+}
+
+/**
+ * Editar o pedido pendente (#25, 25c): os itens lidos do servidor no estado do formulário do Novo pedido. A peça entra com saldo 0 até
+ * o catálogo da loja do pedido carregar (o diálogo troca pela do catálogo); o valor do item é o do pedido.
+ */
+export function pedidoNaTela(itens: { motos: readonly MotoNoPedido[]; pecas: readonly PecaDoPedidoNaTela[] }): { motos: MotoNoPedido[]; pecas: PecaNoPedido[] } {
+  return {
+    motos: itens.motos.map(({ id, chassi, marca, modelo, cor, lojaId, lojaNome, valor }) => ({ id, chassi, marca, modelo, cor, lojaId, lojaNome, valor })),
+    pecas: itens.pecas.map(p => ({ tipo: p.tipo, quantidade: p.quantidade, valor: p.valor, peca: { id: p.pecaId, nome: p.nome, valor: p.valor, quantidadeEstoque: 0 } })),
+  }
 }

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { avisoDeSaldo, comPecas, motosDoEnvio, motosParaAdicionar, motosSemValor, textoDeMaisMotos, pecasDoEnvio, totalDasMotos, totalDasPecasNaTela, type MotoDisponivel } from './novo-pedido'
+import { avisoDeSaldo, comPecas, motosDoEnvio, motosParaAdicionar, motosSemValor, textoDeMaisMotos, pecasDoEnvio, totalDasMotos, totalDasPecasNaTela, type MotoDisponivel, pedidoNaTela } from './novo-pedido'
 
 const moto = (id: string, extra: Partial<MotoDisponivel> = {}): MotoDisponivel =>
   ({ id, chassi: `LA2026X${id}`, marca: 'MC', modelo: 'JET', cor: 'PRETA', lojaId: 'centro', lojaNome: 'Loja Centro', ...extra })
@@ -90,4 +90,18 @@ describe('brinde e acessório no pedido (#24, 24b)', () => {
     assert.equal(motosSemValor([m(''), m('9490.00')]), '1 moto sem valor')
     assert.equal(motosSemValor([m(''), m('')]), '2 motos sem valor')
   })
+})
+
+test('editar pedido (#25, 25c): os itens do servidor viram o estado do formulário; a peça espera o catálogo da loja para o saldo', () => {
+  const moto = { id: 'm1', chassi: 'LA1', marca: 'MC', modelo: 'JET', cor: 'PRETA', lojaId: 'l1', lojaNome: 'Loja Centro', valor: '9490.00', minimo: 8990 }
+  const r = pedidoNaTela({
+    motos: [moto, { ...moto, id: 'm2', valor: '' }],
+    pecas: [{ tipo: 'acessorio', pecaId: 'cap', nome: 'Capacete', quantidade: 2, valor: '200.00' }, { tipo: 'brinde', pecaId: 'bau', nome: 'Baú', quantidade: 1, valor: '0.00' }],
+  })
+  const { minimo: _, ...semMinimo } = moto
+  assert.deepEqual(r.motos, [semMinimo, { ...semMinimo, id: 'm2', valor: '' }])
+  assert.deepEqual(r.pecas, [
+    { tipo: 'acessorio', quantidade: 2, valor: '200.00', peca: { id: 'cap', nome: 'Capacete', valor: '200.00', quantidadeEstoque: 0 } },
+    { tipo: 'brinde', quantidade: 1, valor: '0.00', peca: { id: 'bau', nome: 'Baú', valor: '0.00', quantidadeEstoque: 0 } },
+  ])
 })
