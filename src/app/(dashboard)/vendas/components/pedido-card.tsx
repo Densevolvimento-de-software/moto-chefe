@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { EfetivarDialog } from './efetivar-dialog'
+import { EfetivarPedidoDialog } from './efetivar-pedido-dialog'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
 import { cancelarPedidoAction } from '../actions'
 import { podeCancelarPedido } from '@/lib/pedido-venda-regras'
@@ -123,7 +123,7 @@ export function PedidoCard({ pedido: p, papel, usuarioId, lojaIdUsuario, origens
           {(podeEfetivar || podeCancelar) && (
             <div className="flex gap-2 pt-1 border-t border-border">
               {podeEfetivar && (
-                <EfetivarDialog pedidoId={p.id} motoId={p.motoId} chassi={p.chassi} modelo={`${p.marca} ${p.modelo}`} origens={origens} entrega={p.entrega} papel={papel} podeAprovarSensivel={podeAprovarSensivel} />
+                <EfetivarPedidoDialog pedidoId={p.id} numero={p.numero} origens={origens} entrega={p.entrega} papel={papel} podeAprovarSensivel={podeAprovarSensivel} />
               )}
               {podeCancelar && (
                 <Button size="sm" variant="ghost"

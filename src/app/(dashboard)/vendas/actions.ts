@@ -236,17 +236,17 @@ export async function pecasDaLojaParaPedidoAction(lojaId: string) {
 }
 
 /**
- * Itens do pedido para o Efetivar (#25): cada moto com o mínimo do modelo na loja do pedido e as taxas do grupo, a mesma
- * leitura do efetivarVenda, para o selo da tela e o servidor decidirem igual.
+ * Itens do pedido para o Efetivar (#25): a loja do pedido (as maquininhas da tela saem dela, como no servidor), cada moto com o
+ * mínimo do modelo nessa loja e as taxas do grupo, a mesma leitura do efetivarVenda, para o selo da tela e o servidor decidirem igual.
  */
 export async function itensDoPedidoAction(pedidoId: string) {
-  return acao(async (): Promise<{ motos: (MotoNoPedido & { minimo: number | null })[]; pecas: PecaDoPedidoNaTela[]; taxas: PrecoMinimoInfo['taxas'] | null }> => {
+  return acao(async (): Promise<{ lojaId: string; motos: (MotoNoPedido & { minimo: number | null })[]; pecas: PecaDoPedidoNaTela[]; taxas: PrecoMinimoInfo['taxas'] | null }> => {
     const usuario = await getUsuarioLogado()
     if (!podeCriarPedido(usuario.papel)) throw new RecusaUsuario('Sem permissão para ver o pedido de venda')
     const itens = ehUuid(pedidoId) ? await itensDoPedido(usuario, pedidoId) : null
     if (!itens) throw new RecusaUsuario('Pedido não encontrado')
     const { minimo, taxas } = await precosDasMotos(itens.motos.map(m => m.id), itens.lojaId)
-    return { motos: itens.motos.map(m => ({ ...m, minimo: minimo(m.id) })), pecas: itens.pecas, taxas }
+    return { lojaId: itens.lojaId, motos: itens.motos.map(m => ({ ...m, minimo: minimo(m.id) })), pecas: itens.pecas, taxas }
   })
 }
 
