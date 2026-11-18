@@ -2,6 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   calcStatusMultiPagamento,
+  comForcado,
+  semForcado,
   matchPagamentos,
   precisaConciliar,
   valorConciliadoManual,
@@ -217,6 +219,50 @@ test('entrada em PIX já conciliada + financiamento em aberto fica parcial', () 
 
 test('dinheiro puro continua conciliado sem nada a conferir', () => {
   assert.equal(calcStatusMultiPagamento([{ tipo: 'dinheiro', valor: 9000 }], 0, 0, '9000'), 'conciliada')
+})
+
+// ── comForcado / semForcado ─────────────────────────────────────────────────
+
+const AUTOR = { porId: 'u9', porNome: 'Aux da loja', em: '2026-11-18T15:00:00.000Z' }
+const PIX_E_DINHEIRO: PgtoOS[] = [{ tipo: 'pix', valor: 1000 }, { tipo: 'dinheiro', valor: 200 }]
+
+test('comForcado marca só o pagamento da posição, com o motivo sem espaços nas pontas e o autor', () => {
+  assert.deepEqual(comForcado(PIX_E_DINHEIRO, 0, '  PIX na conta pessoal ', AUTOR), {
+    ok: true,
+    dados: [
+      { tipo: 'pix', valor: 1000, conciliadoManual: { motivo: 'PIX na conta pessoal', porId: 'u9', porNome: 'Aux da loja', em: '2026-11-18T15:00:00.000Z' } },
+      { tipo: 'dinheiro', valor: 200 },
+    ],
+  })
+  assert.deepEqual(PIX_E_DINHEIRO, [{ tipo: 'pix', valor: 1000 }, { tipo: 'dinheiro', valor: 200 }], 'não muda o array recebido')
+})
+
+test('comForcado recusa motivo curto ou que não é texto', () => {
+  for (const motivo of ['', ' ok ', null, 123, { motivo: 'abc' }]) {
+    assert.deepEqual(comForcado(PIX_E_DINHEIRO, 0, motivo, AUTOR), { ok: false, erro: 'Informe o motivo da conciliação forçada' }, String(motivo))
+  }
+})
+
+test('comForcado e semForcado recusam posição que não é índice inteiro do array', () => {
+  for (const idx of ['length', '0', 1.5, -1, 2] as unknown as number[]) {
+    assert.deepEqual(comForcado(PIX_E_DINHEIRO, idx, 'PIX na conta', AUTOR), { ok: false, erro: 'Pagamento não encontrado' }, `com ${idx}`)
+    assert.deepEqual(semForcado(PIX_E_DINHEIRO, idx), { ok: false, erro: 'Pagamento não encontrado' }, `sem ${idx}`)
+  }
+})
+
+test('comForcado recusa pagamento que não espera depósito (dinheiro)', () => {
+  assert.deepEqual(comForcado(PIX_E_DINHEIRO, 1, 'PIX na conta', AUTOR), { ok: false, erro: 'Esse pagamento não precisa de conciliação' })
+})
+
+test('semForcado tira só a marcação da posição e mantém o resto do pagamento', () => {
+  const forcados: PgtoOS[] = [
+    { tipo: 'pix', valor: 1000, conciliadoManual: FORCADO },
+    { tipo: 'cartao_credito', valor: 500, parcelas: 3, conciliadoManual: FORCADO },
+  ]
+  assert.deepEqual(semForcado(forcados, 1), {
+    ok: true,
+    dados: [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }, { tipo: 'cartao_credito', valor: 500, parcelas: 3 }],
+  })
 })
 
 // Pix da maquininha Mercado Pago é linha tipo pix da conciliação de cartão (#51).
