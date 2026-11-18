@@ -7,7 +7,7 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { and, between, inArray, sql } from 'drizzle-orm'
 import type { db } from '@/lib/db'
 import { ordensServico, vendas, vendasPecas } from '@/lib/db/schema'
-import { TIPOS_CARTAO } from '@/lib/conciliacao-status'
+import { TIPOS_CARTAO, type PgtoOS } from '@/lib/conciliacao-status'
 
 type Db = Pick<typeof db, 'select'>
 
@@ -16,7 +16,7 @@ export type Alvos = { vendaId: string | null; pecaVendaId: string | null; osId: 
 const TOLERANCIA = 0.05 // R$ 0,05 de tolerância no valor
 const UM_DIA_MS = 86_400_000
 
-type Pagamento = { tipo: string; valor: number; parcelas?: number }
+type Pagamento = Pick<PgtoOS, 'tipo' | 'valor' | 'parcelas'>
 
 const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
 
