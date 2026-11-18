@@ -1,8 +1,10 @@
+import type { ResultadoAction } from '@/lib/resultado-action'
+
 export type StatusConc = 'na' | 'pendente' | 'parcial' | 'conciliada'
 
 export const TIPOS_CARTAO = new Set(['cartao_credito', 'cartao_debito', 'link_pagamento'])
 
-// Conciliação forçada na mão pelo admin_geral: o dinheiro entrou, mas não existe
+// Conciliação forçada na mão (quem pode: podeGerirConciliacao): o dinheiro entrou, mas não existe
 // lançamento correspondente no sistema (relatório da operadora não importado, PIX
 // fora do Open Finance, transferência avulsa). Fica gravada no próprio item do array
 // `pagamentos` — ver docs/superpowers/specs/2026-07-31-forcar-conciliacao-design.md.
@@ -36,6 +38,35 @@ type PgtoItem = { tipo: string; valor: number; conciliadoManual?: ConciliadoManu
  */
 export function precisaConciliar(tipo: string): boolean {
   return TIPOS_CARTAO.has(tipo) || tipo === 'pix' || tipo === 'financiamento'
+}
+
+// `idx` vem do navegador: só índice inteiro conta ("length" ou "0" em texto acharia outra coisa).
+const pagamentoNo = (pgtos: readonly PgtoOS[], idx: number) => Number.isInteger(idx) ? pgtos[idx] : undefined
+
+/** Quem força e quando: sai do servidor, nunca do navegador. */
+export type AutorDoForcado = Omit<ConciliadoManual, 'motivo'>
+
+/** Os pagamentos com o da posição `idx` marcado como recebido na mão, ou a frase da recusa. */
+export function comForcado(pgtos: readonly PgtoOS[], idx: number, motivo: unknown, autor: AutorDoForcado): ResultadoAction<PgtoOS[]> {
+  const texto = typeof motivo === 'string' ? motivo.trim() : ''
+  if (texto.length < 3) return { ok: false, erro: 'Informe o motivo da conciliação forçada' }
+  const alvo = pagamentoNo(pgtos, idx)
+  if (!alvo) return { ok: false, erro: 'Pagamento não encontrado' }
+  if (!precisaConciliar(alvo.tipo)) return { ok: false, erro: 'Esse pagamento não precisa de conciliação' }
+  return { ok: true, dados: pgtos.map((p, i) => i === idx ? { ...p, conciliadoManual: { motivo: texto, ...autor } } : p) }
+}
+
+/** Os pagamentos sem a marcação de forçado na posição `idx`, ou a frase da recusa. */
+export function semForcado(pgtos: readonly PgtoOS[], idx: number): ResultadoAction<PgtoOS[]> {
+  if (!pagamentoNo(pgtos, idx)) return { ok: false, erro: 'Pagamento não encontrado' }
+  return {
+    ok: true,
+    dados: pgtos.map((p, i) => {
+      if (i !== idx) return p
+      const { conciliadoManual: _removido, ...resto } = p
+      return resto
+    }),
+  }
 }
 
 // Total dos pagamentos marcados como conciliados na mão. Usado por

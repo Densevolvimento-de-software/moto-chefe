@@ -11,7 +11,7 @@ import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-periodo'
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
-import { pagamentosEfetivosOS, precisaConciliar, type PgtoOS } from '@/lib/conciliacao-status'
+import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
 import { casarPorAutorizacao } from '@/lib/conciliacao-casamento'
 import { detectarFormato } from '@/lib/conciliacao-formato'
@@ -723,34 +723,15 @@ async function gravarPagamentos(alvo: AlvoConciliacao, lojaIdsGrupo: string[], p
   revalidatePathsConciliacao()
 }
 
-// `idx` vem do navegador: só índice inteiro conta ("length" ou "0" em texto acharia outra coisa).
-const pagamentoNo = (pgtos: PgtoOS[], idx: number) => Number.isInteger(idx) ? pgtos[idx] : undefined
-
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
 export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string) {
   return acao(() => forcarConciliacao(alvo, idx, motivo))
 }
 async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: string) {
   const { usuario, lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
-  const texto = motivo.trim()
-  if (texto.length < 3) throw new RecusaUsuario('Informe o motivo da conciliação forçada')
-  const alvoPgto = pagamentoNo(pgtos, idx)
-  if (!alvoPgto) throw new RecusaUsuario('Pagamento não encontrado')
-  if (!precisaConciliar(alvoPgto.tipo)) throw new RecusaUsuario('Esse pagamento não precisa de conciliação')
-
-  const atualizados = pgtos.map((p, i) => i === idx
-    ? {
-        ...p,
-        conciliadoManual: {
-          motivo:  texto,
-          porId:   usuario.id,
-          porNome: usuario.nome,
-          em:      new Date().toISOString(),
-        },
-      }
-    : p)
-
-  await gravarPagamentos(alvo, lojaIdsGrupo, atualizados)
+  const r = comForcado(pgtos, idx, motivo, { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() })
+  if (!r.ok) throw new RecusaUsuario(r.erro)
+  await gravarPagamentos(alvo, lojaIdsGrupo, r.dados)
 }
 
 export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, idx: number) {
@@ -758,15 +739,9 @@ export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, id
 }
 async function desfazerConciliacaoForcada(alvo: AlvoConciliacao, idx: number) {
   const { lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
-  if (!pagamentoNo(pgtos, idx)) throw new RecusaUsuario('Pagamento não encontrado')
-
-  const atualizados = pgtos.map((p, i) => {
-    if (i !== idx) return p
-    const { conciliadoManual: _removido, ...resto } = p
-    return resto
-  })
-
-  await gravarPagamentos(alvo, lojaIdsGrupo, atualizados)
+  const r = semForcado(pgtos, idx)
+  if (!r.ok) throw new RecusaUsuario(r.erro)
+  await gravarPagamentos(alvo, lojaIdsGrupo, r.dados)
 }
 
 export async function buscarVendasParaVincular(valorRef: number) {
