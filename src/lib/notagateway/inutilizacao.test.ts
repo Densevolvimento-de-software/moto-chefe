@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { conflitosDaFaixa, desfechoDaConsulta, limiteDaRotina, resumoDaRotina, decidirInutilizacao, serieEUfDaEmpresa, ufPermiteInutilizacao, validarFaixaInutilizacao, elegivelParaInutilizar, ERRO_SEM_CONFIGURACAO, pedidoSemRespostaVenceu, podePedirInutilizacao, type ContextoInutilizacao, situacaoInutilizacao, STATUS_NAO_ENVIADA, STATUS_SEM_CONFIGURACAO, normalizarJustificativa, validarJustificativa } from './inutilizacao'
+import { conflitosDaFaixa, desfechoDaConsulta, limiteDaRotina, orcamentoEsgotado, resumoDaRotina, decidirInutilizacao, serieEUfDaEmpresa, ufPermiteInutilizacao, validarFaixaInutilizacao, elegivelParaInutilizar, ERRO_SEM_CONFIGURACAO, pedidoSemRespostaVenceu, podePedirInutilizacao, type ContextoInutilizacao, situacaoInutilizacao, STATUS_NAO_ENVIADA, STATUS_SEM_CONFIGURACAO, normalizarJustificativa, validarJustificativa } from './inutilizacao'
 
 test('justificativa: tira acentos e espaços sobrando', () => {
   assert.deepEqual(validarJustificativa('  Venda cancelada após\n a rejeição  '), { ok: true, justificativa: 'Venda cancelada apos a rejeicao' })
@@ -219,9 +219,14 @@ test('rotina: o limite é 4 h antes da hora da rodada (o aviso da NG já parou d
   assert.deepEqual(limiteDaRotina(new Date('2026-11-18T15:00:00Z')), new Date('2026-11-18T11:00:00Z'))
 })
 
-test('rotina: conta consultadas, resolvidas e com falha; a que segue em processamento é só consultada', () => {
-  assert.deepEqual(resumoDaRotina(['resolvida', 'pendente', 'falha', 'resolvida']), { consultadas: 4, resolvidas: 2, falhas: 1 })
-  assert.deepEqual(resumoDaRotina([]), { consultadas: 0, resolvidas: 0, falhas: 0 })
+test('rotina: conta consultadas, resolvidas, com falha e adiadas; a que segue em processamento é só consultada', () => {
+  assert.deepEqual(resumoDaRotina(['resolvida', 'pendente', 'falha', 'resolvida', 'adiada']), { consultadas: 4, resolvidas: 2, falhas: 1, adiadas: 1 })
+  assert.deepEqual(resumoDaRotina([]), { consultadas: 0, resolvidas: 0, falhas: 0, adiadas: 0 })
+})
+
+test('rotina: depois de 240 s não começa outra consulta (a rota tem 300 s e cada consulta, até 15 s)', () => {
+  assert.equal(orcamentoEsgotado(239_999), false)
+  assert.equal(orcamentoEsgotado(240_000), true)
 })
 
 test('rotina: autorizada ou negada resolve; pendente (a NG ainda processa) não; sem credencial no ambiente é falha', () => {

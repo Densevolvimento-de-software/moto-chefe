@@ -222,8 +222,18 @@ export function limiteDaRotina(agora: Date): Date {
   return new Date(agora.getTime() - HORAS_DO_REENVIO_DO_AVISO * 3_600_000)
 }
 
-/** O que a consulta deu para cada pendente da rotina; `pendente` = a NG ainda processa. */
-export type DesfechoDaRotina = 'resolvida' | 'pendente' | 'falha'
+/** O que a consulta deu para cada pendente da rotina; `pendente` = a NG ainda processa; `adiada` = nem consultou. */
+export type DesfechoDaRotina = 'resolvida' | 'pendente' | 'falha' | 'adiada'
+
+/**
+ * A rota tem 300 s (maxDuration) e cada consulta leva até 15 s (tempo limite do GET, client.ts). Depois de 240 s
+ * a rotina não começa outra consulta: o resumo sai antes de a função ser cortada, e o resto fica para a hora seguinte.
+ */
+const ORCAMENTO_DA_ROTINA_MS = 240_000
+
+export function orcamentoEsgotado(decorridoMs: number): boolean {
+  return decorridoMs >= ORCAMENTO_DA_ROTINA_MS
+}
 
 /** `ok: false` = grupo sem credencial no ambiente da linha (a consulta nem vai à NG). */
 export function desfechoDaConsulta(r: { ok: true; situacao: SituacaoInutilizacao } | { ok: false }): DesfechoDaRotina {
@@ -233,5 +243,5 @@ export function desfechoDaConsulta(r: { ok: true; situacao: SituacaoInutilizacao
 
 export function resumoDaRotina(desfechos: readonly DesfechoDaRotina[]) {
   const quantas = (d: DesfechoDaRotina) => desfechos.filter(x => x === d).length
-  return { consultadas: desfechos.length, resolvidas: quantas('resolvida'), falhas: quantas('falha') }
+  return { consultadas: desfechos.length - quantas('adiada'), resolvidas: quantas('resolvida'), falhas: quantas('falha'), adiadas: quantas('adiada') }
 }

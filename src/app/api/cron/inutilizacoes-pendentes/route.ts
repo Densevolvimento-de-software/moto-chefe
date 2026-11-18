@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cronAutorizado } from '@/lib/cron-auth'
 import { resolverPendentesSemAviso } from '@/lib/notagateway/rotina-inutilizacao'
 
-// Uma consulta à Nota Gateway por pendente, em sequência.
+// Uma consulta à Nota Gateway por pendente, em sequência; a rotina para de começar consultas aos 240 s.
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 

@@ -855,9 +855,10 @@ async function semPendenteVencidaDeFora(tx: Tx) {
   assert.equal(n, 0, 'há inutilização pendente vencida de fora deste teste no banco')
 }
 
-async function rodarRotina(tx: Tx, consultar: Consultar) {
+/** Relógio parado por padrão: o orçamento de tempo da rotina só acaba no teste que o adianta. */
+async function rodarRotina(tx: Tx, consultar: Consultar, relogioMs = () => 0) {
   const { resolverPendentesSemAviso } = await import('@/lib/notagateway/rotina-inutilizacao')
-  return resolverPendentesSemAviso(AGORA, { exec: tx, config: m.configDoAmbiente, consultar })
+  return resolverPendentesSemAviso(AGORA, { exec: tx, config: m.configDoAmbiente, consultar, relogioMs })
 }
 
 test('rotina: consulta só a pendente com mais de 4 h, de todos os grupos, cada uma com a credencial do grupo dela', async () => {
@@ -877,7 +878,7 @@ test('rotina: consulta só a pendente com mais de 4 h, de todos os grupos, cada 
 
     const resumo = await rodarRotina(tx, ng.consultar)
 
-    assert.deepEqual(resumo, { consultadas: 2, resolvidas: 2, falhas: 0 })
+    assert.deepEqual(resumo, { consultadas: 2, resolvidas: 2, falhas: 0, adiadas: 0 })
     assert.deepEqual(ng.chamadas, [{ empresaId: 'emp-B', idExterno: vencidaB.idExterno }, { empresaId: 'emp-A', idExterno: vencidaA.idExterno }])
     const [la, lb] = [await vencidaA.linha(), await vencidaB.linha()]
     assert.deepEqual([la.situacao, la.protocolo], ['autorizada', '353190000062124'])
@@ -907,7 +908,7 @@ test('rotina: NG fora, grupo sem credencial, credencial noutro ambiente ou que n
 
     const resumo = await rodarRotina(tx, ng.consultar)
 
-    assert.deepEqual(resumo, { consultadas: 5, resolvidas: 1, falhas: 4 })
+    assert.deepEqual(resumo, { consultadas: 5, resolvidas: 1, falhas: 4, adiadas: 0 })
     assert.equal((await resolve.linha()).situacao, 'autorizada')
     assert.deepEqual(await Promise.all(falham.map(f => f.linha())), antes, 'a linha com falha segue pendente, sem gravar nada')
     assert.deepEqual(ng.chamadas.map(c => c.empresaId), ['emp-B', 'emp-A'], 'sem credencial no ambiente, não vai à NG')
@@ -917,7 +918,7 @@ test('rotina: NG fora, grupo sem credencial, credencial noutro ambiente ou que n
       '[rotina inutilizacao] falha numa pendente (sem credencial no ambiente)',
       '[rotina inutilizacao] falha numa pendente (sem credencial no ambiente)',
       '[rotina inutilizacao] falha numa pendente (Error)',
-      '[rotina inutilizacao] consultadas 5, resolvidas 1, falhas 4',
+      '[rotina inutilizacao] consultadas 5, resolvidas 1, falhas 4, adiadas 0',
     ], 'da mais velha para a mais nova, e a contagem no fim')
     for (const proibido of ['emp-', 'rotina67-', 'tok-cifrado', 'token-de-teste', 'HTTP 503']) {
       assert.ok(textos.every(texto => !texto.includes(proibido)), proibido)
@@ -931,18 +932,39 @@ test('rotina: a NG ainda processando segue pendente e só conta como consultada;
     t.mock.method(console, 'info', () => {})
     const a = await semearContaFaixa(tx, 'A', '00000000067001', 'Homologacao', 'emp-A')
     const nada = ngPorId({})
-    assert.deepEqual(await rodarRotina(tx, nada.consultar), { consultadas: 0, resolvidas: 0, falhas: 0 })
+    assert.deepEqual(await rodarRotina(tx, nada.consultar), { consultadas: 0, resolvidas: 0, falhas: 0, adiadas: 0 })
     assert.equal(nada.chamadas.length, 0)
 
     const processando = await inutilizacaoComIdade(tx, a.grupoId, 5 * HORA)
     const naoChegou = await inutilizacaoComIdade(tx, a.grupoId, 6 * HORA)
     const ng = ngPorId({ [processando.idExterno]: { status: 'Processando', motivoStatus: null, protocolo: null } })
 
-    assert.deepEqual(await rodarRotina(tx, ng.consultar), { consultadas: 2, resolvidas: 1, falhas: 0 })
+    assert.deepEqual(await rodarRotina(tx, ng.consultar), { consultadas: 2, resolvidas: 1, falhas: 0, adiadas: 0 })
     assert.equal((await processando.linha()).situacao, 'pendente')
     const negada = await naoChegou.linha()
     assert.deepEqual([negada.situacao, negada.status, negada.motivo_status],
       ['negada', 'NaoEnviada', 'O pedido não chegou à Nota Gateway. Peça a inutilização de novo.'])
+  })
+})
+
+test('rotina: passado o orçamento de tempo, não começa outra consulta; as outras contam como adiadas, seguem pendentes, e o resumo sai', async t => {
+  await emTransacaoDesfeita(async tx => {
+    await semPendenteVencidaDeFora(tx)
+    const a = await semearContaFaixa(tx, 'A', '00000000067001', 'Homologacao', 'emp-A')
+    const maisVelha = await inutilizacaoComIdade(tx, a.grupoId, 7 * HORA)
+    const adiadas = [await inutilizacaoComIdade(tx, a.grupoId, 6 * HORA), await inutilizacaoComIdade(tx, a.grupoId, 5 * HORA)]
+    const antes = await Promise.all(adiadas.map(f => f.linha()))
+    const ng = ngPorId({ [maisVelha.idExterno]: AUTORIZADA })
+    const escrito = consoleDe(t)
+
+    // Cada consulta gasta o orçamento inteiro (240 s): depois da primeira, nenhuma outra começa.
+    const resumo = await rodarRotina(tx, ng.consultar, () => ng.chamadas.length * 240_000)
+
+    assert.deepEqual(resumo, { consultadas: 1, resolvidas: 1, falhas: 0, adiadas: 2 })
+    assert.deepEqual(ng.chamadas.map(c => c.idExterno), [maisVelha.idExterno])
+    assert.equal((await maisVelha.linha()).situacao, 'autorizada')
+    assert.deepEqual(await Promise.all(adiadas.map(f => f.linha())), antes)
+    assert.deepEqual(escrito(), ['[rotina inutilizacao] consultadas 1, resolvidas 1, falhas 0, adiadas 2'])
   })
 })
 
