@@ -34,3 +34,10 @@ export function semearOs(tx: Executor, b: Pick<Balcao, 'lojaId' | 'usuarioId' | 
   return idDoInsert(tx, sql`insert into ordens_servico (loja_id, aberta_por, descricao, status, pagamentos, data_conclusao)
     values (${b.lojaId}, ${b.usuarioId}, 'revisão', 'concluida', ${jsonDe(pagamentos)}, ${b.em ?? null}::timestamptz) returning id`)
 }
+
+/** PIX recebido do banco (Open Finance), livre, no grupo, com data de agora. */
+export function semearPixRecebido(tx: Executor, grupoId: string, o: { valor: number; pagadorNome?: string; tipoOperacao?: string | null }) {
+  return idDoInsert(tx, sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor, pagador_nome, tipo_operacao)
+    values (${grupoId}, 'conta-sintetica', 'Banco sintético', ${randomUUID()}, now(), ${o.valor}, ${o.pagadorNome ?? 'Pagador sintético'},
+      ${o.tipoOperacao === undefined ? 'PIX' : o.tipoOperacao}) returning id`)
+}

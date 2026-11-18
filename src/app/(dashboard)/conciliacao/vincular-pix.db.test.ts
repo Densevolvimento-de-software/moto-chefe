@@ -1,0 +1,182 @@
+// Teste de banco: vincular e desvincular PIX a venda de moto, OS e venda de peça pela conciliação (#90),
+// e as buscas do alvo, pelas Server Actions de verdade contra o Postgres descartável. Só a fronteira de
+// fora é simulada: sessão, cookie do grupo ativo e revalidatePath.
+import { after, afterEach, before, mock, test } from 'node:test'
+import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
+import { sql } from 'drizzle-orm'
+import { semearContaBase, semearGrupo, semearLoja, semearModelo, semearUsuario, type Base } from '@/test/semear-conta'
+import { semearOs, semearPixRecebido, semearVendaMoto, semearVendaPeca, type Balcao } from '@/test/semear-alvos-conciliacao'
+import type { AlvoConciliacao } from '@/lib/conciliacao-alvo'
+
+const url = process.env.TEST_DATABASE_URL
+if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
+process.env.DATABASE_URL = url
+
+type Db = typeof import('@/lib/db')
+type Sessao = { id: string; nome: string; papel: string; lojaId: string | null; contaId: string | null; gruposAcesso: string[]; gruposAprovacao: string[] }
+let db: Db['db']
+let execRows: Db['execRows']
+let actions: typeof import('./actions')
+let usuario: Sessao
+let grupoAtivoNoCookie: string | null = null
+
+const authMock = mock.module('@/lib/auth', { namedExports: { getUsuarioLogado: async () => usuario } })
+const cacheMock = mock.module('next/cache', { namedExports: { revalidatePath: () => {} } })
+const headersMock = mock.module('next/headers', {
+  namedExports: { cookies: async () => ({ get: (n: string) => (n === 'grupoAtivo' && grupoAtivoNoCookie ? { value: grupoAtivoNoCookie } : undefined) }) },
+})
+
+before(async () => {
+  ;({ db, execRows } = await import('@/lib/db'))
+  actions = await import('./actions')
+})
+afterEach(() => { grupoAtivoNoCookie = null })
+after(async () => {
+  authMock.restore(); cacheMock.restore(); headersMock.restore()
+  await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
+})
+
+const PAGAMENTOS = [{ tipo: 'pix', valor: 1000 }]
+const TIPOS = ['moto', 'os', 'peca'] as const
+type Alvos = Record<AlvoConciliacao['tipo'], string>
+const NAO_ENCONTRADO: Record<AlvoConciliacao['tipo'], string> = {
+  moto: 'Venda não encontrada', os: 'Ordem de serviço não encontrada', peca: 'Venda de peça não encontrada',
+}
+const PIX_NAO_ENCONTRADO = { ok: false, erro: 'PIX não encontrado no grupo ativo' }
+const COLUNA: Record<AlvoConciliacao['tipo'], string> = { moto: 'venda_id', os: 'os_id', peca: 'peca_venda_id' }
+
+async function contaComAlvos(): Promise<Base & { alvos: Alvos; balcao: Balcao }> {
+  const suf = randomUUID()
+  const base = await semearContaBase(db, { prefixo: 'VP90', nome: suf, cnpj: suf })
+  const balcao = { lojaId: base.lojaId, usuarioId: await semearUsuario(db, base, { papel: 'vendedor' }), modeloId: await semearModelo(db, 'VP90 ' + suf) }
+  return {
+    ...base,
+    balcao,
+    alvos: {
+      moto: await semearVendaMoto(db, balcao, PAGAMENTOS),
+      os:   await semearOs(db, balcao, PAGAMENTOS),
+      peca: await semearVendaPeca(db, balcao, PAGAMENTOS),
+    },
+  }
+}
+
+// Usuário semeado de verdade: o vincular grava quem lançou (lancado_por_id, FK de usuarios).
+const sessao = async (b: Base, papel: string, extra: Partial<Sessao> = {}): Promise<Sessao> =>
+  ({ id: await semearUsuario(db, b, { papel, rotulo: `${papel}-${randomUUID()}` }), nome: `${papel} de teste`, papel, lojaId: b.lojaId, contaId: b.contaId, gruposAcesso: [], gruposAprovacao: [], ...extra })
+
+const vinculoDe = async (pixId: string) => (await execRows(sql`
+  select tipo_correspondencia, venda_id, os_id, peca_venda_id, pedido_id, lancado_por_id is not null as lancado
+  from pix_recebimentos_mcp where id = ${pixId}`))[0]
+const LIVRE = { tipo_correspondencia: null, venda_id: null, os_id: null, peca_venda_id: null, pedido_id: null, lancado: false }
+
+// PIX ligado ao alvo pela própria Conta: o de fora tem o que tentar mudar.
+async function vinculadoNaContaA() {
+  const a = await contaComAlvos()
+  usuario = await sessao(a, 'aux_adm')
+  const pix = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
+  assert.deepEqual(await actions.vincularPixAlvoAction(pix, { tipo: 'moto', id: a.alvos.moto }), { ok: true, dados: undefined })
+  return { a, pix, comoFicou: await vinculoDe(pix) }
+}
+
+test('aux_adm vincula e desvincula PIX na venda de moto, na OS e na venda de peça', async () => {
+  const a = await contaComAlvos()
+  usuario = await sessao(a, 'aux_adm')
+  for (const tipo of TIPOS) {
+    const pix = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
+    assert.deepEqual(await actions.vincularPixAlvoAction(pix, { tipo, id: a.alvos[tipo] }), { ok: true, dados: undefined }, `vincula ${tipo}`)
+    const v = await vinculoDe(pix)
+    assert.equal(v.tipo_correspondencia, tipo === 'moto' ? 'venda' : tipo, tipo)
+    assert.equal(v[COLUNA[tipo]], a.alvos[tipo], tipo)
+    assert.deepEqual(await actions.desvincularPixAlvoAction(pix), { ok: true, dados: undefined }, `desvincula ${tipo}`)
+    assert.deepEqual(await vinculoDe(pix), LIVRE, tipo)
+  }
+})
+
+test('Conta B: alvo da Conta A e alvo inexistente recebem a mesma frase, e nada grava', async () => {
+  const a = await contaComAlvos()
+  const b = await contaComAlvos()
+  usuario = await sessao(b, 'aux_adm')
+  const pix = await semearPixRecebido(db, b.grupoId, { valor: 1000 })
+  for (const tipo of TIPOS) {
+    const recusa = { ok: false, erro: NAO_ENCONTRADO[tipo] }
+    assert.deepEqual(await actions.vincularPixAlvoAction(pix, { tipo, id: a.alvos[tipo] }), recusa, `alvo da A ${tipo}`)
+    assert.deepEqual(await actions.vincularPixAlvoAction(pix, { tipo, id: randomUUID() }), recusa, `inexistente ${tipo}`)
+  }
+  assert.deepEqual(await vinculoDe(pix), LIVRE)
+})
+
+test('Conta B: PIX da Conta A e PIX inexistente recebem a mesma frase, no vincular e no desvincular, e a A fica intacta', async () => {
+  const { pix, comoFicou } = await vinculadoNaContaA()
+  const b = await contaComAlvos()
+  usuario = await sessao(b, 'admin_socio')
+  for (const id of [pix, randomUUID(), 'nao-e-uuid']) {
+    assert.deepEqual(await actions.vincularPixAlvoAction(id, { tipo: 'moto', id: b.alvos.moto }), PIX_NAO_ENCONTRADO, `vincula ${id}`)
+    assert.deepEqual(await actions.desvincularPixAlvoAction(id), PIX_NAO_ENCONTRADO, `desvincula ${id}`)
+  }
+  assert.deepEqual(await vinculoDe(pix), comoFicou)
+})
+
+test('mesma Conta, outro grupo: PIX do grupo ativo não se liga à venda do outro grupo', async () => {
+  const a = await contaComAlvos()
+  const suf = randomUUID()
+  const outro = await semearGrupo(db, a.contaId, { prefixo: 'VP90', nome: suf, cnpj: suf })
+  const lojaOutro = await semearLoja(db, outro.grupoId, 'VP90 loja ' + suf)
+  const vendaOutro = await semearVendaMoto(db, { ...a.balcao, lojaId: lojaOutro }, PAGAMENTOS)
+  usuario = await sessao(a, 'admin_socio', { lojaId: null, gruposAcesso: [a.grupoId, outro.grupoId] })
+  grupoAtivoNoCookie = a.grupoId
+  const pix = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
+  assert.deepEqual(await actions.vincularPixAlvoAction(pix, { tipo: 'moto', id: vendaOutro }), { ok: false, erro: 'Venda não encontrada' })
+  assert.deepEqual(await vinculoDe(pix), LIVRE)
+})
+
+// Decisão do Luis (18/11/2026): para trocar o vínculo, desvincula antes; o custo gravado não muda calado.
+test('PIX já vinculado não se vincula por cima: pede para desvincular antes, e o vínculo fica', async () => {
+  const { a, pix, comoFicou } = await vinculadoNaContaA()
+  for (const tipo of TIPOS) {
+    assert.deepEqual(await actions.vincularPixAlvoAction(pix, { tipo, id: a.alvos[tipo] }),
+      { ok: false, erro: 'Este PIX já está vinculado. Desvincule antes de vincular de novo.' }, tipo)
+  }
+  assert.deepEqual(await vinculoDe(pix), comoFicou)
+})
+
+test('vendedor e mecânico recebem Sem permissão no vincular e no desvincular, e nada grava', async () => {
+  const { a, pix, comoFicou } = await vinculadoNaContaA()
+  const livre = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
+  for (const papel of ['vendedor', 'mecanico']) {
+    usuario = await sessao(a, papel)
+    assert.deepEqual(await actions.vincularPixAlvoAction(livre, { tipo: 'os', id: a.alvos.os }), { ok: false, erro: 'Sem permissão' }, papel)
+    assert.deepEqual(await actions.desvincularPixAlvoAction(pix), { ok: false, erro: 'Sem permissão' }, papel)
+  }
+  assert.deepEqual(await vinculoDe(pix), comoFicou)
+  assert.deepEqual(await vinculoDe(livre), LIVRE)
+})
+
+test('buscas do alvo: alvo da Conta A visto pela Conta B responde como o inexistente, sem erro', async () => {
+  const { a } = await vinculadoNaContaA()
+  const b = await contaComAlvos()
+  usuario = await sessao(b, 'aux_adm')
+  for (const tipo of TIPOS) {
+    for (const id of [a.alvos[tipo], randomUUID()]) {
+      assert.deepEqual(await actions.buscarPixDoAlvo({ tipo, id }), [], `PIX ${tipo}`)
+      assert.deepEqual(await actions.buscarConciliacoesDoAlvo({ tipo, id }), [], `cartão ${tipo}`)
+    }
+  }
+})
+
+test('alvo forjado (tipo fora da lista com id de venda real, ou id que não é uuid) vale como inexistente em todas as actions', async () => {
+  const { a, pix, comoFicou } = await vinculadoNaContaA()
+  const livre = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
+  const pagamentosAntes = (await execRows(sql`select pagamentos from vendas where id = ${a.alvos.moto}`))[0].pagamentos
+  for (const alvo of [{ tipo: 'xyz', id: a.alvos.moto }, { tipo: 'moto', id: 'venda-1' }] as unknown as AlvoConciliacao[]) {
+    const rotulo = JSON.stringify(alvo)
+    assert.deepEqual(await actions.buscarPixDoAlvo(alvo), [], `busca PIX ${rotulo}`)
+    assert.deepEqual(await actions.buscarConciliacoesDoAlvo(alvo), [], `busca cartão ${rotulo}`)
+    assert.deepEqual(await actions.vincularPixAlvoAction(livre, alvo), { ok: false, erro: 'Venda não encontrada' }, `vincula ${rotulo}`)
+    assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 'PIX caiu na conta pessoal'), { ok: false, erro: 'Venda não encontrada' }, `força ${rotulo}`)
+    assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, 0), { ok: false, erro: 'Venda não encontrada' }, `desfaz ${rotulo}`)
+  }
+  assert.deepEqual(await vinculoDe(livre), LIVRE)
+  assert.deepEqual(await vinculoDe(pix), comoFicou)
+  assert.deepEqual((await execRows(sql`select pagamentos from vendas where id = ${a.alvos.moto}`))[0].pagamentos, pagamentosAntes)
+})
