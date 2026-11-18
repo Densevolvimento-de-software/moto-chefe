@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { salvarTaxasAction } from '../actions'
+import { salvarTaxasAction, type TaxasPayload } from '../actions'
+import { pixComCusto } from '@/lib/custo-pix'
+import { fmtBRL } from '@/lib/preco-minimo'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { ChevronDown, Save } from 'lucide-react'
 
@@ -13,17 +15,6 @@ const PARCELAS_CARTAO = Array.from({ length: 21 }, (_, i) => i + 1)
 const PARCELAS_DEBITO = [1]
 const PARCELAS_LINK = Array.from({ length: 18 }, (_, i) => i + 1)
 const PARCELAS_FINANCIAMENTO = [12, 24, 36, 48]
-
-type Taxas = {
-  taxasCartao: Record<string, number>
-  taxasDebito: Record<string, number>
-  taxasLink: Record<string, number>
-  taxasFinanciamento: Record<string, number>
-  freteValorKm: string
-  freteKmGratis: number
-  freteValorFixo: string
-  imposto: string
-}
 
 type RateMap = Record<string, string>
 
@@ -106,8 +97,34 @@ function TaxaGrid({
   )
 }
 
+const PIX_DO_EXEMPLO = 10000
+
+/** A conta inteira de um PIX de exemplo com o custo digitado: valor, custo e o que entra na conta. */
+function ExemploPix({ taxa }: { taxa: number }) {
+  const { custo, entra } = pixComCusto(PIX_DO_EXEMPLO, taxa)
+  const linhas = [
+    { rotulo: 'Valor do PIX', valor: PIX_DO_EXEMPLO, cor: '' },
+    { rotulo: 'Custo do PIX', valor: custo, cor: 'text-destructive' },
+    { rotulo: 'Entra na conta', valor: entra, cor: '' },
+  ]
+  return (
+    <div className="max-w-lg rounded-lg border overflow-hidden">
+      <p className="bg-muted px-3 py-2 text-xs font-semibold text-foreground">Como fica um PIX de {fmtBRL(PIX_DO_EXEMPLO)}</p>
+      {/* No celular cada linha é rótulo e valor; a partir do sm, três colunas. */}
+      <dl className="grid divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        {linhas.map(l => (
+          <div key={l.rotulo} className="flex items-center justify-between gap-2 px-3 py-2 sm:block">
+            <dt className="text-xs text-muted-foreground">{l.rotulo}</dt>
+            <dd className={`text-sm font-semibold tabular-nums ${l.cor}`}>{fmtBRL(l.valor)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}
+
 /** `recolhida`: no padrão 'avista_12x' o simulador não usa as taxas de cartão; o card abre só se pedir. */
-export function TaxasForm({ taxas, recolhida = false }: { taxas: Taxas; recolhida?: boolean }) {
+export function TaxasForm({ taxas, recolhida = false }: { taxas: TaxasPayload; recolhida?: boolean }) {
   const [abriu, setAbriu] = useState(false)
   // Fora do padrão novo o card fica sempre aberto, mesmo se o padrão trocar com a tela aberta.
   const aberta = !recolhida || abriu
@@ -119,6 +136,7 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: Taxas; recolhid
   const [freteKmGratis, setFreteKmGratis] = useState(String(taxas.freteKmGratis))
   const [freteValorFixo, setFreteValorFixo] = useState(taxas.freteValorFixo)
   const [imposto, setImposto] = useState(toStr(Number(taxas.imposto)))
+  const [custoPix, setCustoPix] = useState(toStr(Number(taxas.custoPixTaxa)))
   const [loading, setLoading] = useState(false)
 
   function setCartaoRate(n: number, v: string) { setCartao(prev => ({ ...prev, [String(n)]: v })) }
@@ -129,7 +147,7 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: Taxas; recolhid
   async function handleSave() {
     setLoading(true)
     try {
-      await salvarTaxasAction({
+      const r = await salvarTaxasAction({
         taxasCartao: buildDecimalMap(cartao),
         taxasDebito: buildDecimalMap(debito),
         taxasLink: buildDecimalMap(link),
@@ -138,8 +156,10 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: Taxas; recolhid
         freteKmGratis: parseInt(freteKmGratis, 10) || 40,
         freteValorFixo: freteValorFixo || '0.00',
         imposto: String(toDecimal(imposto || '6')),
+        custoPixTaxa: String(toDecimal(custoPix)),
       })
-      toast.success('Taxas salvas com sucesso')
+      if (r.ok) toast.success('Taxas salvas com sucesso')
+      else toast.error(r.erro)
     } catch {
       toast.error('Erro ao salvar taxas')
     } finally {
@@ -175,9 +195,10 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: Taxas; recolhid
       </div>
 
       {aberta && <div className="p-4 sm:p-6">
-        <Tabs defaultValue="cartao">
+        <Tabs defaultValue="pix">
           {/* No celular as abas quebram linha: a tela não pode rolar para o lado. */}
           <TabsList className="w-full flex-wrap group-data-horizontal/tabs:h-auto *:h-8 sm:w-fit sm:flex-nowrap sm:group-data-horizontal/tabs:h-8">
+            <TabsTrigger value="pix">PIX</TabsTrigger>
             <TabsTrigger value="cartao">Cartão de Crédito (1–21x)</TabsTrigger>
             <TabsTrigger value="debito">Cartão de Débito</TabsTrigger>
             <TabsTrigger value="link">Link de Pagamento (1–18x)</TabsTrigger>
@@ -185,6 +206,27 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: Taxas; recolhid
             <TabsTrigger value="frete">Frete</TabsTrigger>
             <TabsTrigger value="imposto">Imposto</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="pix" className="mt-4">
+            <div className="space-y-4">
+              <div className="max-w-xs space-y-1.5">
+                <Label htmlFor="custo-pix" className="text-xs">Custo do PIX (%)</Label>
+                <Input
+                  id="custo-pix"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="99.99"
+                  className="h-9 text-sm"
+                  placeholder="0,00"
+                  value={custoPix}
+                  onChange={e => setCustoPix(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Tarifa do banco em cada PIX recebido. Deixe 0 se o banco não cobra.</p>
+              </div>
+              <ExemploPix taxa={toDecimal(custoPix)} />
+            </div>
+          </TabsContent>
 
           <TabsContent value="cartao" className="mt-4">
             <TaxaGrid parcelas={PARCELAS_CARTAO} rates={cartao} onChange={setCartaoRate} />

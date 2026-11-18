@@ -19,7 +19,7 @@ afterEach(async () => { for (const desmontar of montados.splice(0)) await desmon
 
 const TAXAS = {
   taxasCartao: {}, taxasDebito: {}, taxasLink: {}, taxasFinanciamento: {},
-  freteValorKm: '3.00', freteKmGratis: 40, freteValorFixo: '0.00', imposto: '0.06',
+  freteValorKm: '3.00', freteKmGratis: 40, freteValorFixo: '0.00', imposto: '0.06', custoPixTaxa: '0',
 }
 const modelo = (id: string, extra: Partial<Record<string, unknown>>) => ({
   id, precId: `p-${id}`, doCatalogo: true, nome: id, marca: null, valorMinimo: '10000.00', custo: null,

@@ -52,3 +52,28 @@ test('preço do modelo: a recusa da regra chega à tela com a frase', async () =
   assert.deepEqual(await a.salvarPrecoAction({ nome: 'M', valorMinimo: '10', valor12x: '12' }), { ok: true, dados: undefined })
   assert.deepEqual(chamadas, [['preco', 'grupo-a', { nome: 'M', valorMinimo: '10', valor12x: '12' }]])
 })
+
+const TAXAS = {
+  taxasCartao: {}, taxasDebito: {}, taxasLink: {}, taxasFinanciamento: {},
+  freteValorKm: '3.00', freteKmGratis: 40, freteValorFixo: '0.00', imposto: '0.06', custoPixTaxa: '0',
+}
+
+test('custo do PIX: recusa 100% ou mais, negativo e o que não é número, com a frase', async () => {
+  const a = await import('./actions')
+  usuario = { papel: 'admin_socio' }
+  for (const custoPixTaxa of ['1', '2', '-0.001', '', 'abc']) {
+    assert.deepEqual(
+      await a.salvarTaxasAction({ ...TAXAS, custoPixTaxa }),
+      { ok: false, erro: 'O custo do PIX precisa ser de 0 até menos de 100%' },
+      custoPixTaxa,
+    )
+  }
+})
+
+test('taxas: quem não é sócio recebe "Sem permissão"', async () => {
+  const a = await import('./actions')
+  for (const papel of ['aux_adm', 'vendedor']) {
+    usuario = { papel }
+    assert.deepEqual(await a.salvarTaxasAction(TAXAS), { ok: false, erro: 'Sem permissão' }, papel)
+  }
+})

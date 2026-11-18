@@ -7,21 +7,10 @@ import { TaxasForm } from './taxas-form'
 import { ModeloDialog } from './modelo-dialog'
 import { ImportarPrecos } from './importar-precos'
 import { PadraoSimuladorCard } from './padrao-simulador-card'
-import { toggleAtivoAction, excluirModeloAction } from '../actions'
+import { toggleAtivoAction, excluirModeloAction, type TaxasPayload } from '../actions'
 import { parcelaDe12x, usaValor12x, type PadraoSimulador } from '@/lib/simulador-padrao'
 import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, TrendingUp, AlertTriangle, Tag } from 'lucide-react'
 import { fmtBRL } from '@/lib/preco-minimo'
-
-type Taxas = {
-  taxasCartao: Record<string, number>
-  taxasDebito: Record<string, number>
-  taxasLink: Record<string, number>
-  taxasFinanciamento: Record<string, number>
-  freteValorKm: string
-  freteKmGratis: number
-  freteValorFixo: string
-  imposto: string
-}
 
 type Modelo = {
   id: string
@@ -38,7 +27,7 @@ type Modelo = {
 }
 
 type Props = {
-  taxas: Taxas
+  taxas: TaxasPayload
   modelos: Modelo[]
   grupoNome: string
   padraoSimulador: PadraoSimulador
