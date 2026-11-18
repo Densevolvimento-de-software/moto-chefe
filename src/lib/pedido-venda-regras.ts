@@ -6,7 +6,7 @@ import { freteDaVenda, type EntregaVenda } from '@/lib/notagateway/entrega'
 // a tela mostrava "Cancelar" ao sócio e o banco recusava).
 import { motivoParaNaoVender } from './estado-moto'
 import { MOTO_ARQUIVADA } from './arquivar-moto-regras'
-import { aprovacaoNecessaria, type TipoAprovacaoVenda } from './aprovacao-venda'
+import { abaixoDoMinimo, aprovacaoNecessaria, type TipoAprovacaoVenda } from './aprovacao-venda'
 
 const PAPEIS_QUE_CRIAM_PEDIDO = ['admin_geral', 'admin_socio', 'aux_adm', 'vendedor']
 
@@ -146,16 +146,23 @@ export function liquidoPorMoto(liquido: number, valores: readonly number[]): num
   return valores.length === 0 ? [] : [...primeiras, centavos(liquido - primeiras.reduce((s, v) => s + v, 0))]
 }
 
-/** Aprovação do pedido (D-C): pagamento sensível vale para o pedido; valor mínimo, por moto, com o líquido rateado. */
+export type SeloDaMoto = { motoId: string; minimo: number; liquido: number; abaixo: boolean }
+
+/**
+ * Aprovação do pedido (D-C): pagamento sensível vale para o pedido; valor mínimo, por moto, com o líquido rateado. `porMoto` é o
+ * selo da tela (#25), sem olhar o papel: o sócio vê a moto abaixo do mínimo, só não precisa de aprovação.
+ */
 export function aprovacaoDoPedido(p: {
   sensivelSemPermissao: boolean; papel: string; liquido: number; motos: readonly { motoId: string; valor: number; minimo: number | null }[]
-}): { tipo: TipoAprovacaoVenda | null; abaixo: { motoId: string; minimo: number; liquido: number }[] } {
+}): { tipo: TipoAprovacaoVenda | null; abaixo: { motoId: string; minimo: number; liquido: number }[]; porMoto: SeloDaMoto[] } {
   const liquidos = liquidoPorMoto(p.liquido, p.motos.map(m => m.valor))
-  const abaixo = p.motos.flatMap((m, i) => {
-    const preco = m.minimo == null ? null : { liquido: liquidos[i], minimo: m.minimo }
-    return preco && aprovacaoNecessaria({ sensivelSemPermissao: false, preco, papel: p.papel }) ? [{ motoId: m.motoId, ...preco }] : []
-  })
-  return { tipo: aprovacaoNecessaria({ sensivelSemPermissao: p.sensivelSemPermissao, preco: null, papel: p.papel }) ?? (abaixo.length > 0 ? 'valor_minimo' : null), abaixo }
+  const porMoto = p.motos.flatMap((m, i) => (m.minimo == null ? []
+    : [{ motoId: m.motoId, minimo: m.minimo, liquido: liquidos[i], abaixo: abaixoDoMinimo(liquidos[i], m.minimo) }]))
+  const abaixo = porMoto
+    .filter(s => aprovacaoNecessaria({ sensivelSemPermissao: false, preco: s, papel: p.papel }))
+    .map(({ motoId, minimo, liquido }) => ({ motoId, minimo, liquido }))
+  const tipo = aprovacaoNecessaria({ sensivelSemPermissao: p.sensivelSemPermissao, preco: null, papel: p.papel }) ?? (abaixo.length > 0 ? 'valor_minimo' : null)
+  return { tipo, abaixo, porMoto }
 }
 
 /** Peça que entra no pedido (#778): brinde (R$ 0) ou acessório, do catálogo de peças da Conta. */

@@ -7,6 +7,7 @@ import {
   descreverPagamentos,
   pagamentosIncompletos,
   projetarPagamentos,
+  situacaoDoPagamento,
 } from './pagamentos-entrada'
 
 test('registro antigo (pagamentos nulo) vira uma linha só, com o meio de pagamento legado', () => {
@@ -69,6 +70,14 @@ test('fecha com o valor da entrada dentro do centavo', () => {
 
 test('não fecha com entrada zerada', () => {
   assert.equal(pagamentosFecham([], 0), false)
+})
+
+test('situação do pagamento do pedido (#25): falta, pago por completo e passou, em centavos', () => {
+  assert.deepEqual(situacaoDoPagamento([], 1000), { tipo: 'falta', pago: 0, diferenca: 1000 })
+  assert.deepEqual(situacaoDoPagamento([{ tipo: 'pix', valor: 400 }, { tipo: 'pix', valor: '' as unknown as number }], 1000), { tipo: 'falta', pago: 400, diferenca: 600 })
+  const tercos = [{ tipo: 'pix', valor: 333.33 }, { tipo: 'dinheiro', valor: 333.33 }, { tipo: 'pix', valor: 333.34 }]
+  assert.deepEqual(situacaoDoPagamento(tercos, 1000), { tipo: 'pago', pago: 1000, diferenca: 0 })
+  assert.deepEqual(situacaoDoPagamento([{ tipo: 'pix', valor: 1000.1 }], 1000), { tipo: 'passou', pago: 1000.1, diferenca: 0.1 })
 })
 
 test('descreve as formas para o histórico e o comprovante', () => {
