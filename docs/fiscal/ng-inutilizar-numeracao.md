@@ -72,7 +72,7 @@ Cada item tem fonte escrita. Doc e item divergem? Vale o que foi testado; na dú
 
 ## Onde isso vive no MOVA
 
-- `src/lib/notagateway/client.ts`: `pedirInutilizacao` (POST; 5xx vira `NotaGatewayIndisponivel`, só com o status) e `consultarInutilizacaoNaNg` (GET).
+- `src/lib/notagateway/client.ts`: `pedirInutilizacao` (POST; 5xx vira `NotaGatewayIndisponivel`, só com o status) e `consultarInutilizacaoNaNg` (GET, com tempo limite de 15 s; o POST não tem, porque sem resposta não se sabe se a NG recebeu).
 - `src/lib/notagateway/inutilizacao.ts`: regras puras (justificativa, nota elegível, pedido sem resposta, quem pode pedir, e `decidirInutilizacao`: a decisão única que a lista mostra e o pedido aceita, inclusive se o grupo está no ambiente da nota).
 - `src/lib/notagateway/inutilizar-faixa.ts`: `inutilizarFaixa`, o pedido de faixa (config, série e UF da NG, grava pendente, envia pelo `enviarPedido` de `inutilizar.ts`). Regras puras da faixa em `inutilizacao.ts` (`validarFaixaInutilizacao`, `ufPermiteInutilizacao`, `serieEUfDaEmpresa`).
 - `src/lib/notagateway/inutilizar.ts`: `contextoDeInutilizacao` (o que a decisão precisa, com o grupo no `where`), pedido e consulta, gravação e log com o resultado de cada pedido.
@@ -80,3 +80,4 @@ Cada item tem fonte escrita. Doc e item divergem? Vale o que foi testado; na dú
 - `src/lib/notagateway/status.ts`: `ehDenegada`, `ehDuplicidade`, `STATUS_MORTOS` e `numeroLivre`, que decidem se a nota pode ter o número inutilizado e se outra nota ainda o ocupa.
 - `src/lib/queries/notas-emitidas.ts`: `anexarSituacaoDeInutilizacao`, a situação por nota na tela Notas emitidas.
 - `src/app/(dashboard)/notas-emitidas/`: a action, o diálogo e o bloco de situação da linha (#597).
+- `src/lib/notagateway/rotina-inutilizacao.ts` e `src/app/api/cron/inutilizacoes-pendentes/route.ts`: de hora em hora, a pendente pedida há mais de 4 h vai a `consultarResultadoDaLinha`, de todos os grupos, com a credencial do grupo da linha. A NG reenvia o aviso "15 tentativas com intervalos de tempo progressivos entre cada uma delas, totalizando, em média, 4 horas" ([página do webhook](https://docs.notagateway.com.br/v2/docs/webhook)); depois disso, só a consulta resolve (#67). Depois de 240 s a rodada não começa outra consulta: o resto conta como adiado e fica para a hora seguinte.

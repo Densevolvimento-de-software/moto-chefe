@@ -1,4 +1,4 @@
-import { and, count, eq, gte, inArray, lte, notInArray, sql } from 'drizzle-orm'
+import { and, asc, count, eq, gte, inArray, lt, lte, notInArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { grupos, lojas, notagatewayConfig, notasFiscaisSaida, notasFiscaisSaidaInutilizacoes } from '@/lib/db/schema'
 import { podeVerGrupo } from '@/lib/acesso-grupo'
@@ -316,4 +316,14 @@ export async function consultarInutilizacao(
   const linha = await inutilizacaoDoUsuario(deps.exec, usuario, inutilizacaoId)
   if (!linha) return { ok: false, erro: 'Inutilização não encontrada' }
   return consultarResultadoDaLinha(linha, deps)
+}
+
+/**
+ * Pendentes pedidas antes do limite, de todos os grupos, da mais velha para a mais nova: só a rotina horária
+ * (#67) usa, sem usuário. Nada sai daqui para tela; cada linha vai à consulta com a credencial do próprio grupo.
+ */
+export function inutilizacoesPendentesAntesDe(tx: Pick<typeof db, 'select'>, limite: Date): Promise<InutilizacaoParaConsultar[]> {
+  return tx.select(COLUNAS_DA_CONSULTA).from(notasFiscaisSaidaInutilizacoes)
+    .where(and(eq(notasFiscaisSaidaInutilizacoes.situacao, 'pendente'), lt(notasFiscaisSaidaInutilizacoes.criadoEm, limite)))
+    .orderBy(asc(notasFiscaisSaidaInutilizacoes.criadoEm))
 }

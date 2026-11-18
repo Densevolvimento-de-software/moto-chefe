@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAutorizado } from '@/lib/cron-auth'
 import { db } from '@/lib/db'
 import { conciliacoesCartao, vendas, vendasPecas, ordensServico, grupos, lojas } from '@/lib/db/schema'
 import { eq, and, between, inArray, sql } from 'drizzle-orm'
@@ -22,8 +23,7 @@ function casaPagamento(pagamentos: unknown, valorBruto: number, parcelas: number
 }
 
 export async function POST(req: NextRequest) {
-  const secret = req.headers.get('x-cron-secret')
-  if (secret !== process.env.CRON_SECRET) {
+  if (!cronAutorizado(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

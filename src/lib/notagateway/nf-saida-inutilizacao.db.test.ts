@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { inspect } from 'node:util'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { limiteDaRotina } from '@/lib/notagateway/inutilizacao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -815,6 +816,155 @@ test('consulta (clique) de linha já resolvida: devolve o gravado sem ir à NG',
 
     assert.deepEqual(r, { ok: true, situacao: 'autorizada', motivoStatus: null, protocolo: 'P-GRAVADO' })
     assert.equal(ng.chamadas.length, 0)
+  })
+})
+
+// Rotina de hora em hora (#67): a pendente que passou das 4 h de reenvio do aviso, de todos os grupos.
+type RespostaDaNg = Awaited<ReturnType<Consultar>>
+
+/** NG trocada que responde por id externo (Error = NG fora); as chamadas ficam como na ngQueResponde. */
+function ngPorId(respostas: Record<string, RespostaDaNg | Error>) {
+  const ng = ngQueResponde(null)
+  const consultar: Consultar = async (cfg, idExterno) => {
+    await ng.consultar(cfg, idExterno)
+    const r = respostas[idExterno]
+    if (r instanceof Error) throw r
+    return r ?? null
+  }
+  return { consultar, chamadas: ng.chamadas }
+}
+
+const AGORA = new Date()
+const HORA = 3_600_000
+const QUATRO_HORAS_E_UM_MINUTO = 4 * HORA + 60_000
+
+/** Gravada direto com a idade dada: o now() da transação não serve de relógio. Faixa (sem nota): sem índice de número. */
+async function inutilizacaoComIdade(tx: Tx, grupoId: string, idadeMs: number, situacao: 'pendente' | 'autorizada' | 'negada' = 'pendente') {
+  const status = { pendente: 'Enviando', autorizada: 'Autorizada', negada: 'Negada' }[situacao]
+  const [{ id, id_externo }] = await linhas(tx, sql`insert into notas_fiscais_saida_inutilizacoes
+      (grupo_id, id_externo, ambiente, serie, numero_inicial, numero_final, justificativa, situacao, status, criado_em)
+    values (${grupoId}, ${`rotina67-${grupoId}-${idadeMs}`}, 'Homologacao', '1', 30, 30, ${JUSTIFICATIVA}, ${situacao}, ${status},
+      ${new Date(AGORA.getTime() - idadeMs).toISOString()}) returning id, id_externo`)
+  return { idExterno: id_externo as string, linha: async () => (await linhas(tx, sql`select * from notas_fiscais_saida_inutilizacoes where id = ${id}`))[0] }
+}
+
+/** A rotina conta todas as pendentes vencidas do banco: o teste só vale se não houver nenhuma de fora (test:db em paralelo, #640). */
+async function semPendenteVencidaDeFora(tx: Tx) {
+  const [{ n }] = await linhas(tx, sql`select count(*)::int as n from notas_fiscais_saida_inutilizacoes
+    where situacao = 'pendente' and criado_em < ${limiteDaRotina(AGORA).toISOString()}`)
+  assert.equal(n, 0, 'há inutilização pendente vencida de fora deste teste no banco')
+}
+
+/** Relógio parado por padrão: o orçamento de tempo da rotina só acaba no teste que o adianta. */
+async function rodarRotina(tx: Tx, consultar: Consultar, relogioMs = () => 0) {
+  const { resolverPendentesSemAviso } = await import('@/lib/notagateway/rotina-inutilizacao')
+  return resolverPendentesSemAviso(AGORA, { exec: tx, config: m.configDoAmbiente, consultar, relogioMs })
+}
+
+test('rotina: consulta só a pendente com mais de 4 h, de todos os grupos, cada uma com a credencial do grupo dela', async () => {
+  await emTransacaoDesfeita(async tx => {
+    await semPendenteVencidaDeFora(tx)
+    const a = await semearContaFaixa(tx, 'A', '00000000067001', 'Homologacao', 'emp-A')
+    const b = await semearContaFaixa(tx, 'B', '00000000067002', 'Homologacao', 'emp-B')
+    const vencidaA = await inutilizacaoComIdade(tx, a.grupoId, QUATRO_HORAS_E_UM_MINUTO)
+    const vencidaB = await inutilizacaoComIdade(tx, b.grupoId, 5 * HORA)
+    const intactas = [
+      await inutilizacaoComIdade(tx, a.grupoId, 4 * HORA - 60_000),
+      await inutilizacaoComIdade(tx, a.grupoId, 6 * HORA, 'autorizada'),
+      await inutilizacaoComIdade(tx, b.grupoId, 6 * HORA, 'negada'),
+    ]
+    const antes = await Promise.all(intactas.map(i => i.linha()))
+    const ng = ngPorId({ [vencidaA.idExterno]: AUTORIZADA, [vencidaB.idExterno]: { status: 'Negada', motivoStatus: '241 - Faixa ja usada', protocolo: null } })
+
+    const resumo = await rodarRotina(tx, ng.consultar)
+
+    assert.deepEqual(resumo, { consultadas: 2, resolvidas: 2, falhas: 0, adiadas: 0 })
+    assert.deepEqual(ng.chamadas, [{ empresaId: 'emp-B', idExterno: vencidaB.idExterno }, { empresaId: 'emp-A', idExterno: vencidaA.idExterno }])
+    const [la, lb] = [await vencidaA.linha(), await vencidaB.linha()]
+    assert.deepEqual([la.situacao, la.protocolo], ['autorizada', '353190000062124'])
+    assert.deepEqual([lb.situacao, lb.motivo_status], ['negada', '241 - Faixa ja usada'])
+    assert.deepEqual(await Promise.all(intactas.map(i => i.linha())), antes)
+  })
+})
+
+test('rotina: NG sem resposta no tempo limite, grupo sem credencial, credencial noutro ambiente ou que não decifra: falha só naquela linha, que segue pendente; console sem id, empresa, token nem mensagem', async t => {
+  await emTransacaoDesfeita(async tx => {
+    await semPendenteVencidaDeFora(tx)
+    const ok = await semearContaFaixa(tx, 'A', '00000000067001', 'Homologacao', 'emp-A')
+    const ngFora = await semearContaFaixa(tx, 'B', '00000000067002', 'Homologacao', 'emp-B')
+    const semCredencial = await semearConta(tx, 'C', '00000000067003', null)
+    const outroAmbiente = await semearContaFaixa(tx, 'D', '00000000067004', 'Producao', 'emp-D')
+    const naoDecifra = await semearConta(tx, 'E', '00000000067005')
+    const resolve = await inutilizacaoComIdade(tx, ok.grupoId, 5 * HORA)
+    const falham = [
+      await inutilizacaoComIdade(tx, ngFora.grupoId, 6 * HORA),
+      await inutilizacaoComIdade(tx, semCredencial.grupoId, 7 * HORA),
+      await inutilizacaoComIdade(tx, outroAmbiente.grupoId, 8 * HORA),
+      await inutilizacaoComIdade(tx, naoDecifra.grupoId, 9 * HORA),
+    ]
+    const antes = await Promise.all(falham.map(f => f.linha()))
+    const ng = ngPorId({ [resolve.idExterno]: AUTORIZADA, [falham[0].idExterno]: new DOMException(`sem resposta de /empresas/emp-B/nf-e/inutilizacao/${falham[0].idExterno}`, 'TimeoutError') })
+    const escrito = consoleDe(t)
+
+    const resumo = await rodarRotina(tx, ng.consultar)
+
+    assert.deepEqual(resumo, { consultadas: 5, resolvidas: 1, falhas: 4, adiadas: 0 })
+    assert.equal((await resolve.linha()).situacao, 'autorizada')
+    assert.deepEqual(await Promise.all(falham.map(f => f.linha())), antes, 'a linha com falha segue pendente, sem gravar nada')
+    assert.deepEqual(ng.chamadas.map(c => c.empresaId), ['emp-B', 'emp-A'], 'sem credencial no ambiente, não vai à NG')
+    const textos = escrito()
+    assert.deepEqual(textos, [
+      '[rotina inutilizacao] falha numa pendente (Error)',
+      '[rotina inutilizacao] falha numa pendente (sem credencial no ambiente)',
+      '[rotina inutilizacao] falha numa pendente (sem credencial no ambiente)',
+      '[rotina inutilizacao] falha numa pendente (TimeoutError)',
+      '[rotina inutilizacao] consultadas 5, resolvidas 1, falhas 4, adiadas 0',
+    ], 'da mais velha para a mais nova, e a contagem no fim')
+    for (const proibido of ['emp-', 'rotina67-', 'tok-cifrado', 'token-de-teste', 'sem resposta de']) {
+      assert.ok(textos.every(texto => !texto.includes(proibido)), proibido)
+    }
+  })
+})
+
+test('rotina: a NG ainda processando segue pendente e só conta como consultada; 404 depois do prazo grava negada, como no clique; sem vencida, nada vai à NG', async t => {
+  await emTransacaoDesfeita(async tx => {
+    await semPendenteVencidaDeFora(tx)
+    t.mock.method(console, 'info', () => {})
+    const a = await semearContaFaixa(tx, 'A', '00000000067001', 'Homologacao', 'emp-A')
+    const nada = ngPorId({})
+    assert.deepEqual(await rodarRotina(tx, nada.consultar), { consultadas: 0, resolvidas: 0, falhas: 0, adiadas: 0 })
+    assert.equal(nada.chamadas.length, 0)
+
+    const processando = await inutilizacaoComIdade(tx, a.grupoId, 5 * HORA)
+    const naoChegou = await inutilizacaoComIdade(tx, a.grupoId, 6 * HORA)
+    const ng = ngPorId({ [processando.idExterno]: { status: 'Processando', motivoStatus: null, protocolo: null } })
+
+    assert.deepEqual(await rodarRotina(tx, ng.consultar), { consultadas: 2, resolvidas: 1, falhas: 0, adiadas: 0 })
+    assert.equal((await processando.linha()).situacao, 'pendente')
+    const negada = await naoChegou.linha()
+    assert.deepEqual([negada.situacao, negada.status, negada.motivo_status],
+      ['negada', 'NaoEnviada', 'O pedido não chegou à Nota Gateway. Peça a inutilização de novo.'])
+  })
+})
+
+test('rotina: passado o orçamento de tempo, não começa outra consulta; as outras contam como adiadas, seguem pendentes, e o resumo sai', async t => {
+  await emTransacaoDesfeita(async tx => {
+    await semPendenteVencidaDeFora(tx)
+    const a = await semearContaFaixa(tx, 'A', '00000000067001', 'Homologacao', 'emp-A')
+    const maisVelha = await inutilizacaoComIdade(tx, a.grupoId, 7 * HORA)
+    const adiadas = [await inutilizacaoComIdade(tx, a.grupoId, 6 * HORA), await inutilizacaoComIdade(tx, a.grupoId, 5 * HORA)]
+    const antes = await Promise.all(adiadas.map(f => f.linha()))
+    const ng = ngPorId({ [maisVelha.idExterno]: AUTORIZADA })
+    const escrito = consoleDe(t)
+
+    // Cada consulta gasta o orçamento inteiro (240 s): depois da primeira, nenhuma outra começa.
+    const resumo = await rodarRotina(tx, ng.consultar, () => ng.chamadas.length * 240_000)
+
+    assert.deepEqual(resumo, { consultadas: 1, resolvidas: 1, falhas: 0, adiadas: 2 })
+    assert.deepEqual(ng.chamadas.map(c => c.idExterno), [maisVelha.idExterno])
+    assert.equal((await maisVelha.linha()).situacao, 'autorizada')
+    assert.deepEqual(await Promise.all(adiadas.map(f => f.linha())), antes)
+    assert.deepEqual(escrito(), ['[rotina inutilizacao] consultadas 1, resolvidas 1, falhas 0, adiadas 2'])
   })
 })
 
