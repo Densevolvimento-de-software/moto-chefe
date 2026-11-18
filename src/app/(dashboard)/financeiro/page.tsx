@@ -4,7 +4,7 @@ import { hojeBrt } from '@/lib/data-venda'
 import { periodoFinanceiro, limitesDoPeriodo } from '@/lib/periodo-financeiro'
 import { getGrupoAtivo, listarLojasDoGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { db, execRows } from '@/lib/db'
-import { vendas, lojas, usuarios, motos, modelos, conciliacoesCartao, despesas, despesasOpenFinance, ordensServico, vendasPecas, lancamentosCaixa } from '@/lib/db/schema'
+import { vendas, lojas, usuarios, motos, modelos, despesas, despesasOpenFinance, ordensServico, vendasPecas, lancamentosCaixa } from '@/lib/db/schema'
 import { eq, ne, and, gte, lte, sql, count, inArray } from 'drizzle-orm'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,8 +24,8 @@ import { configDespesas } from '@/lib/queries/config-despesas'
 import { calcularResultadoPorLoja } from '@/lib/resultado-por-loja'
 import { despesaDaLojaFiltrada } from '@/lib/despesa-loja-filtrada'
 import { tarifaPixDaVendaExpr, valorLiquidoExpr } from '@/lib/queries/valor-liquido'
-import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 import { taxasDaReceita } from '@/lib/dre'
+import { taxasOutrasDoPeriodo } from '@/lib/queries/taxas-receita'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
 import { somaCustoMotoExpr, qtdSemCustoExpr } from '@/lib/queries/custo-moto'
 import { TriangleAlert } from 'lucide-react'
@@ -68,18 +68,6 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     : lojaParamValido ? eq(ordensServico.lojaId, lojaParamValido) : inArray(ordensServico.lojaId, lojaIdsGrupo)
   const lojaFiltroPecas = escopoGeral ? nenhumaLinha
     : lojaParamValido ? eq(vendasPecas.lojaId, lojaParamValido) : inArray(vendasPecas.lojaId, lojaIdsGrupo)
-
-  // Versões em SQL cru dos mesmos filtros, pra usar dentro dos subselects da taxa.
-  const lojaCondOSTaxa = escopoGeral
-    ? sql`AND false`
-    : lojaParamValido
-    ? sql`AND o.loja_id = ${lojaParamValido}`
-    : sql`AND o.loja_id IN (${sql.join(lojaIdsGrupo.map(id => sql`${id}`), sql`, `)})`
-  const lojaCondPecaTaxa = escopoGeral
-    ? sql`AND false`
-    : lojaParamValido
-    ? sql`AND p.loja_id = ${lojaParamValido}`
-    : sql`AND p.loja_id IN (${sql.join(lojaIdsGrupo.map(id => sql`${id}`), sql`, `)})`
 
   const [totaisVendas, resumoPorLoja, lojasOpts, resumoPorVendedor, resumoPorPagamentoRaw, parcelamentoRaw, resumoPorModelo, saidasBanco, manuaisForaDoBanco, config, totaisOS, totaisPecas, taxasOutras, saidasCaixa] = await Promise.all([
     db
@@ -276,31 +264,10 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
         lojaFiltroPecas,
       )),
 
-    // Taxa de cartão de OS e de peça. A de moto já sai de bruto − líquido na query de
-    // vendas; estas duas não tinham de onde sair porque o faturamento antes era só moto.
-    // Ancorado na data da venda/conclusão, não na data da transação no extrato, pra taxa
-    // e receita caírem sempre no mesmo mês.
-    execRows(sql`
-      SELECT COALESCE(SUM(c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric))
-               FILTER (WHERE c.tipo <> ${LINHA_PIX}), 0)::text AS taxa,
-             COALESCE(SUM(c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric))
-               FILTER (WHERE c.tipo = ${LINHA_PIX}), 0)::text AS tarifa_pix
-      FROM ${conciliacoesCartao} c
-      WHERE c.conciliado = true
-        AND (
-          c.os_id IN (
-            SELECT o.id FROM ${ordensServico} o
-            WHERE o.status = 'concluida'
-              AND o.data_conclusao >= ${inicioTs.toISOString()} AND o.data_conclusao <= ${fimTs.toISOString()}
-              ${lojaCondOSTaxa}
-          )
-          OR c.peca_venda_id IN (
-            SELECT p.id FROM ${vendasPecas} p
-            WHERE p.data_venda >= ${inicioTs.toISOString()} AND p.data_venda <= ${fimTs.toISOString()}
-              ${lojaCondPecaTaxa}
-          )
-        )
-    `),
+    // Taxa de cartão e tarifa do Pix de OS e de peça. A de moto já sai de bruto − líquido na query de
+    // vendas. Ancorado na data da venda/conclusão, não na data da transação no extrato, pra taxa e receita
+    // caírem sempre no mesmo mês.
+    taxasOutrasDoPeriodo(escopoGeral ? [] : lojaParamValido ? [lojaParamValido] : lojaIdsGrupo, inicioTs, fimTs),
 
     // Dinheiro pago da gaveta pelo administrativo da loja. Nunca aparece no extrato,
     // então sem isto a despesa em espécie sumia do resultado. Reprovado fica de fora,
@@ -323,7 +290,8 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
           : lojaParamValido
           ? eq(lancamentosCaixa.lojaId, lojaParamValido)
           : inArray(lancamentosCaixa.lojaId, lojaIdsGrupo),
-      )),  ])
+      )),
+  ])
 
   const receitaVendas = Number(totaisVendas[0]?.totalVendas ?? 0)
   const receitaLiquida = Number(totaisVendas[0]?.totalLiquido ?? 0)
@@ -373,13 +341,12 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   const faturamentoPecas = totalPecasAvulsas + totalPecasOS
   const faturamentoBruto = receitaVendas + totalServicosOS + faturamentoPecas
 
-  const outras = (taxasOutras as unknown as { taxa: string; tarifa_pix: string }[])[0]
   const { taxasCartao, tarifaPix } = taxasDaReceita({
     brutoMotos: receitaVendas,
     liquidoMotos: receitaLiquida,
     tarifaPixMotos: Number(totaisVendas[0]?.tarifaPix ?? 0),
-    taxaCartaoOutras: Number(outras?.taxa ?? 0),
-    tarifaPixOutras: Number(outras?.tarifa_pix ?? 0),
+    taxaCartaoOutras: taxasOutras.taxaCartao,
+    tarifaPixOutras: taxasOutras.tarifaPix,
   })
 
   const faturamentoLiquido = faturamentoBruto - taxasCartao - tarifaPix

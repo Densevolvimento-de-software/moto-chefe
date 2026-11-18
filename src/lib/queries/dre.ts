@@ -8,6 +8,7 @@ import { and, eq, gte, inArray, lt, ne, sql } from 'drizzle-orm'
 import { rotuloMesCurtoAA } from '@/lib/data-venda'
 import { tarifaPixDaVendaExpr, valorLiquidoExpr } from './valor-liquido'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
+import { taxaDaLinhaOutras } from './taxas-receita'
 import { somaCustoMotoExpr } from './custo-moto'
 import { chaveCategoria, somarDespesas, type TotalDespesas } from '@/lib/despesas-operacionais'
 import { configDespesas } from './config-despesas'
@@ -132,7 +133,7 @@ export async function dreDoMes(opts: {
              COALESCE(SUM(taxa) FILTER (WHERE tipo = ${LINHA_PIX}), 0)::text AS tarifa_pix
         FROM (
           SELECT o.loja_id,
-                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa, c.tipo
+                 ${taxaDaLinhaOutras} AS taxa, c.tipo
             FROM ${conciliacoesCartao} c
             JOIN ${ordensServico} o ON o.id = c.os_id
            WHERE c.conciliado = true
@@ -141,7 +142,7 @@ export async function dreDoMes(opts: {
              AND o.data_conclusao >= ${inicio.toISOString()} AND o.data_conclusao < ${fim.toISOString()}
           UNION ALL
           SELECT p.loja_id,
-                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa, c.tipo
+                 ${taxaDaLinhaOutras} AS taxa, c.tipo
             FROM ${conciliacoesCartao} c
             JOIN ${vendasPecas} p ON p.id = c.peca_venda_id
            WHERE c.conciliado = true
@@ -282,7 +283,7 @@ export async function dreEvolucao(opts: {
              COALESCE(SUM(taxa) FILTER (WHERE tipo = ${LINHA_PIX}), 0)::text AS tarifa_pix
         FROM (
           SELECT o.data_conclusao AS data,
-                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa, c.tipo
+                 ${taxaDaLinhaOutras} AS taxa, c.tipo
             FROM ${conciliacoesCartao} c
             JOIN ${ordensServico} o ON o.id = c.os_id
            WHERE c.conciliado = true AND o.status = 'concluida'
@@ -290,7 +291,7 @@ export async function dreEvolucao(opts: {
              AND o.data_conclusao >= ${inicio.toISOString()} AND o.data_conclusao < ${fim.toISOString()}
           UNION ALL
           SELECT p.data_venda AS data,
-                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa, c.tipo
+                 ${taxaDaLinhaOutras} AS taxa, c.tipo
             FROM ${conciliacoesCartao} c
             JOIN ${vendasPecas} p ON p.id = c.peca_venda_id
            WHERE c.conciliado = true
