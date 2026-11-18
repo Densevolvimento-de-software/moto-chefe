@@ -60,6 +60,7 @@ A página não diz o que cada status significa para a inutilização, nem lista 
 Cada item tem fonte escrita. Doc e item divergem? Vale o que foi testado; na dúvida, pergunte (skill `nota-gateway-docs`).
 
 - **Resultado assíncrono**: o 200 do POST só confirma que o pedido foi criado; o resultado vem pela consulta ou pelo webhook `InutilizacaoNumeracaoNFe`. Fonte: suporte da NG, registrado na [#504](https://github.com/Meu-mova/moto-chefe/issues/504) ("Como a Nota Gateway funciona (respostas do suporte)").
+- **O aviso do resultado chega no mesmo link de webhook das notas**, no formato da consulta (`id`, `ambienteEmissao`, `status` `Autorizada` ou `Negada`, `motivoStatus`, `protocoloAutorizacao`...), sem `tipo` nem `empresaId`, um aviso por pedido. Fonte: suporte da NG, [comentário na #58](https://github.com/Densevolvimento-de-software/moto-chefe/issues/58) (17/11/2026). Como o MOVA trata: `ng-webhook.md`.
 - **Justificativa de 15 a 255 caracteres, só ASCII básico (sem acento).** Fonte: suporte da NG, na [#504](https://github.com/Meu-mova/moto-chefe/issues/504).
 - **A NG soma +1 na numeração a cada envio de nota, mesmo com erro, e não há API para listar números usados.** O número a inutilizar sai do histórico do MOVA (`notas_fiscais_saida`). Fonte: suporte da NG, na [#504](https://github.com/Meu-mova/moto-chefe/issues/504).
 - **Nomes do status**: o suporte informou `InutilizacaoAutorizada` (com `protocoloAutorizacao`) e `InutilizacaoNegada` (motivo em `motivoStatus`), mas a consulta em homologação devolveu `Autorizada` e `Negada`. O MOVA aceita os dois nomes. Fonte: [comentário na #504](https://github.com/Meu-mova/moto-chefe/issues/504#issuecomment-6503150925) e [PR #507](https://github.com/Meu-mova/moto-chefe/pull/507).
@@ -75,6 +76,7 @@ Cada item tem fonte escrita. Doc e item divergem? Vale o que foi testado; na dú
 - `src/lib/notagateway/inutilizacao.ts`: regras puras (justificativa, nota elegível, pedido sem resposta, quem pode pedir, e `decidirInutilizacao`: a decisão única que a lista mostra e o pedido aceita, inclusive se o grupo está no ambiente da nota).
 - `src/lib/notagateway/inutilizar-faixa.ts`: `inutilizarFaixa`, o pedido de faixa (config, série e UF da NG, grava pendente, envia pelo `enviarPedido` de `inutilizar.ts`). Regras puras da faixa em `inutilizacao.ts` (`validarFaixaInutilizacao`, `ufPermiteInutilizacao`, `serieEUfDaEmpresa`).
 - `src/lib/notagateway/inutilizar.ts`: `contextoDeInutilizacao` (o que a decisão precisa, com o grupo no `where`), pedido e consulta, gravação e log com o resultado de cada pedido.
+- `src/lib/notagateway/aviso-webhook.ts` e `aviso.ts`: o aviso da NG (webhook) dispara `consultarResultadoDaLinha`, a mesma consulta do clique (#66; `ng-webhook.md`).
 - `src/lib/notagateway/status.ts`: `ehDenegada`, `ehDuplicidade`, `STATUS_MORTOS` e `numeroLivre`, que decidem se a nota pode ter o número inutilizado e se outra nota ainda o ocupa.
 - `src/lib/queries/notas-emitidas.ts`: `anexarSituacaoDeInutilizacao`, a situação por nota na tela Notas emitidas.
 - `src/app/(dashboard)/notas-emitidas/`: a action, o diálogo e o bloco de situação da linha (#597).
