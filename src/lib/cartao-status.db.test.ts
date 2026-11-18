@@ -152,3 +152,15 @@ test('desvincular cartão estornado é recusado e o vínculo fica', async () => 
   assert.deepEqual(await linhaDe(estornado), antes)
   assert.equal(antes.venda_id, vendaId)
 })
+
+test('desvincular a linha de outra Conta recebe "Conciliação não encontrada" e a linha não muda', async () => {
+  const b = await semear()
+  const linhaB = await cartao(b.base.grupoId, 1000, 'aprovado', null)
+  await linhas(sql`update conciliacoes_cartao set venda_id = ${b.vendaId}, conciliado = true where id = ${linhaB}`)
+  const antes = await linhaDe(linhaB)
+  await semear()
+
+  await assert.rejects(actions.desvincularVendaAction(linhaB), { message: 'Conciliação não encontrada' })
+  assert.deepEqual(await linhaDe(linhaB), antes)
+  assert.equal(antes.venda_id, b.vendaId)
+})
