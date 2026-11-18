@@ -602,3 +602,18 @@ test('D21 (#25): as listas de pedidos trazem todas as motos do pedido na ordem, 
     assert.deepEqual(motosDe(antigo.id)?.map(m => [m.id, m.valor]), [[m3, null]])
   }
 })
+
+test('D22 (#25): item gravado por fora apontando para moto de outra Conta não aparece nas motos do pedido', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const [m1] = await a.motos(1)
+  const [daB] = await b.motos(1)
+  usuario = a.vendedor
+  assert.deepEqual(await actions.criarPedidoVendaAction([{ motoId: m1, valor: 9000 }], '', RETIRA), OK)
+  const [pedido] = await pedidosDaMoto(m1)
+  await execRows(sql`insert into pedidos_venda_itens (pedido_venda_id, tipo, moto_id, valor_unitario) values (${pedido.id}, 'moto', ${daB}, 1) returning id`)
+  const { listarPedidosPorLoja, listarTodosPedidos } = await import('@/lib/queries/vendas')
+  for (const lista of [await listarPedidosPorLoja(a.base.lojaId), await listarTodosPedidos([a.base.lojaId])]) {
+    assert.deepEqual(lista.find(p => p.id === pedido.id)?.motos.map(m => m.id), [m1])
+  }
+})

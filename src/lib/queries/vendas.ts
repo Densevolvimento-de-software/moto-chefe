@@ -126,6 +126,9 @@ const motosDoPedidoSql = sql<{ id: string; marca: string; modelo: string; chassi
   ) x
   join motos mm on mm.id = x.moto_id
   join modelos mo on mo.id = mm.modelo_id
+  -- A moto também na Conta da loja do pedido, mesmo vindo de item já conferido na gravação.
+  where exists (select 1 from lojas lm join grupos gm on gm.id = lm.grupo_id, lojas lp join grupos gp on gp.id = lp.grupo_id
+                 where lm.id = mm.loja_id and lp.id = "pedidos_venda"."loja_id" and gm.conta_id = gp.conta_id)
 ), '[]'::json)`
 
 export async function listarPedidosPorLoja(lojaId: string) {
