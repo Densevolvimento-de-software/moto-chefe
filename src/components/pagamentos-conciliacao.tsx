@@ -5,6 +5,7 @@ import { ChevronDown, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { matchPagamentos, precisaConciliar, type PgtoOS } from '@/lib/conciliacao-status'
 import { nomeOperadora } from '@/lib/operadoras'
+import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import {
   buscarConciliacoesDoAlvo,
   buscarPixDoAlvo,
@@ -24,7 +25,6 @@ type Conc      = Awaited<ReturnType<typeof buscarConciliacoesDoAlvo>>[number]
 type PixRec    = Awaited<ReturnType<typeof buscarPixDoAlvo>>[number]
 type Candidato = Awaited<ReturnType<typeof buscarConciliacoesPorValor>>[number]
 
-const GESTORES   = new Set(['admin_geral', 'admin_socio', 'aux_adm'])
 const TIPO_LABEL: Record<string, string> = {
   pix: 'PIX', dinheiro: 'Dinheiro',
   cartao_credito: 'Cartão de Crédito', cartao_debito: 'Cartão de Débito',
@@ -78,7 +78,7 @@ type Props = {
 export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteConciliaveis = false }: Props) {
   const { concs, pixRecs, loading, recarregar } = dados
 
-  const podeBuscar = GESTORES.has(papel)
+  const podeBuscar = podeGerirConciliacao(papel)
   const podeForcar = papel === 'admin_geral'
 
   const [buscandoIdx, setBuscandoIdx]   = useState<number | null>(null)

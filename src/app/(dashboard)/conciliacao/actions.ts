@@ -7,6 +7,7 @@ import { conciliacoesCartao, pixRecebimentosMcp, vendas, modelos, motos, vendasP
 import { eq, and, or, desc, gte, sql, isNull, ilike, inArray } from 'drizzle-orm'
 import { getUsuarioLogado } from '@/lib/auth'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
+import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-periodo'
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
@@ -338,7 +339,7 @@ async function importarRelatorio(formData: FormData) {
 
 export async function vincularVendaAction(conciliacaoId: string, alvoId: string, tipo: 'moto' | 'peca' | 'os' = 'moto') {
   const usuario = await getUsuarioLogado()
-  if (!['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)) throw new Error('Sem permissão')
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
@@ -392,7 +393,7 @@ export async function vincularVendaAction(conciliacaoId: string, alvoId: string,
 
 export async function desvincularVendaAction(conciliacaoId: string) {
   const usuario = await getUsuarioLogado()
-  if (!['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)) throw new Error('Sem permissão')
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
 
   const atualizadas = await db.update(conciliacoesCartao)
@@ -407,8 +408,7 @@ export async function desvincularVendaAction(conciliacaoId: string) {
 
 export async function buscarConciliacoesPorValor(valor: number) {
   const usuario = await getUsuarioLogado()
-  const ADMINS  = ['admin_geral', 'admin_socio', 'aux_adm']
-  if (!ADMINS.includes(usuario.papel)) throw new Error('Sem permissão')
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
 
   return db
@@ -442,8 +442,6 @@ export async function buscarConciliacoesPorValor(valor: number) {
 export type AlvoTipo = 'moto' | 'peca' | 'os'
 export type AlvoConciliacao = { tipo: AlvoTipo; id: string }
 
-const GESTORES_CONC = ['admin_geral', 'admin_socio', 'aux_adm']
-
 // O mesmo status de conciliação aparece em várias telas; todas revalidam juntas
 // para nunca divergirem (uma dizendo "pendente" e a outra "conciliada").
 function revalidatePathsConciliacao() {
@@ -472,7 +470,7 @@ export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
   const usuario = await getUsuarioLogado()
   const lojaId  = await lojaIdDoAlvo(alvo)
   if (!lojaId) return []
-  if (GESTORES_CONC.includes(usuario.papel) ? !(await podeAbrirRegistroDaLoja(usuario, lojaId)) : lojaId !== usuario.lojaId) throw new Error('Sem permissão')
+  if (podeGerirConciliacao(usuario.papel) ? !(await podeAbrirRegistroDaLoja(usuario, lojaId)) : lojaId !== usuario.lojaId) throw new Error('Sem permissão')
 
   const coluna = alvo.tipo === 'peca' ? conciliacoesCartao.pecaVendaId
     : alvo.tipo === 'os'              ? conciliacoesCartao.osId
@@ -496,7 +494,7 @@ export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
   const usuario = await getUsuarioLogado()
   const lojaId  = await lojaIdDoAlvo(alvo)
   if (!lojaId) return []
-  if (GESTORES_CONC.includes(usuario.papel) ? !(await podeAbrirRegistroDaLoja(usuario, lojaId)) : lojaId !== usuario.lojaId) throw new Error('Sem permissão')
+  if (podeGerirConciliacao(usuario.papel) ? !(await podeAbrirRegistroDaLoja(usuario, lojaId)) : lojaId !== usuario.lojaId) throw new Error('Sem permissão')
 
   // Fonte única desde 15/09/2026: o PIX do ValidaPix saiu junto com a
   // integração. Venda de antes de julho/2026, cujo pagamento só existia lá,
@@ -524,7 +522,7 @@ export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
 // ou valor aproximado, sem filtro de valor exato.
 export async function buscarConciliacoesLivres(query: string) {
   const usuario = await getUsuarioLogado()
-  if (!GESTORES_CONC.includes(usuario.papel)) throw new Error('Sem permissão')
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
 
   const q = query.trim()
@@ -583,7 +581,7 @@ export type PixLivre = {
  */
 export async function buscarPixLivres(valor: number, query?: string): Promise<PixLivre[]> {
   const usuario = await getUsuarioLogado()
-  if (!GESTORES_CONC.includes(usuario.papel)) throw new Error('Sem permissão')
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
 
   const q = (query ?? '').trim()
@@ -629,7 +627,7 @@ export async function buscarPixLivres(valor: number, query?: string): Promise<Pi
 
 export async function vincularPixAlvoAction(pixId: string, alvo: AlvoConciliacao) {
   const usuario = await getUsuarioLogado()
-  if (!GESTORES_CONC.includes(usuario.papel)) throw new Error('Sem permissão')
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
 
   const lojaId = await lojaIdDoAlvo(alvo)
@@ -667,7 +665,7 @@ export async function vincularPixAlvoAction(pixId: string, alvo: AlvoConciliacao
 
 export async function desvincularPixAlvoAction(pixId: string) {
   const usuario = await getUsuarioLogado()
-  if (!GESTORES_CONC.includes(usuario.papel)) throw new Error('Sem permissão')
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
 
   const atualizadas = await db.update(pixRecebimentosMcp)
@@ -865,7 +863,7 @@ export async function buscarVendasParaVincular(valorRef: number) {
 
 export async function buscarVendaManual(query: string) {
   const usuario = await getUsuarioLogado()
-  if (!['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)) throw new Error('Sem permissão')
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
   const q = query.trim()
