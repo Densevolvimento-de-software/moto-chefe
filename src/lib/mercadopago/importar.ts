@@ -9,7 +9,7 @@ import { decifrar } from '@/lib/cripto'
 import { lojasDoGrupo } from '@/lib/conta'
 import { RecusaUsuario } from '@/lib/resultado-action'
 import type { TransacaoCartao } from '@/lib/conciliacao-cartao'
-import { casarPorAutorizacao, casarPorValor, linhaDaTransacao } from '@/lib/conciliacao-casamento'
+import { casarPorAutorizacao, casarPorValor, casou, linhaDaTransacao } from '@/lib/conciliacao-casamento'
 import { classificarPagamento } from '@/lib/conciliacao-mercadopago'
 import { buscarPagamentosDaRodada } from './point'
 
@@ -81,8 +81,7 @@ async function gravarLinha(tx: Tx, grupoId: string, lojaIds: string[], t: Transa
   if (existente) return 'duplicada'
 
   const porAutorizacao = t.autorizacao ? await casarPorAutorizacao(tx, lojaIds, t.autorizacao) : null
-  const casouPorAutorizacao = porAutorizacao && (porAutorizacao.vendaId ?? porAutorizacao.pecaVendaId ?? porAutorizacao.osId)
-  const alvos = casouPorAutorizacao ? porAutorizacao : await casarPorValor(tx, lojaIds, t)
+  const alvos = porAutorizacao && casou(porAutorizacao) ? porAutorizacao : await casarPorValor(tx, lojaIds, t)
   const linha = linhaDaTransacao(grupoId, OPERADORA, t, alvos, new Date())
 
   const inseridas = await tx.insert(conciliacoesCartao).values(linha)

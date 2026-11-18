@@ -15,6 +15,9 @@ type Db = Pick<typeof db, 'select'>
 
 export type Alvos = { vendaId: string | null; pecaVendaId: string | null; osId: string | null }
 
+/** A transação casou com uma venda de moto, uma venda de peça ou uma OS. */
+export const casou = (a: Alvos): boolean => (a.vendaId ?? a.pecaVendaId ?? a.osId) !== null
+
 const TOLERANCIA = 0.05 // R$ 0,05 de tolerância no valor
 
 type Pagamento = Pick<PgtoOS, 'tipo' | 'valor' | 'parcelas'>
@@ -103,7 +106,7 @@ export async function casarPorValor(
 
 /** Valores do insert de uma linha nova de conciliacoes_cartao: conciliada quando a transação casou com algum alvo. */
 export function linhaDaTransacao(grupoId: string, operadora: string, t: TransacaoCartao, alvos: Alvos, agora: Date) {
-  const casou = (alvos.vendaId ?? alvos.pecaVendaId ?? alvos.osId) !== null
+  const conciliado = casou(alvos)
   return {
     grupoId,
     operadora,
@@ -118,8 +121,8 @@ export function linhaDaTransacao(grupoId: string, operadora: string, t: Transaca
     vendaId: alvos.vendaId,
     pecaVendaId: alvos.pecaVendaId,
     osId: alvos.osId,
-    conciliado: casou,
-    conciliadoEm: casou ? agora : null,
+    conciliado,
+    conciliadoEm: conciliado ? agora : null,
     rawData: t.rawData ?? null,
   } satisfies typeof conciliacoesCartao.$inferInsert
 }
