@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Bike, Gift, Package, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CurrencyInput } from '@/components/ui/currency-input'
@@ -43,6 +43,8 @@ export function CriarPedidoDialog({ motos, papel, editar }: Props) {
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [carga, setCarga] = useState<{ carregando: boolean; erro: string | null }>({ carregando: false, erro: null })
+  // Fechar e reabrir no meio da carga: só a última leitura vale.
+  const leitura = useRef(0)
 
   function adicionar(novas: MotoDisponivel[]) {
     setNoPedido(atual => [...atual, ...novas.map(m => ({ ...m, valor: '' }))])
@@ -81,8 +83,10 @@ export function CriarPedidoDialog({ motos, papel, editar }: Props) {
     setPecas([])
     setEntrega(formularioDaEntrega(editar.entrega))
     setCarga({ carregando: true, erro: null })
+    const esta = ++leitura.current
     try {
       const r = await itensDoPedidoAction(editar.pedidoId)
+      if (esta !== leitura.current) return
       if (!r.ok) { setCarga({ carregando: false, erro: r.erro }); return }
       const itens = pedidoNaTela(r.dados)
       setNoPedido(itens.motos)
@@ -90,7 +94,7 @@ export function CriarPedidoDialog({ motos, papel, editar }: Props) {
       setMinimos(Object.fromEntries(r.dados.motos.map(m => [m.id, m.minimo])))
       setCarga({ carregando: false, erro: null })
     } catch {
-      setCarga({ carregando: false, erro: 'tente de novo em instantes.' })
+      if (esta === leitura.current) setCarga({ carregando: false, erro: 'tente de novo em instantes.' })
     }
   }
 
@@ -135,7 +139,7 @@ export function CriarPedidoDialog({ motos, papel, editar }: Props) {
       onValor={v => mudarValor(m.id, v)} onTirar={() => tirar(m.id)} />
   )
   const itemPeca = (p: PecaNoPedido, i: number) => (
-    <ItemPeca key={`${p.tipo}-${p.peca.id}`} item={p} aviso={avisoDeSaldo(pecas, p.peca.id)} ajustaPreco={podeGerirPecas(papel)}
+    <ItemPeca key={`${p.tipo}-${p.peca.id}`} item={p} aviso={catalogo.lista ? avisoDeSaldo(pecas, p.peca.id) : null} ajustaPreco={podeGerirPecas(papel)}
       onQuantidade={mais => mudarPeca(i, atual => ({ quantidade: Math.max(1, atual.quantidade + mais) }))}
       onValor={valor => mudarPeca(i, () => ({ valor }))} onTirar={() => setPecas(atual => atual.filter((_, j) => j !== i))} />
   )
@@ -145,7 +149,8 @@ export function CriarPedidoDialog({ motos, papel, editar }: Props) {
       {editar
         ? <Button size="sm" variant="outline" onClick={abrir}>Editar pedido</Button>
         : <Button onClick={abrir}>Criar Pedido de Venda</Button>}
-      <Dialog open={open} onOpenChange={setOpen}>
+      {/* Gravar não tem volta: enquanto envia, nada fecha o diálogo (a recusa precisa ficar à vista). */}
+      <Dialog open={open} onOpenChange={o => { if (!loading) setOpen(o) }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>{editar ? `Editar pedido ${editar.numero}` : 'Novo pedido de venda'}</DialogTitle>
@@ -222,7 +227,7 @@ export function CriarPedidoDialog({ motos, papel, editar }: Props) {
               {(envio === null || envioPecas === null) && <p role="alert" className="text-xs text-destructive">Há um valor inválido no pedido.</p>}
             </div>
             <div className="grid grid-cols-2 gap-2 sm:flex">
-              <Button variant="outline" className="h-11" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button variant="outline" className="h-11" disabled={loading} onClick={() => setOpen(false)}>Cancelar</Button>
               <Button className="h-11" onClick={handleCriar}
                 disabled={loading || carga.carregando || !!carga.erro || !envio?.length || !envioPecas || quemRecebeInvalido(entrega)}>
                 {editar ? (loading ? 'Salvando...' : 'Salvar pedido') : (loading ? 'Criando...' : 'Criar pedido')}

@@ -654,3 +654,23 @@ test('editar no celular: os blocos N3 do Novo pedido com as motos do pedido', as
   assert.match(document.querySelector('[aria-label="Motos do pedido"]')?.textContent ?? '', /MC PITICA/)
   assert.ok(!botao('Moto'), 'no celular não há o "+ Moto" do painel')
 })
+
+test('editar: enquanto salva, "Salvar" e "Cancelar" travados e Escape não fecha; ao responder, fecha', async () => {
+  let responder!: () => void
+  salvar.mock.mockImplementation(() => new Promise(r => { responder = () => r({ ok: true, dados: undefined }) }))
+  const t = await montarEditar()
+  await t.clique(botao('Salvar pedido'))
+  assert.equal(botao('Salvando...')?.disabled, true)
+  assert.equal(botao('Cancelar')?.disabled, true)
+  const { act } = await import('react')
+  await act(async () => { document.activeElement?.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+  assert.match(textoDaTela(), /Editar pedido 30158/, 'Escape não fecha enquanto salva')
+  await act(async () => { responder(); await esperar(20) })
+  assert.doesNotMatch(textoDaTela(), /Editar pedido 30158/)
+})
+
+test('editar: quem gere peças manda o valor da peça (a outra metade da decisão 4)', async () => {
+  const t = await montarEditar('aux_adm')
+  await t.clique(botao('Salvar pedido'), 100)
+  assert.deepEqual(salvar.mock.calls[0].arguments[2], [{ tipo: 'acessorio', pecaId: 'cap', quantidade: 2, valorUnitario: 289.9 }])
+})
