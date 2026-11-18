@@ -184,6 +184,8 @@ export function EditarPedidoEfetivadoDialog({ vendaId, papel, vendedores, origen
                       {/* Nativo: o value é id (o <Select> do base-ui mostraria o UUID). */}
                       <select id="editar-vendedor" value={f.vendedorId} onChange={e => muda({ vendedorId: e.target.value })}
                         className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm">
+                        {/* O gravado fora da lista (vendedor inativo) segue escolhido, sem a tela mostrar outro nome. */}
+                        {!vendedores.some(v => v.id === pedido.vendedorId) && <option value={pedido.vendedorId}>Vendedor atual (fora da lista)</option>}
                         {vendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
                       </select>
                     </div>

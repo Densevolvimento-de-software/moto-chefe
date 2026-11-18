@@ -178,3 +178,17 @@ test('T12: pedido de 1 moto com acessório: as frases falam de 1 moto e só do a
   assert.match(texto(), /Vale para a venda do pedido e para o acessório\./)
   assert.doesNotMatch(texto(), /as 1 /)
 })
+
+test('T13: documento gravado que não passa mais na conferência e não mudou não trava o Salvar (o servidor aceita); trocado por outro inválido, trava', async () => {
+  await abrir('admin_socio', { ...PEDIDO, comprador: { ...PEDIDO.comprador, clienteCpf: '111.111.111-11' } })
+  assert.equal(botao('Salvar alterações')!.disabled, false)
+  await digitar(campo('editar-cliente-cpf'), '22222222222')
+  assert.equal(botao('Salvar alterações')!.disabled, true)
+})
+
+test('T14: vendedor gravado que não está na lista (inativo) aparece como opção e segue selecionado', async () => {
+  await abrir('admin_socio', { ...PEDIDO, vendedorId: 'v-antigo' })
+  const select = document.getElementById('editar-vendedor') as HTMLSelectElement
+  assert.equal(select.value, 'v-antigo')
+  assert.equal(select.selectedOptions[0]?.textContent, 'Vendedor atual (fora da lista)')
+})
