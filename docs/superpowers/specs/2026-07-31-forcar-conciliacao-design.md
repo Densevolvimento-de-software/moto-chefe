@@ -8,6 +8,8 @@ sem depender de Open Finance. Motivo: a regra nasceu com uma Conta só; Conta cl
 Finance não tinha como fechar a pendência. A regra mora em `src/lib/conciliacao-papeis.ts`
 (`podeGerirConciliacao`), a mesma para a tela e para as actions. Forçar e desfazer valem no grupo
 ativo; registro de outro grupo ou de outra Conta recebe a mesma frase do id inexistente.
+O `admin_rede` entra como `admin_socio` (persona do #517), então também força e desfaz no grupo
+que o `admin_geral` liberou para ele; em grupo de outra Conta não liberado, recebe a mesma frase.
 
 ## Problema
 
