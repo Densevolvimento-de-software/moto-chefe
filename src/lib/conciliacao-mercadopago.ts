@@ -36,6 +36,10 @@ export function classificarPagamento(p: PagamentoMp): Classificacao {
   if (!tipo) {
     return { tipo: 'nao_tratado', motivo: p.payment_type_id === 'prepaid_card' ? 'cartão pré-pago' : `meio ${p.payment_type_id}` }
   }
+  // Linha conciliada sem líquido conta o bruto inteiro como taxa (src/lib/queries/valor-liquido.ts): melhor a
+  // loja ver a venda no resumo e conciliar à mão (condição do PR4 na #51).
+  const valorLiquido = p.transaction_details?.net_received_amount
+  if (valorLiquido == null) return { tipo: 'nao_tratado', motivo: 'sem valor líquido' }
 
   return {
     tipo: 'transacao',
@@ -44,7 +48,7 @@ export function classificarPagamento(p: PagamentoMp): Classificacao {
       autorizacao: p.authorization_code ?? undefined,
       dataTransacao: dataBrt(p.date_approved),
       valorBruto: p.transaction_amount,
-      valorLiquido: p.transaction_details?.net_received_amount,
+      valorLiquido,
       parcelas: tipo === 'credito' ? p.installments || 1 : 1,
       tipo,
       status: 'aprovado',

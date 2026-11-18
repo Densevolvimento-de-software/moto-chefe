@@ -114,6 +114,14 @@ describe('classificarPagamento', () => {
     assert.deepEqual(classificarPagamento(pg(debito, { payment_type_id: 'prepaid_card', status: 'pending' })), { tipo: 'ignorar', motivo: 'status pending' })
   })
 
+  // Condição do PR4 (#51): linha conciliada sem líquido conta o bruto inteiro como taxa (valor-liquido.ts).
+  it('Pix ou cartão aprovado sem valor líquido vira "não tratado", não linha sem líquido', () => {
+    for (const f of [pix, credito3x, debito]) {
+      assert.deepEqual(classificarPagamento(pg(f, { transaction_details: {} })), { tipo: 'nao_tratado', motivo: 'sem valor líquido' })
+      assert.deepEqual(classificarPagamento(pg(f, { transaction_details: undefined })), { tipo: 'nao_tratado', motivo: 'sem valor líquido' })
+    }
+  })
+
   // Decisão do Luis (#51): todo meio aprovado da maquininha fora de crédito, débito e Pix aparece no resumo.
   it('outro meio aprovado da maquininha vira "não tratado" com o nome do meio', () => {
     assert.deepEqual(classificarPagamento(pg(debito, { payment_type_id: 'account_money', payment_method_id: 'account_money' })),
