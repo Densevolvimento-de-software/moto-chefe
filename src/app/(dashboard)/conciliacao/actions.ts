@@ -755,6 +755,8 @@ export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, id
 
 export async function buscarVendasParaVincular(conciliacaoId: string) {
   const usuario = await getUsuarioLogado()
+  // Mesmos papéis de quem vincula (vincularVendaAction) e da busca manual: a lista traz cliente e valor.
+  if (!GESTORES_CONC.includes(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
   // Valor e tipo saem da linha, lida com o grupo no where: linha de outra Conta e inexistente dão lista vazia.
   const [linha] = await db.select({ valorBruto: conciliacoesCartao.valorBruto, tipo: conciliacoesCartao.tipo })

@@ -84,3 +84,11 @@ test('linha de outra Conta não busca nada, como linha inexistente', async () =>
   assert.deepEqual(await actions.buscarVendasParaVincular(daOutraConta), [])
   assert.deepEqual(await actions.buscarVendasParaVincular(randomUUID()), [])
 })
+
+test('papel sem a conciliação (vendedor) é recusado e não vê vendas', async () => {
+  const a = await semearConta()
+  await vendaPeca(a, [{ tipo: 'pix', valor: 515.67 }])
+  const linhaA = await linha(a, 'pix', 515.67)
+  usuario = { id: a.usuarioId, papel: 'vendedor', lojaId: a.lojaId, contaId: a.contaId, gruposAcesso: [], gruposAprovacao: [] }
+  await assert.rejects(actions.buscarVendasParaVincular(linhaA), { message: 'Sem permissão' })
+})
