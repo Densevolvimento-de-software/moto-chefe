@@ -5,9 +5,10 @@ import { after, afterEach, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearGrupo, semearLoja, semearUsuario, type Base } from '@/test/semear-conta'
-import { semearModelo, semearOs, semearVendaMoto, semearVendaPeca, type Balcao } from '@/test/semear-alvos-conciliacao'
+import { semearContaBase, semearGrupo, semearLoja, semearModelo, semearUsuario, type Base } from '@/test/semear-conta'
+import { semearOs, semearVendaMoto, semearVendaPeca, type Balcao } from '@/test/semear-alvos-conciliacao'
 import type { AlvoConciliacao } from './actions'
+import type { PgtoOS } from '@/lib/conciliacao-status'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -60,8 +61,7 @@ async function contaComAlvos(): Promise<Base & { alvos: Alvos; balcao: Balcao }>
 }
 
 const TABELA: Record<AlvoConciliacao['tipo'], string> = { moto: 'vendas', os: 'ordens_servico', peca: 'vendas_pecas' }
-type Pgto = { tipo: string; valor: number; conciliadoManual?: { motivo: string; porId: string; porNome: string; em: string } }
-const pagamentosDe = async (tipo: AlvoConciliacao['tipo'], id: string): Promise<Pgto[]> =>
+const pagamentosDe = async (tipo: AlvoConciliacao['tipo'], id: string): Promise<PgtoOS[]> =>
   (await execRows(sql`select pagamentos from ${sql.raw(TABELA[tipo])} where id = ${id}`))[0].pagamentos
 
 const sessao = (b: Base, papel: string, extra: Partial<Sessao> = {}): Sessao =>
@@ -97,13 +97,13 @@ test('admin_geral segue forçando e desfazendo no grupo ativo (comportamento já
   assert.deepEqual(await pagamentosDe('peca', alvo.id), PAGAMENTOS)
 })
 
-test('vendedor e mecânico recebem Sem permissão antes da busca e do motivo, em qualquer id, e nada grava', async () => {
+test('vendedor e mecânico recebem Sem permissão em qualquer id e com qualquer motivo, e nada grava', async () => {
   const a = await contaComAlvos()
   const b = await contaComAlvos()
   for (const papel of ['vendedor', 'mecanico']) {
     usuario = sessao(a, papel)
     for (const tipo of TIPOS) {
-      // Própria loja, outra Conta e inexistente: a mesma recusa, então nem a busca acontece antes do papel.
+      // Própria loja, outra Conta e inexistente: a resposta é a mesma em qualquer id.
       for (const id of [a.alvos[tipo], b.alvos[tipo], randomUUID()]) {
         const alvo = { tipo, id }
         assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, MOTIVO), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo}`)
@@ -140,7 +140,7 @@ async function forcadoNaContaA() {
   return { a, comoFicou: await Promise.all(TIPOS.map(t => pagamentosDe(t, a.alvos[t]))) }
 }
 
-async function recusaComoInexistente(rotulo: string, a: Base & { alvos: Alvos }, comoFicou: Pgto[][]) {
+async function recusaComoInexistente(rotulo: string, a: Base & { alvos: Alvos }, comoFicou: PgtoOS[][]) {
   for (const tipo of TIPOS) {
     const recusa = { ok: false, erro: NAO_ENCONTRADO[tipo] }
     assert.deepEqual(await actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, MOTIVO), recusa, `${rotulo} força ${tipo}`)
@@ -199,7 +199,7 @@ test('índice de pagamento forjado é recusado e nada grava', async () => {
 })
 
 // Alcance decidido pelo Luis (P2, 18/11/2026): o grupo ativo inteiro, não só a loja de quem força.
-test('aux_adm força a venda de outra loja do mesmo grupo (comportamento já existia no vincular)', async () => {
+test('aux_adm força a venda de outra loja do mesmo grupo', async () => {
   const a = await contaComAlvos()
   const outraLoja = await semearLoja(db, a.grupoId, 'FC79 outra loja ' + randomUUID())
   const peca = await semearVendaPeca(db, { ...a.balcao, lojaId: outraLoja }, PAGAMENTOS)
