@@ -6,7 +6,7 @@ import { filtrarPecas } from '@/lib/busca-peca'
 import { brl } from '@/lib/dashboard-painel'
 import { finalDoChassi } from '@/lib/painel-fabrica'
 import type { PecaComSaldo } from '@/lib/pecas-da-conta'
-import { motosParaAdicionar, totalDasMotos, totalDasPecasNaTela, type MotoDisponivel, type MotoNoPedido, type PecaNoPedido } from '@/lib/novo-pedido'
+import { motosParaAdicionar, textoDeMaisMotos, totalDasMotos, totalDasPecasNaTela, type MotoDisponivel, type MotoNoPedido, type PecaNoPedido } from '@/lib/novo-pedido'
 
 type Bloco = 'motos' | PecaNoPedido['tipo']
 type Props = {
@@ -32,7 +32,7 @@ export function ItensNoCelular({ disponiveis, noPedido, pecas, catalogo, onPorMo
   const [busca, setBusca] = useState('')
   const abrir = (b: Bloco) => { setBusca(''); setAberto(atual => (atual === b ? null : b)) }
   const semMoto = noPedido.length === 0
-  const motos = motosParaAdicionar(disponiveis, { lojaId: noPedido[0]?.lojaId, fora: noPedido.map(m => m.id) }, busca)
+  const { motos, mais } = motosParaAdicionar(disponiveis, { lojaId: noPedido[0]?.lojaId, fora: noPedido.map(m => m.id) }, busca)
 
   return (
     <div className="space-y-3">
@@ -42,6 +42,7 @@ export function ItensNoCelular({ disponiveis, noPedido, pecas, catalogo, onPorMo
         <Resultados vazio="Nenhuma moto disponível com essa busca." itens={motos.map(m => ({
           id: m.id, nome: `${m.marca} ${m.modelo} (final ${finalDoChassi(m.chassi)})`, detalhe: `${m.cor.toLowerCase()}, ${m.lojaNome}`, onPor: () => onPorMoto(m),
         }))} />
+        {mais > 0 && <p className="text-xs text-muted-foreground">{textoDeMaisMotos(mais)}</p>}
       </BlocoDoPedido>
       {(['acessorio', 'brinde'] as const).map(tipo => {
         const doTipo = pecas.map((p, i) => [p, i] as const).filter(([p]) => p.tipo === tipo)

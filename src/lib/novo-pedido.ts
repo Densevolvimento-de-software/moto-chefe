@@ -11,14 +11,20 @@ export type MotoNoPedido = MotoDisponivel & { valor: string }
 
 export const detalheDaMoto = (m: MotoDisponivel) => `Chassi final ${finalDoChassi(m.chassi)}, ${m.cor.toLowerCase()}`
 
+const LIMITE_DE_MOTOS = 30
+
 /**
- * O que o painel "Adicionar moto" lista: da loja do pedido (a da 1ª moto; o servidor recusa outra, D-H), fora as que já
- * estão nele, pela busca de modelo, cor ou final do chassi. A busca é a mesma das peças (termos, sem acento).
+ * O que o painel "Adicionar moto" e o bloco Motos listam: da loja do pedido (a da 1ª moto; o servidor recusa outra, D-H), fora
+ * as que já estão nele, pela busca de modelo, cor ou final do chassi (a mesma das peças: termos, sem acento). Até 30; `mais`
+ * diz quantas ficaram de fora, para quem tem muitas motos na loja digitar.
  */
-export function motosParaAdicionar(disponiveis: readonly MotoDisponivel[], pedido: { lojaId?: string; fora: readonly string[] }, busca: string): MotoDisponivel[] {
+export function motosParaAdicionar(disponiveis: readonly MotoDisponivel[], pedido: { lojaId?: string; fora: readonly string[] }, busca: string) {
   const candidatas = disponiveis.filter(m => !pedido.fora.includes(m.id) && (!pedido.lojaId || m.lojaId === pedido.lojaId))
-  return filtrarPecas(candidatas.map(m => ({ ...m, nome: `${m.marca} ${m.modelo} ${m.cor} ${m.chassi}` })), busca, Infinity)
+  const achadas = filtrarPecas(candidatas.map(m => ({ ...m, nome: `${m.marca} ${m.modelo} ${m.cor} ${m.chassi}` })), busca, Infinity)
+  return { motos: achadas.slice(0, LIMITE_DE_MOTOS), mais: Math.max(0, achadas.length - LIMITE_DE_MOTOS) }
 }
+
+export const textoDeMaisMotos = (mais: number) => (mais === 1 ? 'Mais 1 moto' : `Mais ${mais} motos`) + ': digite o modelo, a cor ou o final do chassi.'
 
 const valorDaMoto = (m: MotoNoPedido) => (m.valor === '' ? null : Number(m.valor))
 

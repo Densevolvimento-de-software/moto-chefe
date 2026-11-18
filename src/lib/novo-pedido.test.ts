@@ -1,10 +1,10 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { avisoDeSaldo, comPecas, motosDoEnvio, motosParaAdicionar, motosSemValor, pecasDoEnvio, totalDasMotos, totalDasPecasNaTela, type MotoDisponivel } from './novo-pedido'
+import { avisoDeSaldo, comPecas, motosDoEnvio, motosParaAdicionar, motosSemValor, textoDeMaisMotos, pecasDoEnvio, totalDasMotos, totalDasPecasNaTela, type MotoDisponivel } from './novo-pedido'
 
 const moto = (id: string, extra: Partial<MotoDisponivel> = {}): MotoDisponivel =>
   ({ id, chassi: `LA2026X${id}`, marca: 'MC', modelo: 'JET', cor: 'PRETA', lojaId: 'centro', lojaNome: 'Loja Centro', ...extra })
-const ids = (motos: { id: string }[]) => motos.map(m => m.id)
+const ids = (r: { motos: { id: string }[] }) => r.motos.map(m => m.id)
 
 describe('motos que o painel oferece (#24)', () => {
   const disponiveis = [moto('4131'), moto('0088', { modelo: 'PITICA', cor: 'BRANCA' }), moto('2217', { lojaId: 'norte', lojaNome: 'Loja Norte' })]
@@ -15,6 +15,14 @@ describe('motos que o painel oferece (#24)', () => {
 
   test('com a loja do pedido: só as dela, fora as que já estão no pedido', () => {
     assert.deepEqual(ids(motosParaAdicionar(disponiveis, { lojaId: 'centro', fora: ['4131'] }, '')), ['0088'])
+  })
+
+  test('loja com muitas motos: a lista mostra até 30 e diz quantas faltam; a busca acha as de fora', () => {
+    const muitas = Array.from({ length: 35 }, (_, i) => moto(String(1000 + i)))
+    const r = motosParaAdicionar(muitas, { fora: [] }, '')
+    assert.deepEqual([r.motos.length, r.mais], [30, 5])
+    assert.equal(textoDeMaisMotos(r.mais), 'Mais 5 motos: digite o modelo, a cor ou o final do chassi.')
+    assert.deepEqual(ids(motosParaAdicionar(muitas, { fora: [] }, '1034')), ['1034'])
   })
 
   test('busca por modelo, cor ou final do chassi, sem acento nem caixa', () => {
