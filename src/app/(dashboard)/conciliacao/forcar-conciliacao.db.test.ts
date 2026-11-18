@@ -5,8 +5,8 @@ import { after, afterEach, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearUsuario, type Base } from '@/test/semear-conta'
-import { semearModelo, semearOs, semearVendaMoto, semearVendaPeca } from '@/test/semear-alvos-conciliacao'
+import { semearContaBase, semearGrupo, semearLoja, semearUsuario, type Base } from '@/test/semear-conta'
+import { semearModelo, semearOs, semearVendaMoto, semearVendaPeca, type Balcao } from '@/test/semear-alvos-conciliacao'
 import type { AlvoConciliacao } from './actions'
 
 const url = process.env.TEST_DATABASE_URL
@@ -44,12 +44,13 @@ const MOTIVO = 'PIX caiu na conta pessoal'
 type Alvos = Record<AlvoConciliacao['tipo'], string>
 
 // Conta nova com uma venda de moto, uma OS e uma venda de peça, todas com PAGAMENTOS.
-async function contaComAlvos(): Promise<Base & { alvos: Alvos }> {
+async function contaComAlvos(): Promise<Base & { alvos: Alvos; balcao: Balcao }> {
   const suf = randomUUID()
   const base = await semearContaBase(db, { prefixo: 'FC79', nome: suf, cnpj: suf })
   const balcao = { lojaId: base.lojaId, usuarioId: await semearUsuario(db, base, { papel: 'vendedor' }), modeloId: await semearModelo(db, 'FC79 ' + suf) }
   return {
     ...base,
+    balcao,
     alvos: {
       moto: await semearVendaMoto(db, balcao, PAGAMENTOS),
       os:   await semearOs(db, balcao, PAGAMENTOS),
@@ -85,7 +86,7 @@ test('aux_adm e admin_socio forçam e desfazem o PIX pendente da venda de moto, 
   }
 })
 
-test('admin_geral segue forçando e desfazendo no grupo ativo (sem vermelho: já valia)', async () => {
+test('admin_geral segue forçando e desfazendo no grupo ativo (comportamento já existia)', async () => {
   const a = await contaComAlvos()
   usuario = sessao(a, 'admin_geral', { lojaId: null, contaId: null })
   grupoAtivoNoCookie = a.grupoId
@@ -96,26 +97,32 @@ test('admin_geral segue forçando e desfazendo no grupo ativo (sem vermelho: já
   assert.deepEqual(await pagamentosDe('peca', alvo.id), PAGAMENTOS)
 })
 
-test('vendedor e mecânico recebem Sem permissão antes de qualquer validação, nem na própria loja, e nada grava', async () => {
+test('vendedor e mecânico recebem Sem permissão antes da busca e do motivo, em qualquer id, e nada grava', async () => {
   const a = await contaComAlvos()
+  const b = await contaComAlvos()
   for (const papel of ['vendedor', 'mecanico']) {
     usuario = sessao(a, papel)
     for (const tipo of TIPOS) {
-      const alvo = { tipo, id: a.alvos[tipo] }
-      assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, MOTIVO), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo}`)
-      // Papel antes de qualquer validação: motivo curto não pode responder outra coisa.
-      assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 'ok'), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo} sem motivo`)
-      assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, 0), { ok: false, erro: 'Sem permissão' }, `${papel} desfaz ${tipo}`)
-      assert.deepEqual(await pagamentosDe(tipo, alvo.id), PAGAMENTOS)
+      // Própria loja, outra Conta e inexistente: a mesma recusa, então nem a busca acontece antes do papel.
+      for (const id of [a.alvos[tipo], b.alvos[tipo], randomUUID()]) {
+        const alvo = { tipo, id }
+        assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, MOTIVO), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo}`)
+        assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 'ok'), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo} sem motivo`)
+        assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, 0), { ok: false, erro: 'Sem permissão' }, `${papel} desfaz ${tipo}`)
+      }
+      assert.deepEqual(await pagamentosDe(tipo, a.alvos[tipo]), PAGAMENTOS)
+      assert.deepEqual(await pagamentosDe(tipo, b.alvos[tipo]), PAGAMENTOS)
     }
   }
 })
 
-test('motivo curto e pagamento que não concilia são recusados com a frase e nada grava (sem vermelho: a recusa já valia)', async () => {
+test('motivo curto ou que não é texto e pagamento que não concilia são recusados com a frase e nada grava', async () => {
   const a = await contaComAlvos()
   usuario = sessao(a, 'aux_adm')
   const alvo = { tipo: 'moto' as const, id: a.alvos.moto }
   assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, ' ok '), { ok: false, erro: 'Informe o motivo da conciliação forçada' })
+  // O navegador pode mandar qualquer coisa no lugar do texto.
+  assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 123 as unknown as string), { ok: false, erro: 'Informe o motivo da conciliação forçada' })
   assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 1, MOTIVO), { ok: false, erro: 'Esse pagamento não precisa de conciliação' })
   assert.deepEqual(await pagamentosDe('moto', alvo.id), PAGAMENTOS)
 })
@@ -189,4 +196,23 @@ test('índice de pagamento forjado é recusado e nada grava', async () => {
     assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, idx), recusa, `desfaz ${idx}`)
   }
   assert.deepEqual(await pagamentosDe('peca', alvo.id), comoFicou[TIPOS.indexOf('peca')])
+})
+
+// Alcance decidido pelo Luis (P2, 18/11/2026): o grupo ativo inteiro, não só a loja de quem força.
+test('aux_adm força a venda de outra loja do mesmo grupo (comportamento já existia no vincular)', async () => {
+  const a = await contaComAlvos()
+  const outraLoja = await semearLoja(db, a.grupoId, 'FC79 outra loja ' + randomUUID())
+  const peca = await semearVendaPeca(db, { ...a.balcao, lojaId: outraLoja }, PAGAMENTOS)
+  usuario = sessao(a, 'aux_adm')
+  assert.equal((await actions.forcarConciliacaoAction({ tipo: 'peca', id: peca }, 0, MOTIVO)).ok, true)
+  assert.equal((await pagamentosDe('peca', peca))[0].conciliadoManual?.porId, usuario.id)
+})
+
+test('admin_socio da mesma Conta com outro grupo ativo recebe a frase do inexistente e não grava', async () => {
+  const { a, comoFicou } = await forcadoNaContaA()
+  const suf = randomUUID()
+  const outroGrupo = await semearGrupo(db, a.contaId, { prefixo: 'FC79', nome: suf, cnpj: suf })
+  usuario = sessao(a, 'admin_socio', { lojaId: null, gruposAcesso: [a.grupoId, outroGrupo.grupoId] })
+  grupoAtivoNoCookie = outroGrupo.grupoId
+  await recusaComoInexistente('admin_socio no outro grupo da Conta', a, comoFicou)
 })
