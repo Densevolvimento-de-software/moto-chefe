@@ -87,12 +87,13 @@ function useResposta(id: string) {
 
 function DialogoRecusar({ titulo, resposta }: { titulo: string; resposta: ReturnType<typeof useResposta> }) {
   return (
-    <Dialog open={resposta.recusarOpen} onOpenChange={resposta.setRecusarOpen}>
+    // Recusar responde o pedido inteiro: enquanto envia, nada fecha o diálogo.
+    <Dialog open={resposta.recusarOpen} onOpenChange={o => { if (!resposta.loading) resposta.setRecusarOpen(o) }}>
       <DialogContent>
         <DialogHeader><DialogTitle>{titulo}</DialogTitle></DialogHeader>
         <Textarea placeholder="Observação (opcional)" value={resposta.observacao} onChange={e => resposta.setObservacao(e.target.value)} />
         <DialogFooter>
-          <Button variant="outline" onClick={() => resposta.setRecusarOpen(false)}>Cancelar</Button>
+          <Button variant="outline" disabled={resposta.loading} onClick={() => resposta.setRecusarOpen(false)}>Cancelar</Button>
           <Button variant="destructive" onClick={resposta.recusar} disabled={resposta.loading}>
             {resposta.loading ? 'Recusando...' : 'Confirmar recusa'}
           </Button>

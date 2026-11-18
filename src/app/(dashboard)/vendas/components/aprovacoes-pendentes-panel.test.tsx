@@ -13,10 +13,11 @@ after(desmontar)
 mock.module('next/link', { defaultExport: ({ href, children }: { href: string; children: ReactNode }) => createElement('a', { href }, children) })
 const aprovadas: string[] = []
 const recusadas: unknown[][] = []
+let respostaDaRecusa: () => Promise<unknown> = async () => ({ ok: true })
 mock.module('../actions', {
   namedExports: {
     aprovarVendaAction: async (id: string) => { aprovadas.push(id); return { ok: true } },
-    recusarVendaAction: async (...a: unknown[]) => { recusadas.push(a); return { ok: true } },
+    recusarVendaAction: async (...a: unknown[]) => { recusadas.push(a); return respostaDaRecusa() },
   },
 })
 
@@ -45,6 +46,7 @@ afterEach(async () => {
   document.body.innerHTML = ''
   aprovadas.length = 0
   recusadas.length = 0
+  respostaDaRecusa = async () => ({ ok: true })
 })
 
 async function desenhar(aprovacao: AprovacaoPendente | AprovacaoPendente[], motosDosPedidos: Record<string, { id: string; marca: string; modelo: string }[]> = {}) {
@@ -143,4 +145,29 @@ test('"Recusar pedido" pede a observação e recusa uma vez, com uma linha do pe
   assert.match(textoDaTela(), /Recusar pedido #30158/)
   await act(async () => { botao('Confirmar recusa')[0].click() })
   assert.deepEqual(recusadas, [['apr-a', undefined]])
+})
+
+test('"Recusar pedido" leva a observação digitada', async () => {
+  await desenhar(PEDIDO_DE_3, MOTOS_P9)
+  const { act } = await import('react')
+  const { digitarTexto } = await import('@/test/eventos-dom')
+  await act(async () => { botao('Recusar pedido')[0].click() })
+  await digitarTexto(document.querySelector('textarea') as HTMLTextAreaElement, 'Cliente desistiu')
+  await act(async () => { botao('Confirmar recusa')[0].click() })
+  assert.deepEqual(recusadas, [['apr-a', 'Cliente desistiu']])
+})
+
+test('enquanto recusa o pedido: Confirmar e Cancelar travados e Escape não fecha; ao responder, fecha', async () => {
+  let responder!: () => void
+  respostaDaRecusa = () => new Promise(r => { responder = () => r({ ok: true }) })
+  await desenhar(PEDIDO_DE_3, MOTOS_P9)
+  const { act } = await import('react')
+  await act(async () => { botao('Recusar pedido')[0].click() })
+  await act(async () => { botao('Confirmar recusa')[0].click() })
+  assert.equal(botao('Recusando...')[0]?.disabled, true)
+  assert.equal(botao('Cancelar')[0]?.disabled, true)
+  await act(async () => { document.activeElement?.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+  assert.match(textoDaTela(), /Recusar pedido #30158/, 'Escape não fecha enquanto envia')
+  await act(async () => { responder() })
+  assert.doesNotMatch(textoDaTela(), /Recusar pedido #30158/)
 })
