@@ -142,3 +142,13 @@ test('o banco recusa linha estornada marcada como conciliada', async () => {
     (e: unknown) => (e as { cause?: { code?: string } }).cause?.code === '23514',
   )
 })
+
+// O estorno mantém o vínculo com a venda (decisão do Cesar, #51); desvincular não pode apagá-lo.
+test('desvincular cartão estornado é recusado e o vínculo fica', async () => {
+  const { base, vendaId } = await semear()
+  const estornado = await cartao(base.grupoId, 1000, 'estornado', vendaId)
+  const antes = await linhaDe(estornado)
+  await assert.rejects(actions.desvincularVendaAction(estornado), { message: 'Conciliação não encontrada' })
+  assert.deepEqual(await linhaDe(estornado), antes)
+  assert.equal(antes.venda_id, vendaId)
+})

@@ -404,7 +404,8 @@ export async function desvincularVendaAction(conciliacaoId: string) {
 
   const atualizadas = await db.update(conciliacoesCartao)
     .set({ vendaId: null, pecaVendaId: null, osId: null, conciliado: false, conciliadoEm: null })
-    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id)))
+    // Estornada mantém o vínculo com a venda: desvincular recebe a mesma frase de linha inexistente.
+    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
     .returning({ id: conciliacoesCartao.id })
 
   if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
