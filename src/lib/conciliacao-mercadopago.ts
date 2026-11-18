@@ -37,10 +37,11 @@ export function classificarPagamento(p: PagamentoMp): Classificacao {
     return { tipo: 'nao_tratado', motivo: p.payment_type_id === 'prepaid_card' ? 'cartão pré-pago' : `meio ${p.payment_type_id}` }
   }
   // Linha conciliada sem líquido conta o bruto inteiro como taxa (src/lib/queries/valor-liquido.ts; condição do
-  // PR4 na #51). O pagamento não vira linha e entra só na contagem de não tratados; se o Mercado Pago trouxer o
-  // líquido numa rodada seguinte dentro da janela de 7 dias, a linha nasce nessa rodada.
+  // PR4 na #51), e líquido 0 dá o mesmo (decisão do Luis). O pagamento não vira linha e entra só na contagem de
+  // não tratados; se o Mercado Pago trouxer o líquido numa rodada seguinte dentro da janela de 7 dias, a linha
+  // nasce nessa rodada.
   const valorLiquido = p.transaction_details?.net_received_amount
-  if (valorLiquido == null) return { tipo: 'nao_tratado', motivo: 'sem valor líquido' }
+  if (!valorLiquido) return { tipo: 'nao_tratado', motivo: 'sem valor líquido' }
 
   return {
     tipo: 'transacao',
