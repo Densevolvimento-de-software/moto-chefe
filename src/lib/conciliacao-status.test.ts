@@ -218,3 +218,22 @@ test('entrada em PIX já conciliada + financiamento em aberto fica parcial', () 
 test('dinheiro puro continua conciliado sem nada a conferir', () => {
   assert.equal(calcStatusMultiPagamento([{ tipo: 'dinheiro', valor: 9000 }], 0, 0, '9000'), 'conciliada')
 })
+
+// Pix da maquininha Mercado Pago é linha tipo pix da conciliação de cartão (#51).
+test('linha pix da conciliação de cartão cobre o pagamento Pix, não o de cartão', () => {
+  const pgtos: PgtoOS[] = [
+    { tipo: 'cartao_credito', valor: 500 },
+    { tipo: 'pix', valor: 300 },
+  ]
+  const concs = [{ id: 'c1', autorizacao: null, valorBruto: 300, tipo: 'pix' }]
+  assert.deepEqual(matchPagamentos(pgtos, concs, []), [
+    { conciliado: false, coberto: 0 },
+    { conciliado: true, coberto: 300 },
+  ])
+})
+
+test('linha de crédito não cobre pagamento Pix', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 300 }]
+  const concs = [{ id: 'c1', autorizacao: null, valorBruto: 300, tipo: 'credito' }]
+  assert.deepEqual(matchPagamentos(pgtos, concs, []), [{ conciliado: false, coberto: 0 }])
+})

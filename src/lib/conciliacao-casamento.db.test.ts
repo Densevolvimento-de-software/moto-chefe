@@ -191,3 +191,43 @@ test('casarPorAutorizacao acha a OS e não cruza Contas', async () => {
     assert.deepEqual(await mod.casarPorAutorizacao(tx, [b.lojaId], 'OS7788'), NENHUM)
   })
 })
+
+// Pix da maquininha Mercado Pago é linha tipo pix da conciliação de cartão (#51).
+test('casarPorValor: linha pix casa com o pagamento pix da venda, não com cartão do mesmo valor', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    await semearVendaMoto(tx, a, cartao(150, 1))
+    const pecaVendaId = await semearVendaPeca(tx, a, [{ tipo: 'pix', valor: 150 }])
+    assert.deepEqual(await mod.casarPorValor(tx, [a.lojaId], { ...transacao(150, 1), tipo: 'pix' }), { ...NENHUM, pecaVendaId })
+  })
+})
+
+test('casarPorValor: linha pix não casa Pix de outra Conta', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    const b = await semearConta(tx, 'B')
+    await semearVendaPeca(tx, b, [{ tipo: 'pix', valor: 151 }])
+    assert.deepEqual(await mod.casarPorValor(tx, [a.lojaId], { ...transacao(151, 1), tipo: 'pix' }), NENHUM)
+  })
+})
+
+test('casarPorValor: linha de débito não casa pagamento Pix', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    await semearVendaPeca(tx, a, [{ tipo: 'pix', valor: 152 }])
+    assert.deepEqual(await mod.casarPorValor(tx, [a.lojaId], { ...transacao(152, 1), tipo: 'debito' }), NENHUM)
+  })
+})
+
+test('o banco recusa tipo de linha fora de crédito, débito e pix', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    await assert.rejects(
+      tx.transaction(async sp => {
+        await sp.execute(sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, nsu, valor_bruto, tipo)
+          values (${a.grupoId}, 'mercadopago', '2026-11-05', ${randomUUID()}, 10, 'boleto')`)
+      }),
+      (e: unknown) => (e as { cause?: { code?: string } }).cause?.code === '23514',
+    )
+  })
+})

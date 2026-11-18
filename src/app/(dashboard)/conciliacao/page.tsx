@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { UploadRelatorio } from './components/upload-relatorio'
 import { VincularVendaButton } from './components/vincular-venda-button'
 import { dataPuraBr } from '@/lib/data-venda'
+import { rotuloCurtoDaLinha } from '@/lib/conciliacao-cartao'
 
 const fmt = (v: string | number) =>
   parseFloat(String(v)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -183,7 +184,7 @@ export default async function ConciliacaoPage({
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <Badge variant={t.tipo === 'credito' ? 'default' : 'secondary'} className="text-xs">
-                          {t.tipo === 'credito' ? `Cré ${t.parcelas}x` : 'Déb'}
+                          {rotuloCurtoDaLinha(t.tipo, t.parcelas)}
                         </Badge>
                         {bandeira && <span className="text-xs text-muted-foreground capitalize">{bandeira}</span>}
                       </div>
