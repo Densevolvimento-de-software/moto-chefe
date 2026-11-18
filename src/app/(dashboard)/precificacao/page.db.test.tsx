@@ -51,7 +51,8 @@ async function abrirComoSocio(base: Base, rotulo: string) {
   const id = await semearUsuario(db, base, { papel: 'admin_socio', rotulo, semLoja: true, comGrupo: true })
   sessao = { id, papel: 'admin_socio', lojaId: null, gruposAcesso: [base.grupoId], contaId: base.contaId, grupoLiberado: null }
   const html = renderToStaticMarkup(createElement('div', null, await Pagina()))
-  return /<input[^>]*id="custo-pix"[^>]*value="([^"]*)"/.exec(html)?.[1]
+  const campo = /<input[^>]*\bid="custo-pix"[^>]*>/.exec(html)?.[0] ?? ''
+  return /\bvalue="([^"]*)"/.exec(campo)?.[1]
 }
 
 test('o sócio de cada Conta vê só o custo do PIX do próprio grupo', async () => {
