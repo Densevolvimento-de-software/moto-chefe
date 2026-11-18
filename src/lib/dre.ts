@@ -15,6 +15,7 @@
 //   dedução da receita bruta. No sistema o imposto entra pelo extrato quando é
 //   pago, não estimado por alíquota sobre cada venda — descontar nos dois lugares
 //   contaria o mesmo tributo duas vezes.
+import { centavos } from './centavos'
 
 export const GRUPOS_DRE = [
   { valor: 'pessoal',         rotulo: 'Pessoal' },
@@ -50,6 +51,8 @@ export type EntradaDre = {
   receitaPecas: number
   /** Já é um número positivo; a linha o mostra como dedução. */
   taxasCartao: number
+  /** Tarifa do Pix da maquininha Mercado Pago (#51): dedução própria, fora das taxas de cartão. */
+  tarifaPix: number
   /** Custo das motos vendidas. Peça e serviço não têm custo cadastrado. */
   cmvMotos: number
   despesasPorGrupo: Partial<Record<GrupoDre, number>>
@@ -83,7 +86,7 @@ export type LinhaDre = {
  */
 export function montarDre(e: EntradaDre): LinhaDre[] {
   const receitaBruta = e.receitaMotos + e.receitaServicos + e.receitaPecas
-  const receitaLiquida = receitaBruta - e.taxasCartao
+  const receitaLiquida = receitaBruta - e.taxasCartao - e.tarifaPix
   const lucroBruto = receitaLiquida - e.cmvMotos
   const totalDespesas = GRUPOS_DRE.reduce((s, g) => s + (e.despesasPorGrupo[g.valor] ?? 0), 0)
   const resultado = lucroBruto - totalDespesas
@@ -103,6 +106,7 @@ export function montarDre(e: EntradaDre): LinhaDre[] {
     linha('receita_servicos',  'Serviços (OS)',        'receita',  1, e.receitaServicos),
     linha('receita_pecas',     'Peças',                'receita',  1, e.receitaPecas),
     linha('taxas_cartao',      '(−) Taxas de cartão',  'deducao',  0, e.taxasCartao),
+    linha('tarifa_pix',        '(−) Tarifa do PIX na maquininha', 'deducao', 0, e.tarifaPix),
     linha('receita_liquida',   'RECEITA LÍQUIDA',      'subtotal', 0, receitaLiquida),
     linha('cmv',               '(−) CMV — motos',      'deducao',  0, e.cmvMotos),
     linha('lucro_bruto',       'LUCRO BRUTO',          'subtotal', 0, lucroBruto),
@@ -127,6 +131,27 @@ export function montarDre(e: EntradaDre): LinhaDre[] {
   return linhas
 }
 
+/**
+ * Taxas da receita em duas linhas (#51). O bruto − líquido das motos inclui a tarifa do Pix da maquininha
+ * Mercado Pago, que a consulta de vendas devolve à parte (tarifaPixMotos) e sai daqui para a linha própria;
+ * as outras receitas (OS e peça) já chegam divididas. A soma das duas linhas é a taxa de antes.
+ */
+export function taxasDaReceita(p: {
+  brutoMotos: number
+  liquidoMotos: number
+  tarifaPixMotos: number
+  taxaCartaoOutras: number
+  tarifaPixOutras: number
+}): { taxasCartao: number; tarifaPix: number } {
+  // Centavos: a subtração em ponto flutuante deixa resíduo (−1e−13) que a tela mostraria como "−R$ 0,00";
+  // o + 0 troca o −0 do arredondamento por 0.
+  const emCentavos = (v: number) => centavos(v) + 0
+  return {
+    taxasCartao: emCentavos(p.brutoMotos - p.liquidoMotos - p.tarifaPixMotos + p.taxaCartaoOutras),
+    tarifaPix: emCentavos(p.tarifaPixMotos + p.tarifaPixOutras),
+  }
+}
+
 /** Soma duas entradas — usado para a coluna TOTAL e para consolidar meses. */
 export function somarEntradas(a: EntradaDre, b: EntradaDre): EntradaDre {
   const despesasPorGrupo: Partial<Record<GrupoDre, number>> = {}
@@ -139,6 +164,7 @@ export function somarEntradas(a: EntradaDre, b: EntradaDre): EntradaDre {
     receitaServicos: a.receitaServicos + b.receitaServicos,
     receitaPecas:    a.receitaPecas + b.receitaPecas,
     taxasCartao:     a.taxasCartao + b.taxasCartao,
+    tarifaPix:       a.tarifaPix + b.tarifaPix,
     cmvMotos:        a.cmvMotos + b.cmvMotos,
     despesasPorGrupo,
     memorando: {
@@ -152,7 +178,7 @@ export function somarEntradas(a: EntradaDre, b: EntradaDre): EntradaDre {
 
 export const ENTRADA_VAZIA: EntradaDre = {
   receitaMotos: 0, receitaServicos: 0, receitaPecas: 0,
-  taxasCartao: 0, cmvMotos: 0, despesasPorGrupo: {},
+  taxasCartao: 0, tarifaPix: 0, cmvMotos: 0, despesasPorGrupo: {},
   memorando: {},
 }
 

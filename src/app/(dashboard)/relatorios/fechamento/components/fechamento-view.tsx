@@ -127,6 +127,7 @@ export function FechamentoView({ dados, grupo, mes }: { dados: DadosFechamento; 
           {[
             ['receita_bruta', 'Receita bruta', false],
             ['taxas_cartao', '(−) Taxas de cartão', true],
+            ['tarifa_pix', '(−) Tarifa do PIX na maquininha', true],
             ['receita_liquida', 'Receita líquida', false],
             ['cmv', '(−) CMV — motos', true],
             ['lucro_bruto', 'Lucro bruto', false],
@@ -143,7 +144,7 @@ export function FechamentoView({ dados, grupo, mes }: { dados: DadosFechamento; 
             )
           })}
         </div>
-        <p className="text-xs text-muted-foreground mt-2">Mesmos números do <a href="/admin/dre" className="underline">DRE</a>. Taxa de cartão entra como dedução da receita; imposto fica nas despesas (Tributos).</p>
+        <p className="text-xs text-muted-foreground mt-2">Mesmos números do <a href="/admin/dre" className="underline">DRE</a>. Taxa de cartão e tarifa do PIX na maquininha entram como dedução da receita; imposto fica nas despesas (Tributos).</p>
       </section>
 
       {/* Ritmo diário */}

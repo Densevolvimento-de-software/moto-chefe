@@ -1,7 +1,15 @@
-# Forçar conciliação de pagamento (admin_geral)
+# Forçar conciliação de pagamento
 
 **Data:** 2026-07-31
 **Status:** aprovado
+**Adendo 2026-11-18 (#79):** forçar e desfazer deixaram de ser só do `admin_geral`. Decisão do
+Luis (opção A): `admin_geral`, `admin_socio` e `aux_adm` forçam e desfazem, em todos os grupos,
+sem depender de Open Finance. Motivo: a regra nasceu com uma Conta só; Conta cliente sem Open
+Finance não tinha como fechar a pendência. A regra mora em `src/lib/conciliacao-papeis.ts`
+(`podeGerirConciliacao`), a mesma para a tela e para as actions. Forçar e desfazer valem no grupo
+ativo; registro de outro grupo ou de outra Conta recebe a mesma frase do id inexistente.
+O `admin_rede` entra como `admin_socio` (persona do #517), então também força e desfaz no grupo
+que o `admin_geral` liberou para ele; em grupo de outra Conta não liberado, recebe a mesma frase.
 
 ## Problema
 
@@ -21,7 +29,8 @@ R$ 0,05) não a encontra.
 Duas frentes, ambas restritas a quem é dono do problema:
 
 1. **Forçar** — marcar um pagamento como conciliado na mão, com motivo
-   obrigatório, reversível. Só `admin_geral`.
+   obrigatório, reversível. `admin_geral`, `admin_socio` e `aux_adm` (adendo de 18/11/2026;
+   antes, só `admin_geral`).
 2. **Busca livre** — procurar qualquer transação não vinculada por nº de
    autorização, data ou valor aproximado, sem o filtro de valor exato.
    Disponível para quem já enxerga a lupa hoje (admins + `aux_adm`).
@@ -74,7 +83,8 @@ de pagamentos).
 Em `src/app/(dashboard)/conciliacao/actions.ts`, compartilhadas pelas 3 telas.
 `AlvoTipo = 'moto' | 'peca' | 'os'`.
 
-- `forcarConciliacaoAction(tipo, alvoId, idx, motivo)` — exige `admin_geral`,
+- `forcarConciliacaoAction(tipo, alvoId, idx, motivo)` — exige `podeGerirConciliacao`
+  (adendo de 18/11/2026),
   valida que o alvo pertence a uma loja do grupo ativo, motivo com mín. 3
   caracteres, índice dentro do array. Em OS antiga que só tem `formaPagamento`
   (sem array), grava o array sintetizado por `pagamentosEfetivosOS`.
@@ -107,8 +117,8 @@ Por linha de pagamento pendente:
 | Ação | Quem vê |
 |---|---|
 | 🔍 sugestões por valor exato + busca livre | admin_geral, admin_socio, aux_adm |
-| ⚡ Forçar (dialog com motivo) | **admin_geral** |
-| Desfazer forçado | **admin_geral** |
+| ⚡ Forçar (dialog com motivo) | admin_geral, admin_socio, aux_adm (antes de 18/11/2026: só admin_geral) |
+| Desfazer forçado | admin_geral, admin_socio, aux_adm (antes de 18/11/2026: só admin_geral) |
 
 Pagamento forçado aparece verde com selo "forçado" e o motivo/quem/quando
 visível na própria linha.

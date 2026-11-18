@@ -1,5 +1,5 @@
-// Cliente mínimo da API do Mercado Pago para a mensalidade do MOVA (#208).
-// Credencial do MOVA (conta da Infinity Fit), não de grupo: env MP_ACCESS_TOKEN.
+// Cliente mínimo da API do Mercado Pago (#208). A mensalidade usa a credencial do MOVA (conta da
+// Infinity Fit, env MP_ACCESS_TOKEN); a maquininha usa a do grupo, por chamarComToken (point.ts).
 // Nunca logar o corpo da requisição nem o header de autorização (spec, seção 8).
 
 const API = 'https://api.mercadopago.com'
@@ -14,9 +14,10 @@ function token(): string {
   return t
 }
 
-async function chamar<T>(caminho: string, init: RequestInit & { idempotencia?: string }): Promise<T> {
+/** Chamada com o token recebido (mensalidade usa o do MOVA; a maquininha usa o do grupo). */
+export async function chamarComToken<T>(token: string, caminho: string, init: RequestInit & { idempotencia?: string }): Promise<T> {
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${token()}`,
+    Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
   }
   if (init.idempotencia) headers['X-Idempotency-Key'] = init.idempotencia
@@ -24,6 +25,10 @@ async function chamar<T>(caminho: string, init: RequestInit & { idempotencia?: s
   // Só o status vai para o erro: o corpo pode ecoar dados da requisição.
   if (!r.ok) throw new ErroMercadoPago(`Mercado Pago respondeu ${r.status} em ${caminho.split('?')[0]}`, r.status)
   return r.json() as Promise<T>
+}
+
+async function chamar<T>(caminho: string, init: RequestInit & { idempotencia?: string }): Promise<T> {
+  return chamarComToken<T>(token(), caminho, init)
 }
 
 import type { Pagamento } from './webhook'

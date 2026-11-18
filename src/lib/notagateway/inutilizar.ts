@@ -142,14 +142,19 @@ export async function gravarResultadoDaInutilizacao(
   }).where(and(eq(notasFiscaisSaidaInutilizacoes.id, inutilizacao.id), eq(notasFiscaisSaidaInutilizacoes.grupoId, inutilizacao.grupoId)))
 }
 
+/** O que a consulta do resultado lê da linha. */
+const COLUNAS_DA_CONSULTA = {
+  id: notasFiscaisSaidaInutilizacoes.id, grupoId: notasFiscaisSaidaInutilizacoes.grupoId, idExterno: notasFiscaisSaidaInutilizacoes.idExterno,
+  ambiente: notasFiscaisSaidaInutilizacoes.ambiente, situacao: notasFiscaisSaidaInutilizacoes.situacao, status: notasFiscaisSaidaInutilizacoes.status,
+  motivoStatus: notasFiscaisSaidaInutilizacoes.motivoStatus, protocolo: notasFiscaisSaidaInutilizacoes.protocolo,
+  criadoEm: notasFiscaisSaidaInutilizacoes.criadoEm,
+}
+
+export type InutilizacaoParaConsultar = Pick<typeof notasFiscaisSaidaInutilizacoes.$inferSelect, keyof typeof COLUNAS_DA_CONSULTA>
+
 export async function inutilizacaoDoUsuario(tx: Executor, usuario: UsuarioInutilizacao, inutilizacaoId: string) {
   const filtroConta = usuario.papel === 'admin_geral' ? undefined : eq(grupos.contaId, usuario.contaId ?? '')
-  const [linha] = await tx.select({
-    id: notasFiscaisSaidaInutilizacoes.id, grupoId: notasFiscaisSaidaInutilizacoes.grupoId, idExterno: notasFiscaisSaidaInutilizacoes.idExterno,
-    ambiente: notasFiscaisSaidaInutilizacoes.ambiente, situacao: notasFiscaisSaidaInutilizacoes.situacao, status: notasFiscaisSaidaInutilizacoes.status,
-    motivoStatus: notasFiscaisSaidaInutilizacoes.motivoStatus, protocolo: notasFiscaisSaidaInutilizacoes.protocolo,
-    criadoEm: notasFiscaisSaidaInutilizacoes.criadoEm,
-  }).from(notasFiscaisSaidaInutilizacoes).innerJoin(grupos, eq(grupos.id, notasFiscaisSaidaInutilizacoes.grupoId))
+  const [linha] = await tx.select(COLUNAS_DA_CONSULTA).from(notasFiscaisSaidaInutilizacoes).innerJoin(grupos, eq(grupos.id, notasFiscaisSaidaInutilizacoes.grupoId))
     .where(and(eq(notasFiscaisSaidaInutilizacoes.id, inutilizacaoId), filtroConta)).limit(1)
   if (!linha || !(await grupoVisivel(tx, usuario, linha.grupoId))) return null
   return linha
@@ -257,22 +262,43 @@ export async function inutilizarNumeroDaNota(
   return enviarPedido(deps, usuario, pedido, c.cfg)
 }
 
-/** Consulta o resultado pelo id e grava status, motivo e protocolo. */
-export async function consultarInutilizacao(
-  usuario: UsuarioInutilizacao, inutilizacaoId: string,
-): Promise<Resultado<{ situacao: string; motivoStatus: string | null; protocolo: string | null }>> {
-  const linha = await inutilizacaoDoUsuario(db, usuario, inutilizacaoId)
-  if (!linha) return { ok: false, erro: 'Inutilização não encontrada' }
+/** O que a consulta do resultado pede de fora; o teste de banco troca a NG, a transação e o relógio. */
+export type DependenciasConsulta = Pick<DependenciasInutilizacao, 'exec' | 'config'> & {
+  consultar: typeof consultarInutilizacaoNaNg
+  agora: () => Date
+}
+
+const DEPENDENCIAS_CONSULTA: DependenciasConsulta = { exec: db, config: configDoAmbiente, consultar: consultarInutilizacaoNaNg, agora: () => new Date() }
+
+export type ResultadoDaConsulta = Resultado<{ situacao: string; motivoStatus: string | null; protocolo: string | null }>
+
+/**
+ * Consulta na NG a inutilização já achada e grava status, motivo e protocolo. Só a pendente
+ * vai à NG; a credencial é a do grupo da linha. Não confere usuário nem Conta: a linha tem de vir
+ * do banco, lida com a Conta (clique) ou pelo id externo (aviso da NG), nunca de entrada do usuário.
+ */
+export async function consultarResultadoDaLinha(
+  linha: InutilizacaoParaConsultar, deps: DependenciasConsulta = DEPENDENCIAS_CONSULTA,
+): Promise<ResultadoDaConsulta> {
   if (linha.situacao !== 'pendente') return { ok: true, situacao: linha.situacao, motivoStatus: linha.motivoStatus, protocolo: linha.protocolo }
-  const c = await configDoAmbiente(linha.grupoId, linha.ambiente)
+  const c = await deps.config(linha.grupoId, linha.ambiente, deps.exec)
   if ('erro' in c) return { ok: false, erro: c.erro }
-  const r = await consultarInutilizacaoNaNg(c.cfg, linha.idExterno)
+  const r = await deps.consultar(c.cfg, linha.idExterno)
   if (!r) {
-    if (!pedidoSemRespostaVenceu(linha.criadoEm, new Date())) return { ok: true, situacao: 'pendente', motivoStatus: null, protocolo: null }
+    if (!pedidoSemRespostaVenceu(linha.criadoEm, deps.agora())) return { ok: true, situacao: 'pendente', motivoStatus: null, protocolo: null }
     const motivo = 'O pedido não chegou à Nota Gateway. Peça a inutilização de novo.'
-    await gravarResultadoDaInutilizacao(db, linha, { status: STATUS_NAO_ENVIADA, motivoStatus: motivo, protocolo: null })
+    await gravarResultadoDaInutilizacao(deps.exec, linha, { status: STATUS_NAO_ENVIADA, motivoStatus: motivo, protocolo: null })
     return { ok: true, situacao: 'negada', motivoStatus: motivo, protocolo: null }
   }
-  await gravarResultadoDaInutilizacao(db, linha, r)
+  await gravarResultadoDaInutilizacao(deps.exec, linha, r)
   return { ok: true, situacao: situacaoInutilizacao(r.status), motivoStatus: r.motivoStatus, protocolo: r.protocolo }
+}
+
+/** Clique "Consultar resultado": acha a linha com a Conta do usuário e consulta. */
+export async function consultarInutilizacao(
+  usuario: UsuarioInutilizacao, inutilizacaoId: string, deps: DependenciasConsulta = DEPENDENCIAS_CONSULTA,
+): Promise<ResultadoDaConsulta> {
+  const linha = await inutilizacaoDoUsuario(deps.exec, usuario, inutilizacaoId)
+  if (!linha) return { ok: false, erro: 'Inutilização não encontrada' }
+  return consultarResultadoDaLinha(linha, deps)
 }

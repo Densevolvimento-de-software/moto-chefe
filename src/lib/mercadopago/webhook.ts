@@ -1,4 +1,6 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHmac } from 'node:crypto'
+import { iguaisEmTempoConstante } from '@/lib/tempo-constante'
+import { ehEstornoMp } from './status'
 
 // Webhook do Mercado Pago (#208). A notificação não traz valor nem status: só diz
 // que algo mudou. A baixa vem de uma consulta à API (spec, seção 5).
@@ -20,9 +22,7 @@ export function assinaturaValida(p: { secret: string; xSignature: string | null;
   if (p.xRequestId) manifesto += `request-id:${p.xRequestId};`
   manifesto += `ts:${ts};`
 
-  const esperado = Buffer.from(createHmac('sha256', p.secret).update(manifesto).digest('hex'))
-  const recebido = Buffer.from(v1)
-  return recebido.length === esperado.length && timingSafeEqual(recebido, esperado)
+  return iguaisEmTempoConstante(v1, createHmac('sha256', p.secret).update(manifesto).digest('hex'))
 }
 
 export type Pagamento = { id: number | string; status: string; external_reference: string | null; transaction_amount: number; live_mode?: boolean }
@@ -35,7 +35,7 @@ export type Baixa =
 /** Decide se o pagamento consultado quita a mensalidade. */
 export function decidirBaixa(pg: Pagamento, m: { status: string; valorDevido: number } | null): Baixa {
   // Estorno e chargeback não revertem a baixa sozinhos, mas ficam no log para alguém olhar.
-  if (pg.status === 'refunded' || pg.status === 'charged_back') return { acao: 'erro', motivo: `pagamento ${pg.status}` }
+  if (ehEstornoMp(pg.status)) return { acao: 'erro', motivo: `pagamento ${pg.status}` }
   if (pg.status !== 'approved') return { acao: 'ignorar', motivo: `pagamento ${pg.status}` }
   if (!m) return { acao: 'erro', motivo: 'mensalidade da external_reference não encontrada' }
   if (m.status === 'paga') return { acao: 'ignorar', motivo: 'mensalidade já paga' }

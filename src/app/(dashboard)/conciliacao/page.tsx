@@ -7,11 +7,13 @@ import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { getGrupoAtivo } from '@/lib/grupo'
 import { INICIO_CONCILIACAO } from '@/lib/conciliacao-periodo'
+import { cartaoPendente } from '@/lib/cartao-status'
 import { redirect } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { UploadRelatorio } from './components/upload-relatorio'
 import { VincularVendaButton } from './components/vincular-venda-button'
 import { dataPuraBr } from '@/lib/data-venda'
+import { rotuloCurtoDaLinha } from '@/lib/conciliacao-cartao'
 
 const fmt = (v: string | number) =>
   parseFloat(String(v)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -30,7 +32,8 @@ export default async function ConciliacaoPage({
   const filtroStatus =
     filtro === 'conciliadas' ? eq(conciliacoesCartao.conciliado, true) :
     filtro === 'todas'       ? undefined :
-    eq(conciliacoesCartao.conciliado, false)
+    // Estornada não é pendência; aparece só em "Todas".
+    cartaoPendente
 
   // Nada de antes do início do período de conciliação — ver INICIO_CONCILIACAO.
   const doPeriodo = and(
@@ -98,7 +101,7 @@ export default async function ConciliacaoPage({
   }
 
   const [totalPendentes, totalConciliadas] = await Promise.all([
-    db.$count(conciliacoesCartao, and(doPeriodo, eq(conciliacoesCartao.conciliado, false))),
+    db.$count(conciliacoesCartao, and(doPeriodo, cartaoPendente)),
     db.$count(conciliacoesCartao, and(doPeriodo, eq(conciliacoesCartao.conciliado, true))),
   ])
 
@@ -181,7 +184,7 @@ export default async function ConciliacaoPage({
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <Badge variant={t.tipo === 'credito' ? 'default' : 'secondary'} className="text-xs">
-                          {t.tipo === 'credito' ? `Cré ${t.parcelas}x` : 'Déb'}
+                          {rotuloCurtoDaLinha(t.tipo, t.parcelas)}
                         </Badge>
                         {bandeira && <span className="text-xs text-muted-foreground capitalize">{bandeira}</span>}
                       </div>

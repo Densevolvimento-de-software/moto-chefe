@@ -24,6 +24,7 @@ import { valorConciliadoManual } from '@/lib/conciliacao-status'
 import { descontosDasVendas } from '@/lib/queries/descontos'
 import { percentualDesconto, periodoAnteriorAoRegistro } from '@/lib/desconto'
 import { motoNaoArquivada } from '@/lib/queries/showroom'
+import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 
 const ADMINS = ['admin_geral', 'admin_socio']
 const TIPOS_CARTAO_CONC = new Set(['cartao_credito', 'cartao_debito', 'link_pagamento'])
@@ -97,7 +98,7 @@ export default async function VendasPage({
   const usuario = await getUsuarioLogado()
   if (!usuarioPodeAcessar(usuario, '/vendas')) redirect('/dashboard')
   const isAdmin = ADMINS.includes(usuario.papel)
-  const podeConciliacao = isAdmin || usuario.papel === 'aux_adm'
+  const podeConciliacao = podeGerirConciliacao(usuario.papel)
 
   const lojaIdsGrupo = isAdmin ? await listarLojaIdsDoGrupoAtivo(usuario) : []
 

@@ -1,4 +1,5 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHmac } from 'node:crypto'
+import { iguaisEmTempoConstante } from '@/lib/tempo-constante'
 
 // Os webhooks do Resend são assinados pelo esquema do Svix: cabeçalhos
 // svix-id / svix-timestamp / svix-signature, e um segredo "whsec_<base64>".
@@ -15,14 +16,12 @@ export function verificarAssinaturaResend(
 
   const secretBytes = Buffer.from(secret.replace(/^whsec_/, ''), 'base64')
   const assinado = `${svixId}.${svixTimestamp}.${rawBody}`
-  const esperado = Buffer.from(createHmac('sha256', secretBytes).update(assinado).digest('base64'))
+  const esperado = createHmac('sha256', secretBytes).update(assinado).digest('base64')
 
   // Qualquer uma das assinaturas fornecidas batendo já vale (rotação de chave).
   return svixSignature.split(' ').some(parte => {
     const sig = parte.split(',')[1]
-    if (!sig) return false
-    const buf = Buffer.from(sig)
-    return buf.length === esperado.length && timingSafeEqual(buf, esperado)
+    return !!sig && iguaisEmTempoConstante(sig, esperado)
   })
 }
 

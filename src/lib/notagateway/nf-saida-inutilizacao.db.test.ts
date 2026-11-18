@@ -471,10 +471,10 @@ const CHAVE_2 = '22222222-2222-4222-8222-222222222222'
 const faixa = (extra = {}) => ({ chave: CHAVE_1, ambiente: 'Homologacao', numeroInicial: '16', numeroFinal: '24', justificativa: 'Quebra na sequência da numeração', ...extra })
 
 /** Conta com a credencial da NG cifrada de verdade, para a faixa ler a configuração pelo caminho real. */
-async function semearContaFaixa(tx: Tx, nome: string, cnpj: string, ambiente = 'Homologacao') {
+async function semearContaFaixa(tx: Tx, nome: string, cnpj: string, ambiente = 'Homologacao', empresaId = 'emp-1') {
   const { cifrar } = await import('@/lib/cripto')
   const conta = await semearConta(tx, nome, cnpj, ambiente)
-  await tx.execute(sql`update notagateway_config set token = ${cifrar('tok-cifrado')}, empresa_id = 'emp-1' where grupo_id = ${conta.grupoId}`)
+  await tx.execute(sql`update notagateway_config set token = ${cifrar('tok-cifrado')}, empresa_id = ${empresaId} where grupo_id = ${conta.grupoId}`)
   return conta
 }
 
@@ -743,5 +743,95 @@ test('faixa na tela: o histórico lista só as faixas do grupo e ambiente; a Con
     assert.deepEqual(daA.map(f => [f.numeroInicial, f.numeroFinal, f.situacao]), [[16, 24, 'pendente']], 'a inutilização da nota não é faixa')
     assert.equal((await mf.listarFaixas(tx, { grupoId: a.grupoId, contaId: a.socio.contaId, ambiente: 'Producao' })).length, 0)
     assert.equal((await mf.listarFaixas(tx, { grupoId: a.grupoId, contaId: b.socio.contaId, ambiente: 'Homologacao' })).length, 0, 'Conta B no where')
+  })
+})
+
+// Consulta do resultado (#66): a do clique "Consultar resultado". A consulta à NG é trocada; a faixa
+// pendente nasce pelo pedido real, com o envio e a empresa da NG trocados por depsDaFaixa.
+type Consultar = import('@/lib/notagateway/inutilizar').DependenciasConsulta['consultar']
+
+/** Consulta à NG trocada: devolve a resposta dada e guarda com que empresa e id foi chamada. */
+function ngQueResponde(resposta: Awaited<ReturnType<Consultar>>) {
+  const chamadas: { empresaId: string; idExterno: string }[] = []
+  const consultar: Consultar = async (cfg, idExterno) => { chamadas.push({ empresaId: cfg.empresaId, idExterno }); return resposta }
+  return { consultar, chamadas }
+}
+
+const depsDaConsulta = (tx: Tx, consultar: Consultar, agora = new Date()) => ({ exec: tx, config: m.configDoAmbiente, consultar, agora: () => agora })
+
+async function faixaPendente(tx: Tx, conta: Awaited<ReturnType<typeof semearContaFaixa>>) {
+  const r = await mf.inutilizarFaixa(conta.socio, conta.grupoId, faixa(), depsDaFaixa(tx, conta.grupoId))
+  assert.ok(r.ok)
+  const id = r.inutilizacaoId
+  return { id, linha: async () => (await linhas(tx, sql`select * from notas_fiscais_saida_inutilizacoes where id = ${id}`))[0] }
+}
+
+const AUTORIZADA = { status: 'Autorizada', motivoStatus: null, protocolo: '353190000062124' }
+
+test('consulta (clique): a pendente vira autorizada com o protocolo da consulta, pela credencial do grupo dela', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001', 'Homologacao', 'emp-A')
+    await semearContaFaixa(tx, 'B', '00000000066002', 'Homologacao', 'emp-B')
+    const f = await faixaPendente(tx, a)
+    const ng = ngQueResponde(AUTORIZADA)
+
+    const r = await m.consultarInutilizacao(a.socio, f.id, depsDaConsulta(tx, ng.consultar))
+
+    assert.deepEqual(r, { ok: true, situacao: 'autorizada', motivoStatus: null, protocolo: '353190000062124' })
+    const linha = await f.linha()
+    assert.deepEqual([linha.situacao, linha.status, linha.protocolo], ['autorizada', 'Autorizada', '353190000062124'])
+    assert.deepEqual(ng.chamadas, [{ empresaId: 'emp-A', idExterno: linha.id_externo }])
+  })
+})
+
+test('consulta (clique): a Conta B recebe a mesma frase do id inexistente, sem ir à NG, e a linha da A não muda', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001')
+    const b = await semearContaFaixa(tx, 'B', '00000000066002')
+    const f = await faixaPendente(tx, a)
+    const ng = ngQueResponde(AUTORIZADA)
+
+    const daB = await m.consultarInutilizacao(b.socio, f.id, depsDaConsulta(tx, ng.consultar))
+    const inexistente = await m.consultarInutilizacao(b.socio, '00000000-0000-0000-0000-000000000000', depsDaConsulta(tx, ng.consultar))
+
+    assert.deepEqual(daB, { ok: false, erro: 'Inutilização não encontrada' })
+    assert.deepEqual(inexistente, daB)
+    assert.equal((await f.linha()).situacao, 'pendente')
+    assert.equal(ng.chamadas.length, 0)
+  })
+})
+
+test('consulta (clique) de linha já resolvida: devolve o gravado sem ir à NG', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001')
+    const f = await faixaPendente(tx, a)
+    await m.gravarResultadoDaInutilizacao(tx, { id: f.id, grupoId: a.grupoId }, { status: 'Autorizada', motivoStatus: null, protocolo: 'P-GRAVADO' })
+    const ng = ngQueResponde({ status: 'Negada', motivoStatus: 'nao devia consultar', protocolo: null })
+
+    const r = await m.consultarInutilizacao(a.socio, f.id, depsDaConsulta(tx, ng.consultar))
+
+    assert.deepEqual(r, { ok: true, situacao: 'autorizada', motivoStatus: null, protocolo: 'P-GRAVADO' })
+    assert.equal(ng.chamadas.length, 0)
+  })
+})
+
+test('consulta com 404 da NG (D3): dentro do prazo segue pendente sem gravar; vencido grava negada com o motivo', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001')
+    const f = await faixaPendente(tx, a)
+    const antes = await f.linha()
+    const naoAchou = ngQueResponde(null).consultar
+    const { MINUTOS_PARA_DESCARTAR } = await import('@/lib/notagateway/status')
+    const criado = new Date(antes.criado_em).getTime()
+
+    const noPrazo = await m.consultarInutilizacao(a.socio, f.id, depsDaConsulta(tx, naoAchou, new Date(criado + (MINUTOS_PARA_DESCARTAR - 1) * 60_000)))
+    assert.deepEqual(noPrazo, { ok: true, situacao: 'pendente', motivoStatus: null, protocolo: null })
+    assert.deepEqual(await f.linha(), antes)
+
+    const vencido = await m.consultarInutilizacao(a.socio, f.id, depsDaConsulta(tx, naoAchou, new Date(criado + MINUTOS_PARA_DESCARTAR * 60_000)))
+    const motivo = 'O pedido não chegou à Nota Gateway. Peça a inutilização de novo.'
+    assert.deepEqual(vencido, { ok: true, situacao: 'negada', motivoStatus: motivo, protocolo: null })
+    const depois = await f.linha()
+    assert.deepEqual([depois.situacao, depois.status, depois.motivo_status], ['negada', 'NaoEnviada', motivo])
   })
 })

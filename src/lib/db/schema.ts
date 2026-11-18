@@ -397,6 +397,17 @@ export const nfeBlingArquivo = pgTable('nfe_bling_arquivo', {
   criadoEm:    timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({ pk: primaryKey({ columns: [t.grupoId, t.blingNfeId] }) }))
 
+// Credencial do Mercado Pago (maquininha Point) do grupo, uma linha por grupo (#51, ADR 0010).
+// token é CIFRADO (src/lib/cripto.ts) e nunca sai do servidor: a tela só recebe se está cadastrada.
+export const mercadopagoConfig = pgTable('mercadopago_config', {
+  grupoId:       uuid('grupo_id').primaryKey().references(() => grupos.id, { onDelete: 'cascade' }),
+  token:         text('token').notNull(),
+  userId:        text('user_id').notNull().unique(), // uma conta do Mercado Pago em um grupo só
+  publicKey:     text('public_key'),
+  atualizadoPor: uuid('atualizado_por').references(() => usuarios.id, { onDelete: 'set null' }),
+  atualizadoEm:  timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const notagatewayConfig = pgTable('notagateway_config', {
   grupoId:              uuid('grupo_id').primaryKey().references(() => grupos.id, { onDelete: 'cascade' }),
   token:                text('token').notNull(),
@@ -1144,7 +1155,7 @@ export const conciliacoesCartao = pgTable('conciliacoes_cartao', {
   valorBruto: numeric('valor_bruto', { precision: 12, scale: 2 }).notNull(),
   valorLiquido: numeric('valor_liquido', { precision: 12, scale: 2 }),
   parcelas: integer('parcelas').notNull().default(1),
-  tipo: text('tipo').notNull().default('credito'),
+  tipo: text('tipo').notNull().default('credito'), // credito, debito ou pix (Pix da maquininha Mercado Pago, 0195)
   status: text('status').notNull().default('aprovado'),
   vendaId: uuid('venda_id').references(() => vendas.id),
   pecaVendaId: uuid('peca_venda_id').references(() => vendasPecas.id),

@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto'
+import { iguaisEmTempoConstante } from '@/lib/tempo-constante'
 
 /** Confere o header Authorization contra JARVIS_API_TOKEN (comparacao timing-safe). */
 export function tokenValido(authHeader: string | null): boolean {
@@ -6,8 +6,5 @@ export function tokenValido(authHeader: string | null): boolean {
   if (!token) return false
   const prefixo = 'Bearer '
   if (!authHeader || !authHeader.startsWith(prefixo)) return false
-  const recebido = Buffer.from(authHeader.slice(prefixo.length))
-  const esperado = Buffer.from(token)
-  if (recebido.length !== esperado.length) return false
-  return timingSafeEqual(recebido, esperado)
+  return iguaisEmTempoConstante(authHeader.slice(prefixo.length), token)
 }
