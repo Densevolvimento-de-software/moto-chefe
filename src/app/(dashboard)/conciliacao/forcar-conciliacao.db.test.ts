@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario, type Base } from '@/test/semear-conta'
+import { semearModelo, semearOs, semearVendaMoto, semearVendaPeca } from '@/test/semear-alvos-conciliacao'
 import type { AlvoConciliacao } from './actions'
 
 const url = process.env.TEST_DATABASE_URL
@@ -15,6 +16,7 @@ process.env.DATABASE_URL = url
 type Db = typeof import('@/lib/db')
 type Sessao = { id: string; nome: string; papel: string; lojaId: string | null; contaId: string | null; gruposAcesso: string[]; gruposAprovacao: string[] }
 let db: Db['db']
+let execRows: Db['execRows']
 let actions: typeof import('./actions')
 let usuario: Sessao
 let grupoAtivoNoCookie: string | null = null
@@ -26,7 +28,7 @@ const headersMock = mock.module('next/headers', {
 })
 
 before(async () => {
-  ;({ db } = await import('@/lib/db'))
+  ;({ db, execRows } = await import('@/lib/db'))
   actions = await import('./actions')
 })
 afterEach(() => { grupoAtivoNoCookie = null })
@@ -35,13 +37,8 @@ after(async () => {
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
 })
 
-async function linhas<T>(q: ReturnType<typeof sql>): Promise<T[]> {
-  return ((await db.execute(q)) as unknown as { rows: T[] }).rows
-}
-const idDe = async (q: ReturnType<typeof sql>) => (await linhas<{ id: string }>(q))[0].id
-
 // PIX pendente na posição 0 e dinheiro (não concilia) na 1.
-const PAGAMENTOS = JSON.stringify([{ tipo: 'pix', valor: 1000 }, { tipo: 'dinheiro', valor: 200 }])
+const PAGAMENTOS = [{ tipo: 'pix', valor: 1000 }, { tipo: 'dinheiro', valor: 200 }]
 const MOTIVO = 'PIX caiu na conta pessoal'
 
 type Alvos = Record<AlvoConciliacao['tipo'], string>
@@ -50,25 +47,21 @@ type Alvos = Record<AlvoConciliacao['tipo'], string>
 async function contaComAlvos(): Promise<Base & { alvos: Alvos }> {
   const suf = randomUUID()
   const base = await semearContaBase(db, { prefixo: 'FC79', nome: suf, cnpj: suf })
-  const vendedor = await semearUsuario(db, base, { papel: 'vendedor' })
-  const modelo = await idDe(sql`insert into modelos (marca, modelo, categoria, potencia_w, motor, velocidade_max)
-    values ('M', ${'FC79 ' + suf}, 'autopropelido', '1000', 'hub', '32') returning id`)
-  const moto = await idDe(sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
-    values (${randomUUID()}, ${modelo}, ${base.lojaId}, 'CINZA', '1', 'vendida', 'vendida') returning id`)
-  const pedido = await idDe(sql`insert into pedidos_venda (moto_id, loja_id, vendedor_id) values (${moto}, ${base.lojaId}, ${vendedor}) returning id`)
-  const vendaMoto = await idDe(sql`insert into vendas (pedido_venda_id, moto_id, loja_id, vendedor_id, efetivado_por, cliente_nome, cliente_cpf, valor, forma_pagamento, pagamentos)
-    values (${pedido}, ${moto}, ${base.lojaId}, ${vendedor}, ${vendedor}, 'Cliente sintético', '52998224725', 1200, 'pix', ${PAGAMENTOS}::jsonb) returning id`)
-  const os = await idDe(sql`insert into ordens_servico (loja_id, aberta_por, descricao, pagamentos)
-    values (${base.lojaId}, ${vendedor}, 'revisão', ${PAGAMENTOS}::jsonb) returning id`)
-  const peca = await idDe(sql`insert into vendas_pecas (loja_id, vendedor_id, forma_pagamento, pagamentos, valor_total)
-    values (${base.lojaId}, ${vendedor}, 'pix', ${PAGAMENTOS}::jsonb, 1200) returning id`)
-  return { ...base, alvos: { moto: vendaMoto, os, peca } }
+  const balcao = { lojaId: base.lojaId, usuarioId: await semearUsuario(db, base, { papel: 'vendedor' }), modeloId: await semearModelo(db, 'FC79 ' + suf) }
+  return {
+    ...base,
+    alvos: {
+      moto: await semearVendaMoto(db, balcao, PAGAMENTOS),
+      os:   await semearOs(db, balcao, PAGAMENTOS),
+      peca: await semearVendaPeca(db, balcao, PAGAMENTOS),
+    },
+  }
 }
 
 const TABELA: Record<AlvoConciliacao['tipo'], string> = { moto: 'vendas', os: 'ordens_servico', peca: 'vendas_pecas' }
 type Pgto = { tipo: string; valor: number; conciliadoManual?: { motivo: string; porId: string; porNome: string; em: string } }
-const pagamentosDe = async (tipo: AlvoConciliacao['tipo'], id: string) =>
-  (await linhas<{ pagamentos: Pgto[] }>(sql`select pagamentos from ${sql.raw(TABELA[tipo])} where id = ${id}`))[0].pagamentos
+const pagamentosDe = async (tipo: AlvoConciliacao['tipo'], id: string): Promise<Pgto[]> =>
+  (await execRows(sql`select pagamentos from ${sql.raw(TABELA[tipo])} where id = ${id}`))[0].pagamentos
 
 const sessao = (b: Base, papel: string, extra: Partial<Sessao> = {}): Sessao =>
   ({ id: randomUUID(), nome: `${papel} de teste`, papel, lojaId: b.lojaId, contaId: b.contaId, gruposAcesso: [], gruposAprovacao: [], ...extra })
@@ -87,7 +80,7 @@ test('aux_adm e admin_socio forçam e desfazem o PIX pendente da venda de moto, 
       assert.deepEqual(dinheiro, { tipo: 'dinheiro', valor: 200 })
 
       assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, 0), { ok: true, dados: undefined }, `${papel} desfaz ${tipo}`)
-      assert.deepEqual(await pagamentosDe(tipo, alvo.id), JSON.parse(PAGAMENTOS))
+      assert.deepEqual(await pagamentosDe(tipo, alvo.id), PAGAMENTOS)
     }
   }
 })
@@ -100,7 +93,7 @@ test('admin_geral segue forçando e desfazendo no grupo ativo (sem vermelho: já
   assert.equal((await actions.forcarConciliacaoAction(alvo, 0, MOTIVO)).ok, true)
   assert.equal((await pagamentosDe('peca', alvo.id))[0].conciliadoManual?.porId, usuario.id)
   assert.equal((await actions.desfazerConciliacaoForcadaAction(alvo, 0)).ok, true)
-  assert.deepEqual(await pagamentosDe('peca', alvo.id), JSON.parse(PAGAMENTOS))
+  assert.deepEqual(await pagamentosDe('peca', alvo.id), PAGAMENTOS)
 })
 
 test('vendedor e mecânico recebem Sem permissão antes de qualquer validação, nem na própria loja, e nada grava', async () => {
@@ -113,7 +106,7 @@ test('vendedor e mecânico recebem Sem permissão antes de qualquer validação,
       // Papel antes de qualquer validação: motivo curto não pode responder outra coisa.
       assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 'ok'), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo} sem motivo`)
       assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, 0), { ok: false, erro: 'Sem permissão' }, `${papel} desfaz ${tipo}`)
-      assert.deepEqual(await pagamentosDe(tipo, alvo.id), JSON.parse(PAGAMENTOS))
+      assert.deepEqual(await pagamentosDe(tipo, alvo.id), PAGAMENTOS)
     }
   }
 })
@@ -124,7 +117,7 @@ test('motivo curto e pagamento que não concilia são recusados com a frase e na
   const alvo = { tipo: 'moto' as const, id: a.alvos.moto }
   assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, ' ok '), { ok: false, erro: 'Informe o motivo da conciliação forçada' })
   assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 1, MOTIVO), { ok: false, erro: 'Esse pagamento não precisa de conciliação' })
-  assert.deepEqual(await pagamentosDe('moto', alvo.id), JSON.parse(PAGAMENTOS))
+  assert.deepEqual(await pagamentosDe('moto', alvo.id), PAGAMENTOS)
 })
 
 // Registro de outra Conta e id inexistente recebem a mesma frase: a resposta não revela que existe.
