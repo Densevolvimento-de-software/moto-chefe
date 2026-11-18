@@ -3,8 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X, Plus } from 'lucide-react'
 import { filtrarPecas } from '@/lib/busca-peca'
 import { PecaForm } from './peca-form'
+import type { PecaComSaldo } from '@/lib/pecas-da-conta'
 
-export type PecaOpcao = { id: string; nome: string; valor: string; quantidadeEstoque: number }
+export type PecaOpcao = PecaComSaldo
 
 type Props = {
   pecas: PecaOpcao[]

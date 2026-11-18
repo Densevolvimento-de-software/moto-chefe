@@ -13,8 +13,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { criarPecaAction, atualizarPecaAction, type PecaInput } from '../actions'
+import type { PecaComSaldo } from '@/lib/pecas-da-conta'
 
-type PecaInicial = { id: string; nome: string; valor: string; quantidadeEstoque: number }
+type PecaInicial = PecaComSaldo
 
 type Props = {
   /** Sem trigger o form vira controlado por quem chama — ver `open`/`onOpenChange`. */

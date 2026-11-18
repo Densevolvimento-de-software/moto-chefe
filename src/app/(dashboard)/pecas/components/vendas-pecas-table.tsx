@@ -14,6 +14,7 @@ import { EditarClienteVendaPecaDialog } from './editar-cliente-venda-peca-dialog
 import { ExcluirVendaPecaButton } from './excluir-venda-peca-button'
 import { VendaPecaDialog } from './venda-peca-dialog'
 import { podeGerirPecas } from '../papeis'
+import type { PecaComSaldo } from '@/lib/pecas-da-conta'
 
 type VendaPeca = {
   id: string
@@ -32,7 +33,7 @@ type VendaPeca = {
   itens: string | null
 }
 
-type PecaCatalogo = { id: string; nome: string; valor: string; quantidadeEstoque: number }
+type PecaCatalogo = PecaComSaldo
 
 const TIPO_LABEL: Record<string, string> = {
   pix: 'PIX', dinheiro: 'Dinheiro',

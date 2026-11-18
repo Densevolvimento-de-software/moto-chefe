@@ -9,6 +9,9 @@ import { pecasCatalogo, pecasEstoqueLoja } from '@/lib/db/schema'
 
 type Executor = Pick<typeof db, 'select' | 'insert' | 'update'>
 
+/** Peça do catálogo com o saldo de uma loja, como as telas recebem (Peças, OS, Novo pedido). */
+export type PecaComSaldo = { id: string; nome: string; valor: string; quantidadeEstoque: number }
+
 // Peça com o saldo de UMA loja no lugar do número único antigo (#195). Linha de saldo só
 // existe com peça e loja da mesma Conta (estoque-pecas-loja.ts); a loja vem conferida
 // por quem chama.

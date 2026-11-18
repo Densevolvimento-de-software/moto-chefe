@@ -14,8 +14,9 @@ import { CurrencyInput } from '@/components/ui/currency-input'
 import { Pencil, Plus, Trash2, ShoppingCart } from 'lucide-react'
 import { carregarVendaPecaParaEdicaoAction, editarVendaPecaAction, registrarVendaPecaAction } from '../actions'
 import { PecaLookup } from './peca-lookup'
+import type { PecaComSaldo } from '@/lib/pecas-da-conta'
 
-type Peca = { id: string; nome: string; valor: string; quantidadeEstoque: number }
+type Peca = PecaComSaldo
 type Loja = { id: string; nome: string }
 
 /** `valor` vazio = usa o preço do catálogo; preenchido = preço ajustado pelo gestor. */

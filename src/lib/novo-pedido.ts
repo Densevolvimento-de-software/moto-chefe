@@ -1,7 +1,8 @@
 import { filtrarPecas } from './busca-peca'
 import { centavos } from './numero-br'
 import { finalDoChassi } from './painel-fabrica'
-import { valorDeMotoInvalido, type MotoDoPedidoInput } from './pedido-venda-regras'
+import type { PecaComSaldo } from './pecas-da-conta'
+import { totalDasPecas, valorDeMotoInvalido, valorDePecaInvalido, type MotoDoPedidoInput, type PecaDoPedidoInput } from './pedido-venda-regras'
 
 /** Moto disponível que o Novo pedido oferece (#24). */
 export type MotoDisponivel = { id: string; chassi: string; marca: string; modelo: string; cor: string; lojaId: string; lojaNome: string }
@@ -29,3 +30,37 @@ export function motosDoEnvio(motos: readonly MotoNoPedido[]): MotoDoPedidoInput[
 }
 
 export const totalDasMotos = (motos: readonly MotoNoPedido[]): number => centavos(motos.reduce((s, m) => s + (valorDaMoto(m) ?? 0), 0))
+
+/** Brinde ou acessório no pedido; `valor` é o texto do campo de dinheiro (o brinde fica "0.00"). */
+export type PecaNoPedido = { tipo: 'brinde' | 'acessorio'; peca: PecaComSaldo; quantidade: number; valor: string }
+
+/** As marcadas no painel entram no pedido; a mesma peça do mesmo tipo soma na quantidade. Acessório começa no preço do catálogo. */
+export function comPecas(atual: readonly PecaNoPedido[], tipo: PecaNoPedido['tipo'], marcadas: readonly { peca: PecaComSaldo; quantidade: number }[]): PecaNoPedido[] {
+  return marcadas.reduce<PecaNoPedido[]>((lista, { peca, quantidade }) => (lista.some(p => p.tipo === tipo && p.peca.id === peca.id)
+    ? lista.map(p => (p.tipo === tipo && p.peca.id === peca.id ? { ...p, quantidade: p.quantidade + quantidade } : p))
+    : [...lista, { tipo, peca, quantidade, valor: tipo === 'brinde' ? '0.00' : peca.valor }]), [...atual])
+}
+
+/** Saldo que passa do estoque da loja: avisa, não bloqueia (#778). A peça conta como brinde e como acessório. */
+export function avisoDeSaldo(pecas: readonly PecaNoPedido[], pecaId: string): string | null {
+  const da = pecas.filter(p => p.peca.id === pecaId)
+  const sobra = (da[0]?.peca.quantidadeEstoque ?? 0) - da.reduce((s, p) => s + p.quantidade, 0)
+  return da.length > 0 && sobra < 0 ? `Saldo na loja: ${da[0].peca.quantidadeEstoque}. Fica em ${sobra} depois deste pedido; não trava a venda.` : null
+}
+
+/** Peças para o criar pedido. O valor do acessório só vai de quem gere peças, como o servidor (#778); null se um valor não serve. */
+export function pecasDoEnvio(pecas: readonly PecaNoPedido[], podeAjustarPreco: boolean): PecaDoPedidoInput[] | null {
+  // Valor apagado vale o preço do catálogo: sem `valorUnitario`, o servidor usa o do catálogo.
+  const ajusta = (p: PecaNoPedido) => p.tipo === 'acessorio' && podeAjustarPreco && p.valor !== ''
+  if (pecas.some(p => ajusta(p) && valorDePecaInvalido(Number(p.valor)))) return null
+  return pecas.map(p => ({ tipo: p.tipo, pecaId: p.peca.id, quantidade: p.quantidade, ...(ajusta(p) ? { valorUnitario: Number(p.valor) } : {}) }))
+}
+
+export const totalDasPecasNaTela = (pecas: readonly PecaNoPedido[]): number =>
+  totalDasPecas(pecas.map(p => ({ quantidade: p.quantidade, valorUnitario: p.valor === '' ? p.peca.valor : p.valor })))
+
+/** Linha do Resumo com as motos "A definir" (decisão do Luis, #24): avisa, não bloqueia. */
+export function motosSemValor(motos: readonly MotoNoPedido[]): string | null {
+  const n = motos.filter(m => m.valor === '').length
+  return n === 0 ? null : n === 1 ? '1 moto sem valor' : `${n} motos sem valor`
+}

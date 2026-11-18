@@ -41,6 +41,7 @@ import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { pedidoDoUsuario } from '@/lib/pedido-do-usuario'
 import { motoDoUsuario, motosDoUsuario, travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
 import { ehUuid } from '@/lib/uuid'
+import { listarPecasDaLoja, type PecaComSaldo } from '@/lib/pecas-da-conta'
 import { aprovacaoDoUsuario } from '@/lib/aprovacao-do-usuario'
 import { voltarMotoAoEstoque } from '@/lib/motos-vendidas-sem-venda'
 import { vendedorDaConta } from '@/lib/vendedor-da-conta'
@@ -207,6 +208,19 @@ async function criarPedidoVenda(motos: string | MotoDoPedidoInput[], observacao:
 
   revalidatePath('/vendas')
   revalidatePath('/estoque')
+}
+
+/**
+ * Catálogo do Novo pedido (#24): peças ativas da Conta com o saldo da loja do pedido. Loja de outra Conta, onde a pessoa não
+ * vende e id inexistente recebem a mesma frase.
+ */
+export async function pecasDaLojaParaPedidoAction(lojaId: string) {
+  return acao(async (): Promise<PecaComSaldo[]> => {
+    const usuario = await getUsuarioLogado()
+    if (!podeCriarPedido(usuario.papel)) throw new RecusaUsuario('Sem permissão para criar pedido de venda')
+    if (!ehUuid(lojaId) || !(await podeVenderMotoDaLoja(usuario, lojaId))) throw new RecusaUsuario('Loja não encontrada')
+    return (await listarPecasDaLoja(db, lojaId)).map(p => ({ id: p.id, nome: p.nome, valor: p.valor, quantidadeEstoque: p.quantidadeEstoque }))
+  })
 }
 
 export async function trocarMotosDoPedidoAction(...a: Parameters<typeof trocarMotosDoPedido>) {

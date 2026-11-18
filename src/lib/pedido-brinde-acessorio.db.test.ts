@@ -5,7 +5,7 @@ import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { semearContaBase, semearLoja, semearUsuario } from '@/test/semear-conta'
 import { entregarSintetico } from '@/test/entrega-sintetica'
 import { hojeBrt } from '@/lib/data-venda'
 
@@ -218,4 +218,23 @@ test('B10: com aprovação (#776), o estoque só baixa na aprovação, e o acess
   assert.deepEqual(await actions.aprovarVendaAction(ap.id as string), { ok: true, dados: undefined })
   assert.deepEqual([await saldo(a, a.capacete), await saldo(a, a.antena)], [-1, -1])
   assert.deepEqual(await execRows(sql`select valor_total from vendas_pecas where pedido_venda_id = ${pedidoId}`), [{ valor_total: '400.00' }])
+})
+
+test('B11 (#24): o catálogo do Novo pedido traz as peças ativas da Conta com o saldo da loja; outra Conta, loja onde não vende e id inexistente recebem a mesma frase', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  await execRows(sql`insert into pecas_catalogo (conta_id, nome, valor, ativo) values (${a.contaId}, 'Inativa BA778', '1.00', false)`)
+  const outraLojaDaA = await semearLoja(db, a.grupoId, 'BA778 outra loja ' + randomUUID())
+  usuario = a.vendedor
+  assert.deepEqual(await actions.pecasDaLojaParaPedidoAction(a.lojaId), { ok: true, dados: [
+    { id: a.antena, nome: 'Antena BA778', valor: '40.00', quantidadeEstoque: 0 },
+    { id: a.capacete, nome: 'Capacete BA778', valor: '250.00', quantidadeEstoque: 1 },
+  ] })
+  const naoEncontrada = { ok: false, erro: 'Loja não encontrada' }
+  usuario = a.aux
+  assert.deepEqual(await actions.pecasDaLojaParaPedidoAction(outraLojaDaA), naoEncontrada)
+  usuario = b.aux
+  for (const lojaId of [a.lojaId, randomUUID(), 'nao-e-uuid']) assert.deepEqual(await actions.pecasDaLojaParaPedidoAction(lojaId), naoEncontrada, lojaId)
+  usuario = { ...a.aux, papel: 'mecanico' }
+  assert.deepEqual(await actions.pecasDaLojaParaPedidoAction(a.lojaId), { ok: false, erro: 'Sem permissão para criar pedido de venda' })
 })
