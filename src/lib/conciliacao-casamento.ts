@@ -6,10 +6,10 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { and, between, inArray, sql } from 'drizzle-orm'
 import type { db } from '@/lib/db'
-import { ordensServico, vendas, vendasPecas } from '@/lib/db/schema'
+import { conciliacoesCartao, ordensServico, vendas, vendasPecas } from '@/lib/db/schema'
 import { PAGAMENTO_PIX, TIPOS_CARTAO, type PgtoOS } from '@/lib/conciliacao-status'
 import { addDias } from '@/lib/calendario'
-import { LINHA_PIX } from '@/lib/conciliacao-cartao'
+import { LINHA_PIX, type TransacaoCartao } from '@/lib/conciliacao-cartao'
 
 type Db = Pick<typeof db, 'select'>
 
@@ -99,4 +99,27 @@ export async function casarPorValor(
   const osId = osCandidatas.find(casa)?.id
   if (osId) return { ...alvos, osId }
   return alvos
+}
+
+/** Valores do insert de uma linha nova de conciliacoes_cartao: conciliada quando a transação casou com algum alvo. */
+export function linhaDaTransacao(grupoId: string, operadora: string, t: TransacaoCartao, alvos: Alvos, agora: Date) {
+  const casou = (alvos.vendaId ?? alvos.pecaVendaId ?? alvos.osId) !== null
+  return {
+    grupoId,
+    operadora,
+    dataTransacao: t.dataTransacao,
+    nsu: t.nsu ?? null,
+    autorizacao: t.autorizacao ?? null,
+    valorBruto: String(t.valorBruto),
+    valorLiquido: t.valorLiquido != null ? String(t.valorLiquido) : null,
+    parcelas: t.parcelas,
+    tipo: t.tipo,
+    status: t.status,
+    vendaId: alvos.vendaId,
+    pecaVendaId: alvos.pecaVendaId,
+    osId: alvos.osId,
+    conciliado: casou,
+    conciliadoEm: casou ? agora : null,
+    rawData: t.rawData ?? null,
+  } satisfies typeof conciliacoesCartao.$inferInsert
 }
