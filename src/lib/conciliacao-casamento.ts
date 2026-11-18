@@ -8,13 +8,13 @@ import { and, between, inArray, sql } from 'drizzle-orm'
 import type { db } from '@/lib/db'
 import { ordensServico, vendas, vendasPecas } from '@/lib/db/schema'
 import { TIPOS_CARTAO, type PgtoOS } from '@/lib/conciliacao-status'
+import { addDias } from '@/lib/calendario'
 
 type Db = Pick<typeof db, 'select'>
 
 export type Alvos = { vendaId: string | null; pecaVendaId: string | null; osId: string | null }
 
 const TOLERANCIA = 0.05 // R$ 0,05 de tolerância no valor
-const UM_DIA_MS = 86_400_000
 
 type Pagamento = Pick<PgtoOS, 'tipo' | 'valor' | 'parcelas'>
 
@@ -63,9 +63,9 @@ export async function casarPorValor(
   const alvos = semAlvos()
   if (lojaIds.length === 0) return alvos
 
-  const dataBase = new Date(t.dataTransacao + 'T12:00:00Z').getTime()
-  const dataMin = new Date(dataBase - UM_DIA_MS)
-  const dataMax = new Date(dataBase + UM_DIA_MS)
+  const meioDia = (dia: string) => new Date(dia + 'T12:00:00Z')
+  const dataMin = meioDia(addDias(t.dataTransacao, -1))
+  const dataMax = meioDia(addDias(t.dataTransacao, 1))
   const casa = (v: { pagamentos: unknown }) => casaPagamento(v.pagamentos, t.valorBruto, t.parcelas)
 
   const vendasCandidatas = await db
