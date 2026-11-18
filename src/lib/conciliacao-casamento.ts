@@ -20,11 +20,20 @@ type Pagamento = Pick<PgtoOS, 'tipo' | 'valor' | 'parcelas'>
 
 const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
 
-/** Um lançamento de cartão do mesmo valor (±R$ 0,05) e mesmas parcelas. */
-function casaPagamento(pagamentos: unknown, valorBruto: number, parcelas: number): boolean {
+/**
+ * Tipos de pagamento da venda que uma linha da conciliação de cartão pode cobrir. A linha 'pix' só
+ * existe para o Pix da maquininha Mercado Pago (#51) e cobre o pagamento Pix; as outras, cartão.
+ */
+export function tiposDoPagamentoDaLinha(tipoLinha: string | undefined): ReadonlySet<string> {
+  return tipoLinha === 'pix' ? PAGAMENTO_PIX : TIPOS_CARTAO
+}
+const PAGAMENTO_PIX: ReadonlySet<string> = new Set(['pix'])
+
+/** Um lançamento do tipo que a linha cobre, do mesmo valor (±R$ 0,05) e mesmas parcelas. */
+function casaPagamento(pagamentos: unknown, tipos: ReadonlySet<string>, valorBruto: number, parcelas: number): boolean {
   const pgtos = (pagamentos ?? []) as Pagamento[]
   return pgtos.some(p =>
-    TIPOS_CARTAO.has(p.tipo) &&
+    tipos.has(p.tipo) &&
     Math.abs(p.valor - valorBruto) <= TOLERANCIA &&
     (!p.parcelas || p.parcelas === parcelas)
   )
@@ -54,11 +63,11 @@ export async function casarPorAutorizacao(db: Db, lojaIds: string[], autorizacao
   return alvos
 }
 
-/** Pelo valor: mesmo dia ± 1 dia, valor bruto ±R$ 0,05, mesma qtd de parcelas, em pagamento de cartão. */
+/** Pelo valor: mesmo dia ± 1 dia, valor bruto ±R$ 0,05, mesma qtd de parcelas, no tipo que a linha cobre. */
 export async function casarPorValor(
   db: Db,
   lojaIds: string[],
-  t: { dataTransacao: string; valorBruto: number; parcelas: number },
+  t: { dataTransacao: string; valorBruto: number; parcelas: number; tipo?: string },
 ): Promise<Alvos> {
   const alvos = semAlvos()
   if (lojaIds.length === 0) return alvos
@@ -66,7 +75,8 @@ export async function casarPorValor(
   const meioDia = (dia: string) => new Date(dia + 'T12:00:00Z')
   const dataMin = meioDia(addDias(t.dataTransacao, -1))
   const dataMax = meioDia(addDias(t.dataTransacao, 1))
-  const casa = (v: { pagamentos: unknown }) => casaPagamento(v.pagamentos, t.valorBruto, t.parcelas)
+  const tipos = tiposDoPagamentoDaLinha(t.tipo)
+  const casa = (v: { pagamentos: unknown }) => casaPagamento(v.pagamentos, tipos, t.valorBruto, t.parcelas)
 
   const vendasCandidatas = await db
     .select({ id: vendas.id, pagamentos: vendas.pagamentos })
