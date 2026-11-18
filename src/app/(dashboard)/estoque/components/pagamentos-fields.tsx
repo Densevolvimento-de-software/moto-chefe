@@ -69,6 +69,15 @@ export const pagamentosDoFormulario = (pgtos: readonly Pgto[]): PagamentoEntrada
   ...(p.parcelas ? { parcelas: parseInt(p.parcelas) } : {}),
 }))
 
+/** O pagamento gravado como linhas do formulário (Editar venda, Editar pedido efetivado): o inverso de `pagamentosDoFormulario`. */
+export const pgtosDoPagamento = (pagamentos: readonly { tipo: string; valor: number; operadora?: string; parcelas?: number; autorizacao?: string }[]): Pgto[] =>
+  pagamentos.map((p, i) => ({
+    id: `gravado-${i}`, tipo: p.tipo, valor: p.valor.toFixed(2),
+    ...(p.operadora ? { operadora: p.operadora } : {}),
+    ...(p.parcelas ? { parcelas: String(p.parcelas) } : {}),
+    ...(p.autorizacao ? { autorizacao: p.autorizacao } : {}),
+  }))
+
 /** Soma das linhas = total, pela mesma regra do servidor (centavos): tela e servidor decidem igual. */
 export function pgtosFecham(pgtos: readonly Pgto[], total: number): boolean {
   return pagamentosFecham(pgtos.map(p => ({ tipo: p.tipo, valor: parseFloat(p.valor) || 0 })), total)
