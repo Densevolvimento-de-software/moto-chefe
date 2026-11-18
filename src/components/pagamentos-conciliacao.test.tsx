@@ -1,19 +1,19 @@
 // Painel de pagamentos da conciliação (#79): quem vê o Forçar, o que forçar e desfazer enviam e o que
-// a tela mostra quando a action recusa. As actions e o toast são a fronteira de fora; o resto roda de verdade.
-import { createElement } from 'react'
+// a tela mostra quando a action recusa ou falha. As actions e o toast são a fronteira de fora; o resto roda de verdade.
 import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
-import { clicar, digitarTexto } from '@/test/eventos-dom'
+import { digitarTexto } from '@/test/eventos-dom'
+import { botao, clicar, esperar, montarDialogo } from '@/test/dialogo-em-tela'
 import type { AlvoConciliacao } from '@/app/(dashboard)/conciliacao/actions'
 import type { PgtoOS } from '@/lib/conciliacao-status'
+import type { ResultadoAction } from '@/lib/resultado-action'
 
 const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
 
-type Resposta = { ok: true; dados?: undefined } | { ok: false; erro: string }
-const forcar = mock.fn(async (_alvo: AlvoConciliacao, _idx: number, _motivo: string): Promise<Resposta> => ({ ok: true }))
-const desfazer = mock.fn(async (_alvo: AlvoConciliacao, _idx: number): Promise<Resposta> => ({ ok: true }))
+const forcar = mock.fn(async (_alvo: AlvoConciliacao, _idx: number, _motivo: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
+const desfazer = mock.fn(async (_alvo: AlvoConciliacao, _idx: number): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const buscarPixLivres = mock.fn(async () => [])
 const buscarConciliacoesPorValor = mock.fn(async () => [])
 const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { namedExports: {
@@ -36,46 +36,46 @@ const sonnerMock = mock.module('sonner', { namedExports: { toast: {
 } } })
 after(() => { actionsMock.restore(); sonnerMock.restore() })
 
-const montados: (() => Promise<void>)[] = []
+const desmontagens: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const f of [forcar, desfazer, buscarPixLivres, buscarConciliacoesPorValor]) f.mock.resetCalls()
   forcar.mock.restore()
+  desfazer.mock.restore()
   erros.length = 0
   sucessos.length = 0
-  for (const desmontar of montados.splice(0)) await desmontar()
+  for (const desmontar of desmontagens.splice(0)) await desmontar()
 })
 
 const ALVO: AlvoConciliacao = { tipo: 'moto', id: 'venda-1' }
 const FORCADO = { motivo: 'PIX na conta pessoal', porId: 'u1', porNome: 'Aux da loja', em: '2026-11-18T12:00:00.000Z' }
+// Falha interna (rede, banco): a mensagem crua não pode ir para a tela.
+const FALHA_INTERNA = new Error('connect ECONNREFUSED 10.0.0.1:5432')
 
-const esperar = (ms: number) => new Promise(r => setTimeout(r, ms))
-const botao = (rotulo: string) => [...document.querySelectorAll('button')].find(b => (b.textContent ?? '').trim() === rotulo)
-// Botão da linha do pagamento: o único com aria-expanded cujo texto começa pelo tipo.
-const linha = (tipo: string) => [...document.querySelectorAll('button[aria-expanded]')].find(b => (b.textContent ?? '').startsWith(tipo)) as HTMLButtonElement | undefined
+// Botões das linhas de pagamento, na ordem da tela; o texto de cada um começa pelo tipo.
+const linhas = () => [...document.querySelectorAll<HTMLButtonElement>('button[aria-expanded], li > button[disabled]')]
+const linha = (tipo: string) => linhas().find(b => (b.textContent ?? '').startsWith(tipo))
 
 async function montar(papel: string, pagamentos: PgtoOS[]) {
-  const { act } = await import('react')
-  const { createRoot } = await import('react-dom/client')
   const { PagamentosConciliacao } = await import('./pagamentos-conciliacao')
-  const container = document.createElement('div')
-  document.body.appendChild(container)
-  const root = createRoot(container)
   const dados = { concs: [], pixRecs: [], loading: false, recarregar: async () => {} }
-  await act(async () => { root.render(createElement(PagamentosConciliacao, { alvo: ALVO, pagamentos, dados, papel })) })
-  const clique = async (el: Element | undefined) => { await clicar(el); await act(() => esperar(50)) }
-  let montado = true
-  montados.push(() => act(async () => { if (!montado) return; montado = false; root.unmount(); container.remove() }))
-  return { clique, act }
+  const tela = await montarDialogo(PagamentosConciliacao, { alvo: ALVO, pagamentos, dados, papel })
+  desmontagens.push(tela.desmontar)
+  const tocar = (el: Element | undefined) => tela.act(async () => { clicar(el); await esperar(50) })
+  const escreverMotivo = async (texto: string) => {
+    await digitarTexto(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Motivo"]')!, texto)
+    await tela.act(() => esperar(20))
+  }
+  return { ...tela, tocar, escreverMotivo }
 }
 
 test('aux_adm abre o PIX pendente, força com o motivo e o Desfazer do aviso envia o mesmo pagamento', async () => {
-  // Dinheiro antes do PIX: a tela reordena (pendente primeiro), mas o índice enviado é o do array.
-  const { clique, act } = await montar('aux_adm', [{ tipo: 'dinheiro', valor: 200 }, { tipo: 'pix', valor: 1000 }])
-  await clique(linha('PIX'))
-  await clique(botao('Forçar'))
-  await digitarTexto(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Motivo"]')!, 'PIX na conta pessoal')
-  await act(() => esperar(20))
-  await clique(botao('Marcar como recebido'))
+  const { tocar, clique, escreverMotivo, act } = await montar('aux_adm', [{ tipo: 'dinheiro', valor: 200 }, { tipo: 'pix', valor: 1000 }])
+  // O PIX pendente vem antes do dinheiro na tela, mas o índice enviado é o do array (1).
+  assert.deepEqual(linhas().map(b => (b.textContent ?? '').slice(0, 8)), ['PIXPende', 'Dinheiro'])
+  await tocar(linha('PIX'))
+  await clique('Forçar')
+  await escreverMotivo('PIX na conta pessoal')
+  await clique('Marcar como recebido')
 
   assert.deepEqual(forcar.mock.calls.map(c => c.arguments), [[ALVO, 1, 'PIX na conta pessoal']])
   assert.equal(sucessos[0]?.mensagem, 'Pagamento marcado como recebido')
@@ -84,32 +84,50 @@ test('aux_adm abre o PIX pendente, força com o motivo e o Desfazer do aviso env
 })
 
 test('aux_adm abre o financiamento pendente direto no Forçar, sem procurar lançamento', async () => {
-  const { clique } = await montar('aux_adm', [{ tipo: 'financiamento', valor: 8000 }])
-  await clique(linha('Financiamento'))
+  const { tocar } = await montar('aux_adm', [{ tipo: 'financiamento', valor: 8000 }])
+  await tocar(linha('Financiamento'))
   assert.ok(botao('Forçar'))
   assert.equal(buscarPixLivres.mock.callCount() + buscarConciliacoesPorValor.mock.callCount(), 0)
 })
 
-test('recusa da action aparece no aviso e o formulário fica aberto com o motivo', async () => {
+test('recusa do forçar aparece no aviso e o formulário fica aberto com o motivo', async () => {
   forcar.mock.mockImplementation(async () => ({ ok: false, erro: 'Venda não encontrada' }))
-  const { clique, act } = await montar('admin_socio', [{ tipo: 'pix', valor: 1000 }])
-  await clique(linha('PIX'))
-  await clique(botao('Forçar'))
-  const motivo = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Motivo"]')!
-  await digitarTexto(motivo, 'PIX na conta pessoal')
-  await act(() => esperar(20))
-  await clique(botao('Marcar como recebido'))
+  const { tocar, clique, escreverMotivo } = await montar('admin_socio', [{ tipo: 'pix', valor: 1000 }])
+  await tocar(linha('PIX'))
+  await clique('Forçar')
+  await escreverMotivo('PIX na conta pessoal')
+  await clique('Marcar como recebido')
 
   assert.deepEqual(erros, ['Venda não encontrada'])
   assert.equal(sucessos.length, 0)
   assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Motivo"]')?.value, 'PIX na conta pessoal')
 })
 
+test('falha interna do forçar mostra a frase genérica, sem a mensagem do erro', async () => {
+  forcar.mock.mockImplementation(async () => { throw FALHA_INTERNA })
+  const { tocar, clique, escreverMotivo } = await montar('aux_adm', [{ tipo: 'pix', valor: 1000 }])
+  await tocar(linha('PIX'))
+  await clique('Forçar')
+  await escreverMotivo('PIX na conta pessoal')
+  await clique('Marcar como recebido')
+  assert.deepEqual(erros, ['Erro ao forçar conciliação'])
+})
+
 test('Desfazer forçado aparece para o aux_adm e envia o índice do array', async () => {
   const { clique } = await montar('aux_adm', [{ tipo: 'dinheiro', valor: 200 }, { tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }])
-  await clique(botao('Desfazer forçado'))
+  await clique('Desfazer forçado')
   assert.deepEqual(desfazer.mock.calls.map(c => c.arguments), [[ALVO, 1]])
   assert.deepEqual(sucessos.map(s => s.mensagem), ['Conciliação forçada desfeita'])
+})
+
+test('recusa do desfazer aparece no aviso; falha interna mostra a frase genérica', async () => {
+  const { clique } = await montar('aux_adm', [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }])
+  desfazer.mock.mockImplementation(async () => ({ ok: false, erro: 'Venda não encontrada' }))
+  await clique('Desfazer forçado')
+  desfazer.mock.mockImplementation(async () => { throw FALHA_INTERNA })
+  await clique('Desfazer forçado')
+  assert.deepEqual(erros, ['Venda não encontrada', 'Erro ao desfazer'])
+  assert.equal(sucessos.length, 0)
 })
 
 test('vendedor não abre a linha pendente nem vê o Desfazer forçado', async () => {
