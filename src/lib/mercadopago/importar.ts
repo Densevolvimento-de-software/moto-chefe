@@ -108,7 +108,7 @@ async function gravarLinha(tx: Tx, grupoId: string, lojaIds: string[], t: Transa
  */
 async function marcarEstorno(tx: Tx, grupoId: string, nsu: string): Promise<Contagem> {
   const marcadas = await tx.update(conciliacoesCartao)
-    .set({ status: CARTAO_ESTORNADO, conciliado: false })
+    .set({ status: CARTAO_ESTORNADO, conciliado: false, conciliadoEm: null })
     .where(and(chaveDaLinha(grupoId, nsu), cartaoNaoEstornado))
     .returning({ id: conciliacoesCartao.id })
   if (marcadas.length > 0) return 'estornos'

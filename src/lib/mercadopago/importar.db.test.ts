@@ -168,6 +168,9 @@ test('estorno: estornada e conciliado false no mesmo update, a venda fica ligada
   assert.deepEqual(await importar(a, estornos), { ...NADA, estornos: 1, estornosSemLinha: 1 })
   const [linha] = await linhasDoGrupo(a.grupoId)
   assert.deepEqual([linha.status, linha.conciliado, linha.venda_id], ['estornado', false, vendaId])
+  // Como os outros caminhos que desconciliam (desvincular, apagar venda): sem data de conciliação.
+  const [{ em }] = await execRows(sql`select conciliado_em as em from conciliacoes_cartao where grupo_id = ${a.grupoId} and nsu = ${String(id)}`)
+  assert.equal(em, null)
 
   // A linha já estornada não conta de novo como estorno: já estava aqui.
   assert.deepEqual(await importar(a, estornos), { ...NADA, duplicadas: 1, estornosSemLinha: 1 })
