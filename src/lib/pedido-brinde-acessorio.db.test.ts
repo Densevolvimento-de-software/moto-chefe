@@ -250,6 +250,8 @@ test('B12 (#25): o Efetivar lê os itens com o detalhe, o mínimo de cada moto e
   usuario = a.vendedor
   const r = await actions.itensDoPedidoAction(pedidoId!)
   assert.ok(r.ok, JSON.stringify(r))
+  // A loja do pedido: as maquininhas da tela saem dela, como no servidor.
+  assert.equal(r.dados.lojaId, a.lojaId)
   assert.deepEqual(r.dados.motos, [{
     id: a.motoId, chassi: ficha.chassi, marca: 'M', modelo: ficha.modelo, cor: 'CINZA', lojaId: a.lojaId, lojaNome: ficha.loja, valor: '', minimo: 10000,
   }])

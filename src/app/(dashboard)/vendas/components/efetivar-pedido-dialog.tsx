@@ -12,7 +12,7 @@ import { ResumoDaEntrega } from './resumo-da-entrega'
 import { ReciboDoPedido } from './recibo-do-pedido'
 import { PagamentosFields, pagamentosDoFormulario, pgtoHandlers, pgtoIncompleto, type Pgto } from '@/app/(dashboard)/estoque/components/pagamentos-fields'
 import { useMaquininhas } from '@/components/use-maquininhas'
-import { aprovacaoDoPedido, foraDaMoto, podeEfetivarPedido, totalDoPedido, type MotoComValor } from '@/lib/pedido-venda-regras'
+import { aprovacaoDoPedido, foraDaMoto, totalDoPedido, type MotoComValor } from '@/lib/pedido-venda-regras'
 import { motosDoEnvio, totalDasMotos } from '@/lib/novo-pedido'
 import { pagamentosIncompletos, situacaoDoPagamento } from '@/lib/pagamentos-entrada'
 import { OrigemVendaSelect, origemPreenchida } from '@/components/origem-venda-select'
@@ -59,7 +59,7 @@ export function EfetivarPedidoDialog({ pedidoId, numero, origens, entrega: entre
   const [origemDetalhe, setOrigemDetalhe] = useState('')
   const [motivo, setMotivo] = useState('')
   const [loading, setLoading] = useState(false)
-  const lojaId = itens.dados?.motos[0]?.lojaId
+  const lojaId = itens.dados?.lojaId
   const maquininhas = useMaquininhas(lojaId ? { loja: lojaId } : null)
 
   useEffect(() => {
@@ -152,10 +152,10 @@ export function EfetivarPedidoDialog({ pedidoId, numero, origens, entrega: entre
                 : !itens.dados
                   ? <p className="text-sm text-muted-foreground">Carregando os itens do pedido...</p>
                   : <ReciboDoPedido motos={motos} pecas={itens.dados.pecas} selos={aprovacao?.porMoto ?? null} frete={freteDaVenda(entrega)}
-                      onValor={(id, v) => setValores(atual => ({ ...atual, [id]: v }))} acaoDoFrete={podeEfetivarPedido(papel) && alterarEntrega} />}
+                      onValor={(id, v) => setValores(atual => ({ ...atual, [id]: v }))} acaoDoFrete={alterarEntrega} />}
               <ResumoDaEntrega rotulo="Entrega do pedido" entrega={entrega} sufixo="(do pedido)"
                 semEntrega={<p className="text-muted-foreground">Pedido sem a Entrega informada.</p>}
-                acao={podeEfetivarPedido(papel) && alterarEntrega} />
+                acao={alterarEntrega} />
             </div>
             <div className="space-y-4 lg:order-1">
               <section className="space-y-2">
