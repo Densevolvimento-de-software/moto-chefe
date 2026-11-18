@@ -46,6 +46,9 @@ function QuadroDoMinimo({ quadro }: { quadro: QuadroAbaixoDoMinimo }) {
   )
 }
 
+const quandoPediu = (a: AprovacaoPendente) =>
+  new Date(a.dataSolicitacao).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+
 /** Aprovar e recusar uma linha; numa linha de pedido o servidor responde todas as do pedido (B2). */
 function useResposta(id: string) {
   const [loading, setLoading] = useState(false)
@@ -141,7 +144,7 @@ function Linha({ aprovacao, podeAprovar }: { aprovacao: AprovacaoPendente; podeA
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {aprovacao.lojaNome} · {aprovacao.vendedorNome} · {new Date(aprovacao.dataSolicitacao).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+            {aprovacao.lojaNome} · {aprovacao.vendedorNome} · {quandoPediu(aprovacao)}
           </p>
           {conta.frete > 0 && (
             <p className="text-xs text-muted-foreground mt-0.5">Moto {fmtBRL(conta.moto)} + frete {fmtBRL(conta.frete)} = {fmtBRL(conta.total)}</p>
@@ -170,8 +173,6 @@ function Linha({ aprovacao, podeAprovar }: { aprovacao: AprovacaoPendente; podeA
   )
 }
 
-const quandoPediu = (a: AprovacaoPendente) =>
-  new Date(a.dataSolicitacao).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 const nomeDaMoto = (m: { marca: string | null; modelo: string | null }) => `${m.marca ?? ''} ${m.modelo ?? ''}`.trim()
 
 /** Uma moto do pedido em aprovação: nome, final do chassi e o quadro do mínimo (ou o valor, no pagamento sensível). */
