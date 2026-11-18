@@ -108,7 +108,8 @@ test('casa pela autorização quando o valor não bate; a Conta B não acha a ve
   assert.equal((await linhasDoGrupo(b.grupoId))[0].venda_id, null)
 })
 
-// Código de autorização de 6 caracteres se repete com o tempo: só vale a venda da janela de ±1 dia, a mesma do valor.
+// Código de autorização de 6 caracteres se repete com o tempo: a importação só casa pela autorização na janela do
+// valor (±1 dia). Aqui a venda antiga é de 40 dias antes; as bordas da janela são as do casamento por valor.
 test('autorização igual numa venda antiga do grupo não casa; a venda do dia com a mesma autorização casa', async () => {
   const a = await semearConta('A')
   const autorizacao = credito3x.authorization_code

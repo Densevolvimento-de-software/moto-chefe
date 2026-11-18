@@ -1,6 +1,7 @@
 /**
  * Casamento de uma transação de cartão com a venda do sistema (moto, peça ou OS), sempre
- * restrito às lojas passadas. Um lugar só para a rota das operadoras e para o CSV/relatório.
+ * restrito às lojas passadas. Um lugar só para a rota das operadoras, o CSV/relatório e a importação do
+ * Mercado Pago, que também montam aqui a linha nova (`linhaDaTransacao`).
  * A ordem é fixa: moto, depois peça, depois OS.
  */
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'

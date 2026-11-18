@@ -54,7 +54,7 @@ export async function importarMercadoPagoDoGrupo(
   const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
 
   const classificacoes = pagamentos.map(classificarPagamento)
-  // Um pagamento por vez, na ordem: o mesmo nsu duas vezes não pode correr em paralelo.
+  // Um pagamento por vez, na ordem: a transação usa uma conexão só, que não roda consultas em paralelo.
   const desfechos = await db.transaction(tx => classificacoes.reduce<Promise<Contagem[]>>(
     async (anteriores, c) => [...await anteriores, await desfechoDoPagamento(tx, grupoId, lojaIds, c, fim)],
     Promise.resolve([]),
