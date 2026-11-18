@@ -286,6 +286,8 @@ Tarifa que o banco cobra sobre cada PIX recebido, em porcentagem, cadastrada pel
 Precificação. O banco credita o valor do PIX menos essa tarifa. Cada PIX conciliado guarda o
 custo da época; mudar a tarifa não muda o que já foi conciliado. TED não tem custo do PIX.
 _Evitar_: taxa do PIX (confunde com as taxas de cartão, que vêm do extrato da operadora)
+Não confundir com a tarifa do PIX na maquininha: PIX pago na maquininha, com a tarifa vinda do
+extrato da operadora (#51, #88).
 
 ## Fiscal
 
