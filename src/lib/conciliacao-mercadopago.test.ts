@@ -88,4 +88,16 @@ describe('classificarPagamento', () => {
     assert.equal(classificarPagamento(pg(pendente)).tipo, 'ignorar')
     assert.equal(classificarPagamento(pg(credito3x, { status: 'pending' })).tipo, 'ignorar')
   })
+
+  it('crédito à vista vira 1 parcela; installments 0 também vira 1', () => {
+    const avista = classificarPagamento(pg(credito3x, { installments: 1 }))
+    const zero = classificarPagamento(pg(credito3x, { installments: 0 }))
+    assert.equal(avista.tipo === 'cartao' && avista.transacao.parcelas, 1)
+    assert.equal(zero.tipo === 'cartao' && zero.transacao.parcelas, 1)
+  })
+
+  it('Pix INSTORE sem serial do aparelho é ignorado', () => {
+    const semSerial = pg(pix, { point_of_interaction: { type: 'INSTORE' } })
+    assert.deepEqual(classificarPagamento(semSerial), { tipo: 'ignorar', motivo: 'não é da maquininha' })
+  })
 })

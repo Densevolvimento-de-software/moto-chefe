@@ -73,3 +73,13 @@ test('sem paging.total segue até vir página incompleta', async () => {
   assert.equal(r.length, 120)
   assert.equal(chamadas.length, 2)
 })
+
+test('403 também vira credencial recusada sem o token', async () => {
+  mockFetch([{ status: 403, body: { message: `forbidden ${TOKEN}` } }])
+  await assert.rejects(buscarPagamentosAlterados(TOKEN, periodo), (err: unknown) => {
+    assert.ok(err instanceof ErroMercadoPago)
+    assert.equal(err.status, 403)
+    assert.equal(err.message, 'Credencial do Mercado Pago recusada (HTTP 403). Cadastre o token novo.')
+    return true
+  })
+})
