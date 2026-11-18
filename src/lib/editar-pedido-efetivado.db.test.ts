@@ -260,9 +260,10 @@ test('S5: data da venda fora do formato é recusada com frase; nada muda', async
   const motoIds = await c.motos(2)
   const p = await pedidoEfetivado(c, motoIds)
   usuario = c.socio
-  for (const dataVenda of ['18/11/2026', '', 'amanhã']) {
+  // A Server Action recebe qualquer JSON: um array com uma data também é recusado (o diaValido compara o texto de volta).
+  for (const dataVenda of ['18/11/2026', '', 'amanhã', ['2026-11-18'] as unknown as string]) {
     assert.deepEqual(await actions.editarPedidoEfetivadoAction(p.vendaDa(motoIds[0]), { ...formulario(c, motoIds, 20500), clienteNome: 'Outro', dataVenda }),
-      recusa('Data da venda inválida'), dataVenda)
+      recusa('Data da venda inválida'), JSON.stringify(dataVenda))
   }
   assert.deepEqual((await vendasDoPedido(p.pedidoId)).map(v => v.cliente_nome), ['Cliente sintético', 'Cliente sintético'])
 })
