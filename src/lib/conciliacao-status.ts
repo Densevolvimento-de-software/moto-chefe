@@ -48,7 +48,7 @@ export function valorConciliadoManual(pagamentos: unknown): number {
     .reduce((a, p) => a + (Number(p.valor) || 0), 0)
 }
 
-type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number }
+type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number; tipo?: string }
 type PixMatch  = { id: string; valor: string | number }
 
 /** Quanto do pagamento foi coberto por dinheiro que realmente entrou. */
@@ -63,7 +63,14 @@ export type CoberturaPgto = { conciliado: boolean; coberto: number }
 // por autorização fechava mesmo vindo com valor menor. O resultado era a tela de
 // detalhes toda verde enquanto o badge da listagem — que sempre comparou valores —
 // dizia "Parcial". Quem manda é o valor; ver calcStatusMultiPagamento.
-export function matchPagamentos(pgtos: PgtoOS[], concs: ConcMatch[], pixRecs: PixMatch[]): CoberturaPgto[] {
+export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[]): CoberturaPgto[] {
+  // A linha 'pix' da conciliação de cartão é o Pix da maquininha Mercado Pago (#51): é dinheiro de
+  // Pix e cobre o pagamento Pix, como o recebimento do banco.
+  const concs = linhasDoAlvo.filter(c => c.tipo !== 'pix')
+  const pixRecs: PixMatch[] = [
+    ...pixDoBanco,
+    ...linhasDoAlvo.filter(c => c.tipo === 'pix').map(c => ({ id: c.id, valor: c.valorBruto })),
+  ]
   const usados    = new Set<string>()
   const resultado: CoberturaPgto[] = pgtos.map(() => ({ conciliado: false, coberto: 0 }))
 
