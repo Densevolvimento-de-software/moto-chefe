@@ -10,7 +10,7 @@ import { CurrencyInput } from '@/components/ui/currency-input'
 import { CheckCircle2 } from 'lucide-react'
 import { criarDemandaAction } from '../actions'
 import { ClienteCampos, CLIENTE_VAZIO, clienteCompleto, type ClienteForm } from './cliente-campos'
-import { PagamentosFields, pgtoIncompleto, pgtosFecham, type Pgto } from '../../estoque/components/pagamentos-fields'
+import { pagamentosDoFormulario, PagamentosFields, pgtoIncompleto, pgtosFecham, type Pgto } from '../../estoque/components/pagamentos-fields'
 
 type Loja = { id: string; nome: string }
 type Modelo = { id: string; marca: string; modelo: string }
@@ -60,12 +60,7 @@ export function NovaDemandaForm({ lojas, lojaIdFixa, modelos, cores }: Props) {
           ? {
               ...cliente,
               valorSinal: valorSinalNum,
-              pagamentos: pgtosSinal.map(p => ({
-                tipo: p.tipo,
-                valor: parseFloat(p.valor),
-                ...(p.operadora ? { operadora: p.operadora } : {}),
-                ...(p.parcelas ? { parcelas: parseInt(p.parcelas) } : {}),
-              })),
+              pagamentos: pagamentosDoFormulario(pgtosSinal),
             }
           : null,
       })

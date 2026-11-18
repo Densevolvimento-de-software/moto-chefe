@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Printer } from 'lucide-react'
 import { marcarSinalDemandaAction, desmarcarSinalDemandaAction } from '../actions'
 import { ClienteCampos, CLIENTE_VAZIO, clienteCompleto, type ClienteForm } from './cliente-campos'
-import { PagamentosFields, pgtoIncompleto, pgtosFecham, type Pgto } from '../../estoque/components/pagamentos-fields'
+import { pagamentosDoFormulario, PagamentosFields, pgtoIncompleto, pgtosFecham, type Pgto } from '../../estoque/components/pagamentos-fields'
 
 type Props = {
   demandaId: string
@@ -42,12 +42,7 @@ export function MarcarSinalButton({ demandaId, sinalRecebido, valorSinal, isAdmi
         await marcarSinalDemandaAction(demandaId, {
           ...cliente,
           valorSinal: valorNum,
-          pagamentos: pgtos.map(p => ({
-            tipo: p.tipo,
-            valor: parseFloat(p.valor),
-            ...(p.operadora ? { operadora: p.operadora } : {}),
-            ...(p.parcelas ? { parcelas: parseInt(p.parcelas) } : {}),
-          })),
+          pagamentos: pagamentosDoFormulario(pgtos),
         })
         toast.success('Sinal registrado — recibo disponível')
         setOpen(false)
