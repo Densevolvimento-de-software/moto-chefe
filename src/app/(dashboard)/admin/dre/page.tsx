@@ -93,7 +93,7 @@ export default async function DrePage({
         <p className="flex gap-2">
           <AlertTriangle size={14} className="shrink-0 mt-0.5 text-warning" />
           <span>
-            <strong>Taxa de cartão só é descontada do que já foi conciliado.</strong> Enquanto a
+            <strong>Taxa de cartão e tarifa do PIX na maquininha só são descontadas do que já foi conciliado.</strong> Enquanto a
             conciliação do mês não termina, a Receita Líquida está otimista e o resultado também.
           </span>
         </p>

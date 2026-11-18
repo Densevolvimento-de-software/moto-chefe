@@ -57,7 +57,7 @@ export default async function DreImprimirPage({
         </p>
         <p>
           Serviço de OS e peça entram sem CMV (não há custo cadastrado para peça). Taxa de cartão
-          só é descontada do que já foi conciliado. Imposto entra em Tributos, não como dedução da
+          e tarifa do PIX na maquininha só são descontadas do que já foi conciliado. Imposto entra em Tributos, não como dedução da
           receita — no sistema ele é lançado quando pago.
         </p>
         <p>Emitido em {emitidoEm}.</p>
