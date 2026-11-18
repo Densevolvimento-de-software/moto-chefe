@@ -2,12 +2,11 @@ import type { PagamentoMp } from './mercadopago/point'
 import { dataBrt, type TransacaoCartao } from './conciliacao-cartao'
 import { ehEstornoMp } from './mercadopago/status'
 
-export type PixMp = { transacaoId: string; data: string; valor: number; pagadorNome: string | null; serial: string | null }
-
+// Uma linha de conciliacoes_cartao: cartão (crédito/débito) ou Pix da maquininha (decisão do Luis, #51).
 export type Classificacao =
-  | { tipo: 'cartao'; transacao: TransacaoCartao }
-  | { tipo: 'pix'; pix: PixMp }
-  | { tipo: 'estorno'; meio: 'cartao' | 'pix'; chave: string }
+  | { tipo: 'transacao'; transacao: TransacaoCartao }
+  | { tipo: 'estorno'; chave: string }
+  | { tipo: 'nao_tratado'; motivo: string }
   | { tipo: 'ignorar'; motivo: string }
 
 /**
@@ -20,51 +19,39 @@ export function ehDaMaquininha(p: PagamentoMp): boolean {
   return poi?.type === 'POINT' || Boolean(poi?.device?.serial_number)
 }
 
+const MEIO_DA_LINHA: Record<string, TransacaoCartao['tipo']> = { credit_card: 'credito', debit_card: 'debito' }
+
+const tipoDaLinha = (p: PagamentoMp): TransacaoCartao['tipo'] | null =>
+  p.payment_method_id === 'pix' ? 'pix' : MEIO_DA_LINHA[p.payment_type_id] ?? null
+
 export function classificarPagamento(p: PagamentoMp): Classificacao {
   if (!ehDaMaquininha(p)) return { tipo: 'ignorar', motivo: 'não é da maquininha' }
-
-  const ehPix = p.payment_method_id === 'pix'
-  const tipoCartao = p.payment_type_id === 'credit_card' ? 'credito'
-    : p.payment_type_id === 'debit_card' ? 'debito' : null
-  if (!ehPix && !tipoCartao) return { tipo: 'ignorar', motivo: `meio não tratado: ${p.payment_type_id}` }
-
-  if (ehEstornoMp(p.status)) {
-    return { tipo: 'estorno', meio: ehPix ? 'pix' : 'cartao', chave: ehPix ? `mp-${p.id}` : String(p.id) }
-  }
+  // A chave é a mesma do nsu gravado: o estorno acha a linha, seja cartão ou Pix.
+  if (ehEstornoMp(p.status)) return { tipo: 'estorno', chave: String(p.id) }
   if (p.status !== 'approved') return { tipo: 'ignorar', motivo: `status ${p.status}` }
   if (!p.date_approved) return { tipo: 'ignorar', motivo: 'aprovado sem data de aprovação' }
 
-  const serial = p.point_of_interaction?.device?.serial_number ?? null
-
-  if (ehPix) {
-    const nome = [p.payer?.first_name, p.payer?.last_name].filter(Boolean).join(' ')
-    return {
-      tipo: 'pix',
-      pix: {
-        transacaoId: `mp-${p.id}`,
-        data: p.date_approved,
-        valor: p.transaction_amount,
-        pagadorNome: nome || null,
-        serial,
-      },
-    }
+  const tipo = tipoDaLinha(p)
+  // Venda aprovada que não vira linha conta no resumo da importação: nada some calado (decisão do Luis, #51).
+  if (!tipo) {
+    return { tipo: 'nao_tratado', motivo: p.payment_type_id === 'prepaid_card' ? 'cartão pré-pago' : `meio ${p.payment_type_id}` }
   }
 
   return {
-    tipo: 'cartao',
+    tipo: 'transacao',
     transacao: {
       nsu: String(p.id),
       autorizacao: p.authorization_code ?? undefined,
       dataTransacao: dataBrt(p.date_approved),
       valorBruto: p.transaction_amount,
       valorLiquido: p.transaction_details?.net_received_amount,
-      parcelas: tipoCartao === 'debito' ? 1 : p.installments || 1,
-      tipo: tipoCartao!,
+      parcelas: tipo === 'credito' ? p.installments || 1 : 1,
+      tipo,
       status: 'aprovado',
       rawData: {
         id: p.id,
         bandeira: p.payment_method_id,
-        serial,
+        serial: p.point_of_interaction?.device?.serial_number ?? null,
         ultimos4: p.card?.last_four_digits ?? null,
         estornado: p.transaction_amount_refunded ?? 0,
       },

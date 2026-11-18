@@ -15,8 +15,8 @@ const pg = (f: unknown, o: Partial<PagamentoMp> = {}): PagamentoMp => ({ ...(f a
 describe('classificarPagamento', () => {
   it('crédito 3x aprovado vira cartão', () => {
     const c = classificarPagamento(pg(credito3x))
-    assert.equal(c.tipo, 'cartao')
-    if (c.tipo !== 'cartao') return
+    assert.equal(c.tipo, 'transacao')
+    if (c.tipo !== 'transacao') return
     const t = c.transacao
     assert.equal(t.tipo, 'credito')
     assert.equal(t.parcelas, 3)
@@ -31,43 +31,47 @@ describe('classificarPagamento', () => {
 
   it('débito vira cartão débito com 1 parcela', () => {
     const c = classificarPagamento(pg(debito))
-    assert.equal(c.tipo, 'cartao')
-    if (c.tipo !== 'cartao') return
+    assert.equal(c.tipo, 'transacao')
+    if (c.tipo !== 'transacao') return
     assert.equal(c.transacao.tipo, 'debito')
     assert.equal(c.transacao.parcelas, 1)
   })
 
-  it('Pix aprovado vira pix', () => {
+  // Decisão do Luis (#51): o Pix da maquininha entra na conciliação de cartão, como linha tipo pix.
+  it('Pix aprovado vira linha tipo pix da conciliação de cartão, sem dado do pagador', () => {
     const c = classificarPagamento(pg(pix))
-    assert.equal(c.tipo, 'pix')
-    if (c.tipo !== 'pix') return
-    assert.equal(c.pix.transacaoId, `mp-${pix.id}`)
-    assert.equal(c.pix.valor, pix.transaction_amount)
-    assert.equal(c.pix.data, pix.date_approved)
-    assert.equal(c.pix.serial, 'FAKESERIAL01')
+    assert.equal(c.tipo, 'transacao')
+    if (c.tipo !== 'transacao') return
+    assert.deepEqual(c.transacao, {
+      nsu: String(pix.id),
+      autorizacao: undefined,
+      dataTransacao: '2026-11-10',
+      valorBruto: 80,
+      valorLiquido: 79.5,
+      parcelas: 1,
+      tipo: 'pix',
+      status: 'aprovado',
+      rawData: { id: pix.id, bandeira: 'pix', serial: 'FAKESERIAL01', ultimos4: null, estornado: 0 },
+    })
   })
 
   it('venda às 23:30 BRT cai no dia de Brasília', () => {
     const c = classificarPagamento(pg(credito3x, { date_approved: '2026-11-13T02:30:00.000Z' }))
-    assert.equal(c.tipo, 'cartao')
-    if (c.tipo === 'cartao') assert.equal(c.transacao.dataTransacao, '2026-11-12')
+    assert.equal(c.tipo, 'transacao')
+    if (c.tipo === 'transacao') assert.equal(c.transacao.dataTransacao, '2026-11-12')
   })
 
   it('refunded e charged_back viram estorno', () => {
     for (const status of ['refunded', 'charged_back']) {
-      assert.deepEqual(classificarPagamento(pg(creditoEstornado, { status })), {
-        tipo: 'estorno', meio: 'cartao', chave: String(creditoEstornado.id),
-      })
-      assert.deepEqual(classificarPagamento(pg(pix, { status })), {
-        tipo: 'estorno', meio: 'pix', chave: `mp-${pix.id}`,
-      })
+      assert.deepEqual(classificarPagamento(pg(creditoEstornado, { status })), { tipo: 'estorno', chave: String(creditoEstornado.id) })
+      assert.deepEqual(classificarPagamento(pg(pix, { status })), { tipo: 'estorno', chave: String(pix.id) })
     }
   })
 
   it('parcialmente estornado continua cartão aprovado', () => {
     const c = classificarPagamento(pg(creditoParcial))
-    assert.equal(c.tipo, 'cartao')
-    if (c.tipo !== 'cartao') return
+    assert.equal(c.tipo, 'transacao')
+    if (c.tipo !== 'transacao') return
     assert.equal(c.transacao.status, 'aprovado')
     assert.equal(c.transacao.rawData?.estornado, creditoParcial.transaction_amount_refunded)
   })
@@ -92,12 +96,21 @@ describe('classificarPagamento', () => {
   it('crédito à vista vira 1 parcela; installments 0 também vira 1', () => {
     const avista = classificarPagamento(pg(credito3x, { installments: 1 }))
     const zero = classificarPagamento(pg(credito3x, { installments: 0 }))
-    assert.equal(avista.tipo === 'cartao' && avista.transacao.parcelas, 1)
-    assert.equal(zero.tipo === 'cartao' && zero.transacao.parcelas, 1)
+    assert.equal(avista.tipo === 'transacao' && avista.transacao.parcelas, 1)
+    assert.equal(zero.tipo === 'transacao' && zero.transacao.parcelas, 1)
   })
 
   it('Pix INSTORE sem serial do aparelho é ignorado', () => {
     const semSerial = pg(pix, { point_of_interaction: { type: 'INSTORE' } })
     assert.deepEqual(classificarPagamento(semSerial), { tipo: 'ignorar', motivo: 'não é da maquininha' })
+  })
+
+  // Decisão do Luis (#51, opção b): pré-pago não vira linha, mas aparece no resumo da importação.
+  it('cartão pré-pago aprovado da maquininha vira "não tratado", não some', () => {
+    assert.deepEqual(classificarPagamento(pg(debito, { payment_type_id: 'prepaid_card' })), { tipo: 'nao_tratado', motivo: 'cartão pré-pago' })
+  })
+
+  it('cartão pré-pago ainda não aprovado é ignorado', () => {
+    assert.deepEqual(classificarPagamento(pg(debito, { payment_type_id: 'prepaid_card', status: 'pending' })), { tipo: 'ignorar', motivo: 'status pending' })
   })
 })

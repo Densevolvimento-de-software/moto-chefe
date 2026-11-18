@@ -9,13 +9,15 @@ export type TransacaoCartao = {
   valorBruto: number
   valorLiquido?: number
   parcelas: number
-  tipo: 'credito' | 'debito'
+  // 'pix' só vem da maquininha Mercado Pago (#51): o Pix dela é conciliado aqui, não em /pix-mcp.
+  tipo: 'credito' | 'debito' | 'pix'
   status: string
   rawData?: Record<string, unknown>
 }
 
 // Venda lida de relatório baixado do portal (Cielo, Rede): sempre com chave e os dois valores.
 export type TransacaoDoRelatorio = TransacaoCartao & {
+  tipo: 'credito' | 'debito'
   nsu: string
   valorLiquido: number
   rawData: { bandeira: string; portador: string | null; serial: string | null }
