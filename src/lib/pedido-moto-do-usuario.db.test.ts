@@ -127,3 +127,15 @@ test('item que aponta para moto ou peça de outra Conta (gravado por fora) não 
     assert.deepEqual([itens?.motos.map(m => m.id), itens?.pecas.map(p => p.nome)], [[a.motoId], ['']])
   })
 })
+
+test('itens do pedido mostram o modelo com o nome que a Conta da loja deu (#476), como a lista do /vendas; o ajuste de outra Conta não entra', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A', '00000000040429')
+    const b = await semearConta(tx, 'B', '00000000040430')
+    const [moto] = await linhas(tx, sql`select modelo_id from motos where id = ${a.motoId}`)
+    await linhas(tx, sql`insert into modelo_ajustes (conta_id, modelo_id, modelo) values (${b.contaId}, ${moto.modelo_id}, 'NOME DA B') returning modelo_id`)
+    assert.deepEqual((await itensDoPedido(a.aux, a.pedidoId, tx))?.motos.map(m => m.modelo), ['PV404 A'])
+    await linhas(tx, sql`insert into modelo_ajustes (conta_id, modelo_id, modelo) values (${a.contaId}, ${moto.modelo_id}, 'NOME DA A') returning modelo_id`)
+    assert.deepEqual((await itensDoPedido(a.aux, a.pedidoId, tx))?.motos.map(m => m.modelo), ['NOME DA A'])
+  })
+})
