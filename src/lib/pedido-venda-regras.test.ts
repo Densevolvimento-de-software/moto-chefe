@@ -204,10 +204,20 @@ describe('efetivar com várias motos (#20, PR B)', () => {
   test('cada moto contra o próprio mínimo; o pagamento sensível vale para o pedido inteiro', () => {
     const motos = [{ motoId: 'a', valor: 12000, minimo: 12000 }, { motoId: 'b', valor: 8000, minimo: 9000 }, { motoId: 'c', valor: 5000, minimo: null }]
     const p = { sensivelSemPermissao: false, papel: 'aux_adm', liquido: 25000, motos }
-    assert.deepEqual(aprovacaoDoPedido(p), { tipo: 'valor_minimo', abaixo: [{ motoId: 'b', minimo: 9000, liquido: 8000 }] })
+    const { porMoto: _, ...semSelo } = aprovacaoDoPedido(p)
+    assert.deepEqual(semSelo, { tipo: 'valor_minimo', abaixo: [{ motoId: 'b', minimo: 9000, liquido: 8000 }] })
     assert.equal(aprovacaoDoPedido({ ...p, sensivelSemPermissao: true }).tipo, 'pagamento_sensivel')
-    assert.deepEqual(aprovacaoDoPedido({ ...p, papel: 'admin_socio' }), { tipo: null, abaixo: [] })
-    assert.deepEqual(aprovacaoDoPedido({ ...p, liquido: 28125 }), { tipo: null, abaixo: [] })
+    assert.deepEqual([aprovacaoDoPedido({ ...p, papel: 'admin_socio' })].map(a => [a.tipo, a.abaixo]), [[null, []]])
+    assert.deepEqual([aprovacaoDoPedido({ ...p, liquido: 28125 })].map(a => [a.tipo, a.abaixo]), [[null, []]])
+  })
+
+  test('selo de cada moto na tela (#25): no mínimo ou abaixo, pela mesma conta; sem precificação fica fora; o sócio também vê', () => {
+    const motos = [{ motoId: 'a', valor: 12000, minimo: 12000 }, { motoId: 'b', valor: 8000, minimo: 9000 }, { motoId: 'c', valor: 5000, minimo: null }]
+    const p = { sensivelSemPermissao: false, papel: 'aux_adm', liquido: 25000, motos }
+    const selos = [{ motoId: 'a', minimo: 12000, liquido: 12000, abaixo: false }, { motoId: 'b', minimo: 9000, liquido: 8000, abaixo: true }]
+    assert.deepEqual(aprovacaoDoPedido(p).porMoto, selos)
+    const socio = aprovacaoDoPedido({ ...p, papel: 'admin_socio' })
+    assert.deepEqual([socio.tipo, socio.porMoto], [null, selos])
   })
 
   test('os valores precisam ser das mesmas motos do pedido, sem faltar nem sobrar; saem na ordem do pedido', () => {

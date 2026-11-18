@@ -83,6 +83,15 @@ export function pagamentosFecham(pgs: readonly PagamentoEntrada[], valorTotal: n
   return pgs.reduce((a, p) => a + centavos(num(p.valor)), 0) === centavos(valorTotal)
 }
 
+export type SituacaoDoPagamento = { tipo: 'falta' | 'pago' | 'passou'; pago: number; diferenca: number }
+
+/** Barra do pagamento do pedido (#25): quanto falta ou passou do total; "pago" é o mesmo `pagamentosFecham` do servidor. */
+export function situacaoDoPagamento(pgs: readonly PagamentoEntrada[], total: number): SituacaoDoPagamento {
+  const pago = pgs.reduce((a, p) => a + centavos(num(p.valor)), 0)
+  const sobra = pago - centavos(total)
+  return { tipo: pagamentosFecham(pgs, total) ? 'pago' : sobra > 0 ? 'passou' : 'falta', pago: pago / 100, diferenca: Math.abs(sobra) / 100 }
+}
+
 /** Frase única da forma de pagamento sem tipo ou sem valor (Vender, efetivação, editar, reserva, demanda). */
 export const PAGAMENTO_INCOMPLETO = 'Toda forma de pagamento precisa de tipo e valor'
 
