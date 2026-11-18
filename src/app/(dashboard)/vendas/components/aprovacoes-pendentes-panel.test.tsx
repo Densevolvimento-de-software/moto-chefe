@@ -11,10 +11,12 @@ after(desmontar)
 
 // O Link de verdade agenda prefetch com `self`, que o JSDOM do teste não tem.
 mock.module('next/link', { defaultExport: ({ href, children }: { href: string; children: ReactNode }) => createElement('a', { href }, children) })
+const aprovadas: string[] = []
+const recusadas: unknown[][] = []
 mock.module('../actions', {
   namedExports: {
-    aprovarVendaAction: async () => ({ ok: true }),
-    recusarVendaAction: async () => ({ ok: true }),
+    aprovarVendaAction: async (id: string) => { aprovadas.push(id); return { ok: true } },
+    recusarVendaAction: async (...a: unknown[]) => { recusadas.push(a); return { ok: true } },
   },
 })
 
@@ -41,9 +43,11 @@ afterEach(async () => {
   await desmontarPainel?.()
   desmontarPainel = null
   document.body.innerHTML = ''
+  aprovadas.length = 0
+  recusadas.length = 0
 })
 
-async function desenhar(aprovacao: AprovacaoPendente) {
+async function desenhar(aprovacao: AprovacaoPendente | AprovacaoPendente[], motosDosPedidos: Record<string, { id: string; marca: string; modelo: string }[]> = {}) {
   const React = (await import('react')).default
   const { act } = await import('react')
   const { createRoot } = await import('react-dom/client')
@@ -53,7 +57,7 @@ async function desenhar(aprovacao: AprovacaoPendente) {
   const root = createRoot(container)
   await act(async () => {
     root.render(React.createElement(AprovacoesPendentesPanel, {
-      aprovacoes: [aprovacao], podeAprovarValorMinimo: true, podeAprovarSensivel: true,
+      aprovacoes: Array.isArray(aprovacao) ? aprovacao : [aprovacao], motosDosPedidos, podeAprovarValorMinimo: true, podeAprovarSensivel: true,
     }))
   })
   desmontarPainel = () => act(async () => { root.unmount() })
@@ -101,4 +105,42 @@ test('pedido em aprovação: número do pedido, moto + frete = total e o quadro 
 test('venda do Vender continua sem número de pedido nem linha de frete', async () => {
   await desenhar(ABAIXO_DO_MINIMO)
   assert.doesNotMatch(textoDaTela(), /Pedido #|frete/)
+})
+
+// Painel por pedido (#25, V2 do Luis): as linhas de um pedido (uma por moto abaixo do mínimo, D-D) viram um grupo, com o quadro
+// de cada moto, a nota das que estão no mínimo e um "Aprovar pedido" / "Recusar pedido" só, que o servidor aplica a todas.
+const doPedido = (id: string, motoId: string, modelo: string, chassi: string, valor: string, minimo: string, liquido: string) => ({
+  ...ABAIXO_DO_MINIMO, id, origem: 'pedido', motoId, marca: 'MC', modelo, chassi, valor, valorMinimoSnapshot: minimo, liquidoSnapshot: liquido,
+  dadosVenda: { pedidoId: 'p9', numero: 30158, pagamentos: [{ tipo: 'pix', valor: 23990 }] },
+}) as unknown as AprovacaoPendente
+const PEDIDO_DE_3 = [
+  doPedido('apr-a', 'm2', 'PITICA', '9C2LA0000000088', '5200.00', '5490.00', '5200.00'),
+  doPedido('apr-b', 'm3', 'X12', '9C2LA0000002207', '9300.00', '9990.00', '9300.00'),
+]
+const MOTOS_P9 = { p9: [{ id: 'm1', marca: 'MC', modelo: 'JET' }, { id: 'm2', marca: 'MC', modelo: 'PITICA' }, { id: 'm3', marca: 'MC', modelo: 'X12' }] }
+const botao = (t: string) => [...document.querySelectorAll('button')].filter(b => texto(b) === t)
+
+test('pedido com 2 de 3 motos abaixo: um grupo, um quadro por moto, a nota da moto no mínimo e um botão só de cada', async () => {
+  await desenhar(PEDIDO_DE_3, MOTOS_P9)
+  assert.match(textoDaTela(), /Pedido #30158: 2 de 3 motos abaixo do mínimo/)
+  assert.equal([...document.querySelectorAll('dt')].filter(dt => texto(dt) === 'Mínimo').length, 2)
+  assert.match(textoDaTela(), /MC PITICA final 0088/)
+  assert.match(textoDaTela(), /1 moto no mínimo neste pedido \(MC JET\)\. Aprovar ou recusar responde o pedido inteiro\./)
+  assert.deepEqual([botao('Aprovar pedido').length, botao('Recusar pedido').length, botao('Aprovar').length], [1, 1, 0])
+})
+
+test('"Aprovar pedido" chama a aprovação uma vez, com uma linha do pedido (o servidor responde as outras)', async () => {
+  await desenhar(PEDIDO_DE_3, MOTOS_P9)
+  const { act } = await import('react')
+  await act(async () => { botao('Aprovar pedido')[0].click() })
+  assert.deepEqual(aprovadas, ['apr-a'])
+})
+
+test('"Recusar pedido" pede a observação e recusa uma vez, com uma linha do pedido', async () => {
+  await desenhar(PEDIDO_DE_3, MOTOS_P9)
+  const { act } = await import('react')
+  await act(async () => { botao('Recusar pedido')[0].click() })
+  assert.match(textoDaTela(), /Recusar pedido #30158/)
+  await act(async () => { botao('Confirmar recusa')[0].click() })
+  assert.deepEqual(recusadas, [['apr-a', undefined]])
 })

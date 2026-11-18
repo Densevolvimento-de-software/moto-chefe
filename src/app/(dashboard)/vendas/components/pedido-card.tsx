@@ -10,6 +10,9 @@ import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
 import { cancelarPedidoAction } from '../actions'
 import { podeCancelarPedido } from '@/lib/pedido-venda-regras'
 import type { PedidoComDetalhes } from '@/lib/queries/vendas'
+import { brl } from '@/lib/dashboard-painel'
+import { centavos } from '@/lib/numero-br'
+import { finalDoChassi } from '@/lib/painel-fabrica'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Bike, User, Store, CalendarDays, Hash, X, CheckCheck } from 'lucide-react'
@@ -58,6 +61,9 @@ export function PedidoCard({ pedido: p, papel, usuarioId, lojaIdUsuario, origens
   }
 
   const cfg = STATUS_CONFIG[p.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.cancelado
+  const varias = p.motos.length > 1
+  // Total só com todas as motos com valor: com uma "A definir", a soma sairia pela metade.
+  const totalDasMotos = p.motos.every(m => m.valor !== null) ? centavos(p.motos.reduce((s, m) => s + Number(m.valor), 0)) : null
 
   return (
     <>
@@ -71,7 +77,7 @@ export function PedidoCard({ pedido: p, papel, usuarioId, lojaIdUsuario, origens
         }`} />
 
         <div className="p-4 space-y-3">
-          {/* Cabeçalho: modelo + número */}
+          {/* Cabeçalho: modelo (ou "N motos") + número */}
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <div className="p-1.5 bg-muted rounded-lg shrink-0">
@@ -79,9 +85,9 @@ export function PedidoCard({ pedido: p, papel, usuarioId, lojaIdUsuario, origens
               </div>
               <div className="min-w-0">
                 <p className="font-semibold text-foreground text-sm leading-tight truncate">
-                  {p.marca} {p.modelo}
+                  {varias ? `${p.motos.length} motos` : `${p.marca} ${p.modelo}`}
                 </p>
-                <p className="text-xs font-mono text-muted-foreground truncate">{p.chassi} · {p.cor}</p>
+                {!varias && <p className="text-xs font-mono text-muted-foreground truncate">{p.chassi} · {p.cor}</p>}
               </div>
             </div>
             <div className="flex flex-col items-end gap-1 shrink-0">
@@ -93,6 +99,23 @@ export function PedidoCard({ pedido: p, papel, usuarioId, lojaIdUsuario, origens
               </span>
             </div>
           </div>
+
+          {/* Pedido de várias motos (#25, V2): cada uma com o valor, e o total quando todas têm valor. */}
+          {varias && (
+            <div className="space-y-1.5">
+              <ul aria-label="Motos do pedido" className="divide-y divide-border rounded-lg border border-border">
+                {p.motos.map(m => (
+                  <li key={m.id} className="flex justify-between gap-2 px-2.5 py-1.5 text-xs">
+                    <span className="min-w-0 truncate">{m.marca} {m.modelo} <span className="text-muted-foreground">final {finalDoChassi(m.chassi)}</span></span>
+                    <span className="whitespace-nowrap font-semibold tabular-nums">{m.valor ? brl(Number(m.valor)) : 'A definir'}</span>
+                  </li>
+                ))}
+              </ul>
+              {totalDasMotos !== null && (
+                <p className="flex justify-between text-xs"><span className="text-muted-foreground">Total das motos</span><strong className="tabular-nums">{brl(totalDasMotos)}</strong></p>
+              )}
+            </div>
+          )}
 
           {/* Infos em grid */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
@@ -140,7 +163,7 @@ export function PedidoCard({ pedido: p, papel, usuarioId, lojaIdUsuario, origens
       <Dialog open={cancelarOpen} onOpenChange={setCancelarOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Cancelar Pedido #{p.numero}</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">{p.marca} {p.modelo} · {p.chassi}</p>
+          <p className="text-sm text-muted-foreground">{varias ? p.motos.map(m => `${m.marca} ${m.modelo}`).join(', ') : `${p.marca} ${p.modelo} · ${p.chassi}`}</p>
           <Textarea
             placeholder="Motivo do cancelamento (opcional)"
             value={observacao}

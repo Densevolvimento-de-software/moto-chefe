@@ -186,6 +186,7 @@ export default async function VendasPage({
 
       <AprovacoesPendentesPanel
         aprovacoes={aprovacoesPendentes}
+        motosDosPedidos={Object.fromEntries(pendentes.map(p => [p.id, p.motos]))}
         podeAprovarValorMinimo={podeAprovarValorMinimo}
         podeAprovarSensivel={podeAprovarSensivel}
       />
