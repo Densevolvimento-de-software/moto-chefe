@@ -3,7 +3,7 @@
 // resto da resposta fica de fora, inclusive um 4xx que ecoe o caminho com o empresaId.
 import { afterEach, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { consultarInutilizacaoNaNg, InutilizacaoRecusada, NotaGatewayIndisponivel, pedirInutilizacao, serieEUfDaEmpresaNaNg, ufDaEmpresa } from './client'
+import { cancelarNfe, consultarInutilizacaoNaNg, InutilizacaoRecusada, NotaGatewayIndisponivel, pedirInutilizacao, serieEUfDaEmpresaNaNg, ufDaEmpresa } from './client'
 import { cfgDeTeste as cfg, pendurarFetch, responderComFetch as responder, restaurarFetch } from './fetch-de-teste'
 
 const pedido = { idExterno: 'nfe-31601-1-inut-1', serie: '1', numeroInicial: 974, numeroFinal: 974, justificativa: 'Venda cancelada apos a rejeicao' }
@@ -93,8 +93,9 @@ test('consulta sem resposta da NG: desiste no tempo limite com TimeoutError, sem
   await assert.rejects(consultarInutilizacaoNaNg(cfg, 'nfe-31601-1-inut-1', 20), { name: 'TimeoutError' })
 })
 
-test('o pedido (POST) não tem tempo limite: sem resposta, não se sabe se a NG recebeu', async () => {
+test('o pedido (POST) e o cancelamento (DELETE) não têm tempo limite: sem resposta, não se sabe se a NG recebeu', async () => {
   const pedidos = responder(200)
   await pedirInutilizacao(cfg, pedido)
-  assert.equal(pedidos[0].init.signal, undefined)
+  await cancelarNfe(cfg, 'mova-31601-1')
+  assert.deepEqual(pedidos.map(p => [p.init.method, p.init.signal]), [['POST', undefined], ['DELETE', undefined]])
 })
