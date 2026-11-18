@@ -12,5 +12,5 @@ alter table pix_recebimentos_mcp add column valor_bruto numeric(12,2);
 alter table pix_recebimentos_mcp add column custo_pix numeric(12,2);
 alter table pix_recebimentos_mcp add column custo_pix_taxa numeric(8,6);
 
--- precificacao.taxa_pix (por modelo, sempre 0) sai do código neste PR, mas a coluna só cai num PR
--- depois da release: a versão anterior ainda a lê no SELECT do Drizzle (como na 0100).
+-- Só aditiva. precificacao.taxa_pix (por modelo, sempre 0) sai do código na #89, mas a coluna só cai
+-- numa migração depois da release: a versão anterior ainda a lê no SELECT do Drizzle (como na 0100).
