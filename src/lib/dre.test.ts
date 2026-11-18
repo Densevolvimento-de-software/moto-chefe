@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   montarDre, somarEntradas, grupoOuOutras, rotuloGrupo,
-  GRUPOS_DRE, ENTRADA_VAZIA, montarMatriz, type EntradaDre,
+  GRUPOS_DRE, ENTRADA_VAZIA, montarMatriz, taxasDaReceita, type EntradaDre,
 } from './dre'
 
 const valor = (linhas: ReturnType<typeof montarDre>, chave: string) =>
@@ -151,3 +151,10 @@ test('somar entradas soma a tarifa do PIX', () => {
   assert.equal(soma.tarifaPix, 125)
 })
 
+
+test('taxas da receita: a parte Pix do bruto − líquido das motos e das outras receitas vira tarifa', () => {
+  assert.deepEqual(
+    taxasDaReceita({ brutoMotos: 10_000, liquidoMotos: 9_796, tarifaPixMotos: 4, taxaCartaoOutras: 9, tarifaPixOutras: 5 }),
+    { taxasCartao: 209, tarifaPix: 9 },
+  )
+})

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { vendas, conciliacoesCartao } from '@/lib/db/schema'
+import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 
 /**
  * Valor da venda com a parte já conciliada trocada pelo líquido da operadora.
@@ -47,3 +48,17 @@ export function valorLiquidoSql(v = 'v') {
                 WHERE cc.venda_id = ${a}.id AND cc.conciliado = true), 0)
   )`
 }
+
+/**
+ * A parte do bruto − líquido da venda que é tarifa do Pix da maquininha Mercado Pago (#51): a mesma regra
+ * da valorLiquidoExpr() (linha conciliada sem líquido conta inteira), só nas linhas tipo pix. Mora aqui
+ * porque é pedaço da mesma conta e precisa mudar junto com ela.
+ */
+export function tarifaPixDaVendaExpr() {
+  return sql`COALESCE((SELECT SUM(${conciliacoesCartao.valorBruto}::numeric - COALESCE(${conciliacoesCartao.valorLiquido}::numeric, 0))
+              FROM ${conciliacoesCartao}
+              WHERE ${conciliacoesCartao.vendaId} = ${vendas.id}
+                AND ${conciliacoesCartao.conciliado} = true
+                AND ${conciliacoesCartao.tipo} = ${LINHA_PIX}), 0)`
+}
+

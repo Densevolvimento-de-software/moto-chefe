@@ -130,6 +130,24 @@ export function montarDre(e: EntradaDre): LinhaDre[] {
   return linhas
 }
 
+/**
+ * Taxas da receita em duas linhas (#51). O bruto − líquido das motos e a taxa das outras receitas incluem a
+ * tarifa do Pix da maquininha Mercado Pago; as consultas devolvem essa parte no mesmo SELECT, e ela sai da
+ * taxa de cartão para a linha própria. A soma das duas é a taxa de antes.
+ */
+export function taxasDaReceita(p: {
+  brutoMotos: number
+  liquidoMotos: number
+  tarifaPixMotos: number
+  taxaCartaoOutras: number
+  tarifaPixOutras: number
+}): { taxasCartao: number; tarifaPix: number } {
+  return {
+    taxasCartao: p.brutoMotos - p.liquidoMotos - p.tarifaPixMotos + p.taxaCartaoOutras,
+    tarifaPix: p.tarifaPixMotos + p.tarifaPixOutras,
+  }
+}
+
 /** Soma duas entradas — usado para a coluna TOTAL e para consolidar meses. */
 export function somarEntradas(a: EntradaDre, b: EntradaDre): EntradaDre {
   const despesasPorGrupo: Partial<Record<GrupoDre, number>> = {}

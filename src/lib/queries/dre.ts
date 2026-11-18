@@ -6,13 +6,13 @@ import {
 } from '@/lib/db/schema'
 import { and, eq, gte, inArray, lt, ne, sql } from 'drizzle-orm'
 import { rotuloMesCurtoAA } from '@/lib/data-venda'
-import { valorLiquidoExpr } from './valor-liquido'
+import { tarifaPixDaVendaExpr, valorLiquidoExpr } from './valor-liquido'
+import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 import { somaCustoMotoExpr } from './custo-moto'
 import { chaveCategoria, somarDespesas, type TotalDespesas } from '@/lib/despesas-operacionais'
 import { configDespesas } from './config-despesas'
 import { categoriasDespesaDoGrupo } from '@/lib/categorias-do-grupo'
-import { grupoOuOutras, somarEntradas, type EntradaDre, type GrupoDre, ENTRADA_VAZIA } from '@/lib/dre'
-import { somaTarifaPor, tarifaPixDoPeriodo } from './tarifa-pix'
+import { grupoOuOutras, somarEntradas, taxasDaReceita, type EntradaDre, type GrupoDre, ENTRADA_VAZIA } from '@/lib/dre'
 
 /**
  * Os números do DRE. Nada de regra nova aqui: as mesmas consultas do /financeiro,
@@ -81,13 +81,14 @@ export async function dreDoMes(opts: {
   if (lojaIds.length === 0) return { colunas: [], semGrupo: [] }
   const { inicio, fim } = bordas(ano, mes)
 
-  const [nomes, porLojaVendas, porLojaOS, porLojaPecas, taxaOutras, resumo, mapa, tarifas] = await Promise.all([
+  const [nomes, porLojaVendas, porLojaOS, porLojaPecas, taxaOutras, resumo, mapa] = await Promise.all([
     db.select({ id: lojas.id, nome: lojas.nome }).from(lojas).where(inArray(lojas.id, lojaIds)),
 
     db.select({
         lojaId: vendas.lojaId,
         bruto:   sql<string>`COALESCE(SUM(${vendas.valor}::numeric), 0)`,
         liquido: sql<string>`COALESCE(SUM(${valorLiquidoExpr()}), 0)`,
+        tarifaPix: sql<string>`COALESCE(SUM(${tarifaPixDaVendaExpr()}), 0)`,
         // Mesmo custo do /financeiro, com a queda para a precificação: o
         // resultado operacional do DRE tem que bater com o Lucro Líquido de lá.
         custo:   sql<string>`${somaCustoMotoExpr()}`,
@@ -127,10 +128,11 @@ export async function dreDoMes(opts: {
     // O filtro de loja fica no SQL: sem ele a consulta lê a taxa de todas as Contas.
     execRows(sql`
       SELECT loja_id,
-             COALESCE(SUM(taxa), 0)::text AS taxa
+             COALESCE(SUM(taxa) FILTER (WHERE tipo <> ${LINHA_PIX}), 0)::text AS taxa,
+             COALESCE(SUM(taxa) FILTER (WHERE tipo = ${LINHA_PIX}), 0)::text AS tarifa_pix
         FROM (
           SELECT o.loja_id,
-                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa
+                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa, c.tipo
             FROM ${conciliacoesCartao} c
             JOIN ${ordensServico} o ON o.id = c.os_id
            WHERE c.conciliado = true
@@ -139,7 +141,7 @@ export async function dreDoMes(opts: {
              AND o.data_conclusao >= ${inicio.toISOString()} AND o.data_conclusao < ${fim.toISOString()}
           UNION ALL
           SELECT p.loja_id,
-                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa
+                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa, c.tipo
             FROM ${conciliacoesCartao} c
             JOIN ${vendasPecas} p ON p.id = c.peca_venda_id
            WHERE c.conciliado = true
@@ -151,7 +153,6 @@ export async function dreDoMes(opts: {
 
     resumoDespesasDoPeriodo(grupoId, lojaIds, inicio, fim),
     mapaGrupoPorCategoria(grupoId),
-    tarifaPixDoPeriodo(lojaIds, inicio, fim),
   ])
 
   const num = (v: unknown) => Number(v ?? 0)
@@ -160,9 +161,8 @@ export async function dreDoMes(opts: {
   const osPorLoja = idx(porLojaOS)
   const pecasPorLoja = idx(porLojaPecas)
   const taxaPorLoja = new Map(
-    (taxaOutras as { loja_id: string; taxa: string }[]).map(r => [r.loja_id, num(r.taxa)]),
+    (taxaOutras as { loja_id: string; taxa: string; tarifa_pix: string }[]).map(r => [r.loja_id, r]),
   )
-  const tarifaPorLoja = somaTarifaPor(tarifas, t => t.lojaId)
 
   const semGrupo = new Set<string>()
   const colunas: ColunaDre[] = []
@@ -176,14 +176,15 @@ export async function dreDoMes(opts: {
     faltando.forEach(c => semGrupo.add(c))
 
     const bruto = num(v?.bruto)
-    // A taxa do líquido e das outras receitas inclui a tarifa do Pix da maquininha: ela sai daqui para a linha própria.
-    const tarifaPix = tarifaPorLoja.get(loja.id) ?? 0
+    const outras = taxaPorLoja.get(loja.id)
     const entrada: EntradaDre = {
       receitaMotos: bruto,
       receitaServicos: num(os?.servicos),
       receitaPecas: num(pecas?.total) + num(os?.pecas),
-      taxasCartao: bruto - num(v?.liquido) + (taxaPorLoja.get(loja.id) ?? 0) - tarifaPix,
-      tarifaPix,
+      ...taxasDaReceita({
+        brutoMotos: bruto, liquidoMotos: num(v?.liquido), tarifaPixMotos: num(v?.tarifaPix),
+        taxaCartaoOutras: num(outras?.taxa), tarifaPixOutras: num(outras?.tarifa_pix),
+      }),
       cmvMotos: num(v?.custo),
       despesasPorGrupo: porGrupo,
     }
@@ -235,11 +236,12 @@ export async function dreEvolucao(opts: {
   const fim = new Date(Date.UTC(ano, mes, 1))
   const chaveDe = (d: Date) => `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}`
 
-  const [vendasMes, osMes, pecasMes, taxaMes, linhasDespesa, mapa, tarifas] = await Promise.all([
+  const [vendasMes, osMes, pecasMes, taxaMes, linhasDespesa, mapa] = await Promise.all([
     db.select({
         mes:     sql<string>`to_char(${vendas.dataVenda} AT TIME ZONE 'UTC', 'YYYY-FMMM')`,
         bruto:   sql<string>`COALESCE(SUM(${vendas.valor}::numeric), 0)`,
         liquido: sql<string>`COALESCE(SUM(${valorLiquidoExpr()}), 0)`,
+        tarifaPix: sql<string>`COALESCE(SUM(${tarifaPixDaVendaExpr()}), 0)`,
         custo:   sql<string>`${somaCustoMotoExpr()}`,
       })
       .from(vendas)
@@ -276,10 +278,11 @@ export async function dreEvolucao(opts: {
     // O filtro de loja fica no SQL: sem ele a consulta lê a taxa de todas as Contas.
     execRows(sql`
       SELECT to_char(data AT TIME ZONE 'UTC', 'YYYY-FMMM') AS mes,
-             COALESCE(SUM(taxa), 0)::text AS taxa
+             COALESCE(SUM(taxa) FILTER (WHERE tipo <> ${LINHA_PIX}), 0)::text AS taxa,
+             COALESCE(SUM(taxa) FILTER (WHERE tipo = ${LINHA_PIX}), 0)::text AS tarifa_pix
         FROM (
           SELECT o.data_conclusao AS data,
-                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa
+                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa, c.tipo
             FROM ${conciliacoesCartao} c
             JOIN ${ordensServico} o ON o.id = c.os_id
            WHERE c.conciliado = true AND o.status = 'concluida'
@@ -287,7 +290,7 @@ export async function dreEvolucao(opts: {
              AND o.data_conclusao >= ${inicio.toISOString()} AND o.data_conclusao < ${fim.toISOString()}
           UNION ALL
           SELECT p.data_venda AS data,
-                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa
+                 c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric) AS taxa, c.tipo
             FROM ${conciliacoesCartao} c
             JOIN ${vendasPecas} p ON p.id = c.peca_venda_id
            WHERE c.conciliado = true
@@ -299,7 +302,6 @@ export async function dreEvolucao(opts: {
 
     despesasPorMes(grupoId, lojaIds, inicio, fim),
     mapaGrupoPorCategoria(grupoId),
-    tarifaPixDoPeriodo(lojaIds, inicio, fim),
   ])
 
   const num = (v: unknown) => Number(v ?? 0)
@@ -307,15 +309,13 @@ export async function dreEvolucao(opts: {
   const v = porChave(vendasMes)
   const os = porChave(osMes)
   const pc = porChave(pecasMes)
-  const tx = new Map((taxaMes as { mes: string; taxa: string }[]).map(r => [r.mes, num(r.taxa)]))
-  const tarifaPorMes = somaTarifaPor(tarifas, t => t.mes)
+  const tx = new Map((taxaMes as { mes: string; taxa: string; tarifa_pix: string }[]).map(r => [r.mes, r]))
 
   const saida: MesDre[] = []
   for (let i = 0; i < meses; i++) {
     const d = new Date(Date.UTC(ano, mes - meses + i, 1))
     const chave = chaveDe(d)
     const bruto = num(v.get(chave)?.bruto)
-    const tarifaPix = tarifaPorMes.get(chave) ?? 0
     const resumo = linhasDespesa.get(chave)
     const { porGrupo } = resumo
       ? agruparDespesas(resumo.porCategoria, mapa)
@@ -328,8 +328,10 @@ export async function dreEvolucao(opts: {
         receitaMotos: bruto,
         receitaServicos: num(os.get(chave)?.servicos),
         receitaPecas: num(pc.get(chave)?.total) + num(os.get(chave)?.pecas),
-        taxasCartao: bruto - num(v.get(chave)?.liquido) + (tx.get(chave) ?? 0) - tarifaPix,
-        tarifaPix,
+        ...taxasDaReceita({
+          brutoMotos: bruto, liquidoMotos: num(v.get(chave)?.liquido), tarifaPixMotos: num(v.get(chave)?.tarifaPix),
+          taxaCartaoOutras: num(tx.get(chave)?.taxa), tarifaPixOutras: num(tx.get(chave)?.tarifa_pix),
+        }),
         cmvMotos: num(v.get(chave)?.custo),
         despesasPorGrupo: porGrupo,
         memorando: resumo ? memorandoDe(resumo) : {},

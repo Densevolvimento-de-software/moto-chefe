@@ -23,8 +23,9 @@ import { somarDespesas, valorDespesa, type MotivoForaDoCalculo } from '@/lib/des
 import { configDespesas } from '@/lib/queries/config-despesas'
 import { calcularResultadoPorLoja } from '@/lib/resultado-por-loja'
 import { despesaDaLojaFiltrada } from '@/lib/despesa-loja-filtrada'
-import { valorLiquidoExpr } from '@/lib/queries/valor-liquido'
-import { tarifaPixDoPeriodo, tarifaTotal } from '@/lib/queries/tarifa-pix'
+import { tarifaPixDaVendaExpr, valorLiquidoExpr } from '@/lib/queries/valor-liquido'
+import { LINHA_PIX } from '@/lib/conciliacao-cartao'
+import { taxasDaReceita } from '@/lib/dre'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
 import { somaCustoMotoExpr, qtdSemCustoExpr } from '@/lib/queries/custo-moto'
 import { TriangleAlert } from 'lucide-react'
@@ -80,11 +81,12 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     ? sql`AND p.loja_id = ${lojaParamValido}`
     : sql`AND p.loja_id IN (${sql.join(lojaIdsGrupo.map(id => sql`${id}`), sql`, `)})`
 
-  const [totaisVendas, resumoPorLoja, lojasOpts, resumoPorVendedor, resumoPorPagamentoRaw, parcelamentoRaw, resumoPorModelo, saidasBanco, manuaisForaDoBanco, config, totaisOS, totaisPecas, taxasOutras, saidasCaixa, tarifasPix] = await Promise.all([
+  const [totaisVendas, resumoPorLoja, lojasOpts, resumoPorVendedor, resumoPorPagamentoRaw, parcelamentoRaw, resumoPorModelo, saidasBanco, manuaisForaDoBanco, config, totaisOS, totaisPecas, taxasOutras, saidasCaixa] = await Promise.all([
     db
       .select({
         totalVendas: sql<string>`COALESCE(SUM(${vendas.valor}), '0')`,
         totalLiquido: sql<string>`COALESCE(SUM(${valorLiquidoExpr()}), '0')`,
+        tarifaPix: sql<string>`COALESCE(SUM(${tarifaPixDaVendaExpr()}), '0')`,
         totalCusto: sql<string>`${somaCustoMotoExpr()}`,
         qtdSemCusto: sql<string>`${qtdSemCustoExpr()}`,
         qtdVendas: count(),
@@ -279,7 +281,10 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     // Ancorado na data da venda/conclusão, não na data da transação no extrato, pra taxa
     // e receita caírem sempre no mesmo mês.
     execRows(sql`
-      SELECT COALESCE(SUM(c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric)), 0)::text AS taxa
+      SELECT COALESCE(SUM(c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric))
+               FILTER (WHERE c.tipo <> ${LINHA_PIX}), 0)::text AS taxa,
+             COALESCE(SUM(c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric))
+               FILTER (WHERE c.tipo = ${LINHA_PIX}), 0)::text AS tarifa_pix
       FROM ${conciliacoesCartao} c
       WHERE c.conciliado = true
         AND (
@@ -318,15 +323,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
           : lojaParamValido
           ? eq(lancamentosCaixa.lojaId, lojaParamValido)
           : inArray(lancamentosCaixa.lojaId, lojaIdsGrupo),
-      )),
-    // Tarifa do Pix da maquininha Mercado Pago (#51): sai da taxa de cartão para o card próprio. fimTs é
-    // inclusivo aqui; a consulta usa [início, fim), daí o 1 ms.
-    tarifaPixDoPeriodo(
-      escopoGeral ? [] : lojaParamValido ? [lojaParamValido] : lojaIdsGrupo,
-      inicioTs,
-      new Date(fimTs.getTime() + 1),
-    ),
-  ])
+      )),  ])
 
   const receitaVendas = Number(totaisVendas[0]?.totalVendas ?? 0)
   const receitaLiquida = Number(totaisVendas[0]?.totalLiquido ?? 0)
@@ -376,11 +373,14 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   const faturamentoPecas = totalPecasAvulsas + totalPecasOS
   const faturamentoBruto = receitaVendas + totalServicosOS + faturamentoPecas
 
-  const taxaCartaoMotos = receitaVendas - receitaLiquida
-  const taxaCartaoOutras = Number((taxasOutras as unknown as { taxa: string }[])[0]?.taxa ?? 0)
-  // As duas taxas acima incluem a tarifa do Pix da maquininha, que tem card próprio.
-  const tarifaPix = tarifaTotal(tarifasPix)
-  const taxasCartao = taxaCartaoMotos + taxaCartaoOutras - tarifaPix
+  const outras = (taxasOutras as unknown as { taxa: string; tarifa_pix: string }[])[0]
+  const { taxasCartao, tarifaPix } = taxasDaReceita({
+    brutoMotos: receitaVendas,
+    liquidoMotos: receitaLiquida,
+    tarifaPixMotos: Number(totaisVendas[0]?.tarifaPix ?? 0),
+    taxaCartaoOutras: Number(outras?.taxa ?? 0),
+    tarifaPixOutras: Number(outras?.tarifa_pix ?? 0),
+  })
 
   const faturamentoLiquido = faturamentoBruto - taxasCartao - tarifaPix
 
