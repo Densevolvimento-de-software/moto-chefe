@@ -5,14 +5,9 @@ import { Search, Pencil, PackageSearch } from 'lucide-react'
 import { filtrarPecas } from '@/lib/busca-peca'
 import { PecaAtivoToggle } from './peca-ativo-toggle'
 import { PecaForm } from './peca-form'
+import type { PecaComSaldo } from '@/lib/pecas-da-conta'
 
-type Peca = {
-  id: string
-  nome: string
-  valor: string
-  quantidadeEstoque: number
-  ativo: boolean
-}
+type Peca = PecaComSaldo & { ativo: boolean }
 
 const LIMITE = 100
 

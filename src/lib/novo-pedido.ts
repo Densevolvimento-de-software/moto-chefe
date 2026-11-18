@@ -1,6 +1,7 @@
 import { filtrarPecas } from './busca-peca'
 import { centavos } from './numero-br'
 import { finalDoChassi } from './painel-fabrica'
+import type { PecaComSaldo } from './pecas-da-conta'
 import { totalDasPecas, valorDeMotoInvalido, valorDePecaInvalido, type MotoDoPedidoInput, type PecaDoPedidoInput } from './pedido-venda-regras'
 
 /** Moto disponível que o Novo pedido oferece (#24). */
@@ -30,13 +31,11 @@ export function motosDoEnvio(motos: readonly MotoNoPedido[]): MotoDoPedidoInput[
 
 export const totalDasMotos = (motos: readonly MotoNoPedido[]): number => centavos(motos.reduce((s, m) => s + (valorDaMoto(m) ?? 0), 0))
 
-/** Peça do catálogo da Conta com o saldo da loja do pedido (#24, 24b). */
-export type PecaDoCatalogo = { id: string; nome: string; valor: string; quantidadeEstoque: number }
 /** Brinde ou acessório no pedido; `valor` é o texto do campo de dinheiro (o brinde fica "0.00"). */
-export type PecaNoPedido = { tipo: 'brinde' | 'acessorio'; peca: PecaDoCatalogo; quantidade: number; valor: string }
+export type PecaNoPedido = { tipo: 'brinde' | 'acessorio'; peca: PecaComSaldo; quantidade: number; valor: string }
 
 /** As marcadas no painel entram no pedido; a mesma peça do mesmo tipo soma na quantidade. Acessório começa no preço do catálogo. */
-export function comPecas(atual: readonly PecaNoPedido[], tipo: PecaNoPedido['tipo'], marcadas: readonly { peca: PecaDoCatalogo; quantidade: number }[]): PecaNoPedido[] {
+export function comPecas(atual: readonly PecaNoPedido[], tipo: PecaNoPedido['tipo'], marcadas: readonly { peca: PecaComSaldo; quantidade: number }[]): PecaNoPedido[] {
   return marcadas.reduce<PecaNoPedido[]>((lista, { peca, quantidade }) => (lista.some(p => p.tipo === tipo && p.peca.id === peca.id)
     ? lista.map(p => (p.tipo === tipo && p.peca.id === peca.id ? { ...p, quantidade: p.quantidade + quantidade } : p))
     : [...lista, { tipo, peca, quantidade, valor: tipo === 'brinde' ? '0.00' : peca.valor }]), [...atual])

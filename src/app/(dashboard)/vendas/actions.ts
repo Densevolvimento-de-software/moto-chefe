@@ -41,8 +41,7 @@ import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { pedidoDoUsuario } from '@/lib/pedido-do-usuario'
 import { motoDoUsuario, motosDoUsuario, travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
 import { ehUuid } from '@/lib/uuid'
-import type { PecaDoCatalogo } from '@/lib/novo-pedido'
-import { listarPecasDaLoja } from '@/lib/pecas-da-conta'
+import { listarPecasDaLoja, type PecaComSaldo } from '@/lib/pecas-da-conta'
 import { aprovacaoDoUsuario } from '@/lib/aprovacao-do-usuario'
 import { voltarMotoAoEstoque } from '@/lib/motos-vendidas-sem-venda'
 import { vendedorDaConta } from '@/lib/vendedor-da-conta'
@@ -216,7 +215,7 @@ async function criarPedidoVenda(motos: string | MotoDoPedidoInput[], observacao:
  * vende e id inexistente recebem a mesma frase.
  */
 export async function pecasDaLojaParaPedidoAction(lojaId: string) {
-  return acao(async (): Promise<PecaDoCatalogo[]> => {
+  return acao(async (): Promise<PecaComSaldo[]> => {
     const usuario = await getUsuarioLogado()
     if (!podeCriarPedido(usuario.papel)) throw new RecusaUsuario('Sem permissão para criar pedido de venda')
     if (!ehUuid(lojaId) || !(await podeVenderMotoDaLoja(usuario, lojaId))) throw new RecusaUsuario('Loja não encontrada')
