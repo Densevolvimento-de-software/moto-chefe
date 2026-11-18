@@ -878,10 +878,15 @@ function receber(tx: Tx, corpo: unknown, { consultar, headers = { 'x-token': TOK
 
 /** Cala o console a partir daqui e devolve o que o webhook escreveu, para provar que nada sensível sai. */
 function consoleDe(t: TestContext) {
-  const info = t.mock.method(console, 'info', () => {})
-  const erro = t.mock.method(console, 'error', () => {})
-  return () => [...info.mock.calls, ...erro.mock.calls].map(c => c.arguments.map(a => typeof a === 'string' ? a : inspect(a)).join(' '))
+  const escrito: string[] = []
+  const guardar = (...args: unknown[]) => { escrito.push(args.map(a => typeof a === 'string' ? a : inspect(a)).join(' ')) }
+  t.mock.method(console, 'info', guardar)
+  t.mock.method(console, 'error', guardar)
+  return () => [...escrito]
 }
+
+/** As linhas que o webhook escreve, na ordem dos avisos. */
+const linhasDoAviso = (...resultados: string[]) => resultados.map(r => `[webhook notagateway] ${r}`)
 
 test('aviso: sem token no servidor 503; x-token ausente, errado ou de outro tamanho 401; nada muda', async t => {
   await emTransacaoDesfeita(async tx => {
@@ -889,7 +894,7 @@ test('aviso: sem token no servidor 503; x-token ausente, errado ou de outro tama
     const f = await faixaPendente(tx, a)
     const ng = ngQueResponde(AUTORIZADA)
     const aviso = avisoDe(f.idExterno)
-    consoleDe(t)
+    const escrito = consoleDe(t)
 
     assert.equal((await receber(tx, aviso, { consultar: ng.consultar, tokenEsperado: '' })).status, 503)
     assert.equal((await receber(tx, aviso, { consultar: ng.consultar, headers: {} })).status, 401)
@@ -897,6 +902,8 @@ test('aviso: sem token no servidor 503; x-token ausente, errado ou de outro tama
     assert.equal((await receber(tx, aviso, { consultar: ng.consultar, headers: { 'x-token': 'curto' } })).status, 401)
     assert.equal((await f.linha()).situacao, 'pendente')
     assert.equal(ng.chamadas.length, 0)
+    const invalido = 'recusado: x-token inválido'
+    assert.deepEqual(escrito(), linhasDoAviso('recusado: token do webhook não configurado', invalido, invalido, invalido))
   })
 })
 
@@ -916,7 +923,7 @@ test('aviso: NF-e, corpo desconhecido, não JSON, id inexistente e ambiente dife
     assert.equal((await f.linha()).situacao, 'pendente')
     assert.equal(ng.chamadas.length, 0)
     const motivos = ['aviso com tipo', 'corpo desconhecido', 'corpo desconhecido', 'id desconhecido', 'ambiente diferente', 'ambiente diferente']
-    assert.deepEqual(escrito(), motivos.map(m => `[webhook notagateway] ignorado: ${m}`))
+    assert.deepEqual(escrito(), linhasDoAviso(...motivos.map(m => `ignorado: ${m}`)))
   })
 })
 
@@ -927,11 +934,12 @@ test('aviso repetido de linha já resolvida: 200, sem consultar, linha intacta',
     await m.gravarResultadoDaInutilizacao(tx, { id: f.id, grupoId: a.grupoId }, { status: 'Autorizada', motivoStatus: null, protocolo: 'P-GRAVADO' })
     const antes = await f.linha()
     const ng = ngQueResponde({ status: 'Negada', motivoStatus: 'nao devia consultar', protocolo: null })
-    consoleDe(t)
+    const escrito = consoleDe(t)
 
     assert.equal((await receber(tx, avisoDe(f.idExterno), { consultar: ng.consultar })).status, 200)
     assert.deepEqual(await f.linha(), antes)
     assert.equal(ng.chamadas.length, 0)
+    assert.deepEqual(escrito(), linhasDoAviso('situação: autorizada'))
   })
 })
 
@@ -944,13 +952,15 @@ test('aviso de grupo sem credencial ou com a credencial noutro ambiente: 200 e s
     await tx.execute(sql`delete from notagateway_config where grupo_id = ${sem.grupoId}`)
     await tx.execute(sql`update notagateway_config set ambiente = 'Producao' where grupo_id = ${outro.grupoId}`)
     const ng = ngQueResponde(AUTORIZADA)
-    consoleDe(t)
+    const escrito = consoleDe(t)
 
     assert.equal((await receber(tx, avisoDe(fSem.idExterno), { consultar: ng.consultar })).status, 200)
     assert.equal((await receber(tx, avisoDe(fOutro.idExterno), { consultar: ng.consultar })).status, 200)
     assert.equal((await fSem.linha()).situacao, 'pendente')
     assert.equal((await fOutro.linha()).situacao, 'pendente')
     assert.equal(ng.chamadas.length, 0)
+    const semCredencial = 'ignorado: grupo sem credencial no ambiente da inutilização'
+    assert.deepEqual(escrito(), linhasDoAviso(semCredencial, semCredencial))
   })
 })
 
@@ -990,7 +1000,7 @@ test('aviso com a consulta ainda pendente (Processando, ou 404 dentro do prazo):
     const p = await processando.linha()
     assert.deepEqual([p.situacao, p.status, p.protocolo], ['pendente', 'Processando', null])
     assert.deepEqual(await naoAchada.linha(), antesN)
-    assert.deepEqual(escrito(), ['[webhook notagateway] ainda pendente na consulta: a NG reenvia', '[webhook notagateway] ainda pendente na consulta: a NG reenvia'])
+    assert.deepEqual(escrito(), linhasDoAviso('ainda pendente na consulta: a NG reenvia', 'ainda pendente na consulta: a NG reenvia'))
   })
 })
 
@@ -1017,7 +1027,7 @@ test('isolamento: aviso com id da Conta A e grupo/empresa da B no corpo muda só
     const fA = await faixaPendente(tx, a)
     const fB = await faixaPendente(tx, b)
     const ng = ngQueResponde(AUTORIZADA)
-    consoleDe(t)
+    const escrito = consoleDe(t)
 
     const forjado = avisoDe(fA.idExterno, { grupoId: b.grupoId, empresaId: 'emp-B' })
     assert.equal((await receber(tx, forjado, { consultar: ng.consultar })).status, 200)
@@ -1025,5 +1035,6 @@ test('isolamento: aviso com id da Conta A e grupo/empresa da B no corpo muda só
     assert.equal((await fA.linha()).situacao, 'autorizada')
     assert.equal((await fB.linha()).situacao, 'pendente')
     assert.deepEqual(ng.chamadas, [{ empresaId: 'emp-A', idExterno: fA.idExterno }])
+    assert.deepEqual(escrito(), linhasDoAviso('situação: autorizada'))
   })
 })
