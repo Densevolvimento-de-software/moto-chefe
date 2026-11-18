@@ -760,10 +760,11 @@ export async function buscarVendasParaVincular(conciliacaoId: string) {
   // Mesmos papéis de quem vincula (vincularVendaAction) e da busca manual: a lista traz cliente e valor.
   if (!GESTORES_CONC.includes(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
-  // Valor e tipo saem da linha, lida com o grupo no where: linha de outra Conta e inexistente dão lista vazia.
+  // Valor e tipo saem da linha, lida com o grupo no where: linha de outra Conta, inexistente ou estornada
+  // (o vincular recusa) dão lista vazia.
   const [linha] = await db.select({ valorBruto: conciliacoesCartao.valorBruto, tipo: conciliacoesCartao.tipo })
     .from(conciliacoesCartao)
-    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id)))
+    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
     .limit(1)
   if (!linha) return []
   const valorRef = Number(linha.valorBruto)
