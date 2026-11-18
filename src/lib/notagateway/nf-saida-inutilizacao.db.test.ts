@@ -762,7 +762,8 @@ const depsDaConsulta = (tx: Tx, consultar: Consultar, agora = new Date()) => ({ 
 async function faixaPendente(tx: Tx, conta: Awaited<ReturnType<typeof semearContaFaixa>>) {
   const r = await mf.inutilizarFaixa(conta.socio, conta.grupoId, faixa(), depsDaFaixa(tx, conta.grupoId))
   assert.ok(r.ok)
-  return { id: r.inutilizacaoId, linha: async () => (await faixasDoGrupo(tx, conta.grupoId))[0] }
+  const id = r.inutilizacaoId
+  return { id, linha: async () => (await linhas(tx, sql`select * from notas_fiscais_saida_inutilizacoes where id = ${id}`))[0] }
 }
 
 const AUTORIZADA = { status: 'Autorizada', motivoStatus: null, protocolo: '353190000062124' }
