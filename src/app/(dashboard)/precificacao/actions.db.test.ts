@@ -1,5 +1,5 @@
 // Teste de banco: salvar as taxas da Precificação grava só os campos do formulário, sempre no
-// grupo ativo do servidor.
+// grupo ativo do servidor. Inclui o custo do PIX (#89).
 // Roda no Postgres descartável do CI. Local: `npm run test:db:local`.
 import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -29,16 +29,16 @@ const s = { contaA: '', grupoA: '', contaB: '', grupoB: '' }
 
 const TAXAS_B: TaxasPayload = {
   taxasCartao: { '1': 3 }, taxasDebito: { '1': 1 }, taxasLink: {}, taxasFinanciamento: {},
-  freteValorKm: '5.00', freteKmGratis: 10, freteValorFixo: '0.00', imposto: '0.0800',
+  freteValorKm: '5.00', freteKmGratis: 10, freteValorFixo: '0.00', imposto: '0.0800', custoPixTaxa: '0.005000',
 }
 const ENVIO: TaxasPayload = {
   taxasCartao: { '1': 9.9 }, taxasDebito: { '1': 9.9 }, taxasLink: { '1': 9.9 }, taxasFinanciamento: { '12': 9.9 },
-  freteValorKm: '9.99', freteKmGratis: 99, freteValorFixo: '99.00', imposto: '0.9900',
+  freteValorKm: '9.99', freteKmGratis: 99, freteValorFixo: '99.00', imposto: '0.9900', custoPixTaxa: '0.002000',
 }
 
 const taxasDo = async (grupoId: string) => (await execRows(sql`
   select taxas_cartao, taxas_debito, taxas_link, taxas_financiamento, frete_valor_km, frete_km_gratis,
-    frete_valor_fixo, imposto, padrao_simulador, atualizado_em > now() - interval '1 hour' as atualizada_agora
+    frete_valor_fixo, imposto, custo_pix_taxa, padrao_simulador, atualizado_em > now() - interval '1 hour' as atualizada_agora
   from configuracao_taxas where grupo_id = ${grupoId}`))[0]
 
 before(async () => {
@@ -50,9 +50,9 @@ before(async () => {
   Object.assign(s, { contaA: a.contaId, grupoA: a.grupoId, contaB: b.contaId, grupoB: b.grupoId })
   const socioA = await semearUsuario(db, a, { papel: 'admin_socio', rotulo: 'socio', semLoja: true, comGrupo: true })
   sessao = { id: socioA, papel: 'admin_socio', lojaId: null, gruposAcesso: [a.grupoId], contaId: a.contaId, grupoLiberado: null }
-  await db.execute(sql`insert into configuracao_taxas (grupo_id, taxas_cartao, taxas_debito, frete_valor_km, frete_km_gratis, imposto)
+  await db.execute(sql`insert into configuracao_taxas (grupo_id, taxas_cartao, taxas_debito, frete_valor_km, frete_km_gratis, imposto, custo_pix_taxa)
     values (${b.grupoId}, ${JSON.stringify(TAXAS_B.taxasCartao)}::jsonb, ${JSON.stringify(TAXAS_B.taxasDebito)}::jsonb,
-      ${TAXAS_B.freteValorKm}, ${TAXAS_B.freteKmGratis}, ${TAXAS_B.imposto})`)
+      ${TAXAS_B.freteValorKm}, ${TAXAS_B.freteKmGratis}, ${TAXAS_B.imposto}, ${TAXAS_B.custoPixTaxa})`)
 })
 
 after(async () => {
@@ -73,7 +73,7 @@ after(async () => {
 
 const comoNoBanco = (t: TaxasPayload) => ({
   taxas_cartao: t.taxasCartao, taxas_debito: t.taxasDebito, taxas_link: t.taxasLink, taxas_financiamento: t.taxasFinanciamento,
-  frete_valor_km: t.freteValorKm, frete_km_gratis: t.freteKmGratis, frete_valor_fixo: t.freteValorFixo, imposto: t.imposto,
+  frete_valor_km: t.freteValorKm, frete_km_gratis: t.freteKmGratis, frete_valor_fixo: t.freteValorFixo, imposto: t.imposto, custo_pix_taxa: t.custoPixTaxa,
   padrao_simulador: 'taxas',
   atualizada_agora: true,
 })
@@ -92,4 +92,12 @@ test('salvar de novo atualiza a mesma linha do grupo ativo', async () => {
   assert.deepEqual(await taxasDo(s.grupoA), comoNoBanco(outra))
   const [{ n }] = await execRows(sql`select count(*)::int n from configuracao_taxas where grupo_id = ${s.grupoA}`)
   assert.equal(n, 1)
+})
+
+test('custo do PIX fora da faixa: recusa com a frase e não grava nada', async () => {
+  await salvarTaxasAction(ENVIO)
+  const recusa = await salvarTaxasAction({ ...ENVIO, imposto: '0.0100', custoPixTaxa: '1' })
+  assert.deepEqual(recusa, { ok: false, erro: 'O custo do PIX precisa ser de 0 até menos de 100%' })
+  assert.deepEqual(await taxasDo(s.grupoA), comoNoBanco(ENVIO))
+  assert.deepEqual(await taxasDo(s.grupoB), comoNoBanco(TAXAS_B))
 })
