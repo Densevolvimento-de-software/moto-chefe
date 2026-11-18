@@ -5,8 +5,10 @@ export function podeAlterarValorVenda(papel: string): boolean {
   return PAPEIS_QUE_ALTERAM_VALOR.has(papel)
 }
 
+export const VALOR_SO_DOS_ADMINISTRADORES = 'O valor da venda só pode ser alterado pelos administradores.'
+
 /** A recusa da edição por mudança de valor (#293), ou null se o papel pode ou o valor não mudou. */
 export function travaDoValorVenda(papel: string, valorGravado: number, valorEnviado: number): string | null {
   if (podeAlterarValorVenda(papel) || Math.abs(valorGravado - valorEnviado) < 0.005) return null
-  return 'O valor da venda só pode ser alterado pelos administradores.'
+  return VALOR_SO_DOS_ADMINISTRADORES
 }

@@ -9,11 +9,11 @@ import { motos, modelos, modeloBlingCodigos, pedidosVenda, vendas, reservas, his
 import { eq, and, isNull, isNotNull, notInArray, inArray, desc, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { liquidoDaMoto, validarReserva } from '@/lib/preco-minimo'
-import { pagamentosFecham, descreverPagamentos, formaPagamentoDaVenda, pagamentosIncompletos, PAGAMENTO_INCOMPLETO, SOMA_PAGAMENTOS_DIFERE, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
+import { pagamentosFecham, descreverPagamentos, formaPagamentoDaVenda, pagamentosIncompletos, projetarPagamentos, PAGAMENTO_INCOMPLETO, SOMA_PAGAMENTOS_DIFERE, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
 import { lancamentosDinheiroDaVenda } from '@/lib/caixa-venda-moto'
 import { podeAbrirRegistroDaLoja, podeEditarVendaDaLoja, podeVenderMotoDaLoja } from '@/lib/acesso-registro'
 import { clientesDoEscopo, contaDaLoja, lojasDoEscopo } from '@/lib/conta'
-import { conferirComprador, conferirCompradorDaVenda, gravarCompradorDaVenda } from '@/lib/venda-comprador'
+import { conferirComprador, conferirCompradorDaVenda, gravarCompradorDaVenda, type CompradorVenda } from '@/lib/venda-comprador'
 import { contaDoGrupoAtivo, getGrupoIdDaLoja, podeAprovarVendaBaixoValor, podeAprovarPagamentoSensivelNaLoja, podeUsuarioVerGrupo } from '@/lib/grupo'
 import { aplicarPagamentoOS, type DadosPagamentoOS } from '@/lib/pagamento-os'
 import { aplicarVendaPeca, type DadosVendaPeca } from '@/lib/venda-peca'
@@ -50,6 +50,8 @@ import { reservaDoUsuario } from '@/lib/reserva-do-usuario'
 import { vendaDoUsuario, vendaDoUsuarioParaNf } from '@/lib/venda-do-usuario'
 import { podeOperarNfSaida } from './papeis-nf-saida'
 import { cancelarPedidoEfetivadoTx } from '@/lib/cancelar-pedido-efetivado'
+import { editarPedidoEfetivadoTx, vendasETravaDoPedido } from '@/lib/editar-pedido-efetivado'
+import { acessoriosDoFormulario, CAMPOS_DO_COMPRADOR, compradorDoFormulario } from '@/lib/pedido-efetivado-regras'
 import { abaixoDoMinimo, aprovacaoNecessaria, MOTIVO_OBRIGATORIO, motivoDaAprovacao, podeVenderAbaixoDoMinimo, temPagamentoSensivel, type TipoAprovacaoVenda } from '@/lib/aprovacao-venda'
 import { gravarPedidoDeAprovacaoTx, linhasPendentesDoPedido } from '@/lib/pedido-de-aprovacao'
 import { apagarArquivosAssinatura } from '@/lib/assinatura/infra'
@@ -1444,6 +1446,8 @@ export type PagamentoEditar = {
   autorizacao?: string
 }
 
+const PAPEIS_QUE_EDITAM_VENDA = ['admin_geral', 'admin_socio', 'aux_adm']
+
 export async function editarVendaAction(...a: Parameters<typeof editarVenda>) {
   return acao(() => editarVenda(...a))
 }
@@ -1476,7 +1480,7 @@ async function editarVenda(vendaId: string, dados: {
 }) {
   const usuario = await getUsuarioLogado()
 
-  if (!['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  if (!PAPEIS_QUE_EDITAM_VENDA.includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
 
   // Busca venda atual para validações de acesso e sincronização
   const vendaAtual = await vendaDoUsuario(usuario, eq(vendas.id, vendaId))
@@ -1569,6 +1573,67 @@ async function editarVenda(vendaId: string, dados: {
     if (caixa.length > 0) await tx.insert(lancamentosCaixa).values(caixa)
   })
 
+  revalidatePath('/vendas')
+  revalidatePath('/caixa')
+}
+
+/** A venda que o usuário pode editar (Conta no SQL, loja como no Editar venda); outra Conta e id inexistente dão a mesma frase. */
+async function vendaParaEditar(usuario: Awaited<ReturnType<typeof getUsuarioLogado>>, vendaId: string) {
+  if (!PAPEIS_QUE_EDITAM_VENDA.includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  const venda = ehUuid(vendaId) ? await vendaDoUsuario(usuario, eq(vendas.id, vendaId)) : null
+  if (!venda) throw new RecusaUsuario('Venda não encontrada')
+  if (!(await podeEditarVendaDaLoja(usuario, venda.lojaId))) throw new RecusaUsuario('Sem permissão para editar vendas de outra loja')
+  return venda
+}
+
+/**
+ * O pedido efetivado como o Editar (25d) mostra, a partir de qualquer venda dele: itens com valor (`itensDoPedido`), o comprador,
+ * o pagamento e o frete da venda do pagamento e a NF que trava cliente e valores, pela mesma função da gravação.
+ */
+export async function pedidoEfetivadoAction(vendaId: string) {
+  return acao(async () => {
+    const usuario = await getUsuarioLogado()
+    const venda = await vendaParaEditar(usuario, vendaId)
+    const itens = await itensDoPedido(usuario, venda.pedidoVendaId)
+    if (!itens) throw new RecusaUsuario('Venda não encontrada')
+    const { doPagamento: v, frete, trava } = await vendasETravaDoPedido(db, venda.pedidoVendaId, usuario.papel)
+    return {
+      ...itens, frete, notaQueTrava: trava, pagamentos: projetarPagamentos(v.pagamentos ?? []),
+      comprador: Object.fromEntries(CAMPOS_DO_COMPRADOR.map(k => [k, v[k]])) as Record<(typeof CAMPOS_DO_COMPRADOR)[number], string | null>,
+      dataVenda: hojeBrt(v.dataVenda), vendedorId: v.vendedorId, origemId: v.origemId, origemDetalhe: v.origemDetalhe,
+    }
+  })
+}
+
+export async function editarPedidoEfetivadoAction(...a: Parameters<typeof editarPedidoEfetivado>) {
+  return acao(() => editarPedidoEfetivado(...a))
+}
+
+/**
+ * Editar venda de pedido = editar o pedido (#23, Q17), a partir de qualquer venda dele. Os mesmos papéis e a mesma loja do
+ * Editar venda; o formulário é refeito campo a campo e o resto (valores, NF, pagamento) se confere sob a trava.
+ */
+async function editarPedidoEfetivado(vendaId: string, dados: CompradorVenda & {
+  dataVenda: string; vendedorId?: string; origemId?: string | null; origemDetalhe?: string | null
+  pagamentos: PagamentoEditar[]; motos: MotoComValor[]; acessorios: { pecaId: string; valor: number }[]
+}) {
+  const usuario = await getUsuarioLogado()
+  const venda = await vendaParaEditar(usuario, vendaId)
+  const motos = valorDaEfetivacao(dados.motos)
+  const acessorios = acessoriosDoFormulario(dados.acessorios)
+  if (!Array.isArray(motos) || !acessorios) throw new RecusaUsuario('Valor inválido')
+  const pagamentos = projetarPagamentos(Array.isArray(dados.pagamentos) ? dados.pagamentos : [])
+  if (pagamentosIncompletos(pagamentos)) throw new RecusaUsuario(PAGAMENTO_INCOMPLETO)
+  const origem = dados.origemId ? await garantirOrigemValida(venda.lojaId, dados.origemId, dados.origemDetalhe) : null
+  if (dados.vendedorId && !(await vendedorDaConta(dados.vendedorId, venda.lojaId, usuario.grupoLiberado))) {
+    throw new RecusaUsuario('Vendedor não encontrado')
+  }
+  const comprador = conferirCompradorDaVenda(compradorDoFormulario(dados), venda.clienteCpf)
+
+  await db.transaction(tx => editarPedidoEfetivadoTx(tx, {
+    pedidoVendaId: venda.pedidoVendaId, usuario,
+    edicao: { comprador, dataVenda: String(dados.dataVenda), vendedorId: dados.vendedorId ?? null, origem, pagamentos, motos, acessorios },
+  }))
   revalidatePath('/vendas')
   revalidatePath('/caixa')
 }
