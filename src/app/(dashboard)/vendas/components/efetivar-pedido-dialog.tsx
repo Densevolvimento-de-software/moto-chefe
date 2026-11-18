@@ -137,7 +137,8 @@ export function EfetivarPedidoDialog({ pedidoId, numero, origens, entrega: entre
   return (
     <>
       <Button size="sm" onClick={() => setOpen(true)}>Efetivar Venda</Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      {/* Ação sem volta: enquanto grava, nada fecha o diálogo. */}
+      <Dialog open={open} onOpenChange={o => { if (!loading) setOpen(o) }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle>Efetivar pedido {numero}</DialogTitle>
@@ -210,7 +211,7 @@ export function EfetivarPedidoDialog({ pedidoId, numero, origens, entrega: entre
           <DialogFooter className="flex-col items-stretch max-lg:sticky max-lg:-bottom-4 max-lg:z-10 max-lg:bg-popover sm:flex-row sm:items-center sm:justify-between">
             <p aria-label="Total do pedido" className="text-sm text-muted-foreground">Total do pedido <strong className="block text-lg text-foreground">{brl(total)}</strong></p>
             <div className="grid grid-cols-2 gap-2 sm:flex">
-              <Button variant="outline" className="h-11" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button variant="outline" className="h-11" disabled={loading} onClick={() => setOpen(false)}>Cancelar</Button>
               <Button className="h-11" onClick={efetivar} disabled={loading || !podeEfetivar}>
                 {loading ? 'Enviando...' : aprovacao?.tipo ? 'Pedir aprovação' : 'Confirmar venda'}
               </Button>

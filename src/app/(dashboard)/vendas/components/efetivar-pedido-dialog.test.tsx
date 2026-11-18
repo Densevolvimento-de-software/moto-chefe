@@ -22,11 +22,12 @@ const PECAS = [
 let itens: unknown = { motos: [JET], pecas: [], taxas: SEM_TAXA }
 let respostaDosItens: () => Promise<unknown> = async () => ({ ok: true, dados: itens })
 const enviados: unknown[][] = []
+let respostaDoEfetivar: () => Promise<unknown> = async () => ({ ok: true, dados: undefined })
 const alteracoes: unknown[][] = []
 let respostaDoAlterar: { ok: true; dados: undefined } | { ok: false; erro: string } = { ok: true, dados: undefined }
 let respostaDoAlterarFn: () => Promise<unknown> = async () => respostaDoAlterar
 mock.module('../actions', { namedExports: {
-  efetivarVendaAction: async (...a: unknown[]) => { enviados.push(a); return { ok: true, dados: undefined } },
+  efetivarVendaAction: async (...a: unknown[]) => { enviados.push(a); return respostaDoEfetivar() },
   alterarEntregaDoPedidoAction: async (...a: unknown[]) => { alteracoes.push(a); return respostaDoAlterarFn() },
   itensDoPedidoAction: () => respostaDosItens(),
 } })
@@ -38,7 +39,7 @@ mock.module('@/app/(dashboard)/clientes/actions', { namedExports: {
 const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const desmontar of montados.splice(0)) await desmontar()
-  enviados.length = 0; alteracoes.length = 0
+  enviados.length = 0; alteracoes.length = 0; respostaDoEfetivar = async () => ({ ok: true, dados: undefined })
   itens = { motos: [JET], pecas: [], taxas: SEM_TAXA }; respostaDosItens = async () => ({ ok: true, dados: itens })
   respostaDoAlterar = { ok: true, dados: undefined }; respostaDoAlterarFn = async () => respostaDoAlterar
 })
@@ -176,6 +177,31 @@ test('os itens ainda carregando travam o botão; erro ao carregar aparece com o 
   await act(async () => { chegar({ ok: false, erro: 'Pedido não encontrado' }) })
   assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /Não deu para carregar os itens do pedido: Pedido não encontrado/)
   assert.equal(botao('Confirmar venda')?.disabled, true)
+})
+
+test('enquanto efetiva: Confirmar e Cancelar travados e Escape não fecha; ao responder, fecha', async () => {
+  let responder!: () => void
+  respostaDoEfetivar = () => new Promise(r => { responder = () => r({ ok: true, dados: undefined }) })
+  await abrir(ENTREGAR)
+  await preencherCliente()
+  await pagar('PIX', '949000', 1)
+  await clicar(botao('Confirmar venda'))
+  assert.equal(botao('Enviando...')?.disabled, true)
+  assert.equal(botao('Cancelar')?.disabled, true)
+  const { act } = await import('react')
+  await act(async () => { document.activeElement?.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+  assert.match(texto(), /Efetivar pedido 32140/, 'Escape não fecha enquanto envia')
+  await act(async () => { responder() })
+  assert.doesNotMatch(texto(), /Efetivar pedido 32140/)
+})
+
+test('grupo sem taxas cadastradas: sem mínimo nem selo, e a venda segue', async () => {
+  itens = { motos: [{ ...JET, minimo: null }], pecas: [], taxas: null }
+  await abrir(ENTREGAR)
+  await preencherCliente()
+  await pagar('PIX', '949000', 1)
+  assert.doesNotMatch(reciboNaTela(), /Mínimo|No mínimo|Abaixo do mínimo/)
+  assert.equal(botao('Confirmar venda')?.disabled, false)
 })
 
 const ENTREGAR: EntregaVenda = {
