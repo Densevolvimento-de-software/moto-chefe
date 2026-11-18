@@ -75,6 +75,7 @@ test('T1: abre com o pedido: título, itens no recibo (antes do cliente no DOM),
   assert.equal(campo('editar-cliente-nome').value, 'Ana Beatriz Moreira')
   assert.match(texto(), /O mesmo cliente para as 2 motos\. Contato e endereço seguem como estão no cadastro da venda\./)
   assert.equal(campo('editar-data').value, '2026-11-18')
+  assert.match(texto(), /Vale para as 2 vendas do pedido e para o brinde e o acessório\./)
   assert.equal((document.getElementById('editar-vendedor') as HTMLSelectElement).value, 'v1')
   assert.match(texto(), /Pago por completo/)
   assert.match(rotulo('Total do pedido')!.textContent ?? '', /R\$\s*15\.160,00/)
@@ -169,4 +170,11 @@ test('T9: carregando, só o aviso e o Salvar travado; leitura que falha mostra o
 test('T11: as maquininhas vêm da loja do pedido, a que o servidor confere', async () => {
   await abrir()
   assert.deepEqual(lojasDasMaquininhas, [{ loja: 'loja-do-pedido' }])
+})
+
+test('T12: pedido de 1 moto com acessório: as frases falam de 1 moto e só do acessório', async () => {
+  await abrir('admin_socio', { ...PEDIDO, motos: [PEDIDO.motos[0]], pecas: [PEDIDO.pecas[0]], frete: 0, pagamentos: [{ tipo: 'pix', valor: 9780 }] })
+  assert.match(texto(), /O cliente do pedido\. Contato e endereço seguem como estão no cadastro da venda\./)
+  assert.match(texto(), /Vale para a venda do pedido e para o acessório\./)
+  assert.doesNotMatch(texto(), /as 1 /)
 })

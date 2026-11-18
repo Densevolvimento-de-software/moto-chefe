@@ -42,6 +42,14 @@ const formularioDo = (p: Pedido): Formulario => ({
   pgtos: pgtosDoPagamento(p.pagamentos),
 })
 
+const quemEOCliente = (motos: number) => (motos === 1 ? 'O cliente do pedido.' : `O mesmo cliente para as ${motos} motos.`)
+
+/** A quem a data, o vendedor e a origem valem: as vendas do pedido e a venda de peça, só com o que o pedido tem. */
+function aQuemVale(motos: number, tipos: ReadonlySet<string>) {
+  const pecas = (['brinde', 'acessorio'] as const).filter(t => tipos.has(t)).map(t => (t === 'brinde' ? 'o brinde' : 'o acessório')).join(' e ')
+  return `Vale para ${motos === 1 ? 'a venda do pedido' : `as ${motos} vendas do pedido`}${pecas ? ` e para ${pecas}` : ''}.`
+}
+
 /**
  * Editar venda de um pedido com várias motos, brinde ou acessório (#25, 25d; protótipos V2 e 25d aprovados): edita o pedido inteiro pelo
  * servidor do #23. Com NF valendo, cliente e valores ficam como estão (`notaQueTrava`, a mesma regra do servidor); sem NF, quem altera valor
@@ -160,7 +168,7 @@ export function EditarPedidoEfetivadoDialog({ vendaId, papel, vendedores, origen
                         : <DocumentoClienteInput id="editar-cliente-cpf" value={f.clienteCpf} onChange={v => muda({ clienteCpf: v })} />}
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">O mesmo cliente para as {motos.length} motos. {ajudaDoCliente}</p>
+                  <p className="text-xs text-muted-foreground">{quemEOCliente(motos.length)} {ajudaDoCliente}</p>
                 </section>
                 <section className="space-y-3">
                   <h3 className="font-medium">Venda</h3>
@@ -180,7 +188,7 @@ export function EditarPedidoEfetivadoDialog({ vendaId, papel, vendedores, origen
                   </div>
                   <OrigemVendaSelect origens={origens} origemId={f.origemId} onOrigemChange={id => muda({ origemId: id })}
                     detalhe={f.origemDetalhe} onDetalheChange={d => muda({ origemDetalhe: d })} />
-                  <p className="text-xs text-muted-foreground">Vale para as {motos.length} vendas do pedido e para o brinde e o acessório.</p>
+                  <p className="text-xs text-muted-foreground">{aQuemVale(motos.length, new Set(pecas.map(p => p.tipo)))}</p>
                 </section>
                 <section aria-label="Pagamento do pedido" className="space-y-2">
                   <h3 className="font-medium">Pagamento do pedido</h3>
