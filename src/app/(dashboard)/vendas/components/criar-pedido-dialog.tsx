@@ -18,6 +18,8 @@ import type { PecaComSaldo } from '@/lib/pecas-da-conta'
 import { EntregaEModalidade, ENTREGA_DO_FORMULARIO_INICIAL, FreteCobrado, entregaDoFormulario, freteDoFormulario, quemRecebeInvalido, type EntregaDoFormulario } from './entrega-campos'
 import { AdicionarMotoPainel } from './adicionar-moto-painel'
 import { AdicionarPecaPainel, Quantidade } from './adicionar-peca-painel'
+import { ItensNoCelular } from './itens-no-celular'
+import { useIsDesktop } from '@/hooks/use-is-desktop'
 
 type Props = { motos: MotoDisponivel[]; papel: string }
 
@@ -27,6 +29,7 @@ type Minimos = Record<string, number | null | 'erro'>
 /** Novo pedido no layout B da #682: itens à esquerda; Entrega, modalidade e resumo à direita. Várias motos (#24, V3). */
 export function CriarPedidoDialog({ motos, papel }: Props) {
   const [open, setOpen] = useState(false)
+  const desktop = useIsDesktop()
   const [painel, setPainel] = useState(false)
   const [noPedido, setNoPedido] = useState<MotoNoPedido[]>([])
   const [minimos, setMinimos] = useState<Minimos>({})
@@ -99,6 +102,15 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
   const total = centavos(totalDasMotos(noPedido) + totalDasPecasNaTela(pecas) + frete)
   const qtd = (tipo: PecaNoPedido['tipo']) => pecas.filter(p => p.tipo === tipo).reduce((n, p) => n + p.quantidade, 0)
   const semValor = motosSemValor(noPedido)
+  const itemMoto = (m: MotoNoPedido) => (
+    <ItemMoto key={m.id} moto={m} minimo={minimos[m.id]} invalido={motosDoEnvio([m]) === null}
+      onValor={v => mudarValor(m.id, v)} onTirar={() => tirar(m.id)} />
+  )
+  const itemPeca = (p: PecaNoPedido, i: number) => (
+    <ItemPeca key={`${p.tipo}-${p.peca.id}`} item={p} aviso={avisoDeSaldo(pecas, p.peca.id)} ajustaPreco={podeGerirPecas(papel)}
+      onQuantidade={mais => mudarPeca(i, atual => ({ quantidade: Math.max(1, atual.quantidade + mais) }))}
+      onValor={valor => mudarPeca(i, () => ({ valor }))} onTirar={() => setPecas(atual => atual.filter((_, j) => j !== i))} />
+  )
 
   return (
     <>
@@ -115,29 +127,20 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
                 <h3 className="text-sm font-semibold">Itens do pedido</h3>
                 <span className="text-xs text-muted-foreground">{noPedido.length === 1 ? '1 moto' : `${noPedido.length} motos`}</span>
               </div>
-              {noPedido.length > 0 && (
-                <ul aria-label="Motos do pedido" className="divide-y divide-border rounded-lg border border-border">
-                  {noPedido.map(m => (
-                    <ItemMoto key={m.id} moto={m} minimo={minimos[m.id]} invalido={motosDoEnvio([m]) === null}
-                      onValor={v => mudarValor(m.id, v)} onTirar={() => tirar(m.id)} />
-                  ))}
-                </ul>
-              )}
-              {pecas.length > 0 && (
-                <ul aria-label="Peças do pedido" className="divide-y divide-border rounded-lg border border-border">
-                  {pecas.map((p, i) => (
-                    <ItemPeca key={`${p.tipo}-${p.peca.id}`} item={p} aviso={avisoDeSaldo(pecas, p.peca.id)} ajustaPreco={podeGerirPecas(papel)}
-                      onQuantidade={mais => mudarPeca(i, atual => ({ quantidade: Math.max(1, atual.quantidade + mais) }))}
-                      onValor={valor => mudarPeca(i, () => ({ valor }))} onTirar={() => setPecas(atual => atual.filter((_, j) => j !== i))} />
-                  ))}
-                </ul>
-              )}
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" className="h-11 border-dashed" onClick={() => setPainel(true)}><Plus aria-hidden />Moto</Button>
-                <Button variant="outline" className="h-11 border-dashed" disabled={!primeira} onClick={() => setPainelPeca('brinde')}><Plus aria-hidden />Brinde</Button>
-                <Button variant="outline" className="h-11 border-dashed" disabled={!primeira} onClick={() => setPainelPeca('acessorio')}><Plus aria-hidden />Acessório</Button>
-                {!primeira && <span className="text-xs text-muted-foreground">Escolha a moto primeiro</span>}
-              </div>
+              {/* Celular (#24, N3): blocos do próprio pedido com a busca embutida; desktop: lista e painel lateral (V3). */}
+              {!desktop ? (
+                <ItensNoCelular disponiveis={motos} noPedido={noPedido} pecas={pecas} catalogo={catalogo} moto={itemMoto} peca={itemPeca}
+                  onPorMoto={m => adicionar([m])} onPorPeca={(tipo, peca) => setPecas(atual => comPecas(atual, tipo, [{ peca, quantidade: 1 }]))} />
+              ) : (<>
+                {noPedido.length > 0 && <ul aria-label="Motos do pedido" className="divide-y divide-border rounded-lg border border-border">{noPedido.map(itemMoto)}</ul>}
+                {pecas.length > 0 && <ul aria-label="Peças do pedido" className="divide-y divide-border rounded-lg border border-border">{pecas.map(itemPeca)}</ul>}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" className="h-11 border-dashed" onClick={() => setPainel(true)}><Plus aria-hidden />Moto</Button>
+                  <Button variant="outline" className="h-11 border-dashed" disabled={!primeira} onClick={() => setPainelPeca('brinde')}><Plus aria-hidden />Brinde</Button>
+                  <Button variant="outline" className="h-11 border-dashed" disabled={!primeira} onClick={() => setPainelPeca('acessorio')}><Plus aria-hidden />Acessório</Button>
+                  {!primeira && <span className="text-xs text-muted-foreground">Escolha a moto primeiro</span>}
+                </div>
+              </>)}
               <div className="space-y-2">
                 <Label htmlFor="pedido-observacao">Observação (opcional)</Label>
                 <Textarea id="pedido-observacao" value={observacao} onChange={e => setObservacao(e.target.value)} />
@@ -173,9 +176,10 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
             </section>
           </div>
           {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}
-          <DialogFooter className="items-center sm:justify-between">
+          {/* No celular o total e "Criar pedido" ficam fixos embaixo (N3). */}
+          <DialogFooter className="flex-col items-stretch max-lg:sticky max-lg:-bottom-4 max-lg:z-10 max-lg:bg-popover sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">Total do pedido <strong className="block text-lg text-foreground">{brl(total)}</strong></p>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:flex">
               <Button variant="outline" className="h-11" onClick={() => setOpen(false)}>Cancelar</Button>
               <Button className="h-11" onClick={handleCriar} disabled={loading || !envio?.length || !envioPecas || quemRecebeInvalido(entrega)}>
                 {loading ? 'Criando...' : 'Criar pedido'}

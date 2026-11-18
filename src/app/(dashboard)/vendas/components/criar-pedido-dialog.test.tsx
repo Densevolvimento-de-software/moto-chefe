@@ -6,8 +6,12 @@ import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
 import { clicar, digitar, escolher } from '@/test/eventos-dom'
 
-const { desmontar: desmontarDom } = montarDom()
+const { dom, desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
+// O JSDOM não tem matchMedia: desktop (lg) por padrão; os testes do celular (#24, N3) desligam.
+let desktop = true
+;(dom.window as unknown as { matchMedia: unknown }).matchMedia = () =>
+  ({ matches: desktop, addEventListener: () => {}, removeEventListener: () => {} })
 
 type Resposta = { ok: true; dados: undefined } | { ok: false; erro: string }
 const criar = mock.fn(async (_motos: unknown, _observacao: string, _entrega: unknown, _pecas?: unknown): Promise<Resposta> => ({ ok: true, dados: undefined }))
@@ -30,6 +34,7 @@ afterEach(async () => {
   criar.mock.resetCalls()
   minimo = null
   catalogo = { ok: true, dados: CATALOGO }
+  desktop = true
   mock.restoreAll()
   for (const desmontar of montados.splice(0)) await desmontar()
 })
@@ -507,4 +512,45 @@ test('trocar a loja do pedido (outra 1ª moto) atualiza o saldo das peças já e
   await t.adicionarMotos(DO_NORTE)
   assert.match(itens(), /Capacete fechado/)
   assert.doesNotMatch(itens(), /Fica em/)
+})
+
+// Celular (#24, N3): os blocos do próprio pedido abrem com a busca embutida; o pedido e o total ficam à vista.
+const bloco = (nome: string) => [...document.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(b => (b.textContent ?? '').startsWith(nome))
+const por = (nome: string) => document.querySelector(`[aria-label="Pôr ${nome} no pedido"]`)
+
+test('celular: blocos com a busca embutida; um toque põe a moto e a peça no bloco (outro toque soma); o total segue no rodapé', async () => {
+  desktop = false
+  const t = await montar([MOTO, PITICA])
+  assert.ok(!botao('Moto'), 'o "+ Moto" do painel lateral não aparece no celular')
+  assert.equal(bloco('Motos')?.getAttribute('aria-expanded'), 'true')
+  assert.equal(bloco('Acessórios')?.disabled, true)
+  assert.match(textoDaTela(), /Escolha a moto primeiro/)
+  await t.clique(por('MC JET (final 4131)'))
+  assert.match(document.querySelector('[aria-label="Motos do pedido"]')?.textContent ?? '', /MC JET/)
+  assert.ok(!por('MC JET (final 4131)'), 'a moto que entrou sai da busca')
+
+  await t.clique(bloco('Acessórios'))
+  await digitar(document.querySelector<HTMLInputElement>('input[aria-label="Buscar peça"]')!, 'capacete')
+  await t.clique(por('Capacete fechado'))
+  await t.clique(por('Capacete fechado'))
+  assert.equal(document.querySelector('[aria-label="Quantidade de Capacete fechado"]')?.textContent, '2')
+  assert.match(itens(), /Capacete fechado.*Fica em -1/)
+  assert.match(bloco('Acessórios')?.textContent ?? '', /2 itens\s*R\$\s*579,80/)
+  assert.match(document.querySelector('[data-slot="dialog-footer"]')?.textContent ?? '', /Total do pedido\s*R\$\s*579,80/)
+  await t.clique(botao('Criar pedido'))
+  assert.deepEqual(criar.mock.calls[0].arguments[0], [{ motoId: MOTO.id }])
+  assert.deepEqual(criar.mock.calls[0].arguments[3], [{ tipo: 'acessorio', pecaId: 'cap', quantidade: 2 }])
+})
+
+test('celular: brinde entra "Sem cobrança" no próprio bloco e não muda o total', async () => {
+  desktop = false
+  const t = await montar()
+  await t.clique(por('MC JET (final 4131)'))
+  assert.ok(bloco('Brindes'), 'o bloco Brindes não está na tela')
+  await t.clique(bloco('Brindes'))
+  await digitar(document.querySelector<HTMLInputElement>('input[aria-label="Buscar peça"]')!, 'bau')
+  await t.clique(por('Baú traseiro'))
+  assert.match(bloco('Brindes')?.textContent ?? '', /1 item\s*Sem cobrança/)
+  assert.match(itens(), /Baú traseiro.*Sem cobrança \(catálogo R\$\s*249,00\)/)
+  assert.match(document.querySelector('[data-slot="dialog-footer"]')?.textContent ?? '', /Total do pedido\s*R\$\s*0,00/)
 })
