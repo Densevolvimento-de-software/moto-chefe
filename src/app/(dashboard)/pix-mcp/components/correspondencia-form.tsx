@@ -45,10 +45,12 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
     function remover() {
       start(async () => {
         try {
-          await removerCorrespondenciaAction(id)
+          const r = await removerCorrespondenciaAction(id)
+          if (!r.ok) { toast.error(r.erro); return }
           toast.success('Correspondência desvinculada')
-        } catch (e: any) {
-          toast.error(e.message ?? 'Erro ao desvincular')
+        } catch {
+          // A recusa com frase já voltou em `r.erro`; aqui só cai falha interna, sem frase legível.
+          toast.error('Erro ao desvincular')
         }
       })
     }
@@ -86,11 +88,12 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
     if (!numero.trim()) return
     start(async () => {
       try {
-        await lancarCorrespondenciaAction(id, tipo, numero.trim())
+        const r = await lancarCorrespondenciaAction(id, tipo, numero.trim())
+        if (!r.ok) { toast.error(r.erro); return }
         toast.success('Correspondência lançada')
         setNumero('')
-      } catch (e: any) {
-        toast.error(e.message ?? 'Erro ao lançar correspondência')
+      } catch {
+        toast.error('Erro ao lançar correspondência')
       }
     })
   }

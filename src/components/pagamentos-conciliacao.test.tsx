@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
 import { digitarTexto } from '@/test/eventos-dom'
 import { botao, clicar, esperar, montarDialogo } from '@/test/dialogo-em-tela'
-import type { AlvoConciliacao } from '@/app/(dashboard)/conciliacao/actions'
+import type { AlvoConciliacao, PixLivre } from '@/app/(dashboard)/conciliacao/actions'
 import type { PgtoOS } from '@/lib/conciliacao-status'
 import type { ResultadoAction } from '@/lib/resultado-action'
 
@@ -14,7 +14,8 @@ after(desmontarDom)
 
 const forcar = mock.fn(async (_alvo: AlvoConciliacao, _idx: number, _motivo: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const desfazer = mock.fn(async (_alvo: AlvoConciliacao, _idx: number): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
-const buscarPixLivres = mock.fn(async () => [])
+const buscarPixLivres = mock.fn(async (): Promise<PixLivre[]> => [])
+const vincularPix = mock.fn(async (_pixId: string, _alvo: AlvoConciliacao): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const buscarConciliacoesPorValor = mock.fn(async () => [])
 const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { namedExports: {
   forcarConciliacaoAction: (a: AlvoConciliacao, i: number, m: string) => forcar(a, i, m),
@@ -25,7 +26,7 @@ const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { named
   buscarPixDoAlvo: async () => [],
   buscarConciliacoesLivres: async () => [],
   vincularVendaAction: async () => {},
-  vincularPixAlvoAction: async () => {},
+  vincularPixAlvoAction: (p: string, a: AlvoConciliacao) => vincularPix(p, a),
 } })
 type AcaoDoToast = { action?: { label: string; onClick: () => void } }
 const erros: string[] = []
@@ -38,9 +39,11 @@ after(() => { actionsMock.restore(); sonnerMock.restore() })
 
 const desmontagens: (() => Promise<void>)[] = []
 afterEach(async () => {
-  for (const f of [forcar, desfazer, buscarPixLivres, buscarConciliacoesPorValor]) f.mock.resetCalls()
+  for (const f of [forcar, desfazer, buscarPixLivres, buscarConciliacoesPorValor, vincularPix]) f.mock.resetCalls()
   forcar.mock.restore()
   desfazer.mock.restore()
+  buscarPixLivres.mock.restore()
+  vincularPix.mock.restore()
   erros.length = 0
   sucessos.length = 0
   for (const desmontar of desmontagens.splice(0)) await desmontar()
@@ -135,4 +138,23 @@ test('vendedor não abre a linha pendente nem vê o Desfazer forçado', async ()
   assert.equal(linha('PIX')?.disabled, true)
   assert.equal(botao('Desfazer forçado'), undefined)
   assert.equal(botao('Forçar'), undefined)
+})
+
+const PIX_LIVRE: PixLivre = { id: 'pix-1', data: new Date('2026-11-12T14:32:00Z'), valor: '1000.00', pagadorNome: 'Pagador Exemplo', descricao: null }
+
+test('vincular o PIX sugerido envia o PIX e o alvo; a recusa aparece com a frase da action', async () => {
+  buscarPixLivres.mock.mockImplementation(async () => [PIX_LIVRE])
+  const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 1000 }])
+  await tocar(linha('PIX'))
+  const vincular = () => tocar(document.querySelector('button[aria-label^="Vincular PIX de Pagador Exemplo"]') ?? undefined)
+
+  vincularPix.mock.mockImplementation(async () => ({ ok: false, erro: 'Este PIX já está vinculado. Desvincule antes de vincular de novo.' }))
+  await vincular()
+  assert.deepEqual(erros, ['Este PIX já está vinculado. Desvincule antes de vincular de novo.'])
+  assert.equal(sucessos.length, 0)
+
+  vincularPix.mock.mockImplementation(async () => ({ ok: true, dados: undefined }))
+  await vincular()
+  assert.deepEqual(vincularPix.mock.calls.map(c => c.arguments), [['pix-1', ALVO], ['pix-1', ALVO]])
+  assert.deepEqual(sucessos.map(s => s.mensagem), ['PIX conciliado'])
 })
