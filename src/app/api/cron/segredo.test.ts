@@ -2,8 +2,8 @@ import { afterEach, beforeEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { NextRequest } from 'next/server'
 
-// Toda rota que o CRON_SECRET protege recusa antes de qualquer trabalho: sem header ou com o segredo
-// errado, 401. O formato aceito (Bearer ou x-cron-secret) está em src/lib/cron-auth.test.ts.
+// Toda rota que o CRON_SECRET protege, sem header ou com o segredo errado, responde 401 com
+// { error: 'Unauthorized' }. O formato aceito (Bearer ou x-cron-secret) está em src/lib/cron-auth.test.ts.
 const SEGREDO = 'segredo-do-cron'
 beforeEach(() => { process.env.CRON_SECRET = SEGREDO })
 afterEach(() => { delete process.env.CRON_SECRET })
