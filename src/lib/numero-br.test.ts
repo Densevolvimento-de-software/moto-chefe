@@ -32,6 +32,20 @@ test('ponto de milhar sozinho', () => {
   assert.equal(parseNumeroBR('1.234.567'), 1234567)
 })
 
+// #108: '0.020' virava 20. Ninguém escreve milhar começando com zero.
+test('zero antes do ponto é decimal, não milhar', () => {
+  assert.equal(parseNumeroBR('0.020'), 0.02)
+  assert.equal(parseNumeroBR('0.075'), 0.075)
+  assert.equal(parseNumeroBR('0.200'), 0.2)
+  assert.equal(parseNumeroBR('-0.500'), -0.5)
+})
+
+test('milhar com três dígitos por grupo continua milhar', () => {
+  assert.equal(parseNumeroBR('1.000'), 1000)
+  assert.equal(parseNumeroBR('12.345'), 12345)
+  assert.equal(parseNumeroBR('100.000'), 100000)
+})
+
 test('formato americano completo também é lido', () => {
   assert.equal(parseNumeroBR('1,880.50'), 1880.5)
 })

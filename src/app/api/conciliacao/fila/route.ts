@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAutorizado } from '@/lib/cron-auth'
 import { db, execRows } from '@/lib/db'
 import { importacoesCartao, grupos } from '@/lib/db/schema'
 import { eq, and, inArray, sql } from 'drizzle-orm'
 import { somenteDigitos } from '@/lib/grupo-cnpj'
 
-function autorizado(req: NextRequest): boolean {
-  return req.headers.get('x-cron-secret') === process.env.CRON_SECRET
-}
-
 // O agente do PC da loja pergunta se tem pedido para este grupo. A busca e a
 // marcação acontecem numa instrução só, com SKIP LOCKED: se dois agentes
 // estiverem no ar por engano, cada um leva um pedido diferente — nunca o mesmo.
 export async function GET(req: NextRequest) {
-  if (!autorizado(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!cronAutorizado(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const grupoCnpj = req.nextUrl.searchParams.get('grupoCnpj')
   if (!grupoCnpj) return NextResponse.json({ error: 'grupoCnpj obrigatório' }, { status: 400 })
@@ -47,7 +44,7 @@ export async function GET(req: NextRequest) {
 // aqui como `erro` preenchido junto com o `resultado` das que funcionaram —
 // nunca como sucesso limpo.
 export async function POST(req: NextRequest) {
-  if (!autorizado(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!cronAutorizado(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let corpo: { id?: string; resultado?: Record<string, unknown>; erro?: string }
   try {
