@@ -26,7 +26,9 @@ async function resultadoDoGrupo(g: { id: string; nome: string }, importar: typeo
     return { grupo: g.nome, ok: true, resultado: await importar(g.id) }
   } catch (e) {
     const erro = mensagemConhecida(e)
-    console.error(`[conciliacao-mercadopago] ${g.nome}: ${erro}`)
+    // Erro desconhecido: só o nome no log, nunca a mensagem, que pode trazer segredo (como a rotina de inutilização).
+    const pista = erro === 'erro interno' ? ` (${e instanceof Error ? e.name : 'erro'})` : ''
+    console.error(`[conciliacao-mercadopago] ${g.nome}: ${erro}${pista}`)
     return { grupo: g.nome, ok: false, erro }
   }
 }
