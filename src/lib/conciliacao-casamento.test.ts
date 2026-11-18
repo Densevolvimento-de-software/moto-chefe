@@ -1,13 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { linhaDaTransacao } from './conciliacao-casamento'
+import { linhaDaTransacao, semAlvos as nenhum } from './conciliacao-casamento'
 
 const AGORA = new Date('2026-11-12T12:00:00.000Z')
 const transacao = {
   nsu: '991', autorizacao: 'A1', dataTransacao: '2026-11-10', valorBruto: 900, valorLiquido: 868.5,
   parcelas: 3, tipo: 'credito' as const, status: 'aprovado', rawData: { id: 991 },
 }
-const semAlvos = { vendaId: null, pecaVendaId: null, osId: null }
+const semAlvos = nenhum()
 
 test('linha casada com uma venda nasce conciliada, com a hora passada', () => {
   assert.deepEqual(linhaDaTransacao('g1', 'mercadopago', transacao, { ...semAlvos, vendaId: 'v1' }, AGORA), {
