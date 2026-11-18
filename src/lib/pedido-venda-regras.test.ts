@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { aprovacaoDoPedido, liquidoPorMoto, valorDaEfetivacao, motivoBloqueioCriarPedido, valoresDaEfetivacao, vendaDoPagamento, motivoBloqueioMotoNoPedido, motosDoPedido, listaDeMotosValida, motosSemRepetir, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDeMotoInvalido, valorDePecaInvalido, podeCriarPedido, podeEfetivarPedido, totalDasPecas, totalDoPedido, valorDaPecaNoPedido } from './pedido-venda-regras'
+import { aprovacaoDoPedido, pecasComPrecoMantido, liquidoPorMoto, valorDaEfetivacao, motivoBloqueioCriarPedido, valoresDaEfetivacao, vendaDoPagamento, motivoBloqueioMotoNoPedido, motosDoPedido, listaDeMotosValida, motosSemRepetir, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDeMotoInvalido, valorDePecaInvalido, podeCriarPedido, podeEfetivarPedido, totalDasPecas, totalDoPedido, valorDaPecaNoPedido } from './pedido-venda-regras'
 import { entregarSintetico } from '@/test/entrega-sintetica'
 
 const pedido = { status: 'pendente', lojaId: 'loja-a', vendedorId: 'vend-1' }
@@ -227,4 +227,18 @@ describe('efetivar com várias motos (#20, PR B)', () => {
       assert.equal(valoresDaEfetivacao(['a', 'b'], v), null, JSON.stringify(v))
     }
   })
+})
+
+test('editar pedido (#25, decisão 4): quem não ajusta preço mantém o valor do acessório que já estava; peça nova e o valor mandado vão pelo catálogo', () => {
+  const atuais = [{ tipo: 'acessorio', pecaId: 'cap', valorUnitario: '200.00' }, { tipo: 'brinde', pecaId: 'ant', valorUnitario: '0.00' }]
+  const pedidas = [
+    { tipo: 'acessorio' as const, pecaId: 'cap', quantidade: 3, valorUnitario: 1 },
+    { tipo: 'acessorio' as const, pecaId: 'luva', quantidade: 1, valorUnitario: 1 },
+    { tipo: 'acessorio' as const, pecaId: 'ant', quantidade: 1 },
+  ]
+  assert.deepEqual(pecasComPrecoMantido(atuais, pedidas), [
+    { tipo: 'acessorio', pecaId: 'cap', quantidade: 3, valorUnitario: 200 },
+    { tipo: 'acessorio', pecaId: 'luva', quantidade: 1 },
+    { tipo: 'acessorio', pecaId: 'ant', quantidade: 1 },
+  ])
 })
