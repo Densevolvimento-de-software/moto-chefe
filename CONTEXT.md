@@ -279,6 +279,13 @@ Conferir cada transação da operadora de cartão contra a venda, OS ou venda de
 
 **PIX recebido**:
 PIX ou TED que entrou na conta do grupo (via Open Finance), ligado à venda, OS ou peça que paga.
+O valor é o que o banco creditou: no PIX, já sem o custo do PIX.
+
+**Custo do PIX**:
+Tarifa que o banco cobra sobre cada PIX recebido, em porcentagem, cadastrada pelo grupo na
+Precificação. O banco credita o valor do PIX menos essa tarifa. Cada PIX conciliado guarda o
+custo da época; mudar a tarifa não muda o que já foi conciliado. TED não tem custo do PIX.
+_Evitar_: taxa do PIX (confunde com as taxas de cartão, que vêm do extrato da operadora)
 
 ## Fiscal
 
