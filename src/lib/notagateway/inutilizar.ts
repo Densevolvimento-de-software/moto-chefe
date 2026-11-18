@@ -132,14 +132,19 @@ export async function prepararInutilizacao(
   } }
 }
 
-/** Grava o que a NG respondeu (recusa do envio ou consulta), sempre com o grupo no where. */
+/**
+ * Grava o que a NG respondeu (recusa do envio ou consulta), sempre com o grupo no where. Só muda a
+ * linha ainda pendente: clique e aviso da NG consultam juntos, e a resposta que chega depois não
+ * desfaz o resultado já gravado.
+ */
 export async function gravarResultadoDaInutilizacao(
   tx: Executor, inutilizacao: { id: string; grupoId: string }, r: InutilizacaoConsultada,
 ): Promise<void> {
   await tx.update(notasFiscaisSaidaInutilizacoes).set({
     status: r.status, situacao: situacaoInutilizacao(r.status), motivoStatus: r.motivoStatus, protocolo: r.protocolo,
     atualizadoEm: sql`now()` as unknown as Date,
-  }).where(and(eq(notasFiscaisSaidaInutilizacoes.id, inutilizacao.id), eq(notasFiscaisSaidaInutilizacoes.grupoId, inutilizacao.grupoId)))
+  }).where(and(eq(notasFiscaisSaidaInutilizacoes.id, inutilizacao.id), eq(notasFiscaisSaidaInutilizacoes.grupoId, inutilizacao.grupoId),
+    eq(notasFiscaisSaidaInutilizacoes.situacao, 'pendente')))
 }
 
 /** O que a consulta do resultado lê da linha. */

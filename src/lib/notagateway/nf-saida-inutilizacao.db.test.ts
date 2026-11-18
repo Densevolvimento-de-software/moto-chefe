@@ -759,11 +759,11 @@ function ngQueResponde(resposta: Awaited<ReturnType<Consultar>>) {
 
 const depsDaConsulta = (tx: Tx, consultar: Consultar, agora = new Date()) => ({ exec: tx, config: m.configDoAmbiente, consultar, agora: () => agora })
 
-async function faixaPendente(tx: Tx, conta: Awaited<ReturnType<typeof semearContaFaixa>>) {
-  const r = await mf.inutilizarFaixa(conta.socio, conta.grupoId, faixa(), depsDaFaixa(tx, conta.grupoId))
+async function faixaPendente(tx: Tx, conta: Awaited<ReturnType<typeof semearContaFaixa>>, chave = CHAVE_1) {
+  const r = await mf.inutilizarFaixa(conta.socio, conta.grupoId, faixa({ chave }), depsDaFaixa(tx, conta.grupoId))
   assert.ok(r.ok)
   const id = r.inutilizacaoId
-  return { id, linha: async () => (await linhas(tx, sql`select * from notas_fiscais_saida_inutilizacoes where id = ${id}`))[0] }
+  return { id, idExterno: mf.idExternoDaFaixa(conta.grupoId, chave), linha: async () => (await linhas(tx, sql`select * from notas_fiscais_saida_inutilizacoes where id = ${id}`))[0] }
 }
 
 const AUTORIZADA = { status: 'Autorizada', motivoStatus: null, protocolo: '353190000062124' }
@@ -833,5 +833,21 @@ test('consulta com 404 da NG (D3): dentro do prazo segue pendente sem gravar; ve
     assert.deepEqual(vencido, { ok: true, situacao: 'negada', motivoStatus: motivo, protocolo: null })
     const depois = await f.linha()
     assert.deepEqual([depois.situacao, depois.status, depois.motivo_status], ['negada', 'NaoEnviada', motivo])
+  })
+})
+
+test('consulta que chega depois de a linha resolvida (clique e aviso juntos) não sobrescreve o resultado gravado', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001')
+    const f = await faixaPendente(tx, a)
+    const lidaPendente = await m.inutilizacaoDoUsuario(tx, a.socio, f.id)
+    assert.ok(lidaPendente)
+    await m.consultarInutilizacao(a.socio, f.id, depsDaConsulta(tx, ngQueResponde(AUTORIZADA).consultar))
+
+    const atrasada = ngQueResponde({ status: 'Negada', motivoStatus: 'resposta atrasada', protocolo: null })
+    await m.consultarResultadoDaLinha(lidaPendente, depsDaConsulta(tx, atrasada.consultar))
+
+    const l = await f.linha()
+    assert.deepEqual([l.situacao, l.status, l.motivo_status, l.protocolo], ['autorizada', 'Autorizada', null, AUTORIZADA.protocolo])
   })
 })
