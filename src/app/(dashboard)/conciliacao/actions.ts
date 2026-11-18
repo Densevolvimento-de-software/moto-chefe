@@ -3,9 +3,9 @@ import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { maquininhasDoGrupo } from '@/lib/maquininhas'
 import { gruposDoTerminalNaConta } from '@/lib/terminal-da-conta'
 import { db } from '@/lib/db'
-import { cartaoNaoEstornado, cartaoPendente } from '@/lib/cartao-status'
+import { cartaoNaoEstornado, cartaoPendente, linhaDeCartao } from '@/lib/cartao-status'
 import { conciliacoesCartao, pixRecebimentosMcp, vendas, modelos, motos, vendasPecas, ordensServico, clientes } from '@/lib/db/schema'
-import { eq, and, or, desc, gte, sql, isNull, ilike, inArray, ne } from 'drizzle-orm'
+import { eq, and, or, desc, gte, sql, isNull, ilike, inArray } from 'drizzle-orm'
 import { getUsuarioLogado } from '@/lib/auth'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
@@ -15,7 +15,7 @@ import { pagamentosEfetivosOS, precisaConciliar, type PgtoOS } from '@/lib/conci
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
 import { casarPorAutorizacao, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
 import { detectarFormato } from '@/lib/conciliacao-formato'
-import { LINHA_PIX, type TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
+import type { TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
 import { lerRelatorioCielo } from '@/lib/conciliacao-cielo'
 import { lerRelatorioRede } from '@/lib/conciliacao-rede'
 import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
@@ -378,10 +378,6 @@ export async function desvincularVendaAction(conciliacaoId: string) {
 
   revalidatePath('/conciliacao')
 }
-
-// As buscas do painel da venda servem ao pagamento de cartão: a linha Pix da maquininha Mercado Pago
-// (#51) cobre pagamento Pix e não entra nelas.
-const linhaDeCartao = ne(conciliacoesCartao.tipo, LINHA_PIX)
 
 export async function buscarConciliacoesPorValor(valor: number) {
   const usuario = await getUsuarioLogado()
