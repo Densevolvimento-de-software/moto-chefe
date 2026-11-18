@@ -1,10 +1,10 @@
 // Importação da maquininha Mercado Pago (Point) de um grupo (#51): cartão e Pix viram linhas de
 // conciliacoes_cartao do grupo, casadas com a venda das lojas dele; o estorno marca a linha que já existe.
 // A credencial é do grupo (mercadopago_config) e toda leitura e gravação leva o grupo_id.
-import { and, asc, eq, ne, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { conciliacoesCartao, grupos, mercadopagoConfig } from '@/lib/db/schema'
-import { CARTAO_ESTORNADO } from '@/lib/cartao-status'
+import { CARTAO_ESTORNADO, cartaoNaoEstornado } from '@/lib/cartao-status'
 import { decifrar } from '@/lib/cripto'
 import { lojasDoGrupo } from '@/lib/conta'
 import { RecusaUsuario } from '@/lib/resultado-action'
@@ -104,7 +104,7 @@ async function gravarLinha(tx: Tx, grupoId: string, lojaIds: string[], t: Transa
 async function marcarEstorno(tx: Tx, grupoId: string, nsu: string): Promise<boolean> {
   const linhas = await tx.update(conciliacoesCartao)
     .set({ status: CARTAO_ESTORNADO, conciliado: false })
-    .where(and(chaveDaLinha(grupoId, nsu), ne(conciliacoesCartao.status, CARTAO_ESTORNADO)))
+    .where(and(chaveDaLinha(grupoId, nsu), cartaoNaoEstornado))
     .returning({ id: conciliacoesCartao.id })
   return linhas.length > 0
 }
