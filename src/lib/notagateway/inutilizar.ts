@@ -9,7 +9,7 @@ import { ambienteLiberado, divergenciaDeAmbiente, FORA_DA_PRODUCAO } from './amb
 import { credencialCompleta } from './credencial-tela'
 import {
   ACAO_INUTILIZAR, type ContextoInutilizacao, decidirInutilizacao, ERRO_JA_PEDIDA, ERRO_SEM_CONFIGURACAO, pedidoSemRespostaVenceu,
-  podePedirInutilizacao, situacaoInutilizacao,
+  podePedirInutilizacao, situacaoInutilizacao, type SituacaoInutilizacao,
   STATUS_NAO_ENVIADA, STATUS_SEM_CONFIGURACAO, validarJustificativa,
 } from './inutilizacao'
 import { STATUS_MORTOS } from './status'
@@ -285,7 +285,7 @@ export type DependenciasConsulta = Pick<DependenciasInutilizacao, 'exec' | 'conf
 
 export const DEPENDENCIAS_CONSULTA: DependenciasConsulta = { exec: db, config: configDoAmbiente, consultar: consultarInutilizacaoNaNg, agora: () => new Date() }
 
-export type ResultadoDaConsulta = Resultado<{ situacao: string; motivoStatus: string | null; protocolo: string | null }>
+export type ResultadoDaConsulta = Resultado<{ situacao: SituacaoInutilizacao; motivoStatus: string | null; protocolo: string | null }>
 
 /**
  * Consulta na NG a inutilização já achada e grava status, motivo e protocolo. Só a pendente
