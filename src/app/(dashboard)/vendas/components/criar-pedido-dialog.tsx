@@ -53,7 +53,12 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
     let vivo = true
     setCatalogo({ lista: null, erro: null })
     pecasDaLojaParaPedidoAction(lojaDoPedido)
-      .then(r => { if (vivo) setCatalogo(r.ok ? { lista: r.dados, erro: null } : { lista: null, erro: r.erro }) })
+      .then(r => {
+        if (!vivo) return
+        setCatalogo(r.ok ? { lista: r.dados, erro: null } : { lista: null, erro: r.erro })
+        // Outra 1ª moto pode ser de outra loja: as peças já escolhidas passam a mostrar o saldo dela.
+        if (r.ok) setPecas(atual => atual.map(p => ({ ...p, peca: r.dados.find(x => x.id === p.peca.id) ?? p.peca })))
+      })
       .catch(() => { if (vivo) setCatalogo({ lista: null, erro: 'tente de novo em instantes' }) })
     return () => { vivo = false }
   }, [lojaDoPedido])

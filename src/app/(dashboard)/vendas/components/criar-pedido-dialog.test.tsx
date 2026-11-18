@@ -22,7 +22,7 @@ mock.module('../actions', { namedExports: {
   criarPedidoVendaAction: (motos: unknown, observacao: string, entrega: unknown, pecas?: unknown) =>
     (pecas === undefined ? criar(motos, observacao, entrega) : criar(motos, observacao, entrega, pecas)),
   buscarPrecoMinimoAction: async () => minimo,
-  pecasDaLojaParaPedidoAction: async () => catalogo,
+  pecasDaLojaParaPedidoAction: async (lojaId: string) => (lojaId === 'norte' ? { ok: true, dados: CATALOGO.map(p => ({ ...p, quantidadeEstoque: 5 })) } : catalogo),
 } })
 
 const montados: (() => Promise<void>)[] = []
@@ -496,4 +496,15 @@ test('catálogo que não carrega avisa por quê, sem sumir com o botão', async 
   await t.adicionarMotos(MOTO)
   await t.clique(botao('Acessório'))
   assert.match(textoDaTela(), /Não deu para carregar as peças: Loja não encontrada/)
+})
+
+test('trocar a loja do pedido (outra 1ª moto) atualiza o saldo das peças já escolhidas', async () => {
+  const t = await montar([MOTO, DO_NORTE])
+  await t.adicionarMotos(MOTO)
+  await t.adicionarPecas('Acessório', ['Capacete fechado', 1])
+  assert.match(itens(), /Fica em -1/)
+  await t.clique(document.querySelector('[aria-label="Tirar a MC JET do pedido"]'))
+  await t.adicionarMotos(DO_NORTE)
+  assert.match(itens(), /Capacete fechado/)
+  assert.doesNotMatch(itens(), /Fica em/)
 })
