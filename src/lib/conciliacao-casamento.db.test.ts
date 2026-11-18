@@ -64,6 +64,12 @@ async function semearVendaPeca(tx: Tx, c: Conta, pagamentos: Pagamentos) {
   return venda.id as string
 }
 
+async function semearOs(tx: Tx, c: Conta, pagamentos: Pagamentos, concluidaEm = noDia) {
+  const [os] = await linhas(tx, sql`insert into ordens_servico (loja_id, aberta_por, descricao, status, pagamentos, data_conclusao)
+    values (${c.lojaId}, ${c.usuarioId}, 'revisão', 'concluida', ${JSON.stringify(pagamentos)}::jsonb, ${concluidaEm}::timestamptz) returning id`)
+  return os.id as string
+}
+
 const NENHUM = { vendaId: null, pecaVendaId: null, osId: null }
 const transacao = (valorBruto: number, parcelas: number) => ({ dataTransacao: DIA, valorBruto, parcelas })
 
@@ -121,5 +127,67 @@ test('casarPorAutorizacao prefere a moto e não cruza Contas', async () => {
     assert.deepEqual(await mod.casarPorAutorizacao(tx, [a.lojaId], 'DEF456'), { ...NENHUM, vendaId })
     assert.deepEqual(await mod.casarPorAutorizacao(tx, [b.lojaId], 'DEF456'), NENHUM)
     assert.deepEqual(await mod.casarPorAutorizacao(tx, [], 'DEF456'), NENHUM)
+  })
+})
+
+test('casarPorValor cai para a OS quando moto e peça não casam', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    await semearVendaPeca(tx, a, cartao(70, 1))
+    const osId = await semearOs(tx, a, cartao(321.5, 2))
+    assert.deepEqual(await mod.casarPorValor(tx, [a.lojaId], transacao(321.5, 2)), { ...NENHUM, osId })
+  })
+})
+
+test('casarPorValor prefere a moto quando moto e peça casam', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    await semearVendaPeca(tx, a, cartao(500, 1))
+    const vendaId = await semearVendaMoto(tx, a, cartao(500, 1))
+    assert.deepEqual(await mod.casarPorValor(tx, [a.lojaId], transacao(500, 1)), { ...NENHUM, vendaId })
+  })
+})
+
+test('casarPorValor aceita débito e link de pagamento, e não casa Pix do mesmo valor', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    const debito = await semearVendaPeca(tx, a, [{ tipo: 'cartao_debito', valor: 41, parcelas: 1 }])
+    const link = await semearVendaPeca(tx, a, [{ tipo: 'link_pagamento', valor: 42, parcelas: 1 }])
+    await semearVendaPeca(tx, a, [{ tipo: 'pix', valor: 43 }])
+    assert.deepEqual(await mod.casarPorValor(tx, [a.lojaId], transacao(41, 1)), { ...NENHUM, pecaVendaId: debito })
+    assert.deepEqual(await mod.casarPorValor(tx, [a.lojaId], transacao(42, 1)), { ...NENHUM, pecaVendaId: link })
+    assert.deepEqual(await mod.casarPorValor(tx, [a.lojaId], transacao(43, 1)), NENHUM)
+  })
+})
+
+// A janela é de 24 h para cada lado do meio-dia UTC do dia da transação. A venda às 12h de Brasília
+// (15h UTC) casa com a transação do dia seguinte e não com a do dia anterior (que vai só até 12h UTC).
+test('casarPorValor: janela de 24 h em volta do meio-dia UTC do dia da transação', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    const vendaId = await semearVendaMoto(tx, a, cartao(777, 1))
+    const em = (dataTransacao: string) => mod.casarPorValor(tx, [a.lojaId], { dataTransacao, valorBruto: 777, parcelas: 1 })
+    assert.deepEqual(await em('2026-11-05'), { ...NENHUM, vendaId })
+    assert.deepEqual(await em('2026-11-06'), { ...NENHUM, vendaId })
+    assert.deepEqual(await em('2026-11-04'), NENHUM)
+    assert.deepEqual(await em('2026-11-07'), NENHUM)
+  })
+})
+
+test('casarPorValor: pagamento sem parcelas registradas casa com qualquer número de parcelas', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    const vendaId = await semearVendaMoto(tx, a, [{ tipo: 'cartao_credito', valor: 999 }])
+    assert.deepEqual(await mod.casarPorValor(tx, [a.lojaId], transacao(999, 10)), { ...NENHUM, vendaId })
+  })
+})
+
+test('casarPorAutorizacao acha a OS e não cruza Contas', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    const b = await semearConta(tx, 'B')
+    const osId = await semearOs(tx, a, cartao(60, 1, { autorizacao: 'OS7788' }))
+    assert.deepEqual(await mod.casarPorAutorizacao(tx, [a.lojaId], 'OS7788'), { ...NENHUM, osId })
+    assert.deepEqual(await mod.casarPorAutorizacao(tx, [b.lojaId], 'OS7788'), NENHUM)
   })
 })
