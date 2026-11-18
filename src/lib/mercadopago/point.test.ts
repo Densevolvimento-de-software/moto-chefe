@@ -1,6 +1,6 @@
 import { test, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { buscarPagamentosAlterados, consultarConta } from './point'
+import { buscarPagamentosAlterados, buscarPagamentosDaRodada, consultarConta, juntarPorId, type PagamentoMp } from './point'
 import { ErroMercadoPago } from './cliente'
 
 const TOKEN = 'TEST-tok-0000'
@@ -82,4 +82,32 @@ test('403 também vira credencial recusada sem o token', async () => {
     assert.equal(err.message, 'Credencial do Mercado Pago recusada (HTTP 403). Cadastre o token novo.')
     return true
   })
+})
+
+// Decisão B do Luis (#51): a mesma busca do MP devolve ora 9, ora 17 (os cartões somem e voltam). A rodada busca 2
+// vezes e junta por id.
+test('rodada busca 2 vezes e junta: 1ª devolve 1, 2ª devolve 3 com o mesmo de antes, ficam 3', async () => {
+  const chamadas = mockFetch([
+    { body: { paging: { total: 1 }, results: pagamentos(1, 5) } },
+    { body: { paging: { total: 3 }, results: pagamentos(3, 4) } },
+  ])
+  const r = await buscarPagamentosDaRodada(TOKEN, periodo)
+  assert.deepEqual(r.map(p => p.id).sort(), [4, 5, 6])
+  assert.equal(chamadas.length, 2)
+})
+
+const alterado = (id: number, status: string, quando: string) =>
+  ({ id, status, date_last_updated: quando }) as PagamentoMp
+
+test('juntarPorId: o mesmo id nas duas listas fica uma vez, com a versão de date_last_updated mais nova', () => {
+  const aprovado = alterado(7, 'approved', '2026-11-10T14:00:05.000-03:00')
+  const estornado = alterado(7, 'refunded', '2026-11-11T09:00:00.000-03:00')
+  const outro = alterado(8, 'approved', '2026-11-10T15:00:00.000-03:00')
+  assert.deepEqual(juntarPorId([[aprovado, outro], [estornado]]), [estornado, outro])
+  assert.deepEqual(juntarPorId([[estornado], [aprovado, outro]]), [estornado, outro])
+})
+
+test('juntarPorId: a mesma lista 2 vezes não repete nada', () => {
+  const lista = [alterado(1, 'approved', '2026-11-10T10:00:00Z'), alterado(2, 'approved', '2026-11-10T11:00:00Z')]
+  assert.deepEqual(juntarPorId([lista, lista]), lista)
 })
