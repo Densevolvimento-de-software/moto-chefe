@@ -112,7 +112,7 @@ test('custo fora da faixa: no lugar do exemplo, o aviso com a frase do servidor,
   }
   assert.equal(botao('Salvar taxas')?.disabled, false)
   await digitar(campoCustoPix()!, '0.2')
-  assert.equal(document.querySelector('[role="alert"]'), null)
+  assert.equal(document.querySelector('[role="alert"]')?.textContent ?? null, null)
   assert.equal(exemplo()['Entra na conta'], 'R$ 9.980,00')
 })
 
@@ -122,4 +122,21 @@ test('digitar "0,20" com vírgula vale 0,20%: o exemplo mostra R$ 20,00 e o salv
   assert.deepEqual(exemplo(), { 'Valor do PIX': 'R$ 10.000,00', 'Custo do PIX': 'R$ 20,00', 'Entra na conta': 'R$ 9.980,00' })
   await clicar(botao('Salvar taxas'))
   assert.equal(enviados[0]?.custoPixTaxa, '0.002')
+})
+
+test('texto ilegível: aviso com a frase, e o salvar envia NaN para o servidor recusar', async () => {
+  await montar(false)
+  await digitar(campoCustoPix()!, 'abc')
+  assert.equal(document.querySelector('[role="alert"]')?.textContent, 'O custo do PIX precisa ser de 0 até menos de 100%')
+  await clicar(botao('Salvar taxas'))
+  assert.equal(enviados[0]?.custoPixTaxa, 'NaN')
+})
+
+test('campo vazio vale 0: sem aviso, e o salvar envia 0', async () => {
+  await montar(false, { ...TAXAS, custoPixTaxa: '0.002000' })
+  await digitar(campoCustoPix()!, '')
+  assert.equal(document.querySelector('[role="alert"]')?.textContent ?? null, null)
+  assert.equal(exemplo()['Custo do PIX'], 'R$ 0,00')
+  await clicar(botao('Salvar taxas'))
+  assert.equal(enviados[0]?.custoPixTaxa, '0')
 })
