@@ -55,6 +55,12 @@ test('custoPixDoCampo: o texto do campo, em %, vira a fração; vazio vale 0', (
   assert.equal(custoPixDoCampo('99,99'), 0.9999)
 })
 
+// #108: '0.020' era lido como milhar (20%).
+test('custoPixDoCampo: ponto decimal com zero à esquerda não vira milhar', () => {
+  assert.equal(custoPixDoCampo('0.020'), 0.0002)
+  assert.equal(custoPixDoCampo('0.200'), 0.002)
+})
+
 test('custoPixDoCampo: ilegível ou fora da faixa é null', () => {
   for (const texto of ['abc', '0,2%', '100', '1.000', '-1']) assert.equal(custoPixDoCampo(texto), null, texto)
 })
