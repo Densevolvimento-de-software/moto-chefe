@@ -59,8 +59,8 @@ async function abrirComoSocio(base: Base, rotulo: string) {
 
 test('o sócio de cada Conta vê só o custo do PIX do próprio grupo', async () => {
   const [a, b] = contas
-  assert.equal(await abrirComoSocio(b, 'socio-b'), '0.5')
-  assert.equal(await abrirComoSocio(a, 'socio-a'), '0.2')
+  assert.equal(await abrirComoSocio(b, 'socio-b'), '0,5')
+  assert.equal(await abrirComoSocio(a, 'socio-a'), '0,2')
 })
 
 test('grupo sem taxas cadastradas abre o custo do PIX vazio, como 0', async () => {

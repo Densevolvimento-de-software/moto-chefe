@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { salvarTaxasAction, type TaxasPayload } from '../actions'
 import { CUSTO_PIX_FORA_DA_FAIXA, creditoDoPix, lerCustoPixTaxa } from '@/lib/custo-pix'
 import { fmtBRL } from '@/lib/preco-minimo'
+import { parseNumeroBR } from '@/lib/numero-br'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { ChevronDown, Save } from 'lucide-react'
 
@@ -135,9 +136,11 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: TaxasPayload; r
   const [freteKmGratis, setFreteKmGratis] = useState(String(taxas.freteKmGratis))
   const [freteValorFixo, setFreteValorFixo] = useState(taxas.freteValorFixo)
   const [imposto, setImposto] = useState(toStr(Number(taxas.imposto)))
-  const [custoPix, setCustoPix] = useState(toStr(Number(taxas.custoPixTaxa)))
+  const [custoPix, setCustoPix] = useState(toStr(Number(taxas.custoPixTaxa)).replace('.', ','))
+  // Lido no padrão brasileiro ("0,20"); vazio vale 0, como diz a ajuda do campo.
+  const custoPixPercentual = custoPix.trim() === '' ? 0 : parseNumeroBR(custoPix)
   // Mesma regra do servidor: fora da faixa avisa (o Salvar continua e o servidor recusa).
-  const custoPixValido = lerCustoPixTaxa(toDecimal(custoPix))
+  const custoPixValido = custoPixPercentual === null ? null : lerCustoPixTaxa(custoPixPercentual / 100)
   const [loading, setLoading] = useState(false)
 
   function setCartaoRate(n: number, v: string) { setCartao(prev => ({ ...prev, [String(n)]: v })) }
@@ -157,7 +160,8 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: TaxasPayload; r
         freteKmGratis: parseInt(freteKmGratis, 10) || 40,
         freteValorFixo: freteValorFixo || '0.00',
         imposto: String(toDecimal(imposto || '6')),
-        custoPixTaxa: String(toDecimal(custoPix)),
+        // Ilegível vai como NaN: o servidor recusa com a frase, como fora da faixa.
+        custoPixTaxa: String(custoPixPercentual === null ? NaN : custoPixPercentual / 100),
       })
       if (r.ok) toast.success('Taxas salvas com sucesso')
       else toast.error(r.erro)
@@ -214,9 +218,7 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: TaxasPayload; r
                 <Label htmlFor="custo-pix" className="text-xs">Custo do PIX (%)</Label>
                 <Input
                   id="custo-pix"
-                  type="number"
-                  step="0.01"
-                  min="0"
+                  inputMode="decimal"
                   className="h-9 text-sm"
                   placeholder="0,00"
                   value={custoPix}

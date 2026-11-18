@@ -76,7 +76,7 @@ test('a aba PIX vem antes de Cartão de Crédito e o quadro abre nela, com o cus
   await montar(false, { ...TAXAS, custoPixTaxa: '0.002000' })
   assert.deepEqual(abas().slice(0, 2).map(a => a.textContent), ['PIX', 'Cartão de Crédito (1–21x)'])
   assert.equal(abas()[0].getAttribute('aria-selected'), 'true')
-  assert.equal(campoCustoPix()?.value, '0.2')
+  assert.equal(campoCustoPix()?.value, '0,2')
 })
 
 test('o exemplo de um PIX de R$ 10.000,00 recalcula ao digitar o custo', async () => {
@@ -114,4 +114,12 @@ test('custo fora da faixa: no lugar do exemplo, o aviso com a frase do servidor,
   await digitar(campoCustoPix()!, '0.2')
   assert.equal(document.querySelector('[role="alert"]'), null)
   assert.equal(exemplo()['Entra na conta'], 'R$ 9.980,00')
+})
+
+test('digitar "0,20" com vírgula vale 0,20%: o exemplo mostra R$ 20,00 e o salvar envia 0,002', async () => {
+  await montar(false)
+  await digitar(campoCustoPix()!, '0,20')
+  assert.deepEqual(exemplo(), { 'Valor do PIX': 'R$ 10.000,00', 'Custo do PIX': 'R$ 20,00', 'Entra na conta': 'R$ 9.980,00' })
+  await clicar(botao('Salvar taxas'))
+  assert.equal(enviados[0]?.custoPixTaxa, '0.002')
 })
