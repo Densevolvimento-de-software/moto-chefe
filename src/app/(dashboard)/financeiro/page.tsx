@@ -24,6 +24,7 @@ import { configDespesas } from '@/lib/queries/config-despesas'
 import { calcularResultadoPorLoja } from '@/lib/resultado-por-loja'
 import { despesaDaLojaFiltrada } from '@/lib/despesa-loja-filtrada'
 import { valorLiquidoExpr } from '@/lib/queries/valor-liquido'
+import { tarifaPixDoPeriodo, tarifaTotal } from '@/lib/queries/tarifa-pix'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
 import { somaCustoMotoExpr, qtdSemCustoExpr } from '@/lib/queries/custo-moto'
 import { TriangleAlert } from 'lucide-react'
@@ -79,7 +80,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     ? sql`AND p.loja_id = ${lojaParamValido}`
     : sql`AND p.loja_id IN (${sql.join(lojaIdsGrupo.map(id => sql`${id}`), sql`, `)})`
 
-  const [totaisVendas, resumoPorLoja, lojasOpts, resumoPorVendedor, resumoPorPagamentoRaw, parcelamentoRaw, resumoPorModelo, saidasBanco, manuaisForaDoBanco, config, totaisOS, totaisPecas, taxasOutras, saidasCaixa] = await Promise.all([
+  const [totaisVendas, resumoPorLoja, lojasOpts, resumoPorVendedor, resumoPorPagamentoRaw, parcelamentoRaw, resumoPorModelo, saidasBanco, manuaisForaDoBanco, config, totaisOS, totaisPecas, taxasOutras, saidasCaixa, tarifasPix] = await Promise.all([
     db
       .select({
         totalVendas: sql<string>`COALESCE(SUM(${vendas.valor}), '0')`,
@@ -318,6 +319,13 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
           ? eq(lancamentosCaixa.lojaId, lojaParamValido)
           : inArray(lancamentosCaixa.lojaId, lojaIdsGrupo),
       )),
+    // Tarifa do Pix da maquininha Mercado Pago (#51): sai da taxa de cartão para o card próprio. fimTs é
+    // inclusivo aqui; a consulta usa [início, fim), daí o 1 ms.
+    tarifaPixDoPeriodo(
+      escopoGeral ? [] : lojaParamValido ? [lojaParamValido] : lojaIdsGrupo,
+      inicioTs,
+      new Date(fimTs.getTime() + 1),
+    ),
   ])
 
   const receitaVendas = Number(totaisVendas[0]?.totalVendas ?? 0)
@@ -370,9 +378,11 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
 
   const taxaCartaoMotos = receitaVendas - receitaLiquida
   const taxaCartaoOutras = Number((taxasOutras as unknown as { taxa: string }[])[0]?.taxa ?? 0)
-  const taxasCartao = taxaCartaoMotos + taxaCartaoOutras
+  // As duas taxas acima incluem a tarifa do Pix da maquininha, que tem card próprio.
+  const tarifaPix = tarifaTotal(tarifasPix)
+  const taxasCartao = taxaCartaoMotos + taxaCartaoOutras - tarifaPix
 
-  const faturamentoLiquido = faturamentoBruto - taxasCartao
+  const faturamentoLiquido = faturamentoBruto - taxasCartao - tarifaPix
 
   // Compra de mercadoria. Fica FORA do lucro de propósito: o custo da moto vendida já
   // está em "Custo Total", e comprar estoque não é despesa do mês — é dinheiro que
@@ -494,7 +504,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Faturamento Líquido</CardTitle></CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-success">{fmt(faturamentoLiquido)}</p>
-            <p className="text-xs text-muted-foreground">bruto − taxas de cartão</p>
+            <p className="text-xs text-muted-foreground">bruto menos taxas de cartão e tarifa do PIX</p>
           </CardContent>
         </Card>
         <Card>
@@ -503,6 +513,15 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
             <p className="text-2xl font-bold text-destructive">-{fmt(taxasCartao)}</p>
             {faturamentoBruto > 0 && (
               <p className="text-xs text-muted-foreground">{((taxasCartao / faturamentoBruto) * 100).toFixed(1)}% do bruto</p>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Tarifa PIX na maquininha</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-destructive">-{fmt(tarifaPix)}</p>
+            {faturamentoBruto > 0 && (
+              <p className="text-xs text-muted-foreground">{((tarifaPix / faturamentoBruto) * 100).toFixed(1)}% do bruto</p>
             )}
           </CardContent>
         </Card>
