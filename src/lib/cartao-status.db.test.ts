@@ -108,7 +108,7 @@ test('vincular a venda, peça ou OS de outra Conta é recusado e a linha não mu
   const [pecaB] = await linhas(sql`insert into vendas_pecas (loja_id, vendedor_id, forma_pagamento, pagamentos, valor_total)
     values (${b.base.lojaId}, ${usuario.id}, 'cartao_credito', '[]'::jsonb, 100) returning id`)
   const [osB] = await linhas(sql`insert into ordens_servico (loja_id, aberta_por, descricao) values (${b.base.lojaId}, ${usuario.id}, 'revisão') returning id`)
-  const { base } = await semear()
+  const { base } = await semear() // a sessão passa a ser a da Conta A
   const linhaA = await cartao(base.grupoId, 1000, 'aprovado', null)
   const antes = await linhaDe(linhaA)
 
@@ -122,7 +122,7 @@ test('vincular a linha de outra Conta recebe "Conciliação não encontrada" e a
   const b = await semear()
   const linhaB = await cartao(b.base.grupoId, 1000, 'aprovado', null)
   const antes = await linhaDe(linhaB)
-  const { vendaId } = await semear()
+  const { vendaId } = await semear() // a sessão passa a ser a da Conta A
 
   await assert.rejects(actions.vincularVendaAction(linhaB, vendaId, 'moto'), { message: 'Conciliação não encontrada' })
   assert.deepEqual(await linhaDe(linhaB), antes)
@@ -158,7 +158,7 @@ test('desvincular a linha de outra Conta recebe "Conciliação não encontrada" 
   const linhaB = await cartao(b.base.grupoId, 1000, 'aprovado', null)
   await linhas(sql`update conciliacoes_cartao set venda_id = ${b.vendaId}, conciliado = true where id = ${linhaB}`)
   const antes = await linhaDe(linhaB)
-  await semear()
+  await semear() // a sessão passa a ser a da Conta A
 
   await assert.rejects(actions.desvincularVendaAction(linhaB), { message: 'Conciliação não encontrada' })
   assert.deepEqual(await linhaDe(linhaB), antes)
