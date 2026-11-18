@@ -812,3 +812,26 @@ test('consulta (clique) de linha já resolvida: devolve o gravado sem ir à NG',
     assert.equal(ng.chamadas.length, 0)
   })
 })
+
+test('consulta com 404 da NG (D3): dentro do prazo segue pendente sem gravar; vencido nega e libera a faixa', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001')
+    const f = await faixaPendente(tx, a)
+    const antes = await f.linha()
+    const naoAchou = ngQueResponde(null).consultar
+    const { MINUTOS_PARA_DESCARTAR } = await import('@/lib/notagateway/status')
+    const criado = new Date(antes.criado_em).getTime()
+
+    const noPrazo = await m.consultarInutilizacao(a.socio, f.id, depsDaConsulta(tx, naoAchou, new Date(criado + (MINUTOS_PARA_DESCARTAR - 1) * 60_000)))
+    assert.deepEqual(noPrazo, { ok: true, situacao: 'pendente', motivoStatus: null, protocolo: null })
+    assert.deepEqual(await f.linha(), antes)
+
+    const vencido = await m.consultarInutilizacao(a.socio, f.id, depsDaConsulta(tx, naoAchou, new Date(criado + MINUTOS_PARA_DESCARTAR * 60_000)))
+    const motivo = 'O pedido não chegou à Nota Gateway. Peça a inutilização de novo.'
+    assert.deepEqual(vencido, { ok: true, situacao: 'negada', motivoStatus: motivo, protocolo: null })
+    const depois = await f.linha()
+    assert.deepEqual([depois.situacao, depois.status, depois.motivo_status], ['negada', 'NaoEnviada', motivo])
+    // Negada libera a mesma faixa para um pedido novo (índice único parcial).
+    assert.ok((await mf.inutilizarFaixa(a.socio, a.grupoId, faixa({ chave: CHAVE_2 }), depsDaFaixa(tx, a.grupoId))).ok)
+  })
+})
