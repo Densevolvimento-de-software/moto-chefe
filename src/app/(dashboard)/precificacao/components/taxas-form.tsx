@@ -173,7 +173,7 @@ export function TaxasForm({ taxas, recolhida = false }: { taxas: TaxasPayload; r
           <h2 className="font-semibold text-foreground">Configuração de Taxas Globais</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             {recolhida
-              ? 'O simulador deste grupo não usa as taxas de cartão. Frete e imposto continuam valendo.'
+              ? 'O simulador deste grupo não usa as taxas de cartão. Frete, imposto e custo do PIX continuam valendo.'
               : 'Aplicadas sobre o valor mínimo de cada modelo'}
           </p>
         </div>
