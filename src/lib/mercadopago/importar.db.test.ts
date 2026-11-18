@@ -176,6 +176,16 @@ test('estorno: a linha fica estornada, não conciliada e ligada à venda, e não
   assert.deepEqual(await importar(a, estornos), { ...NADA, duplicadas: 1, estornosSemLinha: 1 })
 })
 
+test('estorno do Pix da maquininha marca a linha pix pela mesma chave', async () => {
+  const a = await semearConta('A')
+  const vendaId = await venda(a, [{ tipo: 'pix', valor: 80 }])
+  const id = novoId()
+  await importar(a, [pg(pixFixture, { id })])
+  assert.deepEqual(await importar(a, [pg(pixFixture, { id, status: 'refunded', status_detail: 'refunded' })]), { ...NADA, estornos: 1 })
+  const [linha] = await linhasDoGrupo(a.grupoId)
+  assert.deepEqual([linha.tipo, linha.status, linha.conciliado, linha.venda_id], ['pix', 'estornado', false, vendaId])
+})
+
 test('isolamento: Conta B não casa com a venda de A, não estorna a linha de A e o mesmo nsu vira uma linha em cada', async () => {
   const a = await semearConta('A')
   const b = await semearConta('B')
