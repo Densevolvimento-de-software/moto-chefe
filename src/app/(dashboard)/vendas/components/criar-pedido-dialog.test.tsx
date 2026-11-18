@@ -554,3 +554,14 @@ test('celular: brinde entra "Sem cobrança" no próprio bloco e não muda o tota
   assert.match(itens(), /Baú traseiro.*Sem cobrança \(catálogo R\$\s*249,00\)/)
   assert.match(document.querySelector('[data-slot="dialog-footer"]')?.textContent ?? '', /Total do pedido\s*R\$\s*0,00/)
 })
+
+test('celular: valor inválido num bloco fechado avisa no rodapé, que fica à vista, por que "Criar pedido" está apagado', async () => {
+  desktop = false
+  const t = await montar()
+  await t.clique(por('MC JET (final 4131)'))
+  await digitar(campo<HTMLInputElement>(/^Valor da MC JET/), '0')
+  await t.clique(bloco('Acessórios'))
+  assert.equal(bloco('Motos')?.getAttribute('aria-expanded'), 'false')
+  assert.equal(botao('Criar pedido')?.disabled, true)
+  assert.match(document.querySelector('[data-slot="dialog-footer"]')?.textContent ?? '', /Há um valor inválido no pedido/)
+})

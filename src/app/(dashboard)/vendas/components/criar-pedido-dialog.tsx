@@ -178,7 +178,11 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
           {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}
           {/* No celular o total e "Criar pedido" ficam fixos embaixo (N3). */}
           <DialogFooter className="flex-col items-stretch max-lg:sticky max-lg:-bottom-4 max-lg:z-10 max-lg:bg-popover sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">Total do pedido <strong className="block text-lg text-foreground">{brl(total)}</strong></p>
+            <div>
+              <p className="text-sm text-muted-foreground">Total do pedido <strong className="block text-lg text-foreground">{brl(total)}</strong></p>
+              {/* No celular o item com o erro pode estar num bloco fechado: o motivo do botão apagado fica à vista aqui. */}
+              {(envio === null || envioPecas === null) && <p role="alert" className="text-xs text-destructive">Há um valor inválido no pedido.</p>}
+            </div>
             <div className="grid grid-cols-2 gap-2 sm:flex">
               <Button variant="outline" className="h-11" onClick={() => setOpen(false)}>Cancelar</Button>
               <Button className="h-11" onClick={handleCriar} disabled={loading || !envio?.length || !envioPecas || quemRecebeInvalido(entrega)}>
