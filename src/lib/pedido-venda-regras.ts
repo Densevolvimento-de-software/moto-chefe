@@ -168,6 +168,20 @@ export function aprovacaoDoPedido(p: {
 /** Peça que entra no pedido (#778): brinde (R$ 0) ou acessório, do catálogo de peças da Conta. */
 export type PecaDoPedidoInput = { tipo: 'brinde' | 'acessorio'; pecaId: string; quantidade: number; valorUnitario?: number }
 
+/**
+ * Editar o pedido pendente (#25, decisão 4 do Luis): quem não ajusta preço mantém o valor do item que já estava (mesmo tipo e peça,
+ * inclusive o ajustado por um gestor); o valor que ele manda é descartado, e peça nova vai pelo catálogo.
+ */
+export function pecasComPrecoMantido(
+  atuais: readonly { tipo: string; pecaId: string | null; valorUnitario: string | null }[],
+  pedidas: readonly PecaDoPedidoInput[],
+): PecaDoPedidoInput[] {
+  return pedidas.map(({ valorUnitario: _descartado, ...p }) => {
+    const atual = atuais.find(a => a.tipo === p.tipo && a.pecaId === p.pecaId)
+    return atual?.valorUnitario != null ? { ...p, valorUnitario: Number(atual.valorUnitario) } : p
+  })
+}
+
 /** Valor unitário gravado no item: brinde sempre R$ 0; acessório com o valor ajustado (já saneado) ou o do catálogo. */
 export function valorDaPecaNoPedido(p: PecaDoPedidoInput, precoDoCatalogo: string): string {
   if (p.tipo === 'brinde') return '0.00'
