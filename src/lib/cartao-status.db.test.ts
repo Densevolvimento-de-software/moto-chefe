@@ -127,3 +127,18 @@ test('vincular a linha de outra Conta recebe "Conciliação não encontrada" e a
   await assert.rejects(actions.vincularVendaAction(linhaB, vendaId, 'moto'), { message: 'Conciliação não encontrada' })
   assert.deepEqual(await linhaDe(linhaB), antes)
 })
+
+// As somas de receita só olham conciliado = true: linha estornada conciliada contaria como paga.
+test('o banco recusa linha estornada marcada como conciliada', async () => {
+  const { base, vendaId } = await semear()
+  await assert.rejects(
+    linhas(sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, nsu, valor_bruto, status, venda_id, conciliado)
+      values (${base.grupoId}, 'mercadopago', '2026-11-05', ${randomUUID()}, 1000, 'estornado', ${vendaId}, true)`),
+    (e: unknown) => (e as { cause?: { code?: string } }).cause?.code === '23514',
+  )
+  const aprovada = await cartao(base.grupoId, 1000, 'aprovado', vendaId)
+  await assert.rejects(
+    linhas(sql`update conciliacoes_cartao set conciliado = true, status = 'estornado' where id = ${aprovada}`),
+    (e: unknown) => (e as { cause?: { code?: string } }).cause?.code === '23514',
+  )
+})

@@ -3,7 +3,7 @@
 -- mercadopago_config: credencial do Mercado Pago de cada grupo (ADR 0010), uma linha por grupo.
 -- Tabela própria, como a notagateway_config, e não colunas em grupos: as listas de grupos chegam
 -- inteiras a telas, e a credencial não pode ir junto (decisão do Luis na #51). token é cifrado
--- (src/lib/cripto.ts, iv:tag:dados). user_id é a conta no Mercado Pago.
+-- (src/lib/cripto.ts, iv:tag:dados). user_id é a conta no Mercado Pago. No fim, o check de linha estornada.
 
 create table mercadopago_config (
   grupo_id       uuid primary key references grupos(id) on delete cascade,
@@ -16,3 +16,9 @@ create table mercadopago_config (
 
 -- RLS sem policy fecha a tabela para o PostgREST; o app lê e grava pelo Drizzle (como a 0186).
 alter table mercadopago_config enable row level security;
+
+-- Linha estornada (status 'estornado', ver src/lib/cartao-status.ts) nunca fica conciliada: as somas de
+-- receita só olham conciliado = true, e uma estornada conciliada contaria como dinheiro recebido.
+-- Nenhuma linha grava 'estornado' antes desta migração (só o importador do Mercado Pago, #51).
+alter table conciliacoes_cartao add constraint conciliacoes_cartao_estornada_nao_conciliada
+  check (status <> 'estornado' or not conciliado);
