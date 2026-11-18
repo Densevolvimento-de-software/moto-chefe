@@ -231,3 +231,9 @@ test('linha pix da conciliação de cartão cobre o pagamento Pix, não o de car
     { conciliado: true, coberto: 300 },
   ])
 })
+
+test('linha de crédito não cobre pagamento Pix', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 300 }]
+  const concs = [{ id: 'c1', autorizacao: null, valorBruto: 300, tipo: 'credito' }]
+  assert.deepEqual(matchPagamentos(pgtos, concs, []), [{ conciliado: false, coberto: 0 }])
+})

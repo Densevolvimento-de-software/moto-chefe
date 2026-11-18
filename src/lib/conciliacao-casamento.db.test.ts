@@ -210,3 +210,24 @@ test('casarPorValor: linha pix não casa Pix de outra Conta', async () => {
     assert.deepEqual(await mod.casarPorValor(tx, [a.lojaId], { ...transacao(151, 1), tipo: 'pix' }), NENHUM)
   })
 })
+
+test('casarPorValor: linha de débito não casa pagamento Pix', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    await semearVendaPeca(tx, a, [{ tipo: 'pix', valor: 152 }])
+    assert.deepEqual(await mod.casarPorValor(tx, [a.lojaId], { ...transacao(152, 1), tipo: 'debito' }), NENHUM)
+  })
+})
+
+test('o banco recusa tipo de linha fora de crédito, débito e pix', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    await assert.rejects(
+      tx.transaction(async sp => {
+        await sp.execute(sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, nsu, valor_bruto, tipo)
+          values (${a.grupoId}, 'mercadopago', '2026-11-05', ${randomUUID()}, 10, 'boleto')`)
+      }),
+      (e: unknown) => (e as { cause?: { code?: string } }).cause?.code === '23514',
+    )
+  })
+})
