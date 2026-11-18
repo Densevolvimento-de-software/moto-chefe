@@ -111,7 +111,10 @@ export function PagamentosFields({ pgtos, onAdd, onRemove, onUpdate, taxasVenda,
             <div className="flex gap-2 items-center">
               <Select value={p.tipo} onValueChange={v => onUpdate(p.id, 'tipo', v ?? '')}>
                 <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Forma de pagamento" />
+                  {/* O valor é o código ('pix'): sem a função, o gatilho mostraria o código no lugar do nome (#574). */}
+                  <SelectValue placeholder="Forma de pagamento">
+                    {(v: string | null) => (v ? FORMAS.find(f => f.value === v)?.label ?? v : 'Forma de pagamento')}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {FORMAS.map(f => (

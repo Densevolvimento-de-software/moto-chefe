@@ -94,6 +94,8 @@ test('2 motos, acessório, brinde e frete: o recibo mostra cada item e o total; 
   assert.match(texto(), /Falta pagar R\$\s*15\.160,00/)
   await preencherCliente()
   await pagar('PIX', '800000', 1)
+  const formas = () => [...document.querySelectorAll('[role="combobox"]')].map(c => c.textContent?.replace('▼', '').trim())
+  assert.deepEqual(formas(), ['PIX'], 'a forma escolhida aparece pelo nome, não pelo código')
   assert.match(texto(), /Falta pagar R\$\s*7\.160,00/)
   assert.equal(botao('Confirmar venda')?.disabled, true)
   await pagar('Dinheiro', '716000', 2)
