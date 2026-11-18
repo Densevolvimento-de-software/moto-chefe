@@ -757,6 +757,9 @@ async function gravarPagamentos(alvo: AlvoConciliacao, lojaIdsGrupo: string[], p
   revalidatePathsConciliacao()
 }
 
+// `idx` vem do navegador: só índice inteiro conta ("length" ou "0" em texto acharia outra coisa).
+const pagamentoNo = (pgtos: PgtoOS[], idx: number) => Number.isInteger(idx) ? pgtos[idx] : undefined
+
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
 export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string) {
   return acao(() => forcarConciliacao(alvo, idx, motivo))
@@ -766,7 +769,7 @@ async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: str
   if (texto.length < 3) throw new RecusaUsuario('Informe o motivo da conciliação forçada')
 
   const { usuario, lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
-  const alvoPgto = pgtos[idx]
+  const alvoPgto = pagamentoNo(pgtos, idx)
   if (!alvoPgto) throw new RecusaUsuario('Pagamento não encontrado')
   if (!precisaConciliar(alvoPgto.tipo)) throw new RecusaUsuario('Esse pagamento não precisa de conciliação')
 
@@ -790,7 +793,7 @@ export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, id
 }
 async function desfazerConciliacaoForcada(alvo: AlvoConciliacao, idx: number) {
   const { lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
-  if (!pgtos[idx]) throw new RecusaUsuario('Pagamento não encontrado')
+  if (!pagamentoNo(pgtos, idx)) throw new RecusaUsuario('Pagamento não encontrado')
 
   const atualizados = pgtos.map((p, i) => {
     if (i !== idx) return p

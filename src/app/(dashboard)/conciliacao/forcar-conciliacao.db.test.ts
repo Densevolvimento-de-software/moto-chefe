@@ -182,3 +182,16 @@ test('admin_rede (persona real) força no grupo liberado; em grupo não liberado
   usuario = usuarioDaRede(rede, vivos, grupoAtivoNoCookie)
   await recusaComoInexistente('admin_rede fora do liberado', naoLiberado, comoFicou)
 })
+
+test('índice de pagamento forjado é recusado e nada grava', async () => {
+  const { a, comoFicou } = await forcadoNaContaA()
+  usuario = sessao(a, 'aux_adm')
+  const alvo = { tipo: 'peca' as const, id: a.alvos.peca }
+  // O navegador manda qualquer coisa no lugar do número.
+  for (const idx of ['length', '0', 1.5, -1, 99] as unknown as number[]) {
+    const recusa = { ok: false, erro: 'Pagamento não encontrado' }
+    assert.deepEqual(await actions.forcarConciliacaoAction(alvo, idx, MOTIVO), recusa, `força ${idx}`)
+    assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, idx), recusa, `desfaz ${idx}`)
+  }
+  assert.deepEqual(await pagamentosDe('peca', alvo.id), comoFicou[TIPOS.indexOf('peca')])
+})
