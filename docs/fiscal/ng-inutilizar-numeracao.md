@@ -78,3 +78,4 @@ Cada item tem fonte escrita. Doc e item divergem? Vale o que foi testado; na dú
 - `src/lib/notagateway/status.ts`: `ehDenegada`, `ehDuplicidade`, `STATUS_MORTOS` e `numeroLivre`, que decidem se a nota pode ter o número inutilizado e se outra nota ainda o ocupa.
 - `src/lib/queries/notas-emitidas.ts`: `anexarSituacaoDeInutilizacao`, a situação por nota na tela Notas emitidas.
 - `src/app/(dashboard)/notas-emitidas/`: a action, o diálogo e o bloco de situação da linha (#597).
+- `src/lib/notagateway/rotina-inutilizacao.ts` e `src/app/api/cron/inutilizacoes-pendentes/route.ts`: de hora em hora, a pendente pedida há mais de 4 h vai a `consultarResultadoDaLinha`, de todos os grupos, com a credencial do grupo da linha. A NG reenvia o aviso "15 tentativas com intervalos de tempo progressivos entre cada uma delas, totalizando, em média, 4 horas" ([página do webhook](https://docs.notagateway.com.br/v2/docs/webhook)); depois disso, só a consulta resolve (#67).
