@@ -9,7 +9,7 @@ import { ambienteLiberado, divergenciaDeAmbiente, FORA_DA_PRODUCAO } from './amb
 import { credencialCompleta } from './credencial-tela'
 import {
   ACAO_INUTILIZAR, type ContextoInutilizacao, decidirInutilizacao, ERRO_JA_PEDIDA, ERRO_SEM_CONFIGURACAO, pedidoSemRespostaVenceu,
-  podePedirInutilizacao, situacaoInutilizacao,
+  podePedirInutilizacao, situacaoInutilizacao, type SituacaoInutilizacao,
   STATUS_NAO_ENVIADA, STATUS_SEM_CONFIGURACAO, validarJustificativa,
 } from './inutilizacao'
 import { STATUS_MORTOS } from './status'
@@ -132,14 +132,19 @@ export async function prepararInutilizacao(
   } }
 }
 
-/** Grava o que a NG respondeu (recusa do envio ou consulta), sempre com o grupo no where. */
+/**
+ * Grava o que a NG respondeu (recusa do envio ou consulta), sempre com o grupo no where. Só muda a
+ * linha ainda pendente: clique e aviso da NG consultam juntos, e a resposta que chega depois não
+ * desfaz o resultado já gravado.
+ */
 export async function gravarResultadoDaInutilizacao(
   tx: Executor, inutilizacao: { id: string; grupoId: string }, r: InutilizacaoConsultada,
 ): Promise<void> {
   await tx.update(notasFiscaisSaidaInutilizacoes).set({
     status: r.status, situacao: situacaoInutilizacao(r.status), motivoStatus: r.motivoStatus, protocolo: r.protocolo,
     atualizadoEm: sql`now()` as unknown as Date,
-  }).where(and(eq(notasFiscaisSaidaInutilizacoes.id, inutilizacao.id), eq(notasFiscaisSaidaInutilizacoes.grupoId, inutilizacao.grupoId)))
+  }).where(and(eq(notasFiscaisSaidaInutilizacoes.id, inutilizacao.id), eq(notasFiscaisSaidaInutilizacoes.grupoId, inutilizacao.grupoId),
+    eq(notasFiscaisSaidaInutilizacoes.situacao, 'pendente')))
 }
 
 /** O que a consulta do resultado lê da linha. */
@@ -151,6 +156,16 @@ const COLUNAS_DA_CONSULTA = {
 }
 
 export type InutilizacaoParaConsultar = Pick<typeof notasFiscaisSaidaInutilizacoes.$inferSelect, keyof typeof COLUNAS_DA_CONSULTA>
+
+/**
+ * Linha pelo id externo, sem usuário: só o aviso da NG usa. O grupo e a credencial saem da linha
+ * achada, nunca do corpo do aviso (#58); o id externo é UNIQUE (migração 0159).
+ */
+export async function inutilizacaoPeloIdExterno(tx: Pick<typeof db, 'select'>, idExterno: string) {
+  const [linha] = await tx.select(COLUNAS_DA_CONSULTA).from(notasFiscaisSaidaInutilizacoes)
+    .where(eq(notasFiscaisSaidaInutilizacoes.idExterno, idExterno)).limit(1)
+  return linha ?? null
+}
 
 export async function inutilizacaoDoUsuario(tx: Executor, usuario: UsuarioInutilizacao, inutilizacaoId: string) {
   const filtroConta = usuario.papel === 'admin_geral' ? undefined : eq(grupos.contaId, usuario.contaId ?? '')
@@ -268,9 +283,9 @@ export type DependenciasConsulta = Pick<DependenciasInutilizacao, 'exec' | 'conf
   agora: () => Date
 }
 
-const DEPENDENCIAS_CONSULTA: DependenciasConsulta = { exec: db, config: configDoAmbiente, consultar: consultarInutilizacaoNaNg, agora: () => new Date() }
+export const DEPENDENCIAS_CONSULTA: DependenciasConsulta = { exec: db, config: configDoAmbiente, consultar: consultarInutilizacaoNaNg, agora: () => new Date() }
 
-export type ResultadoDaConsulta = Resultado<{ situacao: string; motivoStatus: string | null; protocolo: string | null }>
+export type ResultadoDaConsulta = Resultado<{ situacao: SituacaoInutilizacao; motivoStatus: string | null; protocolo: string | null }>
 
 /**
  * Consulta na NG a inutilização já achada e grava status, motivo e protocolo. Só a pendente

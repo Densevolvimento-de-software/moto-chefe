@@ -35,6 +35,13 @@ Não registradas na fonte.
 Cifrados: MCPAI, Nota Gateway e certificado A1. `src/lib/bling.ts`, `src/lib/kommo.ts` e
 `src/lib/fabrica-por-loja.ts` não usam `cripto.ts`.
 
+## Situação em 2026-11-17
+
+Exceção: o token do webhook da Nota Gateway (`NOTAGATEWAY_WEBHOOK_TOKEN`) é env var do servidor, só
+no ambiente Production da Vercel. Ele não é credencial de um grupo: o MOVA usa uma conta só da NG
+para todos os grupos, e o cadastro do webhook (URL e token) é da conta. A API Key e o `empresaId`
+seguem no banco, por grupo e cifrados. Decisão do Luis na #58 ("Decisões do grilling").
+
 ## Quando revisar
 
 Se a `CERT_MASTER_KEY` vazar: trocar exige recifrar tudo antes. Ou se o Supabase Vault passar a
