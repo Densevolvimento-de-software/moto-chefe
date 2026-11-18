@@ -23,7 +23,8 @@ export const digitarTexto = (caixa: HTMLTextAreaElement, valor: string) => troca
  */
 export async function escolherOpcao(gatilho: Element | null | undefined, rotulo: string) {
   await clicar(gatilho)
-  const opcao = [...document.querySelectorAll('[role="option"]')].find(o => o.textContent?.trim() === rotulo)
+  // A última com o rótulo: no jsdom o popup de um Select anterior pode seguir montado com as mesmas opções.
+  const opcao = [...document.querySelectorAll('[role="option"]')].findLast(o => o.textContent?.trim() === rotulo)
   if (!opcao) throw new Error(`opção "${rotulo}" não encontrada`)
   await act(async () => {
     for (const tipo of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) opcao.dispatchEvent(new window.MouseEvent(tipo, { bubbles: true }))

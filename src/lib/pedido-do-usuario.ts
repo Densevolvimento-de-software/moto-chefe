@@ -5,6 +5,7 @@ import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { lojasDoEscopo } from '@/lib/conta'
 import { motosDoPedido } from '@/lib/pedido-venda-regras'
 import { daContaDaLoja } from '@/lib/pecas-da-conta'
+import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
 import type { MotoNoPedido } from '@/lib/novo-pedido'
 
 type Executor = Pick<typeof db, 'select'>
@@ -69,7 +70,7 @@ export async function itensDoPedido(
   // Sem Conta não há moto; admin_geral (undefined) lê sem filtro.
   const motoDaConta = lojaDaConta(usuario, motos.lojaId)
   const fichas = await exec
-    .select({ id: motos.id, chassi: motos.chassi, marca: modelos.marca, modelo: modelos.modelo, cor: motos.cor, lojaId: motos.lojaId, lojaNome: lojas.nome })
+    .select({ id: motos.id, chassi: motos.chassi, marca: modelos.marca, modelo: nomeDoModeloNaLoja(motos.lojaId), cor: motos.cor, lojaId: motos.lojaId, lojaNome: lojas.nome })
     .from(motos)
     .innerJoin(modelos, eq(modelos.id, motos.modeloId))
     .innerJoin(lojas, eq(lojas.id, motos.lojaId))

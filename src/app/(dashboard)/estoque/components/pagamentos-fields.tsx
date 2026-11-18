@@ -7,7 +7,7 @@ import { CurrencyInput } from '@/components/ui/currency-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { X, Plus } from 'lucide-react'
 import type { TaxasVenda } from '@/lib/preco-minimo'
-import { pagamentosFecham } from '@/lib/pagamentos-entrada'
+import { pagamentosFecham, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
 
 // Linhas de forma de pagamento — usadas tanto na venda quanto na entrada da
 // reserva. Vive aqui porque o vender-button já passava de mil linhas.
@@ -47,6 +47,27 @@ export function parcelasDisponiveis(tipo: string, taxas: TaxasVenda | null): num
   }
   return []
 }
+
+/** Add/remove/update das linhas de pagamento (Vender, reserva, Efetivar pedido); trocar a forma limpa operadora, parcelas e autorização. */
+export function pgtoHandlers(setter: React.Dispatch<React.SetStateAction<Pgto[]>>) {
+  return {
+    add: () => setter(p => [...p, { id: Date.now().toString(), tipo: '', valor: '' }]),
+    remove: (id: string) => setter(p => p.filter(x => x.id !== id)),
+    update: (id: string, campo: keyof Pgto, val: string) =>
+      setter(p => p.map(x => x.id === id
+        ? { ...x, [campo]: val, ...(campo === 'tipo' ? { operadora: undefined, parcelas: undefined, autorizacao: undefined } : {}) }
+        : x
+      )),
+  }
+}
+
+/** As linhas como as actions de pagamento recebem (Efetivar pedido, demandas); Vender e Editar venda mandam também a autorização. */
+export const pagamentosDoFormulario = (pgtos: readonly Pgto[]): PagamentoEntrada[] => pgtos.map(p => ({
+  tipo: p.tipo,
+  valor: parseFloat(p.valor),
+  ...(p.operadora ? { operadora: p.operadora } : {}),
+  ...(p.parcelas ? { parcelas: parseInt(p.parcelas) } : {}),
+}))
 
 /** Soma das linhas = total, pela mesma regra do servidor (centavos): tela e servidor decidem igual. */
 export function pgtosFecham(pgtos: readonly Pgto[], total: number): boolean {

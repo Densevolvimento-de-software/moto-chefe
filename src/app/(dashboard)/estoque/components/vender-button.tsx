@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { OrigemVendaSelect, origemPreenchida } from '@/components/origem-venda-select'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
 import { Search, ShoppingCart, CalendarClock, AlertTriangle, CheckCircle2, UserCheck, UserX, Loader2 } from 'lucide-react'
-import { PagamentosFields, pgtoIncompleto, pgtosFecham, TIPOS_COM_PARCELAS, type Pgto } from './pagamentos-fields'
+import { PagamentosFields, pgtoHandlers, pgtoIncompleto, pgtosFecham, TIPOS_COM_PARCELAS, type Pgto } from './pagamentos-fields'
 import { registrarVendaCompletaAction, registrarReservaAction, buscarPrecoMinimoAction, buscarClientePorCpfAction, solicitarAprovacaoVendaAction } from '../../vendas/actions'
 import { liquidoDaMoto, validarReserva, fmtBRL, type TaxasVenda } from '@/lib/preco-minimo'
 import { normalizarPagamentos, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
@@ -22,19 +22,6 @@ import { EntregaEModalidade, ENTREGA_DO_FORMULARIO_INICIAL, entregaDoFormulario,
 import { ContribuinteIcmsCampos, DocumentoClienteInput, RepresentanteLegalCampos, TipoPessoaEtiqueta } from '@/components/documento-cliente'
 import { abaixoDoMinimo, podeVenderAbaixoDoMinimo, temPagamentoSensivel } from '@/lib/aprovacao-venda'
 import { totalComFrete } from '@/lib/notagateway/entrega'
-
-/** Add/remove/update das linhas de pagamento — a venda e a reserva têm um jogo cada. */
-function pgtoHandlers(setter: React.Dispatch<React.SetStateAction<Pgto[]>>) {
-  return {
-    add: () => setter(p => [...p, { id: Date.now().toString(), tipo: '', valor: '' }]),
-    remove: (id: string) => setter(p => p.filter(x => x.id !== id)),
-    update: (id: string, campo: keyof Pgto, val: string) =>
-      setter(p => p.map(x => x.id === id
-        ? { ...x, [campo]: val, ...(campo === 'tipo' ? { operadora: undefined, parcelas: undefined, autorizacao: undefined } : {}) }
-        : x
-      )),
-  }
-}
 
 type Usuario = { id: string; nome: string }
 

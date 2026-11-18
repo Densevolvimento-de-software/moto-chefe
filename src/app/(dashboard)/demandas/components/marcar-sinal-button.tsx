@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Printer } from 'lucide-react'
 import { marcarSinalDemandaAction, desmarcarSinalDemandaAction } from '../actions'
 import { ClienteCampos, CLIENTE_VAZIO, clienteCompleto, type ClienteForm } from './cliente-campos'
-import { PagamentosFields, pgtoIncompleto, pgtosFecham, type Pgto } from '../../estoque/components/pagamentos-fields'
+import { pagamentosDoFormulario, PagamentosFields, pgtoHandlers, pgtoIncompleto, pgtosFecham, type Pgto } from '../../estoque/components/pagamentos-fields'
 
 type Props = {
   demandaId: string
@@ -26,6 +26,7 @@ export function MarcarSinalButton({ demandaId, sinalRecebido, valorSinal, isAdmi
   const [valor, setValor] = useState('')
   // O sinal pode ser dividido em mais de uma forma — mesmas linhas da venda.
   const [pgtos, setPgtos] = useState<Pgto[]>([{ id: '1', tipo: '', valor: '' }])
+  const pgtosAcoes = pgtoHandlers(setPgtos)
   const [cliente, setCliente] = useState<ClienteForm>(CLIENTE_VAZIO)
   const [pending, startTransition] = useTransition()
 
@@ -42,12 +43,7 @@ export function MarcarSinalButton({ demandaId, sinalRecebido, valorSinal, isAdmi
         await marcarSinalDemandaAction(demandaId, {
           ...cliente,
           valorSinal: valorNum,
-          pagamentos: pgtos.map(p => ({
-            tipo: p.tipo,
-            valor: parseFloat(p.valor),
-            ...(p.operadora ? { operadora: p.operadora } : {}),
-            ...(p.parcelas ? { parcelas: parseInt(p.parcelas) } : {}),
-          })),
+          pagamentos: pagamentosDoFormulario(pgtos),
         })
         toast.success('Sinal registrado — recibo disponível')
         setOpen(false)
@@ -121,12 +117,9 @@ export function MarcarSinalButton({ demandaId, sinalRecebido, valorSinal, isAdmi
               <PagamentosFields
                 maquininhas={maquininhas}
                 pgtos={pgtos}
-                onAdd={() => setPgtos(p => [...p, { id: Date.now().toString(), tipo: '', valor: '' }])}
-                onRemove={id => setPgtos(p => p.filter(x => x.id !== id))}
-                onUpdate={(id, campo, val) => setPgtos(p => p.map(x => x.id === id
-                  ? { ...x, [campo]: val, ...(campo === 'tipo' ? { operadora: undefined, parcelas: undefined } : {}) }
-                  : x
-                ))}
+                onAdd={pgtosAcoes.add}
+                onRemove={pgtosAcoes.remove}
+                onUpdate={pgtosAcoes.update}
                 taxasVenda={null}
               />
             </div>
