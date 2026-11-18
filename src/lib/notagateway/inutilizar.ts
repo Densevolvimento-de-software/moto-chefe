@@ -160,7 +160,6 @@ export async function inutilizacaoDoUsuario(tx: Executor, usuario: UsuarioInutil
   return linha
 }
 
-
 /** Credencial do grupo para o ambiente da nota; o teste de banco passa a transação. */
 export async function configDoAmbiente(
   grupoId: string, ambiente: string, exec: Pick<typeof db, 'select'> = db,
@@ -263,7 +262,7 @@ export async function inutilizarNumeroDaNota(
   return enviarPedido(deps, usuario, pedido, c.cfg)
 }
 
-/** O que a consulta do resultado pede de fora; o teste de banco troca a NG, a configuração, a transação e o relógio. */
+/** O que a consulta do resultado pede de fora; o teste de banco troca a NG, a transação e o relógio. */
 export type DependenciasConsulta = Pick<DependenciasInutilizacao, 'exec' | 'config'> & {
   consultar: typeof consultarInutilizacaoNaNg
   agora: () => Date
