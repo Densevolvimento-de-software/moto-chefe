@@ -150,6 +150,8 @@ const COLUNAS_DA_CONSULTA = {
   criadoEm: notasFiscaisSaidaInutilizacoes.criadoEm,
 }
 
+export type InutilizacaoParaConsultar = Pick<typeof notasFiscaisSaidaInutilizacoes.$inferSelect, keyof typeof COLUNAS_DA_CONSULTA>
+
 export async function inutilizacaoDoUsuario(tx: Executor, usuario: UsuarioInutilizacao, inutilizacaoId: string) {
   const filtroConta = usuario.papel === 'admin_geral' ? undefined : eq(grupos.contaId, usuario.contaId ?? '')
   const [linha] = await tx.select(COLUNAS_DA_CONSULTA).from(notasFiscaisSaidaInutilizacoes).innerJoin(grupos, eq(grupos.id, notasFiscaisSaidaInutilizacoes.grupoId))
@@ -158,7 +160,6 @@ export async function inutilizacaoDoUsuario(tx: Executor, usuario: UsuarioInutil
   return linha
 }
 
-export type InutilizacaoParaConsultar = NonNullable<Awaited<ReturnType<typeof inutilizacaoDoUsuario>>>
 
 /** Credencial do grupo para o ambiente da nota; o teste de banco passa a transação. */
 export async function configDoAmbiente(
