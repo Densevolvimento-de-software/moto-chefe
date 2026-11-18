@@ -22,7 +22,7 @@ const TOLERANCIA = 0.05 // R$ 0,05 de tolerância no valor
 
 type Pagamento = Pick<PgtoOS, 'tipo' | 'valor' | 'parcelas'>
 
-const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
+export const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
 
 /**
  * Tipos de pagamento da venda que uma linha da conciliação de cartão pode cobrir. A linha 'pix' só
