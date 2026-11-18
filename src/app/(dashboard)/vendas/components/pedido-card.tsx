@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea'
 import { EfetivarPedidoDialog } from './efetivar-pedido-dialog'
 import { CriarPedidoDialog } from './criar-pedido-dialog'
-import type { MotoDisponivel } from '@/lib/novo-pedido'
+import { useMotosDisponiveis } from './motos-disponiveis'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
 import { cancelarPedidoAction } from '../actions'
 import { podeCancelarPedido } from '@/lib/pedido-venda-regras'
@@ -33,11 +33,10 @@ type Props = {
   /** Origens ativas do grupo — a venda só efetiva com uma escolhida. */
   origens: OrigemParaEscolher[]
   podeAprovarSensivel: boolean
-  /** Motos que o Editar pedido oferece (as disponíveis da página; o painel mostra só as da loja do pedido). */
-  motosDisponiveis: MotoDisponivel[]
 }
 
-export function PedidoCard({ pedido: p, papel, usuarioId, lojaIdUsuario, origens, podeAprovarSensivel, motosDisponiveis }: Props) {
+export function PedidoCard({ pedido: p, papel, usuarioId, lojaIdUsuario, origens, podeAprovarSensivel }: Props) {
+  const motosDisponiveis = useMotosDisponiveis()
   const [cancelarOpen, setCancelarOpen] = useState(false)
   const [observacao, setObservacao] = useState('')
   const [loading, setLoading] = useState(false)

@@ -36,7 +36,7 @@ async function desenhar(pedido: PedidoComDetalhes, papel = 'aux_adm') {
   document.body.appendChild(container)
   const root = createRoot(container)
   await act(async () => {
-    root.render(createElement(PedidoCard, { pedido, papel, usuarioId: 'u1', lojaIdUsuario: 'loja-1', origens: [], podeAprovarSensivel: false, motosDisponiveis: [] } as never))
+    root.render(createElement(PedidoCard, { pedido, papel, usuarioId: 'u1', lojaIdUsuario: 'loja-1', origens: [], podeAprovarSensivel: false }))
   })
   desmontarCard = () => act(async () => { root.unmount() })
 }
