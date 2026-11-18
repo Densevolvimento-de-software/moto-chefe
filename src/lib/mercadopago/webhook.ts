@@ -1,4 +1,5 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHmac } from 'node:crypto'
+import { iguaisEmTempoConstante } from '@/lib/tempo-constante'
 
 // Webhook do Mercado Pago (#208). A notificação não traz valor nem status: só diz
 // que algo mudou. A baixa vem de uma consulta à API (spec, seção 5).
@@ -20,9 +21,7 @@ export function assinaturaValida(p: { secret: string; xSignature: string | null;
   if (p.xRequestId) manifesto += `request-id:${p.xRequestId};`
   manifesto += `ts:${ts};`
 
-  const esperado = Buffer.from(createHmac('sha256', p.secret).update(manifesto).digest('hex'))
-  const recebido = Buffer.from(v1)
-  return recebido.length === esperado.length && timingSafeEqual(recebido, esperado)
+  return iguaisEmTempoConstante(v1, createHmac('sha256', p.secret).update(manifesto).digest('hex'))
 }
 
 export type Pagamento = { id: number | string; status: string; external_reference: string | null; transaction_amount: number; live_mode?: boolean }
