@@ -13,10 +13,12 @@ process.env.DATABASE_URL = url
 
 let db: typeof import('@/lib/db')['db']
 let dre: typeof import('@/lib/queries/dre')
+let taxas: typeof import('@/lib/queries/taxas-receita')
 
 before(async () => {
   ;({ db } = await import('@/lib/db'))
   dre = await import('@/lib/queries/dre')
+  taxas = await import('@/lib/queries/taxas-receita')
 })
 after(async () => {
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
@@ -84,16 +86,16 @@ async function taxaDeAntes(lojaIds: string[], inicio: string, fim: string) {
     select coalesce((select sum(c.valor_bruto::numeric - coalesce(c.valor_liquido::numeric, 0))
                        from conciliacoes_cartao c join vendas v on v.id = c.venda_id
                       where c.conciliado and v.loja_id = any(${sql.param(lojaIds)}::uuid[])
-                        and v.data_venda >= ${inicio} and v.data_venda < ${fim}), 0)
-         + coalesce((select sum(c.valor_bruto::numeric - coalesce(c.valor_liquido::numeric, c.valor_bruto::numeric))
+                        and v.data_venda >= ${inicio} and v.data_venda < ${fim}), 0) as moto,
+           coalesce((select sum(c.valor_bruto::numeric - coalesce(c.valor_liquido::numeric, c.valor_bruto::numeric))
                        from conciliacoes_cartao c join ordens_servico o on o.id = c.os_id
                       where c.conciliado and o.status = 'concluida' and o.loja_id = any(${sql.param(lojaIds)}::uuid[])
                         and o.data_conclusao >= ${inicio} and o.data_conclusao < ${fim}), 0)
          + coalesce((select sum(c.valor_bruto::numeric - coalesce(c.valor_liquido::numeric, c.valor_bruto::numeric))
                        from conciliacoes_cartao c join vendas_pecas p on p.id = c.peca_venda_id
                       where c.conciliado and p.loja_id = any(${sql.param(lojaIds)}::uuid[])
-                        and p.data_venda >= ${inicio} and p.data_venda < ${fim}), 0) as taxa`)
-  return Number(r.taxa)
+                        and p.data_venda >= ${inicio} and p.data_venda < ${fim}), 0) as outras`)
+  return { moto: Number(r.moto), outras: Number(r.outras), total: Number(r.moto) + Number(r.outras) }
 }
 const OUTUBRO = ['2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z'] as const
 
@@ -112,10 +114,11 @@ test('as duas linhas somam a taxa de antes: a receita líquida não muda', async
   // Pix sem líquido: na moto conta inteiro (como no valor líquido), na peça conta zero (como na taxa de lá).
   await linhaConciliada(a, 'pix', 300, null, { venda: await vendaMoto(a, 300, '2026-10-20 12:00:00-03') })
   await linhaConciliada(a, 'pix', 50, null, { peca: await vendaPeca(a, 50, '2026-10-20 12:00:00-03') })
+  await linhaConciliada(a, 'pix', 70, null, { os: await osConcluida(a, 70, '2026-10-20 12:00:00-03') })
   const { colunas } = await dre.dreDoMes({ grupoId: a.grupoId, lojaIds: [a.lojaId], ano: 2026, mes: 10 })
   const e = colunas.find(c => c.chave === a.lojaId)!.entrada
   assert.equal(e.tarifaPix, 9 + 300)
-  assert.equal(e.taxasCartao + e.tarifaPix, await taxaDeAntes([a.lojaId], ...OUTUBRO))
+  assert.equal(e.taxasCartao + e.tarifaPix, (await taxaDeAntes([a.lojaId], ...OUTUBRO)).total)
 })
 
 test('DRE por mês: venda de 31/10 às 22h de Brasília cai em novembro na taxa e na tarifa', async () => {
@@ -155,3 +158,25 @@ test('Pix de outra Conta, não conciliado, de outro mês ou de OS não concluíd
   const { colunas } = await dre.dreDoMes({ grupoId: a.grupoId, lojaIds: [a.lojaId], ano: 2026, mes: 10 })
   assert.equal(colunas.find(c => c.chave === a.lojaId)!.entrada.tarifaPix, 9)
 })
+
+test('DRE por mês: OS e peça também separam cartão e Pix', async () => {
+  const a = await semearConta()
+  await semearOutubro(a)
+  const meses = await dre.dreEvolucao({ grupoId: a.grupoId, lojaIds: [a.lojaId], ano: 2026, mes: 10, meses: 1 })
+  const outubro = meses.find(m => m.mes === 10)!.entrada
+  assert.deepEqual([outubro.taxasCartao, outubro.tarifaPix], [209, 9])
+})
+
+test('Financeiro: taxas de OS e peça separadas no mesmo SELECT, soma igual à de antes, só nas lojas pedidas', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  await semearOutubro(a)
+  await linhaConciliada(b, 'pix', 900, 880, { peca: await vendaPeca(b, 900, '2026-10-16 12:00:00-03') })
+  const fimDeOutubro = new Date('2026-10-31T23:59:59.999Z')
+  const r = await taxas.taxasOutrasDoPeriodo([a.lojaId], new Date(OUTUBRO[0]), fimDeOutubro)
+  // peça: crédito 9 + Pix 1; OS: Pix 4
+  assert.deepEqual(r, { taxaCartao: 9, tarifaPix: 5 })
+  assert.equal(r.taxaCartao + r.tarifaPix, (await taxaDeAntes([a.lojaId], ...OUTUBRO)).outras)
+  assert.deepEqual(await taxas.taxasOutrasDoPeriodo([], new Date(OUTUBRO[0]), fimDeOutubro), { taxaCartao: 0, tarifaPix: 0 })
+})
+
