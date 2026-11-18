@@ -210,3 +210,22 @@ export function decidirInutilizacao(ctx: ContextoInutilizacao): DecisaoInutiliza
   const ultima = [...pedidos].sort(maisRecentePrimeiro)[0]
   return { tipo: 'pode', serie: elegivel.serie, numero: elegivel.numero, ultimaNegada: ultima ? ultima.motivoStatus?.trim() || 'sem motivo informado' : null }
 }
+
+/**
+ * A NG reenvia o aviso "15 tentativas com intervalos de tempo progressivos entre cada uma delas, totalizando,
+ * em média, 4 horas" (https://docs.notagateway.com.br/v2/docs/webhook). Pendente mais velha que isso não
+ * vai receber aviso: a rotina de hora em hora consulta (#67).
+ */
+const HORAS_DO_REENVIO_DO_AVISO = 4
+
+export function limiteDaRotina(agora: Date): Date {
+  return new Date(agora.getTime() - HORAS_DO_REENVIO_DO_AVISO * 3_600_000)
+}
+
+/** O que a consulta deu para cada pendente da rotina; `pendente` = a NG ainda processa. */
+export type DesfechoDaRotina = 'resolvida' | 'pendente' | 'falha'
+
+export function resumoDaRotina(desfechos: readonly DesfechoDaRotina[]) {
+  const quantas = (d: DesfechoDaRotina) => desfechos.filter(x => x === d).length
+  return { consultadas: desfechos.length, resolvidas: quantas('resolvida'), falhas: quantas('falha') }
+}
