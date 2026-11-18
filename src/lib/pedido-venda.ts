@@ -254,7 +254,7 @@ export async function gravarMotoDoPedido(
     })
 }
 
-/** A venda é de um pedido efetivado com várias motos (#20): cancelar e editar são do pedido inteiro, no #23. */
+/** A venda é de um pedido efetivado com várias motos (#20): o Editar venda recusa; a edição é a do pedido (#23), pela tela do 25d. */
 export async function vendaDePedidoComVariasMotos(exec: Pick<Tx, 'select'>, pedidoVendaId: string): Promise<boolean> {
   const [{ n }] = await exec.select({ n: count() }).from(vendas).where(eq(vendas.pedidoVendaId, pedidoVendaId))
   return n > 1

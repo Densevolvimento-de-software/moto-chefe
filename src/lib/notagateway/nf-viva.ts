@@ -1,4 +1,4 @@
-import { and, eq, notInArray } from 'drizzle-orm'
+import { and, eq, inArray, notInArray } from 'drizzle-orm'
 import type { db } from '@/lib/db'
 import { notasFiscaisSaida } from '@/lib/db/schema'
 import { STATUS_MORTOS } from '@/lib/notagateway/status'
@@ -15,7 +15,14 @@ export async function vendaTemNfViva(tx: Executor, vendaId: string): Promise<boo
 
 /** As notas da venda com o que a trava do "Cancelar venda" e do Alterar a Entrega leem (`status.ts`). */
 export async function notasParaTravaDaVenda(tx: Executor, vendaId: string) {
-  const notas = await tx.select({ ambiente: notasFiscaisSaida.ambiente, status: notasFiscaisSaida.status, dataAutorizacao: notasFiscaisSaida.dataAutorizacao })
-    .from(notasFiscaisSaida).where(eq(notasFiscaisSaida.vendaId, vendaId))
+  return notasParaTravaDasVendas(tx, [vendaId])
+}
+
+/** O mesmo, das vendas de um pedido numa consulta (#23), com a venda e o número de cada nota. */
+export async function notasParaTravaDasVendas(tx: Executor, vendaIds: readonly string[]) {
+  const notas = await tx.select({
+    vendaId: notasFiscaisSaida.vendaId, numero: notasFiscaisSaida.numero,
+    ambiente: notasFiscaisSaida.ambiente, status: notasFiscaisSaida.status, dataAutorizacao: notasFiscaisSaida.dataAutorizacao,
+  }).from(notasFiscaisSaida).where(inArray(notasFiscaisSaida.vendaId, [...vendaIds]))
   return notas.map(n => ({ ...n, dataAutorizacao: n.dataAutorizacao?.toISOString() ?? null }))
 }
