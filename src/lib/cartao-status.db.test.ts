@@ -117,3 +117,13 @@ test('vincular a venda, peça ou OS de outra Conta é recusado e a linha não mu
   await assert.rejects(actions.vincularVendaAction(linhaA, osB.id, 'os'), { message: 'Ordem de serviço não pertence ao grupo ativo' })
   assert.deepEqual(await linhaDe(linhaA), antes)
 })
+
+test('vincular a linha de outra Conta recebe "Conciliação não encontrada" e a linha não muda', async () => {
+  const b = await semear()
+  const linhaB = await cartao(b.base.grupoId, 1000, 'aprovado', null)
+  const antes = await linhaDe(linhaB)
+  const { vendaId } = await semear()
+
+  await assert.rejects(actions.vincularVendaAction(linhaB, vendaId, 'moto'), { message: 'Conciliação não encontrada' })
+  assert.deepEqual(await linhaDe(linhaB), antes)
+})
