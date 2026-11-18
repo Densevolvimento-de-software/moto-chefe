@@ -9,6 +9,7 @@ import type { db } from '@/lib/db'
 import { ordensServico, vendas, vendasPecas } from '@/lib/db/schema'
 import { TIPOS_CARTAO, type PgtoOS } from '@/lib/conciliacao-status'
 import { addDias } from '@/lib/calendario'
+import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 
 type Db = Pick<typeof db, 'select'>
 
@@ -25,7 +26,7 @@ const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
  * existe para o Pix da maquininha Mercado Pago (#51) e cobre o pagamento Pix; as outras, cartão.
  */
 export function tiposDoPagamentoDaLinha(tipoLinha: string | undefined): ReadonlySet<string> {
-  return tipoLinha === 'pix' ? PAGAMENTO_PIX : TIPOS_CARTAO
+  return tipoLinha === LINHA_PIX ? PAGAMENTO_PIX : TIPOS_CARTAO
 }
 const PAGAMENTO_PIX: ReadonlySet<string> = new Set(['pix'])
 

@@ -1,5 +1,5 @@
 import type { PagamentoMp } from './mercadopago/point'
-import { dataBrt, type TransacaoCartao } from './conciliacao-cartao'
+import { dataBrt, LINHA_PIX, type TransacaoCartao } from './conciliacao-cartao'
 import { ehEstornoMp } from './mercadopago/status'
 
 // Uma linha de conciliacoes_cartao: cartão (crédito/débito) ou Pix da maquininha (decisão do Luis, #51).
@@ -22,7 +22,7 @@ export function ehDaMaquininha(p: PagamentoMp): boolean {
 const MEIO_DA_LINHA: Record<string, TransacaoCartao['tipo']> = { credit_card: 'credito', debit_card: 'debito' }
 
 const tipoDaLinha = (p: PagamentoMp): TransacaoCartao['tipo'] | null =>
-  p.payment_method_id === 'pix' ? 'pix' : MEIO_DA_LINHA[p.payment_type_id] ?? null
+  p.payment_method_id === 'pix' ? LINHA_PIX : MEIO_DA_LINHA[p.payment_type_id] ?? null
 
 export function classificarPagamento(p: PagamentoMp): Classificacao {
   if (!ehDaMaquininha(p)) return { tipo: 'ignorar', motivo: 'não é da maquininha' }

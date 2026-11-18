@@ -1,3 +1,4 @@
+import { LINHA_PIX } from './conciliacao-cartao'
 export type StatusConc = 'na' | 'pendente' | 'parcial' | 'conciliada'
 
 export const TIPOS_CARTAO = new Set(['cartao_credito', 'cartao_debito', 'link_pagamento'])
@@ -66,10 +67,10 @@ export type CoberturaPgto = { conciliado: boolean; coberto: number }
 export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[]): CoberturaPgto[] {
   // A linha 'pix' da conciliação de cartão é o Pix da maquininha Mercado Pago (#51): é dinheiro de
   // Pix e cobre o pagamento Pix, como o recebimento do banco.
-  const concs = linhasDoAlvo.filter(c => c.tipo !== 'pix')
+  const concs = linhasDoAlvo.filter(c => c.tipo !== LINHA_PIX)
   const pixRecs: PixMatch[] = [
     ...pixDoBanco,
-    ...linhasDoAlvo.filter(c => c.tipo === 'pix').map(c => ({ id: c.id, valor: c.valorBruto })),
+    ...linhasDoAlvo.filter(c => c.tipo === LINHA_PIX).map(c => ({ id: c.id, valor: c.valorBruto })),
   ]
   const usados    = new Set<string>()
   const resultado: CoberturaPgto[] = pgtos.map(() => ({ conciliado: false, coberto: 0 }))

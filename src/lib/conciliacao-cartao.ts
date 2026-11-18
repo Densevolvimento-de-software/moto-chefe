@@ -76,10 +76,10 @@ export function chaveDedup(t: TransacaoCartao): { campo: 'nsu' | 'id'; valor: st
 // O tipo 'pix' é o Pix da maquininha Mercado Pago (#51).
 export function rotuloCurtoDaLinha(tipo: string, parcelas: number): string {
   if (tipo === 'credito') return `Cré ${parcelas}x`
-  return tipo === 'pix' ? 'PIX' : 'Déb'
+  return tipo === LINHA_PIX ? 'PIX' : 'Déb'
 }
 
 export function rotuloDaLinha(tipo: string): string {
   if (tipo === 'debito') return 'Débito'
-  return tipo === 'pix' ? 'PIX' : 'Crédito'
+  return tipo === LINHA_PIX ? 'PIX' : 'Crédito'
 }
