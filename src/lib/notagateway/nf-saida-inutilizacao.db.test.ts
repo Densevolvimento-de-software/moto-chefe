@@ -2,6 +2,7 @@
 // Como montar local: ver o cabeçalho de src/lib/pedido-venda.db.test.ts.
 import { after, before, mock, test, type TestContext } from 'node:test'
 import assert from 'node:assert/strict'
+import { inspect } from 'node:util'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
 
@@ -879,7 +880,7 @@ function receber(tx: Tx, corpo: unknown, { consultar, headers = { 'x-token': TOK
 function consoleDe(t: TestContext) {
   const info = t.mock.method(console, 'info', () => {})
   const erro = t.mock.method(console, 'error', () => {})
-  return () => [...info.mock.calls, ...erro.mock.calls].map(c => c.arguments.map(String).join(' '))
+  return () => [...info.mock.calls, ...erro.mock.calls].map(c => c.arguments.map(a => typeof a === 'string' ? a : inspect(a)).join(' '))
 }
 
 test('aviso: sem token no servidor 503; x-token ausente, errado ou de outro tamanho 401; nada muda', async t => {
@@ -973,7 +974,7 @@ test('aviso de pendente: grava o que a consulta devolveu, não o corpo; o consol
     assert.equal((await andando.linha()).situacao, 'pendente')
     const linhasDoConsole = escrito()
     assert.equal(linhasDoConsole.length, 3)
-    for (const linha of linhasDoConsole) assert.doesNotMatch(linha, /faixa-|emp-A|token|PROTOCOLO|353190000062124/)
+    for (const linha of linhasDoConsole) assert.doesNotMatch(linha, /faixa-|emp-A|token|tok-cifrado|PROTOCOLO|353190000062124/)
   })
 })
 
@@ -988,7 +989,8 @@ test('aviso com a NG fora (5xx, 4xx ou rede) ou a configuração sem ler: 500, s
     assert.equal((await receber(tx, avisoDe(f.idExterno), { consultar: ngFora })).status, 500)
     assert.equal((await receber(tx, avisoDe(f.idExterno), { consultar: ngQueResponde(AUTORIZADA).consultar, config: configQuebrada })).status, 500)
     assert.equal((await f.linha()).situacao, 'pendente')
-    for (const linha of escrito()) assert.doesNotMatch(linha, /segredo|emp-A|token-A|faixa-/)
+    assert.equal(escrito().length, 2)
+    for (const linha of escrito()) assert.doesNotMatch(linha, /segredo|emp-A|token-A|tok-cifrado|faixa-/)
   })
 })
 
