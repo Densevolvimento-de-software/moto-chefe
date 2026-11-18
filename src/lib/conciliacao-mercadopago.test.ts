@@ -113,4 +113,10 @@ describe('classificarPagamento', () => {
   it('cartão pré-pago ainda não aprovado é ignorado', () => {
     assert.deepEqual(classificarPagamento(pg(debito, { payment_type_id: 'prepaid_card', status: 'pending' })), { tipo: 'ignorar', motivo: 'status pending' })
   })
+
+  // Decisão do Luis (#51): todo meio aprovado da maquininha fora de crédito, débito e Pix aparece no resumo.
+  it('outro meio aprovado da maquininha vira "não tratado" com o nome do meio', () => {
+    assert.deepEqual(classificarPagamento(pg(debito, { payment_type_id: 'account_money', payment_method_id: 'account_money' })),
+      { tipo: 'nao_tratado', motivo: 'meio account_money' })
+  })
 })
