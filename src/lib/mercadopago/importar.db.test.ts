@@ -118,6 +118,17 @@ test('Pix da maquininha vira linha pix com o valor líquido e casa com o pagamen
   ])
 })
 
+test('débito às 23h30 de Brasília grava no dia de Brasília, 1 parcela, e casa com o débito da venda', async () => {
+  const a = await semearConta('A')
+  const vendaId = await venda(a, [{ tipo: 'cartao_debito', valor: 150 }])
+  const id = novoId()
+  // 02:30Z do dia 11 = 23:30 do dia 10 em Brasília.
+  assert.deepEqual(await importar(a, [pg(debito, { id, date_approved: '2026-11-11T02:30:00.000Z' })]), { ...NADA, conciliadas: 1 })
+  const [linha] = await execRows(sql`select data_transacao::text as dia, tipo, parcelas, venda_id from conciliacoes_cartao
+    where grupo_id = ${a.grupoId} and nsu = ${String(id)}`)
+  assert.deepEqual(linha, { dia: '2026-11-10', tipo: 'debito', parcelas: 1, venda_id: vendaId })
+})
+
 test('segunda rodada não duplica nem desfaz o vínculo', async () => {
   const a = await semearConta('A')
   await venda(a, CREDITO_DA_FIXTURE)
