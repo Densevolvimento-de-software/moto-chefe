@@ -839,7 +839,7 @@ test('consulta com 404 da NG (D3): dentro do prazo segue pendente sem gravar; ve
   })
 })
 
-test('consulta que chega depois de a linha resolvida (clique e aviso juntos) não sobrescreve o resultado gravado', async () => {
+test('resposta atrasada da consulta, depois de outra consulta resolver a linha, não sobrescreve o resultado gravado', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearContaFaixa(tx, 'A', '00000000066001')
     const f = await faixaPendente(tx, a)
@@ -978,7 +978,7 @@ test('aviso de pendente: grava o que a consulta devolveu, não o corpo; o consol
   })
 })
 
-test('aviso com a NG fora (5xx, 4xx ou rede) ou a configuração sem ler: 500, segue pendente, console sem a mensagem', async t => {
+test('aviso com a consulta à NG lançando erro ou a configuração sem ler: 500, segue pendente, console sem a mensagem', async t => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearContaFaixa(tx, 'A', '00000000066001', 'Homologacao', 'emp-A')
     const f = await faixaPendente(tx, a)
