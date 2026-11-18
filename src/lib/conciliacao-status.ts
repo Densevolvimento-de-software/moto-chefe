@@ -29,7 +29,7 @@ type PgtoItem = { tipo: string; valor: number; conciliadoManual?: ConciliadoManu
  * FINANCIAMENTO não tem: o banco deposita e nada no sistema sabe disso, então ele
  * fica pendente até alguém confirmar na mão que caiu — decisão do Cesar em
  * 01/09/2026, que trocou a aprovação no momento da venda por essa conferência
- * depois. Só admin_geral força (ver forcarConciliacaoAction).
+ * depois. Quem força: podeGerirConciliacao (src/lib/conciliacao-papeis.ts).
  *
  * Dinheiro, cortesia, bonificação e cupom de revisão ficam de fora: não há
  * depósito a esperar, e cobrá-los criaria pendência que nunca fecha.
