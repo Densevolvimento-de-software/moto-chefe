@@ -94,7 +94,7 @@ test('casarPorValor respeita parcelas e tolerância', async () => {
   })
 })
 
-test('casarPorValor cai para a peça quando a moto não casa, e sem lojas nem consulta', async () => {
+test('casarPorValor cai para a peça quando a moto não casa, e sem lojas não casa nada', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A')
     const pecaVendaId = await semearVendaPeca(tx, a, cartao(88.8, 1))
