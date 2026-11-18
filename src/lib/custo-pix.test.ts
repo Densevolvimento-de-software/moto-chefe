@@ -41,3 +41,8 @@ test('lerCustoPixTaxa: arredonda às 6 casas do banco antes de conferir a faixa'
   // o banco gravaria 1.000000, que a check da coluna recusa
   assert.equal(lerCustoPixTaxa('0.9999999'), null)
 })
+
+test('taxa de 100% ou mais não tem valor do PIX que pague: fica sem custo', () => {
+  assert.deepEqual(custoDoPixRecebido(9980, 1), { bruto: 9980, custo: 0 })
+  assert.deepEqual(custoDoPixRecebido(9980, 1.5), { bruto: 9980, custo: 0 })
+})
