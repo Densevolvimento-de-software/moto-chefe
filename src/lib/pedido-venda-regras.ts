@@ -117,8 +117,8 @@ export type MotoComValor = { motoId: string; valor: number }
 
 export const ITENS_DO_PEDIDO_MUDARAM = 'Os itens do pedido mudaram. Recarregue a página.'
 
-// Até o 25d (#25), editar é do pedido inteiro quando ele tem várias motos (D-I do #20); o servidor vem no #23.
-export const VENDA_DE_PEDIDO_NAO_EDITA = 'Esta venda faz parte de um pedido com várias motos. A edição é do pedido inteiro e ainda não está disponível.'
+// Venda que se edita pelo pedido (P6 do #23, `editaPeloPedido`): o Editar venda recusa com esta frase.
+export const VENDA_DE_PEDIDO_NAO_EDITA = 'Esta venda faz parte de um pedido com várias motos, brinde ou acessório. A edição é do pedido inteiro.'
 
 /** Valor da efetivação: o texto da tela de hoje (1 moto) ou a lista { motoId, valor } refeita campo a campo; null se não serve. */
 export function valorDaEfetivacao(x: unknown): number | MotoComValor[] | null {

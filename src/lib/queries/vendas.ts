@@ -5,6 +5,9 @@ import { eq, and, ilike, inArray, desc, sql, gte, lte } from 'drizzle-orm'
 import { inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
 import { freteDaVendaExpr, valorDaMotoNosRelatoriosExpr } from './valor-liquido'
 import { pedidoEmAprovacaoSql } from '@/lib/pedido-de-aprovacao'
+import { contagemDoPedidoSql } from '@/lib/pedido-venda'
+
+const doPedidoDaVenda = contagemDoPedidoSql(sql.raw('"vendas"."pedido_venda_id"'))
 
 export type PedidoComDetalhes = Awaited<ReturnType<typeof listarPedidosPorLoja>>[0]
 export type VendaComDetalhes  = Awaited<ReturnType<typeof listarVendas>>[0]
@@ -87,6 +90,9 @@ export async function listarVendas(filtros?: {
       marca:            modelos.marca,
       lojaNome:         lojas.nome,
       vendedorNome:     usuarios.nome,
+      // Para escolher o Editar (venda ou pedido) pela mesma `editaPeloPedido` do servidor (#23, P6).
+      vendasNoPedido:   doPedidoDaVenda.vendas,
+      pecasNoPedido:    doPedidoDaVenda.pecas,
     })
     .from(vendas)
     .innerJoin(motos,    eq(vendas.motoId,     motos.id))

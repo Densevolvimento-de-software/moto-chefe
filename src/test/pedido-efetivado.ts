@@ -30,19 +30,19 @@ export async function semearContaDoPedido({ db, execRows }: Pick<Db, 'db' | 'exe
 export type ContaDoPedido = Awaited<ReturnType<typeof semearContaDoPedido>>
 
 /**
- * Pedido criado pelo vendedor e efetivado pelo aux_adm: cada moto a R$ 10.000, 2 capacetes a R$ 250 e o frete dado; pagamento
+ * Pedido criado pelo vendedor e efetivado pelo aux_adm: cada moto a R$ 10.000, as peças dadas (padrão: 2 capacetes a R$ 250) e o frete; pagamento
  * R$ 1.000 em dinheiro e o resto em PIX. Devolve o pedido e as vendas.
  */
 export async function efetivarPedidoSintetico(
   { execRows }: Pick<Db, 'execRows'>, actions: Actions, como: (p: Persona) => void, c: ContaDoPedido, motoIds: string[], frete = 0,
+  pecas: { tipo: 'brinde' | 'acessorio'; pecaId: string; quantidade: number }[] = [{ tipo: 'acessorio', pecaId: c.capacete, quantidade: 2 }],
 ) {
   como(c.vendedor)
-  const pecas = [{ tipo: 'acessorio' as const, pecaId: c.capacete, quantidade: 2 }]
   const entrega = frete > 0 ? entregarSintetico(frete) : { modo: 'retira', modalidade: 'TransporteProprioPorContaDoDestinatario' }
   assert.equal((await actions.criarPedidoVendaAction(motoIds.map(motoId => ({ motoId })), '', entrega, pecas)).ok, true)
   const pedidoId = (await execRows(sql`select pedido_venda_id as id from pedidos_venda_itens where moto_id = ${motoIds[0]}`))[0].id as string
   como(c.aux)
-  const total = motoIds.length * 10000 + 500 + frete
+  const total = motoIds.length * 10000 + pecas.filter(p => p.tipo === 'acessorio').reduce((t, p) => t + p.quantidade * 250, 0) + frete
   const r = await actions.efetivarVendaAction(pedidoId, 'Cliente sintético', CPF_SINTETICO, motoIds.map(motoId => ({ motoId, valor: 10000 })),
     [{ tipo: 'dinheiro', valor: 1000 }, { tipo: 'pix', valor: total - 1000 }], undefined, c.origemId)
   assert.deepEqual(r, { ok: true, dados: undefined })

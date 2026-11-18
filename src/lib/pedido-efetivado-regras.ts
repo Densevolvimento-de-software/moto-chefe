@@ -17,17 +17,20 @@ export const CAMPOS_DO_COMPRADOR = [
 
 type NotaDaTrava = { ambiente: string; status: string; dataAutorizacao: string | null; numero: string | null }
 
+/** Por que cliente e valores travam: a NF do MOVA valendo, ou o nº de NF preenchido para o aux_adm (#191). */
+export type TravaDoPedido = { numero: string | null; por: 'nota' | 'papel' }
+
 /**
  * A NF que trava o pedido: a mesma regra do "Cancelar venda" (ADR-0014, `travaDoCancelamentoDaVenda`) e, para o aux_adm, o
  * nº de NF preenchido (#191), em qualquer venda do pedido. null se nada trava.
  */
 export function nfQueTravaOPedido(
   vendas: readonly { notas: readonly NotaDaTrava[]; notaFiscalSaida: string | null }[], papel: string, agora: Date,
-): { numero: string | null } | null {
+): TravaDoPedido | null {
   const daNota = vendas.map(v => travaDoCancelamentoDaVenda([...v.notas], agora)).find(r => r !== null)
-  if (daNota) return { numero: daNota.nota.numero }
+  if (daNota) return { numero: daNota.nota.numero, por: 'nota' }
   const doPapel = vendas.find(v => travaDoPapel(papel, v.notaFiscalSaida))
-  return doPapel ? { numero: doPapel.notaFiscalSaida } : null
+  return doPapel ? { numero: doPapel.notaFiscalSaida, por: 'papel' } : null
 }
 
 const doCampo = (k: (typeof CAMPOS_DO_COMPRADOR)[number], v: string | null | undefined) =>
@@ -44,8 +47,10 @@ export function algumValorMudou(gravados: ReadonlyMap<string, number>, novos: re
 }
 
 /** A recusa quando a NF trava e o cliente ou um valor mudou; null se pode gravar. */
-export function recusaDaEdicaoNaNota(trava: { numero: string | null } | null, clienteOuValorMudou: boolean): string | null {
+export function recusaDaEdicaoNaNota(trava: TravaDoPedido | null, clienteOuValorMudou: boolean): string | null {
   if (!trava || !clienteOuValorMudou) return null
+  // Pelo nº de NF (#191) quem decide é o papel, não a nota: cancelar a nota não é o caminho do aux_adm.
+  if (trava.por === 'papel') return `Esta venda tem NF registrada (nº ${trava.numero}). Cliente e valores só mudam com os administradores. Dá para corrigir o pagamento.`
   const nota = trava.numero ? `A nota fiscal nº ${trava.numero}` : 'A nota fiscal do pedido'
   return `${nota} está valendo. Itens, valores e cliente estão nela e não mudam. Para mudar, cancele a nota antes.`
 }
@@ -62,3 +67,9 @@ export function acessoriosDoFormulario(x: unknown): { pecaId: string; valor: num
     && !valorDePecaInvalido((a as { valor: number }).valor)
   return Array.isArray(x) && x.every(valido) ? x.map(a => ({ pecaId: a.pecaId, valor: a.valor })) : null
 }
+
+/**
+ * A venda se edita pelo pedido (P6 do #23): o pedido tem 2+ vendas ou brinde/acessório (a venda de peça dele). A lista escolhe o
+ * diálogo e o Editar venda recusa por aqui; venda de 1 moto sem peça (pedido ou Vender) segue no Editar venda.
+ */
+export const editaPeloPedido = (doPedido: { vendas: number; pecas: number }): boolean => doPedido.vendas > 1 || doPedido.pecas > 0
