@@ -2,6 +2,8 @@
 // dentro do route handler, porque os scripts de coleta precisam importá-los
 // sem arrastar next/server e a conexão de banco junto.
 
+export const LINHA_PIX = 'pix'
+
 export type TransacaoCartao = {
   nsu?: string
   autorizacao?: string
@@ -9,8 +11,8 @@ export type TransacaoCartao = {
   valorBruto: number
   valorLiquido?: number
   parcelas: number
-  // 'pix' só vem da maquininha Mercado Pago (#51): o Pix dela é conciliado aqui, não em /pix-mcp.
-  tipo: 'credito' | 'debito' | 'pix'
+  // 'pix' (LINHA_PIX) só vem da maquininha Mercado Pago (#51): o Pix dela é conciliado aqui, não em /pix-mcp.
+  tipo: 'credito' | 'debito' | typeof LINHA_PIX
   status: string
   rawData?: Record<string, unknown>
 }

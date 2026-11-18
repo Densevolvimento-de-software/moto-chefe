@@ -92,3 +92,16 @@ test('papel sem a conciliação (vendedor) é recusado e não vê vendas', async
   usuario = { id: a.usuarioId, papel: 'vendedor', lojaId: a.lojaId, contaId: a.contaId, gruposAcesso: [], gruposAprovacao: [] }
   await assert.rejects(actions.buscarVendasParaVincular(linhaA), { message: 'Sem permissão' })
 })
+
+// O painel da venda usa estas duas buscas para o pagamento de cartão: a linha pix do Mercado Pago não
+// pode aparecer ali (vinculada a um cartão, o detalhe ficaria vermelho e a lista diria conciliada).
+test('buscas do painel para pagamento de cartão não oferecem a linha pix', async () => {
+  const a = await semearConta()
+  const cartao = await linha(a, 'credito', 616.78)
+  const pix = await linha(a, 'pix', 616.78)
+  entrarComo(a)
+  const porValor = (await actions.buscarConciliacoesPorValor(616.78)).map(l => l.id)
+  const livres = (await actions.buscarConciliacoesLivres('616,78')).map(l => l.id)
+  assert.ok(porValor.includes(cartao) && !porValor.includes(pix))
+  assert.ok(livres.includes(cartao) && !livres.includes(pix))
+})
