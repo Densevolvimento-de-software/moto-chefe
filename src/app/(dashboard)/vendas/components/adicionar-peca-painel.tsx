@@ -1,8 +1,8 @@
 'use client'
 import { useState } from 'react'
-import { Minus, Plus, Search } from 'lucide-react'
+import { Minus, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { CampoBusca } from '@/components/ui/campo-busca'
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { filtrarPecas } from '@/lib/busca-peca'
 import { brl } from '@/lib/dashboard-painel'
@@ -43,10 +43,7 @@ export function AdicionarPecaPainel({ tipo, onFechar, catalogo, erro, lojaNome, 
         </SheetHeader>
         {/* Busca e filtro fixos no topo; só a lista rola (V3). */}
         <div className="flex flex-col gap-3 px-4 pb-3">
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-            <Input aria-label="Buscar peça" placeholder="Digite o nome da peça" className="h-11 pl-9" value={busca} onChange={e => setBusca(e.target.value)} />
-          </div>
+          <CampoBusca aria-label="Buscar peça" placeholder="Digite o nome da peça" value={busca} onChange={e => setBusca(e.target.value)} />
           <Button variant={soComSaldo ? 'secondary' : 'outline'} className="self-start rounded-full" aria-pressed={soComSaldo}
             onClick={() => setSoComSaldo(v => !v)}>Só com saldo na loja</Button>
         </div>
