@@ -208,7 +208,8 @@ export function EfetivarPedidoDialog({ pedidoId, numero, origens, entrega: entre
               )}
             </div>
           </div>
-          <DialogFooter className="flex-col items-stretch max-lg:sticky max-lg:-bottom-4 max-lg:z-10 max-lg:bg-popover sm:flex-row sm:items-center sm:justify-between">
+          {/* Total e botões sempre à vista (V2), também no desktop: o aviso de aprovação alonga a coluna da esquerda. */}
+          <DialogFooter className="sticky -bottom-4 z-10 flex-col items-stretch bg-popover sm:flex-row sm:items-center sm:justify-between">
             <p aria-label="Total do pedido" className="text-sm text-muted-foreground">Total do pedido <strong className="block text-lg text-foreground">{brl(total)}</strong></p>
             <div className="grid grid-cols-2 gap-2 sm:flex">
               <Button variant="outline" className="h-11" disabled={loading} onClick={() => setOpen(false)}>Cancelar</Button>
