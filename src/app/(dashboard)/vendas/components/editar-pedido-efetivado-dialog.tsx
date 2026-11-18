@@ -14,7 +14,7 @@ import { useMaquininhas } from '@/components/use-maquininhas'
 import { OrigemVendaSelect } from '@/components/origem-venda-select'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
 import { DocumentoClienteInput } from '@/components/documento-cliente'
-import { lerDocumentoCliente } from '@/lib/documento'
+import { lerDocumentoCliente, soDigitosDoc } from '@/lib/documento'
 import { aprovacaoDoPedido, foraDaMoto, totalDoPedido } from '@/lib/pedido-venda-regras'
 import { motosDoEnvio, totalDasMotos } from '@/lib/novo-pedido'
 import { pagamentosIncompletos, situacaoDoPagamento } from '@/lib/pagamentos-entrada'
@@ -98,7 +98,9 @@ export function EditarPedidoEfetivadoDialog({ vendaId, papel, vendedores, origen
     liquido: liquidoDaMoto(pagamentos, pedido.taxas, foraDaMoto(pedido.entrega, pecasDoTotal)),
     motos: motosComValor.map(m => ({ ...m, minimo: motos.find(x => x.id === m.motoId)?.minimo ?? null })),
   }).porMoto : null
-  const podeSalvar = !!f && !!motosComValor && !!f.clienteNome.trim() && lerDocumentoCliente(f.clienteCpf).ok && situacao.tipo === 'pago'
+  // Documento antigo que não passa mais na conferência e não mudou o servidor aceita (conferirComprador); só o trocado tem de valer.
+  const documentoServe = !!f && (lerDocumentoCliente(f.clienteCpf).ok || soDigitosDoc(f.clienteCpf) === soDigitosDoc(pedido?.comprador.clienteCpf))
+  const podeSalvar = !!f && !!motosComValor && !!f.clienteNome.trim() && documentoServe && situacao.tipo === 'pago'
     && !pagamentosIncompletos(pagamentos) && !f.pgtos.some(p => pgtoIncompleto(p, pedido?.taxas ?? null, maquininhas))
 
   async function salvar() {
