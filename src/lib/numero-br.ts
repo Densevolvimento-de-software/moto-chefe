@@ -31,7 +31,8 @@ export function parseNumeroBR(texto: string): number | null {
     normalizado = corpo.slice(0, ultimaVirgula).replace(/\./g, '') + '.' + corpo.slice(ultimaVirgula + 1)
   } else if (ultimoPonto >= 0) {
     // Só ponto: milhar se o formato for 1.234 / 1.234.567; senão é decimal.
-    normalizado = /^\d{1,3}(\.\d{3})+$/.test(corpo) ? corpo.replace(/\./g, '') : corpo
+    // Milhar não começa com zero: "0.020" é 0,02, não 20 (#108).
+    normalizado = /^[1-9]\d{0,2}(\.\d{3})+$/.test(corpo) ? corpo.replace(/\./g, '') : corpo
   } else {
     normalizado = corpo
   }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAutorizado } from '@/lib/cron-auth'
 import { db } from '@/lib/db'
 import { conciliacoesCartao, grupos } from '@/lib/db/schema'
 import { eq, and, sql } from 'drizzle-orm'
@@ -8,8 +9,7 @@ import { chaveDedup, type PayloadConciliacao } from '@/lib/conciliacao-cartao'
 import { somenteDigitos } from '@/lib/grupo-cnpj'
 
 export async function POST(req: NextRequest) {
-  const secret = req.headers.get('x-cron-secret')
-  if (secret !== process.env.CRON_SECRET) {
+  if (!cronAutorizado(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

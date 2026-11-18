@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { conflitosDaFaixa, decidirInutilizacao, serieEUfDaEmpresa, ufPermiteInutilizacao, validarFaixaInutilizacao, elegivelParaInutilizar, ERRO_SEM_CONFIGURACAO, pedidoSemRespostaVenceu, podePedirInutilizacao, type ContextoInutilizacao, situacaoInutilizacao, STATUS_NAO_ENVIADA, STATUS_SEM_CONFIGURACAO, normalizarJustificativa, validarJustificativa } from './inutilizacao'
+import { conflitosDaFaixa, desfechoDaConsulta, limiteDaRotina, orcamentoEsgotado, resumoDaRotina, decidirInutilizacao, serieEUfDaEmpresa, ufPermiteInutilizacao, validarFaixaInutilizacao, elegivelParaInutilizar, ERRO_SEM_CONFIGURACAO, pedidoSemRespostaVenceu, podePedirInutilizacao, type ContextoInutilizacao, situacaoInutilizacao, STATUS_NAO_ENVIADA, STATUS_SEM_CONFIGURACAO, normalizarJustificativa, validarJustificativa } from './inutilizacao'
 
 test('justificativa: tira acentos e espaços sobrando', () => {
   assert.deepEqual(validarJustificativa('  Venda cancelada após\n a rejeição  '), { ok: true, justificativa: 'Venda cancelada apos a rejeicao' })
@@ -213,4 +213,25 @@ test('conflitos: nota que ocupa o número e pedido vivo que cruza a faixa avisam
   assert.deepEqual(c.numerosDeNotas, [17, 18, 19], 'ocupam: autorizada, cancelada, em andamento e denegada; livres e de outra série não')
   assert.deepEqual(c.pedidos.map(p => [p.numeroInicial, p.numeroFinal, p.situacao]), [[20, 30, 'pendente'], [1, 16, 'autorizada']])
   assert.deepEqual(conflitosDaFaixa(f, [], []), { numerosDeNotas: [], pedidos: [] })
+})
+
+test('rotina: o limite é 4 h antes da hora da rodada (o aviso da NG já parou de chegar)', () => {
+  assert.deepEqual(limiteDaRotina(new Date('2026-11-18T15:00:00Z')), new Date('2026-11-18T11:00:00Z'))
+})
+
+test('rotina: conta consultadas, resolvidas, com falha e adiadas; a que segue em processamento é só consultada', () => {
+  assert.deepEqual(resumoDaRotina(['resolvida', 'pendente', 'falha', 'resolvida', 'adiada']), { consultadas: 4, resolvidas: 2, falhas: 1, adiadas: 1 })
+  assert.deepEqual(resumoDaRotina([]), { consultadas: 0, resolvidas: 0, falhas: 0, adiadas: 0 })
+})
+
+test('rotina: o orçamento acaba aos 240 s de rodada', () => {
+  assert.equal(orcamentoEsgotado(239_999), false)
+  assert.equal(orcamentoEsgotado(240_000), true)
+})
+
+test('rotina: autorizada ou negada resolve; pendente (a NG ainda processa) não; sem credencial no ambiente é falha', () => {
+  assert.equal(desfechoDaConsulta({ ok: true, situacao: 'autorizada' }), 'resolvida')
+  assert.equal(desfechoDaConsulta({ ok: true, situacao: 'negada' }), 'resolvida')
+  assert.equal(desfechoDaConsulta({ ok: true, situacao: 'pendente' }), 'pendente')
+  assert.equal(desfechoDaConsulta({ ok: false }), 'falha')
 })
