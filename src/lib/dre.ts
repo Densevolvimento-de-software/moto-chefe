@@ -17,7 +17,6 @@
 //   contaria o mesmo tributo duas vezes.
 import { centavos } from './centavos'
 
-
 export const GRUPOS_DRE = [
   { valor: 'pessoal',         rotulo: 'Pessoal' },
   { valor: 'ocupacao',        rotulo: 'Ocupação' },
