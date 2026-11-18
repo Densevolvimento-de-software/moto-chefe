@@ -522,7 +522,9 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Com o card da tarifa do PIX (#51) a grade tem 13 células: Receita Bruta (2 a partir do md) e Lucro e % de
+            Lucro (2 cada no xl) fecham as linhas, sem card sozinho no fim em 768 nem em 1280. */}
+        <Card className="md:col-span-2">
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Receita Bruta</CardTitle></CardHeader>
           <CardContent>
             <p className={`text-2xl font-bold ${receitaBruta >= 0 ? 'text-success' : 'text-destructive'}`}>
@@ -531,7 +533,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
             <p className="text-xs text-muted-foreground">líquido − custo das motos</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="xl:col-span-2">
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Lucro Líquido</CardTitle></CardHeader>
           <CardContent>
             <p className={`text-2xl font-bold ${lucroLiquido >= 0 ? 'text-success' : 'text-destructive'}`}>
@@ -540,7 +542,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
             <p className="text-xs text-muted-foreground">receita bruta − despesas</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="xl:col-span-2">
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">% de Lucro</CardTitle></CardHeader>
           <CardContent>
             <p className={`text-2xl font-bold ${percentualLucro >= 0 ? 'text-success' : 'text-destructive'}`}>
