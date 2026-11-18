@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { motosDoEnvio, motosParaAdicionar, totalDasMotos, type MotoDisponivel } from './novo-pedido'
+import { avisoDeSaldo, comPecas, motosDoEnvio, motosParaAdicionar, motosSemValor, pecasDoEnvio, totalDasMotos, totalDasPecasNaTela, type MotoDisponivel } from './novo-pedido'
 
 const moto = (id: string, extra: Partial<MotoDisponivel> = {}): MotoDisponivel =>
   ({ id, chassi: `LA2026X${id}`, marca: 'MC', modelo: 'JET', cor: 'PRETA', lojaId: 'centro', lojaNome: 'Loja Centro', ...extra })
@@ -38,5 +38,42 @@ describe('envio e total das motos', () => {
 
   test('o total soma só os valores preenchidos, em centavos', () => {
     assert.equal(totalDasMotos([noPedido('4131', '9490.10'), noPedido('0088', '5490.20'), noPedido('2217', '')]), 14980.3)
+  })
+})
+
+describe('brinde e acessório no pedido (#24, 24b)', () => {
+  const capacete = { id: 'cap', nome: 'Capacete', valor: '289.90', quantidadeEstoque: 1 }
+  const bau = { id: 'bau', nome: 'Baú', valor: '249.00', quantidadeEstoque: 2 }
+
+  test('acessório entra com o preço do catálogo, brinde sem cobrança; a mesma peça do mesmo tipo soma na quantidade', () => {
+    const uma = comPecas([], 'acessorio', [{ peca: capacete, quantidade: 1 }])
+    const pecas = comPecas(comPecas(uma, 'acessorio', [{ peca: capacete, quantidade: 1 }]), 'brinde', [{ peca: bau, quantidade: 1 }])
+    assert.deepEqual(pecas.map(p => [p.tipo, p.peca.id, p.quantidade, p.valor]), [['acessorio', 'cap', 2, '289.90'], ['brinde', 'bau', 1, '0.00']])
+  })
+
+  test('aviso de saldo conta a peça como brinde e como acessório; dentro do saldo, sem aviso', () => {
+    const pecas = comPecas(comPecas([], 'acessorio', [{ peca: capacete, quantidade: 1 }]), 'brinde', [{ peca: capacete, quantidade: 1 }, { peca: bau, quantidade: 2 }])
+    assert.equal(avisoDeSaldo(pecas, 'cap'), 'Saldo na loja: 1. Fica em -1 depois deste pedido; não trava a venda.')
+    assert.equal(avisoDeSaldo(pecas, 'bau'), null)
+  })
+
+  test('envio: o valor do acessório só vai de quem gere peças; brinde nunca leva valor; valor que não serve não sai', () => {
+    const pecas = comPecas(comPecas([], 'acessorio', [{ peca: capacete, quantidade: 2 }]), 'brinde', [{ peca: bau, quantidade: 1 }])
+    const ajustado = pecas.map(p => (p.tipo === 'acessorio' ? { ...p, valor: '250.00' } : p))
+    assert.deepEqual(pecasDoEnvio(ajustado, true), [{ tipo: 'acessorio', pecaId: 'cap', quantidade: 2, valorUnitario: 250 }, { tipo: 'brinde', pecaId: 'bau', quantidade: 1 }])
+    assert.deepEqual(pecasDoEnvio(ajustado, false), [{ tipo: 'acessorio', pecaId: 'cap', quantidade: 2 }, { tipo: 'brinde', pecaId: 'bau', quantidade: 1 }])
+    assert.equal(pecasDoEnvio(pecas.map(p => ({ ...p, valor: '10000000000.00' })), true), null)
+  })
+
+  test('total das peças: acessórios pelo valor da tela, brinde R$ 0', () => {
+    const pecas = comPecas(comPecas([], 'acessorio', [{ peca: capacete, quantidade: 2 }]), 'brinde', [{ peca: bau, quantidade: 1 }])
+    assert.equal(totalDasPecasNaTela(pecas), 579.8)
+  })
+
+  test('resumo avisa as motos sem valor (avisa, não bloqueia)', () => {
+    const m = (valor: string) => ({ ...moto('1'), valor })
+    assert.equal(motosSemValor([m('9490.00')]), null)
+    assert.equal(motosSemValor([m(''), m('9490.00')]), '1 moto sem valor')
+    assert.equal(motosSemValor([m(''), m('')]), '2 motos sem valor')
   })
 })
