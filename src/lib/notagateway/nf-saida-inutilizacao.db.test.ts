@@ -858,7 +858,6 @@ test('resposta atrasada da consulta, depois de outra consulta resolver a linha, 
 // Aviso da Nota Gateway (webhook, #66): só gatilho. Acha a linha pelo id externo e segue a consulta
 // do clique; daqui em diante a NG é trocada e o banco é o real.
 const TOKEN = 'token-do-webhook-de-teste'
-const CHAVE_3 = '33333333-3333-4333-8333-333333333333'
 
 /** Formato do aviso de inutilização que o suporte da NG mandou (comentário na #58). */
 const avisoDe = (idExterno: string, extra: Record<string, unknown> = {}) => ({
@@ -866,14 +865,14 @@ const avisoDe = (idExterno: string, extra: Record<string, unknown> = {}) => ({
   numeroInicial: 16, numeroFinal: 24, justificativa: 'Quebra na sequência da numeração', protocoloAutorizacao: 'PROTOCOLO-DO-CORPO', ...extra,
 })
 
-type Envio = { consultar: Consultar; headers?: Record<string, string>; tokenEsperado?: string; config?: typeof m.configDoAmbiente }
+type Envio = { consultar: Consultar; headers?: Record<string, string>; tokenEsperado?: string; config?: typeof m.configDoAmbiente; agora?: Date }
 
-function receber(tx: Tx, corpo: unknown, { consultar, headers = { 'x-token': TOKEN }, tokenEsperado = TOKEN, config = m.configDoAmbiente }: Envio) {
+function receber(tx: Tx, corpo: unknown, { consultar, headers = { 'x-token': TOKEN }, tokenEsperado = TOKEN, config = m.configDoAmbiente, agora }: Envio) {
   const req = new Request('http://localhost/api/webhooks/notagateway', {
     method: 'POST', headers: { 'content-type': 'application/json', ...headers },
     body: typeof corpo === 'string' ? corpo : JSON.stringify(corpo),
   })
-  return w.receberAvisoDaNg(req, { ...depsDaConsulta(tx, consultar), config, tokenEsperado })
+  return w.receberAvisoDaNg(req, { ...depsDaConsulta(tx, consultar, agora), config, tokenEsperado })
 }
 
 /** Cala o console a partir daqui e devolve o que o webhook escreveu, para provar que nada sensível sai. */
@@ -991,10 +990,12 @@ test('aviso com a consulta ainda pendente (Processando, ou 404 dentro do prazo):
     const processando = await faixaPendente(tx, a, CHAVE_1)
     const naoAchada = await faixaPendente(tx, a, CHAVE_2)
     const antesN = await naoAchada.linha()
+    const { MINUTOS_PARA_DESCARTAR } = await import('@/lib/notagateway/status')
+    const noPrazo = new Date(new Date(antesN.criado_em).getTime() + (MINUTOS_PARA_DESCARTAR - 1) * 60_000)
     const escrito = consoleDe(t)
 
     const r1 = await receber(tx, avisoDe(processando.idExterno), { consultar: ngQueResponde({ status: 'Processando', motivoStatus: null, protocolo: null }).consultar })
-    const r2 = await receber(tx, avisoDe(naoAchada.idExterno), { consultar: ngQueResponde(null).consultar })
+    const r2 = await receber(tx, avisoDe(naoAchada.idExterno), { consultar: ngQueResponde(null).consultar, agora: noPrazo })
 
     assert.deepEqual([r1.status, r2.status], [500, 500])
     const p = await processando.linha()

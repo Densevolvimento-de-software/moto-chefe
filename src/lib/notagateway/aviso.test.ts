@@ -34,7 +34,7 @@ test('aviso sem ambienteEmissao vem com ambiente nulo (D1: conta como diferente)
 const aviso = { id: AVISO.id, ambienteEmissao: 'Homologacao' }
 const pendente = { ambiente: 'Homologacao', situacao: 'pendente' }
 
-test('linha pendente do mesmo ambiente: consulta', () => {
+test('linha do mesmo ambiente: consulta (a situação fica com a consulta)', () => {
   assert.deepEqual(decidirAviso(aviso, pendente), { acao: 'consultar', linha: pendente })
 })
 
