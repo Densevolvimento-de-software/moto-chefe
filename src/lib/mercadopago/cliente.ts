@@ -1,5 +1,5 @@
-// Cliente mínimo da API do Mercado Pago para a mensalidade do MOVA (#208).
-// Credencial do MOVA (conta da Infinity Fit), não de grupo: env MP_ACCESS_TOKEN.
+// Cliente mínimo da API do Mercado Pago (#208). A mensalidade usa a credencial do MOVA (conta da
+// Infinity Fit, env MP_ACCESS_TOKEN); a maquininha usa a do grupo, por chamarComToken (point.ts).
 // Nunca logar o corpo da requisição nem o header de autorização (spec, seção 8).
 
 const API = 'https://api.mercadopago.com'
@@ -27,7 +27,7 @@ export async function chamarComToken<T>(token: string, caminho: string, init: Re
   return r.json() as Promise<T>
 }
 
-function chamar<T>(caminho: string, init: RequestInit & { idempotencia?: string }): Promise<T> {
+async function chamar<T>(caminho: string, init: RequestInit & { idempotencia?: string }): Promise<T> {
   return chamarComToken<T>(token(), caminho, init)
 }
 
