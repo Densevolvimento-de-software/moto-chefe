@@ -93,6 +93,19 @@ test('grava o cartão e casa com a venda do grupo, com o token só deste grupo',
   ])
 })
 
+test('casa pela autorização quando o valor não bate; a Conta B não acha a venda de A pela mesma autorização', async () => {
+  const a = await semearConta('A')
+  const b = await semearConta('B')
+  // R$ 905 fica fora da tolerância do valor (fixture 900): só a autorização da fixture (123456) liga.
+  const vendaId = await venda(a, [{ tipo: 'cartao_credito', valor: 905, parcelas: 3, autorizacao: credito3x.authorization_code }])
+  const id = novoId()
+  assert.deepEqual(await importar(a, [pg(credito3x, { id })]), { ...NADA, conciliadas: 1 })
+  assert.equal((await linhasDoGrupo(a.grupoId))[0].venda_id, vendaId)
+
+  assert.deepEqual(await importar(b, [pg(credito3x, { id })]), { ...NADA, pendentes: 1 })
+  assert.equal((await linhasDoGrupo(b.grupoId))[0].venda_id, null)
+})
+
 test('Pix da maquininha vira linha pix com o valor líquido e casa com o pagamento Pix da venda', async () => {
   const a = await semearConta('A')
   const vendaId = await venda(a, [{ tipo: 'pix', valor: 80 }])
