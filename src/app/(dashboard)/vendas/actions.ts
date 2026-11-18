@@ -33,7 +33,7 @@ import { podeCriarPedido, podeEfetivarPedido, foraDaMoto, listaDeMotosValida, mo
 import { podeGerirPecas } from '../pecas/papeis'
 import { PAPEIS_QUE_CANCELAM_VENDA, travaDoPapel } from '@/lib/cancelar-venda'
 import { alterarEntregaDoPedidoTx, efetivarPedidoTx, pecasDoPedido, pedirAprovacaoDoPedidoTx, type PedidoEmAprovacao } from '@/lib/efetivar-pedido'
-import { cancelarPedidoTx, criarPedidoTx, gravarMotoDoPedido, motosDoPedidoTx, trocarMotosDoPedidoTx, vendaDePedidoComVariasMotos } from '@/lib/pedido-venda'
+import { cancelarPedidoTx, criarPedidoTx, gravarMotoDoPedido, motosDoPedidoTx, salvarPedidoPendenteTx, trocarMotosDoPedidoTx, vendaDePedidoComVariasMotos } from '@/lib/pedido-venda'
 import { conferirEntrega, entregaParaLog, freteDaVenda, motoNaNota, recusaDoFreteDaVendaEfetivada, totalComFrete, travaDaAlteracaoDaEntrega, travaDaEntregaEmOutroEstado, type EntregaVenda } from '@/lib/notagateway/entrega'
 import { ufDoEmissorDaMoto } from '@/lib/notagateway/grupo-emissor'
 import { travaDoValorVenda } from '@/lib/valor-venda'
@@ -262,6 +262,33 @@ async function trocarMotosDoPedido(pedidoId: string, motos: MotoDoPedidoInput[])
   await db.transaction(tx => trocarMotosDoPedidoTx(tx, {
     pedidoId, motos: pedidas, usuario: { id: usuario.id, papel: usuario.papel, lojaId: usuario.lojaId ?? null },
   }))
+  revalidatePath('/vendas')
+  revalidatePath('/estoque')
+}
+
+export async function salvarPedidoPendenteAction(...a: Parameters<typeof salvarPedidoPendente>) {
+  return acao(() => salvarPedidoPendente(...a))
+}
+
+/** Editar o pedido pendente (#25, 25c): a lista inteira de motos (com valor), de peças e a Entrega, numa transação. */
+async function salvarPedidoPendente(pedidoId: string, motos: MotoDoPedidoInput[], pecas: PecaDoPedidoInput[], entregaDaTela: unknown) {
+  const usuario = await getUsuarioLogado()
+  const pedido = ehUuid(pedidoId) ? await pedidoDoUsuario(usuario, pedidoId) : null
+  if (!pedido) throw new RecusaUsuario('Pedido não encontrado')
+  const { pedidas, primeira } = await motosPedidas(usuario, motos)
+  if (!Array.isArray(pecas)) throw new RecusaUsuario('Item do pedido inválido')
+  // Campo a campo: o que vier a mais do navegador não chega à gravação (#891).
+  const pecasDaTela = pecas.map(p => ({ tipo: p?.tipo, pecaId: p?.pecaId, quantidade: p?.quantidade, valorUnitario: p?.valorUnitario }) as PecaDoPedidoInput)
+  // Sem moto a troca recusa com a frase dela; a Entrega se confere pela moto que fica (ou a do pedido) na loja do pedido.
+  const entrega = await entregaConferida(primeira?.id ?? pedido.motoId, pedido.lojaId, entregaDaTela)
+  await db.transaction(tx => salvarPedidoPendenteTx(tx, {
+    pedidoId, motos: pedidas, pecas: pecasDaTela, entrega,
+    usuario: { id: usuario.id, papel: usuario.papel, lojaId: usuario.lojaId ?? null },
+    podeAjustarPreco: podeGerirPecas(usuario.papel),
+  }))
+  if (JSON.stringify(pedido.entrega) !== JSON.stringify(entrega)) {
+    await registrarAlteracaoDaEntrega({ usuarioId: usuario.id, lojaId: pedido.lojaId, registro: { pedidoId }, antes: pedido.entrega, depois: entrega })
+  }
   revalidatePath('/vendas')
   revalidatePath('/estoque')
 }

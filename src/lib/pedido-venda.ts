@@ -2,7 +2,7 @@ import { and, asc, count, eq, inArray, sql } from 'drizzle-orm'
 import type { db } from '@/lib/db'
 import { historicoEstoque, motos, pecasCatalogo, pedidosVenda, pedidosVendaItens, reservas, transferencias, vendas } from '@/lib/db/schema'
 import {
-  motivoBloqueioMotoNoPedido, motosDoPedido, PEDIDO_SEM_MOTO, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDaPecaNoPedido, valorDePecaInvalido,
+  motivoBloqueioMotoNoPedido, motosDoPedido, PEDIDO_SEM_MOTO, pecasComPrecoMantido, podeCancelarPedido, trocaDeMotos, valorDaMotoNoPedido, valorDaPecaNoPedido, valorDePecaInvalido,
   type MotoDoPedidoInput, type PecaDoPedidoInput, type QuemCancela,
 } from '@/lib/pedido-venda-regras'
 import { daContaDaLoja } from '@/lib/pecas-da-conta'
@@ -143,6 +143,8 @@ export async function criarPedidoTx(
  */
 export const PEDIDO_AGUARDANDO_APROVACAO = 'Este pedido está aguardando aprovação. Aprove ou recuse antes de cancelar.'
 const PEDIDO_EM_APROVACAO_PARA_TROCAR = 'Este pedido está aguardando aprovação. Aprove ou recuse antes de trocar as motos.'
+const PEDIDO_EM_APROVACAO_PARA_EDITAR = 'Este pedido está aguardando aprovação. Aprove ou recuse antes de editar o pedido.'
+const SEM_PERMISSAO_ALTERAR = 'Sem permissão para alterar este pedido'
 const PEDIDO_NAO_PENDENTE = 'Este pedido não está mais pendente. Recarregue a página.'
 
 /** Trava o pedido pendente que a pessoa pode mexer (a regra do cancelar, D-G do #20) e recusa o que está em aprovação. */
@@ -186,7 +188,12 @@ export async function cancelarPedidoTx(
  * (D-E); a que fica sem valor mandado guarda o que tinha. Se sai a moto do `moto_id`, ele passa para a 1ª que fica. Quem chama conferiu a Conta.
  */
 export async function trocarMotosDoPedidoTx(tx: Tx, d: { pedidoId: string; motos: MotoDoPedidoInput[]; usuario: QuemCancela }): Promise<void> {
-  const pedido = await travarPedidoPendente(tx, d.pedidoId, d.usuario, { semPermissao: 'Sem permissão para alterar este pedido', emAprovacao: PEDIDO_EM_APROVACAO_PARA_TROCAR })
+  const pedido = await travarPedidoPendente(tx, d.pedidoId, d.usuario, { semPermissao: SEM_PERMISSAO_ALTERAR, emAprovacao: PEDIDO_EM_APROVACAO_PARA_TROCAR })
+  await trocarMotosTravadas(tx, d, pedido)
+}
+
+/** A troca com o pedido já travado e conferido (quem pode, pendente, fora de aprovação). */
+async function trocarMotosTravadas(tx: Tx, d: { pedidoId: string; motos: MotoDoPedidoInput[]; usuario: QuemCancela }, pedido: { motoId: string; lojaId: string }) {
   const troca = trocaDeMotos(await motosDoPedidoTx(tx, d.pedidoId, pedido.motoId), d.motos.map(m => m.motoId), pedido.motoId)
   if (!troca.principal) throw new RecusaUsuario(PEDIDO_SEM_MOTO)
 
@@ -205,6 +212,25 @@ export async function trocarMotosDoPedidoTx(tx: Tx, d: { pedidoId: string; motos
     await gravarMotoDoPedido(tx, { pedidoId: d.pedidoId, motoId: m.motoId, valor: valorDaMotoNoPedido(m.valor) })
   }
   await tx.update(pedidosVenda).set({ motoId: troca.principal, dataAtualizacao: new Date() }).where(eq(pedidosVenda.id, d.pedidoId))
+}
+
+/**
+ * Editar o pedido pendente (#25, 25c): motos, peças e Entrega numa transação. Quem edita é quem cancela (D-G), também a Entrega
+ * (decisão 3 do Luis); em aprovação recusa. As peças são trocadas inteiras: quem não ajusta preço mantém o valor que o item já tinha
+ * (decisão 4), peça nova vai pelo catálogo. A Entrega já vem conferida por quem chama.
+ */
+export async function salvarPedidoPendenteTx(tx: Tx, d: {
+  pedidoId: string; motos: MotoDoPedidoInput[]; pecas: PecaDoPedidoInput[]; entrega: EntregaVenda; usuario: QuemCancela; podeAjustarPreco: boolean
+}): Promise<void> {
+  const pedido = await travarPedidoPendente(tx, d.pedidoId, d.usuario, { semPermissao: SEM_PERMISSAO_ALTERAR, emAprovacao: PEDIDO_EM_APROVACAO_PARA_EDITAR })
+  await trocarMotosTravadas(tx, d, pedido)
+  const daPeca = and(eq(pedidosVendaItens.pedidoVendaId, d.pedidoId), inArray(pedidosVendaItens.tipo, ['brinde', 'acessorio']))
+  const atuais = await tx.select({ tipo: pedidosVendaItens.tipo, pecaId: pedidosVendaItens.pecaId, valorUnitario: pedidosVendaItens.valorUnitario })
+    .from(pedidosVendaItens).where(daPeca)
+  const pecas = await pecasConferidas(tx, pedido.lojaId, d.podeAjustarPreco ? d.pecas : pecasComPrecoMantido(atuais, d.pecas))
+  await tx.delete(pedidosVendaItens).where(daPeca)
+  if (pecas.length > 0) await tx.insert(pedidosVendaItens).values(pecas.map(p => ({ ...p, pedidoVendaId: d.pedidoId })))
+  await tx.update(pedidosVenda).set({ entrega: d.entrega, dataAtualizacao: new Date() }).where(eq(pedidosVenda.id, d.pedidoId))
 }
 
 /**
