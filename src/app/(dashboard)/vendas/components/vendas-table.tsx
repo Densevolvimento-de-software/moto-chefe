@@ -9,6 +9,8 @@ import { NfSaidaButton } from '../../estoque/components/nf-saida-button'
 import { CancelarVendaButton } from './cancelar-venda-button'
 import { DetalhesVendaDialog } from './detalhes-venda-dialog'
 import { EditarVendaDialog } from './editar-venda-dialog'
+import { EditarPedidoEfetivadoDialog } from './editar-pedido-efetivado-dialog'
+import { editaPeloPedido } from '@/lib/pedido-efetivado-regras'
 import { NfSaidaVendaDialog, type NfDaVenda } from './nf-saida-venda-dialog'
 import { podeOperarNfSaida } from '../papeis-nf-saida'
 import { CartoesVendas, EtapasMini, PainelVenda, data, descricaoMoto, moeda, type ItemVenda } from './vendas-cartoes'
@@ -66,6 +68,7 @@ const botaoGrade = 'flex h-16 w-full flex-col items-center justify-center gap-1 
 function AcoesVenda({ v, papel, lojasEditaveis, vendedores, origens, descontos }: Omit<Props, 'vendas'> & { v: VendaComDetalhes }) {
   const podeEditarVenda = lojasEditaveis.has(v.lojaId)
   const podeEmitirNf    = !v.notaFiscalSaida && podeOperarNfSaida(papel)
+  const gatilhoDoEditar = (abrir: () => void) => <button type="button" onClick={abrir} className={botaoGrade}><Pencil className="size-4 text-muted-foreground" /> Editar</button>
   const blocos = 1 + (podeEditarVenda ? 1 : 0) + (podeGarantia.has(papel) ? 1 : 0) + (PAPEIS_QUE_CANCELAM_VENDA.has(papel) ? 1 : 0)
   return (
     <div className="space-y-2">
@@ -87,15 +90,9 @@ function AcoesVenda({ v, papel, lojasEditaveis, vendedores, origens, descontos }
           desconto={descontos?.get(v.id)}
           gatilho={abrir => <button type="button" onClick={abrir} className={botaoGrade}><Eye className="size-4 text-muted-foreground" /> Detalhes</button>}
         />
-        {podeEditarVenda && (
-          <EditarVendaDialog
-            venda={v}
-            papel={papel}
-            vendedores={vendedores}
-            origens={origens}
-            gatilho={abrir => <button type="button" onClick={abrir} className={botaoGrade}><Pencil className="size-4 text-muted-foreground" /> Editar</button>}
-          />
-        )}
+        {podeEditarVenda && (editaPeloPedido({ vendas: v.vendasNoPedido, pecas: v.pecasNoPedido })
+          ? <EditarPedidoEfetivadoDialog vendaId={v.id} papel={papel} vendedores={vendedores} origens={origens} gatilho={gatilhoDoEditar} />
+          : <EditarVendaDialog venda={v} papel={papel} vendedores={vendedores} origens={origens} gatilho={gatilhoDoEditar} />)}
         {podeGarantia.has(papel) && (
           <GarantiaButton
             motoId={v.motoId}

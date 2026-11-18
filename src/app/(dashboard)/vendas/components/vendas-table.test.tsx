@@ -60,6 +60,11 @@ mock.module('./editar-venda-dialog', {
   },
 })
 
+// O Editar do pedido (25d) lê o servidor; aqui só importa qual dos dois Editar a venda abre.
+mock.module('./editar-pedido-efetivado-dialog', {
+  namedExports: { EditarPedidoEfetivadoDialog: ({ vendaId }: { vendaId: string }) => createElement('output', { 'data-editar-pedido': '' }, vendaId) },
+})
+
 const esperar = (ms: number) => new Promise(r => setTimeout(r, ms))
 // Fechado, o Dialog do base-ui só sai do DOM depois da animação de saída.
 const DEPOIS_DA_ANIMACAO_MS = 300
@@ -166,4 +171,18 @@ test('trocar de venda no painel abre o Editar com os dados da venda nova (#205)'
   await t.clicarLinha(1)
   assert.equal(editar(), 'Paulo Souza')
   await t.desmontar()
+})
+
+test('o Editar do painel segue o pedido (P6 do #23): 2+ vendas ou brinde/acessório abre o do pedido; venda de 1 moto sem peça, o Editar venda', async () => {
+  const casos: [Partial<VendaComDetalhes>, 'pedido' | 'venda'][] = [
+    [{ vendasNoPedido: 2, pecasNoPedido: 0 }, 'pedido'], [{ vendasNoPedido: 1, pecasNoPedido: 1 }, 'pedido'], [{ vendasNoPedido: 1, pecasNoPedido: 0 }, 'venda'],
+  ]
+  for (const [doPedido, esperado] of casos) {
+    const t = await montarTabela('aux_adm')
+    await t.desenhar([{ ...VENDA, ...doPedido } as VendaComDetalhes])
+    await t.clicarLinha(0)
+    const aberto = document.querySelector('aside [data-editar-pedido]') ? 'pedido' : document.querySelector('aside [data-editar]') ? 'venda' : null
+    assert.equal(aberto, esperado, JSON.stringify(doPedido))
+    await t.desmontar()
+  }
 })
