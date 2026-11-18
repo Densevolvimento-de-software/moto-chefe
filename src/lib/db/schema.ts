@@ -1112,6 +1112,8 @@ export const configuracaoTaxas = pgTable('configuracao_taxas', {
   // Cards do simulador: 'taxas' (21x e 12x pela taxa do cartão, e PIX) ou 'avista_12x' (PIX e
   // o total em 12x digitado por modelo em precificacao.valor_12x). Ver src/lib/simulador-padrao.ts.
   padraoSimulador: text('padrao_simulador').$type<PadraoSimulador>().notNull().default('taxas'),
+  // Custo do PIX do grupo (#86), em fração (0.002 = 0,20%); 0 = o banco não cobra.
+  custoPixTaxa: numeric('custo_pix_taxa', { precision: 8, scale: 6 }).notNull().default('0'),
   atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -1206,6 +1208,10 @@ export const pixRecebimentosMcp = pgTable('pix_recebimentos_mcp', {
   pecaVendaId:         uuid('peca_venda_id').references(() => vendasPecas.id),
   lancadoPorId:        uuid('lancado_por_id').references(() => usuarios.id),
   lancadoEm:           timestamp('lancado_em', { withTimezone: true }),
+  // Gravados na conciliação: o valor acima é o crédito do banco, já sem o custo do PIX.
+  valorBruto:          numeric('valor_bruto', { precision: 12, scale: 2 }),
+  custoPix:            numeric('custo_pix', { precision: 12, scale: 2 }),
+  custoPixTaxa:        numeric('custo_pix_taxa', { precision: 8, scale: 6 }),
   criadoEm:            timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
 })
 
