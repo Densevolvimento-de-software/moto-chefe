@@ -37,13 +37,14 @@ export async function pedidoDoUsuario(
 /**
  * Itens do pedido (#774) com o que a tela mostra (#25), ou null quando o pedido não é visível para o usuário: a Conta é a do
  * pedido, conferida no pedidoDoUsuario, então outra Conta e id inexistente dão o mesmo null. Motos no formato do Novo pedido,
- * na ordem do `motosDoPedido` (o pedido de antes do #774 só tem a do `moto_id`, sem linha de item: entra sem valor).
+ * na ordem do `motosDoPedido` (o pedido de antes do #774 só tem a do `moto_id`, sem linha de item: entra sem valor). A loja é
+ * a do pedido: o mínimo de cada moto se lê nela, como no efetivar.
  */
 export async function itensDoPedido(
   usuario: Parameters<typeof podeAbrirRegistroDaLoja>[0],
   pedidoId: string,
   exec: Executor = db,
-): Promise<{ motos: MotoNoPedido[]; pecas: PecaDoPedidoNaTela[] } | null> {
+): Promise<{ lojaId: string; motos: MotoNoPedido[]; pecas: PecaDoPedidoNaTela[] } | null> {
   const pedido = await pedidoDoUsuario(usuario, pedidoId, exec)
   if (!pedido) return null
   const itens = await exec
@@ -67,6 +68,7 @@ export async function itensDoPedido(
     .innerJoin(lojas, eq(lojas.id, motos.lojaId))
     .where(inArray(motos.id, motoIds))
   return {
+    lojaId: pedido.lojaId,
     motos: motoIds.flatMap(id => fichas.filter(f => f.id === id).map(f => ({
       ...f, valor: itens.find(i => i.motoId === id)?.valorUnitario ?? '',
     }))),

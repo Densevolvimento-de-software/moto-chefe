@@ -238,3 +238,30 @@ test('B11 (#24): o catálogo do Novo pedido traz as peças ativas da Conta com o
   usuario = { ...a.aux, papel: 'mecanico' }
   assert.deepEqual(await actions.pecasDaLojaParaPedidoAction(a.lojaId), { ok: false, erro: 'Sem permissão para criar pedido de venda' })
 })
+
+test('B12 (#25): o Efetivar lê os itens com o detalhe, o mínimo de cada moto e as taxas; outra Conta, id inexistente e o que não é uuid recebem a mesma frase', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const [ficha] = await execRows(sql`select m.chassi, mo.modelo, l.nome as loja from motos m join modelos mo on mo.id = m.modelo_id
+    join lojas l on l.id = m.loja_id where m.id = ${a.motoId}`)
+  await execRows(sql`insert into precificacao (grupo_id, nome, valor_minimo) values (${a.grupoId}, ${ficha.modelo}, '10000')`)
+  await execRows(sql`insert into configuracao_taxas (grupo_id) values (${a.grupoId})`)
+  const { pedidoId } = await criarPedido(a, BRINDE_E_ACESSORIO(a), a.aux)
+  usuario = a.vendedor
+  const r = await actions.itensDoPedidoAction(pedidoId!)
+  assert.ok(r.ok, JSON.stringify(r))
+  assert.deepEqual(r.dados.motos, [{
+    id: a.motoId, chassi: ficha.chassi, marca: 'M', modelo: ficha.modelo, cor: 'CINZA', lojaId: a.lojaId, lojaNome: ficha.loja, valor: '', minimo: 10000,
+  }])
+  assert.deepEqual([...r.dados.pecas].sort((x, y) => x.tipo.localeCompare(y.tipo)), [
+    { tipo: 'acessorio', pecaId: a.capacete, nome: 'Capacete BA778', quantidade: 2, valor: '200.00' },
+    { tipo: 'brinde', pecaId: a.antena, nome: 'Antena BA778', quantidade: 1, valor: '0.00' },
+  ])
+  // As taxas são as mesmas que o Vender lê para o mínimo.
+  assert.deepEqual(r.dados.taxas, (await actions.buscarPrecoMinimoAction(a.motoId))?.taxas)
+  const naoEncontrado = { ok: false, erro: 'Pedido não encontrado' }
+  usuario = b.aux
+  for (const id of [pedidoId!, randomUUID(), 'nao-e-uuid']) assert.deepEqual(await actions.itensDoPedidoAction(id), naoEncontrado, id)
+  usuario = { ...a.aux, papel: 'mecanico' }
+  assert.deepEqual(await actions.itensDoPedidoAction(pedidoId!), { ok: false, erro: 'Sem permissão para ver o pedido de venda' })
+})

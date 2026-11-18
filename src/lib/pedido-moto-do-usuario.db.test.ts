@@ -91,6 +91,7 @@ test('itens do pedido (#774, #25): a própria Conta e o admin_geral leem com o d
     const [loja] = await linhas(tx, sql`select id, nome from lojas where id = ${a.aux.lojaId}`)
     const daLoja = { marca: 'M', modelo: 'PV404 A', lojaId: loja.id, lojaNome: loja.nome }
     const esperado = {
+      lojaId: loja.id,
       motos: [
         { id: a.motoId, chassi: 'PV404-A', cor: 'CINZA', ...daLoja, valor: '15000.00' },
         { id: moto2.id, chassi: 'PV404-A2', cor: 'AZUL', ...daLoja, valor: '' },

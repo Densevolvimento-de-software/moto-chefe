@@ -38,7 +38,8 @@ import { conferirEntrega, entregaParaLog, freteDaVenda, motoNaNota, recusaDoFret
 import { ufDoEmissorDaMoto } from '@/lib/notagateway/grupo-emissor'
 import { travaDoValorVenda } from '@/lib/valor-venda'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
-import { pedidoDoUsuario } from '@/lib/pedido-do-usuario'
+import { itensDoPedido, pedidoDoUsuario, type PecaDoPedidoNaTela } from '@/lib/pedido-do-usuario'
+import type { MotoNoPedido } from '@/lib/novo-pedido'
 import { motoDoUsuario, motosDoUsuario, travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
 import { ehUuid } from '@/lib/uuid'
 import { listarPecasDaLoja, type PecaComSaldo } from '@/lib/pecas-da-conta'
@@ -106,6 +107,17 @@ export async function buscarPrecoMinimoAction(motoId: string): Promise<PrecoMini
   const [moto] = await db.select({ modeloId: motos.modeloId, lojaId: motos.lojaId }).from(motos).where(eq(motos.id, motoId)).limit(1)
   if (!moto || !(await podeVenderMotoDaLoja(usuario, moto.lojaId))) return null
   return buscarPrecificacao(moto.modeloId, moto.lojaId)
+}
+
+/** Mínimo de cada moto (o modelo dela na loja do pedido) e as taxas do grupo: o Efetivar (#25) e o efetivarVenda (#20) leem por aqui. */
+async function precosDasMotos(motoIds: readonly string[], lojaId: string) {
+  const modelosDasMotos = await db.select({ id: motos.id, modeloId: motos.modeloId }).from(motos).where(inArray(motos.id, [...motoIds]))
+  const precos = new Map(await Promise.all([...new Set(modelosDasMotos.map(m => m.modeloId))]
+    .map(async modeloId => [modeloId, await buscarPrecificacao(modeloId, lojaId)] as const)))
+  return {
+    minimo: (motoId: string) => precos.get(modelosDasMotos.find(m => m.id === motoId)?.modeloId ?? '')?.valorMinimoPix ?? null,
+    taxas: [...precos.values()].find(p => p != null)?.taxas ?? null,
+  }
 }
 
 async function buscarPrecificacao(modeloId: string, lojaId: string) {
@@ -223,6 +235,21 @@ export async function pecasDaLojaParaPedidoAction(lojaId: string) {
   })
 }
 
+/**
+ * Itens do pedido para o Efetivar (#25): cada moto com o mínimo do modelo na loja do pedido e as taxas do grupo, a mesma
+ * leitura do efetivarVenda, para o selo da tela e o servidor decidirem igual.
+ */
+export async function itensDoPedidoAction(pedidoId: string) {
+  return acao(async (): Promise<{ motos: (MotoNoPedido & { minimo: number | null })[]; pecas: PecaDoPedidoNaTela[]; taxas: PrecoMinimoInfo['taxas'] | null }> => {
+    const usuario = await getUsuarioLogado()
+    if (!podeCriarPedido(usuario.papel)) throw new RecusaUsuario('Sem permissão para ver o pedido de venda')
+    const itens = ehUuid(pedidoId) ? await itensDoPedido(usuario, pedidoId) : null
+    if (!itens) throw new RecusaUsuario('Pedido não encontrado')
+    const { minimo, taxas } = await precosDasMotos(itens.motos.map(m => m.id), itens.lojaId)
+    return { motos: itens.motos.map(m => ({ ...m, minimo: minimo(m.id) })), pecas: itens.pecas, taxas }
+  })
+}
+
 export async function trocarMotosDoPedidoAction(...a: Parameters<typeof trocarMotosDoPedido>) {
   return acao(() => trocarMotosDoPedido(...a))
 }
@@ -297,18 +324,14 @@ async function efetivarVenda(
   }
 
   // As mesmas regras do Vender (#776); o mínimo vale sobre cada moto, sem o frete do pedido (#20, D-C).
-  const modelos = await db.select({ id: motos.id, modeloId: motos.modeloId }).from(motos).where(inArray(motos.id, motosComValor.map(m => m.motoId)))
-  const precos = new Map(await Promise.all([...new Set(modelos.map(m => m.modeloId))]
-    .map(async modeloId => [modeloId, await buscarPrecificacao(modeloId, pedido.lojaId)] as const)))
-  const precoDaMoto = (motoId: string) => precos.get(modelos.find(m => m.id === motoId)?.modeloId ?? '') ?? null
-  const taxas = [...precos.values()].find(p => p != null)?.taxas
+  const { minimo, taxas } = await precosDasMotos(motosComValor.map(m => m.motoId), pedido.lojaId)
   // Frete e acessórios (#778) ficam fora do preço da moto: não pagam desconto dela.
   const pecas = await pecasDoPedido(db, pedidoId)
   const { tipo, abaixo } = aprovacaoDoPedido({
     sensivelSemPermissao: temPagamentoSensivel(pagamentos) && !(await podeAprovarPagamentoSensivelNaLoja(usuario, pedido.lojaId)),
     papel: usuario.papel,
     liquido: taxas ? liquidoDaMoto(pagamentos, taxas, foraDaMoto(pedido.entrega, pecas)) : 0,
-    motos: motosComValor.map(m => ({ ...m, minimo: precoDaMoto(m.motoId)?.valorMinimoPix ?? null })),
+    motos: motosComValor.map(m => ({ ...m, minimo: minimo(m.motoId) })),
   })
 
   // Pelo Drizzle, não pela sessão: a RLS de escrita em vendas só aceita
