@@ -34,7 +34,7 @@ export async function configNotaGateway(grupoId: string, exec: Pick<typeof db, '
   }
 }
 
-async function chamar(cfg: ConfigNotaGateway, method: 'GET' | 'POST' | 'DELETE', caminho: string, corpo?: unknown) {
+async function chamar(cfg: ConfigNotaGateway, method: 'GET' | 'POST' | 'DELETE', caminho: string, corpo?: unknown, signal?: AbortSignal) {
   if (!ambienteLiberado(cfg.ambiente, process.env.VERCEL_ENV)) {
     throw new Error(`${FORA_DA_PRODUCAO} — troque o ambiente do grupo em Admin → Notas fiscais`)
   }
@@ -48,6 +48,7 @@ async function chamar(cfg: ConfigNotaGateway, method: 'GET' | 'POST' | 'DELETE',
     },
     body: corpo ? JSON.stringify(corpo) : undefined,
     cache: 'no-store',
+    signal,
   })
   const texto = await res.text()
   let json: unknown = null
@@ -274,9 +275,19 @@ export async function pedirInutilizacao(
 
 export type InutilizacaoConsultada = { status: string; motivoStatus: string | null; protocolo: string | null }
 
-/** null = a API ainda não conhece esse id. */
-export async function consultarInutilizacaoNaNg(cfg: ConfigNotaGateway, idExterno: string): Promise<InutilizacaoConsultada | null> {
-  const r = await chamar(cfg, 'GET', `/empresas/${cfg.empresaId}/nf-e/inutilizacao/${encodeURIComponent(idExterno)}`)
+/**
+ * Só a consulta tem tempo limite: o GET não muda nada na NG, então desistir e consultar de novo é seguro. POST e
+ * DELETE não têm, porque sem resposta não se sabe se a NG recebeu. Com o limite, a rotina de hora em hora (#67)
+ * não fica presa numa consulta até o fim da função.
+ */
+const TEMPO_LIMITE_DA_CONSULTA_MS = 15_000
+
+/** null = a API ainda não conhece esse id. Sem resposta no tempo limite, lança `TimeoutError`. */
+export async function consultarInutilizacaoNaNg(
+  cfg: ConfigNotaGateway, idExterno: string, tempoLimiteMs = TEMPO_LIMITE_DA_CONSULTA_MS,
+): Promise<InutilizacaoConsultada | null> {
+  const caminho = `/empresas/${cfg.empresaId}/nf-e/inutilizacao/${encodeURIComponent(idExterno)}`
+  const r = await chamar(cfg, 'GET', caminho, undefined, AbortSignal.timeout(tempoLimiteMs))
   if (r.status === 404) return null
   if (r.status >= 400) throw new Error(`Falha ao consultar a inutilização: ${mensagensDocumentadas(r.json, r.status)}`)
   const c = r.json as Record<string, any>
