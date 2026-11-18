@@ -746,8 +746,8 @@ test('faixa na tela: o histórico lista só as faixas do grupo e ambiente; a Con
   })
 })
 
-// Consulta do resultado (#66): a do clique "Consultar resultado", a mesma que o aviso da NG vai usar.
-// Mock só da consulta à NG; a faixa pendente nasce pelo pedido real.
+// Consulta do resultado (#66): a do clique "Consultar resultado". A consulta à NG é trocada; a faixa
+// pendente nasce pelo pedido real, com o envio e a empresa da NG trocados por depsDaFaixa.
 type Consultar = import('@/lib/notagateway/inutilizar').DependenciasConsulta['consultar']
 
 /** Consulta à NG trocada: devolve a resposta dada e guarda com que empresa e id foi chamada. */
@@ -771,6 +771,7 @@ const AUTORIZADA = { status: 'Autorizada', motivoStatus: null, protocolo: '35319
 test('consulta (clique): a pendente vira autorizada com o protocolo da consulta, pela credencial do grupo dela', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearContaFaixa(tx, 'A', '00000000066001', 'Homologacao', 'emp-A')
+    await semearContaFaixa(tx, 'B', '00000000066002', 'Homologacao', 'emp-B')
     const f = await faixaPendente(tx, a)
     const ng = ngQueResponde(AUTORIZADA)
 
