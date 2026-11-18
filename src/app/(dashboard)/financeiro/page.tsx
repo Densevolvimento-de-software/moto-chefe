@@ -4,7 +4,7 @@ import { hojeBrt } from '@/lib/data-venda'
 import { periodoFinanceiro, limitesDoPeriodo } from '@/lib/periodo-financeiro'
 import { getGrupoAtivo, listarLojasDoGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { db, execRows } from '@/lib/db'
-import { vendas, lojas, usuarios, motos, modelos, conciliacoesCartao, despesas, despesasOpenFinance, ordensServico, vendasPecas, lancamentosCaixa } from '@/lib/db/schema'
+import { vendas, lojas, usuarios, motos, modelos, despesas, despesasOpenFinance, ordensServico, vendasPecas, lancamentosCaixa } from '@/lib/db/schema'
 import { eq, ne, and, gte, lte, sql, count, inArray } from 'drizzle-orm'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,7 +23,9 @@ import { somarDespesas, valorDespesa, type MotivoForaDoCalculo } from '@/lib/des
 import { configDespesas } from '@/lib/queries/config-despesas'
 import { calcularResultadoPorLoja } from '@/lib/resultado-por-loja'
 import { despesaDaLojaFiltrada } from '@/lib/despesa-loja-filtrada'
-import { valorLiquidoExpr } from '@/lib/queries/valor-liquido'
+import { tarifaPixDaVendaExpr, valorLiquidoExpr } from '@/lib/queries/valor-liquido'
+import { taxasDaReceita } from '@/lib/dre'
+import { taxasOutrasDoPeriodo } from '@/lib/queries/taxas-receita'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
 import { somaCustoMotoExpr, qtdSemCustoExpr } from '@/lib/queries/custo-moto'
 import { TriangleAlert } from 'lucide-react'
@@ -67,23 +69,12 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   const lojaFiltroPecas = escopoGeral ? nenhumaLinha
     : lojaParamValido ? eq(vendasPecas.lojaId, lojaParamValido) : inArray(vendasPecas.lojaId, lojaIdsGrupo)
 
-  // Versões em SQL cru dos mesmos filtros, pra usar dentro dos subselects da taxa.
-  const lojaCondOSTaxa = escopoGeral
-    ? sql`AND false`
-    : lojaParamValido
-    ? sql`AND o.loja_id = ${lojaParamValido}`
-    : sql`AND o.loja_id IN (${sql.join(lojaIdsGrupo.map(id => sql`${id}`), sql`, `)})`
-  const lojaCondPecaTaxa = escopoGeral
-    ? sql`AND false`
-    : lojaParamValido
-    ? sql`AND p.loja_id = ${lojaParamValido}`
-    : sql`AND p.loja_id IN (${sql.join(lojaIdsGrupo.map(id => sql`${id}`), sql`, `)})`
-
   const [totaisVendas, resumoPorLoja, lojasOpts, resumoPorVendedor, resumoPorPagamentoRaw, parcelamentoRaw, resumoPorModelo, saidasBanco, manuaisForaDoBanco, config, totaisOS, totaisPecas, taxasOutras, saidasCaixa] = await Promise.all([
     db
       .select({
         totalVendas: sql<string>`COALESCE(SUM(${vendas.valor}), '0')`,
         totalLiquido: sql<string>`COALESCE(SUM(${valorLiquidoExpr()}), '0')`,
+        tarifaPix: sql<string>`COALESCE(SUM(${tarifaPixDaVendaExpr()}), '0')`,
         totalCusto: sql<string>`${somaCustoMotoExpr()}`,
         qtdSemCusto: sql<string>`${qtdSemCustoExpr()}`,
         qtdVendas: count(),
@@ -273,28 +264,10 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
         lojaFiltroPecas,
       )),
 
-    // Taxa de cartão de OS e de peça. A de moto já sai de bruto − líquido na query de
-    // vendas; estas duas não tinham de onde sair porque o faturamento antes era só moto.
-    // Ancorado na data da venda/conclusão, não na data da transação no extrato, pra taxa
-    // e receita caírem sempre no mesmo mês.
-    execRows(sql`
-      SELECT COALESCE(SUM(c.valor_bruto::numeric - COALESCE(c.valor_liquido::numeric, c.valor_bruto::numeric)), 0)::text AS taxa
-      FROM ${conciliacoesCartao} c
-      WHERE c.conciliado = true
-        AND (
-          c.os_id IN (
-            SELECT o.id FROM ${ordensServico} o
-            WHERE o.status = 'concluida'
-              AND o.data_conclusao >= ${inicioTs.toISOString()} AND o.data_conclusao <= ${fimTs.toISOString()}
-              ${lojaCondOSTaxa}
-          )
-          OR c.peca_venda_id IN (
-            SELECT p.id FROM ${vendasPecas} p
-            WHERE p.data_venda >= ${inicioTs.toISOString()} AND p.data_venda <= ${fimTs.toISOString()}
-              ${lojaCondPecaTaxa}
-          )
-        )
-    `),
+    // Taxa de cartão e tarifa do Pix de OS e de peça. A de moto já sai de bruto − líquido na query de
+    // vendas. Ancorado na data da venda/conclusão, não na data da transação no extrato, pra taxa e receita
+    // caírem sempre no mesmo mês.
+    taxasOutrasDoPeriodo(escopoGeral ? [] : lojaParamValido ? [lojaParamValido] : lojaIdsGrupo, inicioTs, fimTs),
 
     // Dinheiro pago da gaveta pelo administrativo da loja. Nunca aparece no extrato,
     // então sem isto a despesa em espécie sumia do resultado. Reprovado fica de fora,
@@ -368,11 +341,15 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   const faturamentoPecas = totalPecasAvulsas + totalPecasOS
   const faturamentoBruto = receitaVendas + totalServicosOS + faturamentoPecas
 
-  const taxaCartaoMotos = receitaVendas - receitaLiquida
-  const taxaCartaoOutras = Number((taxasOutras as unknown as { taxa: string }[])[0]?.taxa ?? 0)
-  const taxasCartao = taxaCartaoMotos + taxaCartaoOutras
+  const { taxasCartao, tarifaPix } = taxasDaReceita({
+    brutoMotos: receitaVendas,
+    liquidoMotos: receitaLiquida,
+    tarifaPixMotos: Number(totaisVendas[0]?.tarifaPix ?? 0),
+    taxaCartaoOutras: taxasOutras.taxaCartao,
+    tarifaPixOutras: taxasOutras.tarifaPix,
+  })
 
-  const faturamentoLiquido = faturamentoBruto - taxasCartao
+  const faturamentoLiquido = faturamentoBruto - taxasCartao - tarifaPix
 
   // Compra de mercadoria. Fica FORA do lucro de propósito: o custo da moto vendida já
   // está em "Custo Total", e comprar estoque não é despesa do mês — é dinheiro que
@@ -494,7 +471,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Faturamento Líquido</CardTitle></CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-success">{fmt(faturamentoLiquido)}</p>
-            <p className="text-xs text-muted-foreground">bruto − taxas de cartão</p>
+            <p className="text-xs text-muted-foreground">bruto menos taxas de cartão e tarifa do PIX</p>
           </CardContent>
         </Card>
         <Card>
@@ -503,6 +480,15 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
             <p className="text-2xl font-bold text-destructive">-{fmt(taxasCartao)}</p>
             {faturamentoBruto > 0 && (
               <p className="text-xs text-muted-foreground">{((taxasCartao / faturamentoBruto) * 100).toFixed(1)}% do bruto</p>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Tarifa PIX na maquininha</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-destructive">-{fmt(tarifaPix)}</p>
+            {faturamentoBruto > 0 && (
+              <p className="text-xs text-muted-foreground">{((tarifaPix / faturamentoBruto) * 100).toFixed(1)}% do bruto</p>
             )}
           </CardContent>
         </Card>
@@ -536,7 +522,9 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Com o card da tarifa do PIX (#51) a grade tem 13 células: Receita Bruta (2 a partir do md) e Lucro e % de
+            Lucro (2 cada no xl) fecham as linhas, sem card sozinho no fim em 768 nem em 1280. */}
+        <Card className="md:col-span-2">
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Receita Bruta</CardTitle></CardHeader>
           <CardContent>
             <p className={`text-2xl font-bold ${receitaBruta >= 0 ? 'text-success' : 'text-destructive'}`}>
@@ -545,7 +533,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
             <p className="text-xs text-muted-foreground">líquido − custo das motos</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="xl:col-span-2">
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Lucro Líquido</CardTitle></CardHeader>
           <CardContent>
             <p className={`text-2xl font-bold ${lucroLiquido >= 0 ? 'text-success' : 'text-destructive'}`}>
@@ -554,7 +542,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
             <p className="text-xs text-muted-foreground">receita bruta − despesas</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="xl:col-span-2">
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">% de Lucro</CardTitle></CardHeader>
           <CardContent>
             <p className={`text-2xl font-bold ${percentualLucro >= 0 ? 'text-success' : 'text-destructive'}`}>

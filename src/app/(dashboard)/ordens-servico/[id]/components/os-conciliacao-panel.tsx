@@ -1,14 +1,14 @@
 'use client'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { TIPOS_CARTAO, matchPagamentos, type PgtoOS } from '@/lib/conciliacao-status'
+import { PAGAMENTO_PIX, TIPOS_CARTAO, matchPagamentos, type PgtoOS } from '@/lib/conciliacao-status'
 import { PagamentosConciliacao, useConciliacaoAlvo } from '@/components/pagamentos-conciliacao'
 
 type Props = { osId: string; osNumero: number | null; pagamentos: PgtoOS[]; papel: string }
 
 export function OSConciliacaoPanel({ osId, osNumero, pagamentos, papel }: Props) {
   const temCartao = pagamentos.some(p => TIPOS_CARTAO.has(p.tipo))
-  const temPix    = pagamentos.some(p => p.tipo === 'pix')
+  const temPix    = pagamentos.some(p => PAGAMENTO_PIX.has(p.tipo))
 
   const dados = useConciliacaoAlvo({ tipo: 'os', id: osId }, temCartao || temPix)
 
@@ -16,7 +16,7 @@ export function OSConciliacaoPanel({ osId, osNumero, pagamentos, papel }: Props)
 
   // Mesma conta do painel, para a dica não sumir quando o PIX entrou só em parte.
   const cobertura   = matchPagamentos(pagamentos, dados.concs, dados.pixRecs)
-  const pixPendente = pagamentos.some((p, i) => p.tipo === 'pix' && !cobertura[i].conciliado)
+  const pixPendente = pagamentos.some((p, i) => PAGAMENTO_PIX.has(p.tipo) && !cobertura[i].conciliado)
 
   return (
     <Card>
