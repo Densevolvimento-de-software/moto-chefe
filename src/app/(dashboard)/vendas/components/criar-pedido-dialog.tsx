@@ -62,7 +62,7 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
       .catch(() => { if (vivo) setCatalogo({ lista: null, erro: 'tente de novo em instantes' }) })
     return () => { vivo = false }
   }, [lojaDoPedido])
-  const mudarPeca = (i: number, muda: Partial<PecaNoPedido>) => setPecas(atual => atual.map((p, j) => (j === i ? { ...p, ...muda } : p)))
+  const mudarPeca = (i: number, muda: (p: PecaNoPedido) => Partial<PecaNoPedido>) => setPecas(atual => atual.map((p, j) => (j === i ? { ...p, ...muda(p) } : p)))
   const mudarValor = (id: string, valor: string) => setNoPedido(atual => atual.map(m => (m.id === id ? { ...m, valor } : m)))
   const tirar = (id: string) => setNoPedido(atual => atual.filter(m => m.id !== id))
 
@@ -127,8 +127,8 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
                 <ul aria-label="Peças do pedido" className="divide-y divide-border rounded-lg border border-border">
                   {pecas.map((p, i) => (
                     <ItemPeca key={`${p.tipo}-${p.peca.id}`} item={p} aviso={avisoDeSaldo(pecas, p.peca.id)} ajustaPreco={podeGerirPecas(papel)}
-                      onQuantidade={mais => mudarPeca(i, { quantidade: Math.max(1, p.quantidade + mais) })}
-                      onValor={valor => mudarPeca(i, { valor })} onTirar={() => setPecas(atual => atual.filter((_, j) => j !== i))} />
+                      onQuantidade={mais => mudarPeca(i, atual => ({ quantidade: Math.max(1, atual.quantidade + mais) }))}
+                      onValor={valor => mudarPeca(i, () => ({ valor }))} onTirar={() => setPecas(atual => atual.filter((_, j) => j !== i))} />
                   ))}
                 </ul>
               )}
@@ -153,7 +153,7 @@ export function CriarPedidoDialog({ motos, papel }: Props) {
                   <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
                     <dt className="text-muted-foreground">Motos ({noPedido.length})</dt>
                     <dd className="text-right">{brl(totalDasMotos(noPedido))}</dd>
-                    {semValor && <dd className="col-span-2 text-right text-xs text-warning">{semValor}</dd>}
+                    {semValor && <><dt className="sr-only">Motos sem valor</dt><dd className="col-span-2 text-right text-xs text-warning">{semValor}</dd></>}
                     {qtd('acessorio') > 0 && <><dt className="text-muted-foreground">Acessórios ({qtd('acessorio')})</dt><dd className="text-right">{brl(totalDasPecasNaTela(pecas))}</dd></>}
                     {qtd('brinde') > 0 && <><dt className="text-muted-foreground">Brindes ({qtd('brinde')})</dt><dd className="text-right">Sem cobrança</dd></>}
                     <dt className="text-muted-foreground">Entrega</dt>
