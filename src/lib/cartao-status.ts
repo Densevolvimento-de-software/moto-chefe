@@ -1,8 +1,7 @@
 import { and, eq, ne } from 'drizzle-orm'
 import { conciliacoesCartao } from '@/lib/db/schema'
 
-// Venda devolvida ao cliente (estorno do Mercado Pago, no cartão ou no Pix da maquininha, que também
-// mora em conciliacoes_cartao). A linha continua ligada à venda/OS/peça e aparece na lista "Todas",
+// Venda devolvida ao cliente (estorno do Mercado Pago). A linha continua ligada à venda/OS/peça e aparece na lista "Todas",
 // mas o dinheiro voltou: não é pendência, não é candidata a vínculo e o servidor recusa vinculá-la
 // (vincular poria o valor de volta nas somas, que só olham `conciliado = true`).
 export const CARTAO_ESTORNADO = 'estornado'
