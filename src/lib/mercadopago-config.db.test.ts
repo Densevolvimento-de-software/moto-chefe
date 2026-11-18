@@ -34,8 +34,8 @@ async function grupo(tx: Tx) {
 const gravar = (tx: Tx, grupoId: string, userId: string) =>
   tx.execute(sql`insert into mercadopago_config (grupo_id, token, user_id) values (${grupoId}, 'iv:tag:dados', ${userId})`)
 
-// O índice do cartão é por grupo e o transacao_id do Pix é único no sistema: a mesma conta em dois
-// grupos gravaria a venda de uma Conta na outra.
+// A importação lê a conta do Mercado Pago pelo token do grupo: a mesma conta em dois grupos gravaria a
+// venda de uma Conta também na outra.
 test('a mesma conta do Mercado Pago não entra em dois grupos', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await grupo(tx)
