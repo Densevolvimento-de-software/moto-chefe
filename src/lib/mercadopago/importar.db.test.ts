@@ -91,6 +91,8 @@ test('grava o cartão e casa com a venda do grupo, com o token só deste grupo',
   assert.deepEqual(await linhasDoGrupo(a.grupoId), [
     { nsu: String(id), tipo: 'credito', status: 'aprovado', conciliado: true, venda_id: vendaId, bruto: 900, liquido: 868.5 },
   ])
+  const [{ em }] = await execRows(sql`select conciliado_em as em from conciliacoes_cartao where grupo_id = ${a.grupoId}`)
+  assert.equal(new Date(String(em)).toISOString(), AGORA.toISOString())
 })
 
 test('casa pela autorização quando o valor não bate; a Conta B não acha a venda de A pela mesma autorização', async () => {

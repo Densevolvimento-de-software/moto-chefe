@@ -56,7 +56,7 @@ export async function importarMercadoPagoDoGrupo(
   const classificacoes = pagamentos.map(classificarPagamento)
   // Um pagamento por vez, na ordem: o mesmo nsu duas vezes não pode correr em paralelo.
   const desfechos = await db.transaction(tx => classificacoes.reduce<Promise<Contagem[]>>(
-    async (anteriores, c) => [...await anteriores, await desfechoDoPagamento(tx, grupoId, lojaIds, c)],
+    async (anteriores, c) => [...await anteriores, await desfechoDoPagamento(tx, grupoId, lojaIds, c, fim)],
     Promise.resolve([]),
   ))
 
@@ -66,19 +66,19 @@ export async function importarMercadoPagoDoGrupo(
   return contarDesfechos(desfechos)
 }
 
-async function desfechoDoPagamento(tx: Tx, grupoId: string, lojaIds: string[], c: Classificacao): Promise<Contagem> {
+async function desfechoDoPagamento(tx: Tx, grupoId: string, lojaIds: string[], c: Classificacao, agora: Date): Promise<Contagem> {
   switch (c.tipo) {
     case 'ignorar': return 'ignorados'
     case 'nao_tratado': return 'naoTratados'
     case 'estorno': return marcarEstorno(tx, grupoId, c.chave)
-    case 'transacao': return gravarLinha(tx, grupoId, lojaIds, c.transacao)
+    case 'transacao': return gravarLinha(tx, grupoId, lojaIds, c.transacao, agora)
   }
 }
 
 const chaveDaLinha = (grupoId: string, nsu: string) =>
   and(eq(conciliacoesCartao.grupoId, grupoId), eq(conciliacoesCartao.operadora, OPERADORA), eq(conciliacoesCartao.nsu, nsu))
 
-async function gravarLinha(tx: Tx, grupoId: string, lojaIds: string[], t: TransacaoCartao): Promise<Contagem> {
+async function gravarLinha(tx: Tx, grupoId: string, lojaIds: string[], t: TransacaoCartao, agora: Date): Promise<Contagem> {
   const nsu = t.nsu!
   // Já gravada neste grupo: não casa de novo nem mexe no vínculo.
   const [existente] = await tx.select({ id: conciliacoesCartao.id }).from(conciliacoesCartao)
@@ -87,7 +87,7 @@ async function gravarLinha(tx: Tx, grupoId: string, lojaIds: string[], t: Transa
 
   const porAutorizacao = t.autorizacao ? await casarPorAutorizacao(tx, lojaIds, t.autorizacao) : null
   const alvos = porAutorizacao && casou(porAutorizacao) ? porAutorizacao : await casarPorValor(tx, lojaIds, t)
-  const linha = linhaDaTransacao(grupoId, OPERADORA, t, alvos, new Date())
+  const linha = linhaDaTransacao(grupoId, OPERADORA, t, alvos, agora)
 
   const inseridas = await tx.insert(conciliacoesCartao).values(linha)
     // Índice único parcial da 0182, (grupo_id, operadora, nsu) where nsu is not null: corrida com outra rodada.
