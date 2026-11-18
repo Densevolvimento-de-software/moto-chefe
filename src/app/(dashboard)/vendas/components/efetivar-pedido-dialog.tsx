@@ -10,6 +10,7 @@ import { alterarEntregaDoPedidoAction, efetivarVendaAction, itensDoPedidoAction 
 import { AlterarEntregaDialog } from './alterar-entrega-dialog'
 import { ResumoDaEntrega } from './resumo-da-entrega'
 import { ReciboDoPedido } from './recibo-do-pedido'
+import { BarraDoPagamento } from './barra-do-pagamento'
 import { PagamentosFields, pagamentosDoFormulario, pgtoHandlers, pgtoIncompleto, type Pgto } from '@/app/(dashboard)/estoque/components/pagamentos-fields'
 import { useMaquininhas } from '@/components/use-maquininhas'
 import { aprovacaoDoPedido, foraDaMoto, totalDoPedido, type MotoComValor } from '@/lib/pedido-venda-regras'
@@ -132,7 +133,6 @@ export function EfetivarPedidoDialog({ pedidoId, numero, origens, entrega: entre
   const alterarEntrega = <AlterarEntregaDialog entrega={entrega} freteFixo={false} rotulo="Alterar"
     salvar={nova => alterarEntregaDoPedidoAction(pedidoId, nova)} aoSalvar={setEntrega} />
   const nomeDaMoto = (motoId: string) => { const m = motos.find(x => x.id === motoId); return m ? `${m.marca} ${m.modelo}` : '' }
-  const textoDaSituacao = { falta: `Falta pagar ${brl(situacao.diferenca)}`, pago: 'Pago por completo', passou: `Passou ${brl(situacao.diferenca)} do total` }[situacao.tipo]
 
   return (
     <>
@@ -178,16 +178,7 @@ export function EfetivarPedidoDialog({ pedidoId, numero, origens, entrega: entre
               <section aria-label="Pagamento do pedido" className="space-y-2">
                 <h3 className="font-medium">Pagamento do pedido</h3>
                 <PagamentosFields pgtos={pgtos} onAdd={pgto.add} onRemove={pgto.remove} onUpdate={pgto.update} taxasVenda={taxas} maquininhas={maquininhas} />
-                <div className="space-y-2 rounded-lg bg-muted p-3">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className={`font-medium ${situacao.tipo === 'passou' ? 'text-destructive' : situacao.tipo === 'pago' ? 'text-primary-text' : ''}`}>{textoDaSituacao}</span>
-                    <span className="text-xs text-muted-foreground">{brl(situacao.pago)} de {brl(total)}</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-border">
-                    <div className={`h-2 rounded-full ${situacao.tipo === 'passou' ? 'bg-destructive' : 'bg-primary'}`}
-                      style={{ width: `${total > 0 ? Math.min(100, (situacao.pago / total) * 100) : 0}%` }} />
-                  </div>
-                </div>
+                <BarraDoPagamento situacao={situacao} total={total} />
               </section>
               {aprovacao?.tipo && (
                 <div className="space-y-2">
