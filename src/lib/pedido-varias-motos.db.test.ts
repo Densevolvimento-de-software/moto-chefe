@@ -583,3 +583,22 @@ test('D21: cancelar e editar uma venda do pedido de 2 motos são recusados até 
     porMoto([{ moto_id: m1, forma_pagamento: 'pix' }, { moto_id: m2, forma_pagamento: 'pedido' }]))
   assert.equal((await pedidosDaMoto(m2)).length, 1)
 })
+
+test('D21 (#25): as listas de pedidos trazem todas as motos do pedido na ordem, com o valor; o pedido de antes do #774 traz a moto dele sem valor', async () => {
+  const c = await semearConta()
+  const [m1, m2, m3] = await c.motos(3)
+  usuario = c.vendedor
+  assert.deepEqual(await actions.criarPedidoVendaAction([{ motoId: m1 }, { motoId: m2, valor: 13000 }], '', RETIRA), OK)
+  assert.deepEqual(await actions.criarPedidoVendaAction([{ motoId: m3, valor: 9000 }], '', RETIRA), OK)
+  const [doisMotos] = await pedidosDaMoto(m2)
+  const [antigo] = await pedidosDaMoto(m3)
+  await execRows(sql`delete from pedidos_venda_itens where pedido_venda_id = ${antigo.id} returning id`)
+  const [ficha] = await execRows(sql`select m.chassi, m.cor, mo.marca, mo.modelo from motos m join modelos mo on mo.id = m.modelo_id where m.id = ${m1}`)
+  const { listarPedidosPorLoja, listarTodosPedidos } = await import('@/lib/queries/vendas')
+  for (const lista of [await listarPedidosPorLoja(c.base.lojaId), await listarTodosPedidos([c.base.lojaId])]) {
+    const motosDe = (id: unknown) => lista.find(p => p.id === id)?.motos
+    assert.deepEqual(motosDe(doisMotos.id)?.[0], { id: m1, marca: ficha.marca, modelo: ficha.modelo, chassi: ficha.chassi, cor: ficha.cor, valor: null })
+    assert.deepEqual(motosDe(doisMotos.id)?.map(m => [m.id, m.valor]), [[m1, null], [m2, '13000.00']])
+    assert.deepEqual(motosDe(antigo.id)?.map(m => [m.id, m.valor]), [[m3, null]])
+  }
+})
