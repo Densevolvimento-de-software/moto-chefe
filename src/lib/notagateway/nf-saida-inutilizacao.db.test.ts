@@ -903,8 +903,7 @@ test('rotina: NG fora, grupo sem credencial, credencial noutro ambiente ou que n
     ]
     const antes = await Promise.all(falham.map(f => f.linha()))
     const ng = ngPorId({ [resolve.idExterno]: AUTORIZADA, [falham[0].idExterno]: new Error(`HTTP 503 /empresas/emp-B/nf-e/inutilizacao/${falham[0].idExterno}`) })
-    const erros = t.mock.method(console, 'error', () => {})
-    const infos = t.mock.method(console, 'info', () => {})
+    const escrito = consoleDe(t)
 
     const resumo = await rodarRotina(tx, ng.consultar)
 
@@ -912,7 +911,7 @@ test('rotina: NG fora, grupo sem credencial, credencial noutro ambiente ou que n
     assert.equal((await resolve.linha()).situacao, 'autorizada')
     assert.deepEqual(await Promise.all(falham.map(f => f.linha())), antes, 'a linha com falha segue pendente, sem gravar nada')
     assert.deepEqual(ng.chamadas.map(c => c.empresaId), ['emp-B', 'emp-A'], 'sem credencial no ambiente, não vai à NG')
-    const textos = [...erros.mock.calls, ...infos.mock.calls].map(c => c.arguments.join(' '))
+    const textos = escrito()
     assert.deepEqual(textos, [
       '[rotina inutilizacao] falha numa pendente (Error)',
       '[rotina inutilizacao] falha numa pendente (sem credencial no ambiente)',
