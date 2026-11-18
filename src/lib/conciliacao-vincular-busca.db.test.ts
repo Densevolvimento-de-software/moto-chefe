@@ -109,9 +109,11 @@ test('buscas do painel para pagamento de cartão não oferecem a linha pix', asy
 // O vincular recusa linha estornada (cartaoNaoEstornado): a busca não oferece candidatos para ela.
 test('linha estornada não busca vendas para vincular', async () => {
   const a = await semearConta()
-  await vendaPeca(a, [{ tipo: 'cartao_credito', valor: 717.89, parcelas: 1 }])
+  const venda = await vendaPeca(a, [{ tipo: 'cartao_credito', valor: 717.89, parcelas: 1 }])
   const estornada = await linha(a, 'credito', 717.89)
-  await linhas(sql`update conciliacoes_cartao set status = 'estornado' where id = ${estornada}`)
   entrarComo(a)
+  // Controle: aprovada, a mesma linha traz a venda.
+  assert.deepEqual((await actions.buscarVendasParaVincular(estornada)).map(v => v.id), [venda])
+  await linhas(sql`update conciliacoes_cartao set status = 'estornado' where id = ${estornada}`)
   assert.deepEqual(await actions.buscarVendasParaVincular(estornada), [])
 })
