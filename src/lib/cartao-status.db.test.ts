@@ -164,3 +164,15 @@ test('desvincular a linha de outra Conta recebe "Conciliação não encontrada" 
   assert.deepEqual(await linhaDe(linhaB), antes)
   assert.equal(antes.venda_id, b.vendaId)
 })
+
+test('busca livre e por valor não trazem linha de outra Conta com o mesmo valor', async () => {
+  const b = await semear()
+  const linhaB = await cartao(b.base.grupoId, 7654.32, 'aprovado', null)
+  const a = await semear() // a sessão passa a ser a da Conta A
+  const linhaA = await cartao(a.base.grupoId, 7654.32, 'aprovado', null)
+
+  const livres = (await actions.buscarConciliacoesLivres('7654,32')).map(l => l.id)
+  const porValor = (await actions.buscarConciliacoesPorValor(7654.32)).map(l => l.id)
+  assert.ok(livres.includes(linhaA) && !livres.includes(linhaB))
+  assert.ok(porValor.includes(linhaA) && !porValor.includes(linhaB))
+})
