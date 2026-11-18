@@ -2,6 +2,8 @@
 // dentro do route handler, porque os scripts de coleta precisam importá-los
 // sem arrastar next/server e a conexão de banco junto.
 
+export const LINHA_PIX = 'pix'
+
 export type TransacaoCartao = {
   nsu?: string
   autorizacao?: string
@@ -9,13 +11,15 @@ export type TransacaoCartao = {
   valorBruto: number
   valorLiquido?: number
   parcelas: number
-  tipo: 'credito' | 'debito'
+  // 'pix' (LINHA_PIX) só vem da maquininha Mercado Pago (#51): o Pix dela é conciliado aqui, não em /pix-mcp.
+  tipo: 'credito' | 'debito' | typeof LINHA_PIX
   status: string
   rawData?: Record<string, unknown>
 }
 
 // Venda lida de relatório baixado do portal (Cielo, Rede): sempre com chave e os dois valores.
 export type TransacaoDoRelatorio = TransacaoCartao & {
+  tipo: 'credito' | 'debito'
   nsu: string
   valorLiquido: number
   rawData: { bandeira: string; portador: string | null; serial: string | null }
@@ -30,7 +34,7 @@ export function tipoDoCartao(texto: string): 'credito' | 'debito' | null {
   return null
 }
 
-export type Operadora = 'infinitypay' | 'stone' | 'pagueveloz'
+export type Operadora = 'infinitypay' | 'stone' | 'pagueveloz' | 'mercadopago'
 
 export type PayloadConciliacao = {
   operadora: Operadora
@@ -66,4 +70,16 @@ export function chaveDedup(t: TransacaoCartao): { campo: 'nsu' | 'id'; valor: st
   const id = t.rawData?.id
   if (id != null && id !== '') return { campo: 'id', valor: String(id) }
   return null
+}
+
+// Rótulos da linha da conciliação de cartão: a lista (curto) e a sugestão do painel de pagamentos.
+// O tipo 'pix' é o Pix da maquininha Mercado Pago (#51).
+export function rotuloCurtoDaLinha(tipo: string, parcelas: number): string {
+  if (tipo === 'credito') return `Cré ${parcelas}x`
+  return tipo === LINHA_PIX ? 'PIX' : 'Déb'
+}
+
+export function rotuloDaLinha(tipo: string): string {
+  if (tipo === 'debito') return 'Débito'
+  return tipo === LINHA_PIX ? 'PIX' : 'Crédito'
 }

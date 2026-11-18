@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearGrupo, semearUsuario, type Base } from '@/test/semear-conta'
+import { semearVendaPeca } from '@/test/semear-alvos-conciliacao'
 import { montarRelatorioCielo, vendaCielo, type LinhaCielo } from '@/test/relatorio-cielo-sintetico'
 import { montarRelatorioRede, parcelaRede, vendaParceladaRede, type LinhaRede } from '@/test/relatorio-rede-sintetico'
 import { montarRelatorioRendimento, operacaoRendimento, type LinhaRendimento } from '@/test/relatorio-rendimento-sintetico'
@@ -261,11 +262,8 @@ const contaRendimento = () => `${nsuUnico().slice(0, 5)}-${nsuUnico().slice(0, 1
 const codVenda = () => randomUUID().replace(/-/g, '').slice(0, 6).toUpperCase()
 
 async function vendaDePecaComAutorizacao(base: Base, autorizacao: string) {
-  const vendedor = await semearUsuario(db, base, { papel: 'vendedor' })
-  const pagamentos = JSON.stringify([{ tipo: 'credito', valor: 3990, autorizacao }])
-  const [venda] = await linhas<{ id: string }>(sql`insert into vendas_pecas (loja_id, vendedor_id, forma_pagamento, pagamentos, valor_total)
-    values (${base.lojaId}, ${vendedor}, 'credito', ${pagamentos}::jsonb, 3990) returning id`)
-  return venda.id
+  const usuarioId = await semearUsuario(db, base, { papel: 'vendedor' })
+  return semearVendaPeca(db, { lojaId: base.lojaId, usuarioId }, [{ tipo: 'credito', valor: 3990, autorizacao }])
 }
 
 test('Rendimento: arquivo em latin-1 grava só as pagas com os campos do relatório; reimportar não duplica', async () => {

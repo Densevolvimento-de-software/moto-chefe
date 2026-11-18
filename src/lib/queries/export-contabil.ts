@@ -191,7 +191,7 @@ export async function dadosExportContabil(opts: {
       modelo: String(v.modelo ?? ''),
       chassi: String(v.chassi ?? ''),
       valorBruto: bruto,
-      // A taxa de cartão da moto é o que o DRE deduz: bruto menos líquido.
+      // Bruto menos líquido: o que o DRE deduz nas duas linhas, taxas de cartão e tarifa do PIX na maquininha.
       taxas: bruto - liquido,
       valorLiquido: liquido,
       formaPagamento: String(v.forma_pagamento ?? ''),
