@@ -14,11 +14,11 @@ import { classificarPagamento, type Classificacao } from '@/lib/conciliacao-merc
 import { buscarPagamentosDaRodada } from './point'
 
 // O desfecho de cada pagamento é uma destas contagens; o resumo da importação e o da rodada saem desta lista.
-export const CONTAGENS = ['conciliadas', 'pendentes', 'duplicadas', 'estornos', 'naoTratados', 'ignorados'] as const
+export const CONTAGENS = ['conciliadas', 'pendentes', 'duplicadas', 'estornos', 'estornosSemLinha', 'naoTratados', 'ignorados'] as const
 export type Contagem = (typeof CONTAGENS)[number]
 export type ResultadoImportacaoMp = Record<Contagem, number>
 
-const contarDesfechos = (desfechos: readonly (Contagem | null)[]): ResultadoImportacaoMp =>
+const contarDesfechos = (desfechos: readonly Contagem[]): ResultadoImportacaoMp =>
   Object.fromEntries(CONTAGENS.map(k => [k, desfechos.filter(d => d === k).length])) as ResultadoImportacaoMp
 
 const contarMotivos = (motivos: readonly string[]): Record<string, number> =>
@@ -55,7 +55,7 @@ export async function importarMercadoPagoDoGrupo(
 
   const classificacoes = pagamentos.map(classificarPagamento)
   // Um pagamento por vez, na ordem: o mesmo nsu duas vezes não pode correr em paralelo.
-  const desfechos = await db.transaction(tx => classificacoes.reduce<Promise<(Contagem | null)[]>>(
+  const desfechos = await db.transaction(tx => classificacoes.reduce<Promise<Contagem[]>>(
     async (anteriores, c) => [...await anteriores, await desfechoDoPagamento(tx, grupoId, lojaIds, c)],
     Promise.resolve([]),
   ))
@@ -66,11 +66,11 @@ export async function importarMercadoPagoDoGrupo(
   return contarDesfechos(desfechos)
 }
 
-async function desfechoDoPagamento(tx: Tx, grupoId: string, lojaIds: string[], c: Classificacao): Promise<Contagem | null> {
+async function desfechoDoPagamento(tx: Tx, grupoId: string, lojaIds: string[], c: Classificacao): Promise<Contagem> {
   switch (c.tipo) {
     case 'ignorar': return 'ignorados'
     case 'nao_tratado': return 'naoTratados'
-    case 'estorno': return (await marcarEstorno(tx, grupoId, c.chave)) ? 'estornos' : null
+    case 'estorno': return marcarEstorno(tx, grupoId, c.chave)
     case 'transacao': return gravarLinha(tx, grupoId, lojaIds, c.transacao)
   }
 }
@@ -102,13 +102,17 @@ async function gravarLinha(tx: Tx, grupoId: string, lojaIds: string[], t: Transa
 
 /**
  * Estornada e `conciliado = false` no MESMO update: o check da 0194 recusa estornada conciliada, e as somas
- * de receita só olham `conciliado`. O vínculo com a venda fica. Linha já estornada fica de fora, para o
- * estorno não contar de novo a cada rodada da janela; pagamento estornado sem linha não grava nada.
+ * de receita só olham `conciliado`. O vínculo com a venda fica. A linha já estornada conta como duplicada
+ * (nada muda, como a venda que já estava aqui). Sem linha: aprovado e estornado antes de uma rodada o ver;
+ * nada a marcar, mas o resumo mostra.
  */
-async function marcarEstorno(tx: Tx, grupoId: string, nsu: string): Promise<boolean> {
-  const linhas = await tx.update(conciliacoesCartao)
+async function marcarEstorno(tx: Tx, grupoId: string, nsu: string): Promise<Contagem> {
+  const marcadas = await tx.update(conciliacoesCartao)
     .set({ status: CARTAO_ESTORNADO, conciliado: false })
     .where(and(chaveDaLinha(grupoId, nsu), cartaoNaoEstornado))
     .returning({ id: conciliacoesCartao.id })
-  return linhas.length > 0
+  if (marcadas.length > 0) return 'estornos'
+  const [jaEstornada] = await tx.select({ id: conciliacoesCartao.id }).from(conciliacoesCartao)
+    .where(chaveDaLinha(grupoId, nsu)).limit(1)
+  return jaEstornada ? 'duplicadas' : 'estornosSemLinha'
 }

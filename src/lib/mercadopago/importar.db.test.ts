@@ -67,7 +67,7 @@ const buscarFixo = (pagamentos: PagamentoMp[]) => async () => pagamentos
 const importar = (c: Conta, pagamentos: PagamentoMp[]) =>
   mod.importarMercadoPagoDoGrupo(c.grupoId, { agora: AGORA, buscar: buscarFixo(pagamentos) })
 
-const NADA = { conciliadas: 0, pendentes: 0, duplicadas: 0, estornos: 0, naoTratados: 0, ignorados: 0 }
+const NADA = { conciliadas: 0, pendentes: 0, duplicadas: 0, estornos: 0, estornosSemLinha: 0, naoTratados: 0, ignorados: 0 }
 
 async function linhasDoGrupo(grupoId: string) {
   return execRows(sql`select nsu, tipo, status, conciliado, venda_id, valor_bruto::float as bruto, valor_liquido::float as liquido
@@ -120,13 +120,14 @@ test('estorno: estornada e conciliado false no mesmo update, a venda fica ligada
   await importar(a, [aprovado(creditoEstornado, id)])
   assert.equal((await linhasDoGrupo(a.grupoId))[0].conciliado, true)
 
-  // O segundo estorno nunca foi aprovado aqui: não há linha e não conta.
+  // O segundo estorno nunca foi aprovado aqui (aprovado e estornado antes da rodada): não há linha, mas aparece no resumo.
   const estornos = [pg(creditoEstornado, { id }), pg(creditoEstornado, { id: novoId() })]
-  assert.deepEqual(await importar(a, estornos), { ...NADA, estornos: 1 })
+  assert.deepEqual(await importar(a, estornos), { ...NADA, estornos: 1, estornosSemLinha: 1 })
   const [linha] = await linhasDoGrupo(a.grupoId)
   assert.deepEqual([linha.status, linha.conciliado, linha.venda_id], ['estornado', false, vendaId])
 
-  assert.deepEqual(await importar(a, estornos), NADA)
+  // A linha já estornada não conta de novo como estorno: já estava aqui.
+  assert.deepEqual(await importar(a, estornos), { ...NADA, duplicadas: 1, estornosSemLinha: 1 })
 })
 
 test('isolamento: Conta B não casa com a venda de A, não estorna a linha de A e o mesmo nsu vira uma linha em cada', async () => {
