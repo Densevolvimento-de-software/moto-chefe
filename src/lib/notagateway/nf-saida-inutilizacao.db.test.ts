@@ -887,7 +887,7 @@ test('rotina: consulta só a pendente com mais de 4 h, de todos os grupos, cada 
   })
 })
 
-test('rotina: NG fora, grupo sem credencial, credencial noutro ambiente ou que não decifra: falha só naquela linha, que segue pendente; console sem id, empresa, token nem mensagem', async t => {
+test('rotina: NG sem resposta no tempo limite, grupo sem credencial, credencial noutro ambiente ou que não decifra: falha só naquela linha, que segue pendente; console sem id, empresa, token nem mensagem', async t => {
   await emTransacaoDesfeita(async tx => {
     await semPendenteVencidaDeFora(tx)
     const ok = await semearContaFaixa(tx, 'A', '00000000067001', 'Homologacao', 'emp-A')
@@ -903,7 +903,7 @@ test('rotina: NG fora, grupo sem credencial, credencial noutro ambiente ou que n
       await inutilizacaoComIdade(tx, naoDecifra.grupoId, 9 * HORA),
     ]
     const antes = await Promise.all(falham.map(f => f.linha()))
-    const ng = ngPorId({ [resolve.idExterno]: AUTORIZADA, [falham[0].idExterno]: new Error(`HTTP 503 /empresas/emp-B/nf-e/inutilizacao/${falham[0].idExterno}`) })
+    const ng = ngPorId({ [resolve.idExterno]: AUTORIZADA, [falham[0].idExterno]: new DOMException(`sem resposta de /empresas/emp-B/nf-e/inutilizacao/${falham[0].idExterno}`, 'TimeoutError') })
     const escrito = consoleDe(t)
 
     const resumo = await rodarRotina(tx, ng.consultar)
@@ -917,10 +917,10 @@ test('rotina: NG fora, grupo sem credencial, credencial noutro ambiente ou que n
       '[rotina inutilizacao] falha numa pendente (Error)',
       '[rotina inutilizacao] falha numa pendente (sem credencial no ambiente)',
       '[rotina inutilizacao] falha numa pendente (sem credencial no ambiente)',
-      '[rotina inutilizacao] falha numa pendente (Error)',
+      '[rotina inutilizacao] falha numa pendente (TimeoutError)',
       '[rotina inutilizacao] consultadas 5, resolvidas 1, falhas 4, adiadas 0',
     ], 'da mais velha para a mais nova, e a contagem no fim')
-    for (const proibido of ['emp-', 'rotina67-', 'tok-cifrado', 'token-de-teste', 'HTTP 503']) {
+    for (const proibido of ['emp-', 'rotina67-', 'tok-cifrado', 'token-de-teste', 'sem resposta de']) {
       assert.ok(textos.every(texto => !texto.includes(proibido)), proibido)
     }
   })
