@@ -1,14 +1,14 @@
 // Cliente da API do Mercado Pago por token de grupo, para a conciliação da maquininha Point.
 // O token vem do cadastro do grupo; nunca vai para mensagem de erro nem log.
 import { chamarComToken, ErroMercadoPago } from './cliente'
+import type { Pagamento } from './webhook'
 
-export type PagamentoMp = {
+// Mesmo recurso /v1/payments da mensalidade (webhook.ts), com os campos que a maquininha lê.
+export type PagamentoMp = Pagamento & {
   id: number
-  status: string
   status_detail?: string
   payment_type_id: string
   payment_method_id: string
-  transaction_amount: number
   transaction_amount_refunded?: number
   installments: number
   date_created: string
