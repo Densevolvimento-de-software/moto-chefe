@@ -65,6 +65,12 @@ describe('brinde e acessório no pedido (#24, 24b)', () => {
     assert.equal(pecasDoEnvio(pecas.map(p => ({ ...p, valor: '10000000000.00' })), true), null)
   })
 
+  test('acessório com o valor apagado vale o preço do catálogo, no envio e no total (não sai de graça)', () => {
+    const apagado = comPecas([], 'acessorio', [{ peca: capacete, quantidade: 2 }]).map(p => ({ ...p, valor: '' }))
+    assert.deepEqual(pecasDoEnvio(apagado, true), [{ tipo: 'acessorio', pecaId: 'cap', quantidade: 2 }])
+    assert.equal(totalDasPecasNaTela(apagado), 579.8)
+  })
+
   test('total das peças: acessórios pelo valor da tela, brinde R$ 0', () => {
     const pecas = comPecas(comPecas([], 'acessorio', [{ peca: capacete, quantidade: 2 }]), 'brinde', [{ peca: bau, quantidade: 1 }])
     assert.equal(totalDasPecasNaTela(pecas), 579.8)

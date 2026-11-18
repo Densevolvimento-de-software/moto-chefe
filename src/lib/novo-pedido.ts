@@ -50,13 +50,14 @@ export function avisoDeSaldo(pecas: readonly PecaNoPedido[], pecaId: string): st
 
 /** Peças para o criar pedido. O valor do acessório só vai de quem gere peças, como o servidor (#778); null se um valor não serve. */
 export function pecasDoEnvio(pecas: readonly PecaNoPedido[], podeAjustarPreco: boolean): PecaDoPedidoInput[] | null {
-  const ajusta = (p: PecaNoPedido) => p.tipo === 'acessorio' && podeAjustarPreco
+  // Valor apagado vale o preço do catálogo: sem `valorUnitario`, o servidor usa o do catálogo.
+  const ajusta = (p: PecaNoPedido) => p.tipo === 'acessorio' && podeAjustarPreco && p.valor !== ''
   if (pecas.some(p => ajusta(p) && valorDePecaInvalido(Number(p.valor)))) return null
   return pecas.map(p => ({ tipo: p.tipo, pecaId: p.peca.id, quantidade: p.quantidade, ...(ajusta(p) ? { valorUnitario: Number(p.valor) } : {}) }))
 }
 
 export const totalDasPecasNaTela = (pecas: readonly PecaNoPedido[]): number =>
-  totalDasPecas(pecas.map(p => ({ quantidade: p.quantidade, valorUnitario: p.valor })))
+  totalDasPecas(pecas.map(p => ({ quantidade: p.quantidade, valorUnitario: p.valor === '' ? p.peca.valor : p.valor })))
 
 /** Linha do Resumo com as motos "A definir" (decisão do Luis, #24): avisa, não bloqueia. */
 export function motosSemValor(motos: readonly MotoNoPedido[]): string | null {
