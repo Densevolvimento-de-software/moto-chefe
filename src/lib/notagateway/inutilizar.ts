@@ -275,7 +275,8 @@ export type ResultadoDaConsulta = Resultado<{ situacao: string; motivoStatus: st
 
 /**
  * Consulta na NG a inutilização já achada e grava status, motivo e protocolo. Só a pendente
- * vai à NG; a credencial é a do grupo da linha.
+ * vai à NG; a credencial é a do grupo da linha. Não confere usuário nem Conta: a linha tem de vir
+ * do banco, lida com a Conta (clique) ou pelo id externo (aviso da NG), nunca de entrada do usuário.
  */
 export async function consultarResultadoDaLinha(
   linha: InutilizacaoParaConsultar, deps: DependenciasConsulta = DEPENDENCIAS_CONSULTA,
