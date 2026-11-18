@@ -131,9 +131,9 @@ export function montarDre(e: EntradaDre): LinhaDre[] {
 }
 
 /**
- * Taxas da receita em duas linhas (#51). O bruto − líquido das motos e a taxa das outras receitas incluem a
- * tarifa do Pix da maquininha Mercado Pago; as consultas devolvem essa parte no mesmo SELECT, e ela sai da
- * taxa de cartão para a linha própria. A soma das duas é a taxa de antes.
+ * Taxas da receita em duas linhas (#51). O bruto − líquido das motos inclui a tarifa do Pix da maquininha
+ * Mercado Pago, que a consulta de vendas devolve à parte (tarifaPixMotos) e sai daqui para a linha própria;
+ * as outras receitas (OS e peça) já chegam divididas. A soma das duas linhas é a taxa de antes.
  */
 export function taxasDaReceita(p: {
   brutoMotos: number
