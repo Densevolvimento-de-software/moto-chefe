@@ -120,6 +120,7 @@ export function PagamentosFields({ pgtos, onAdd, onRemove, onUpdate, taxasVenda,
                 </SelectContent>
               </Select>
               <CurrencyInput
+                aria-label={`Valor da forma ${idx + 1}`}
                 className="w-32"
                 placeholder="0,00"
                 value={p.valor}
