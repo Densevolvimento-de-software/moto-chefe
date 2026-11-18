@@ -157,6 +157,16 @@ const COLUNAS_DA_CONSULTA = {
 
 export type InutilizacaoParaConsultar = Pick<typeof notasFiscaisSaidaInutilizacoes.$inferSelect, keyof typeof COLUNAS_DA_CONSULTA>
 
+/**
+ * Linha pelo id externo, sem usuário: só o aviso da NG usa. O grupo e a credencial saem da linha
+ * achada, nunca do corpo do aviso (#58); o id externo é UNIQUE (migração 0159).
+ */
+export async function inutilizacaoPeloIdExterno(tx: Pick<typeof db, 'select'>, idExterno: string) {
+  const [linha] = await tx.select(COLUNAS_DA_CONSULTA).from(notasFiscaisSaidaInutilizacoes)
+    .where(eq(notasFiscaisSaidaInutilizacoes.idExterno, idExterno)).limit(1)
+  return linha ?? null
+}
+
 export async function inutilizacaoDoUsuario(tx: Executor, usuario: UsuarioInutilizacao, inutilizacaoId: string) {
   const filtroConta = usuario.papel === 'admin_geral' ? undefined : eq(grupos.contaId, usuario.contaId ?? '')
   const [linha] = await tx.select(COLUNAS_DA_CONSULTA).from(notasFiscaisSaidaInutilizacoes).innerJoin(grupos, eq(grupos.id, notasFiscaisSaidaInutilizacoes.grupoId))
@@ -273,7 +283,7 @@ export type DependenciasConsulta = Pick<DependenciasInutilizacao, 'exec' | 'conf
   agora: () => Date
 }
 
-const DEPENDENCIAS_CONSULTA: DependenciasConsulta = { exec: db, config: configDoAmbiente, consultar: consultarInutilizacaoNaNg, agora: () => new Date() }
+export const DEPENDENCIAS_CONSULTA: DependenciasConsulta = { exec: db, config: configDoAmbiente, consultar: consultarInutilizacaoNaNg, agora: () => new Date() }
 
 export type ResultadoDaConsulta = Resultado<{ situacao: string; motivoStatus: string | null; protocolo: string | null }>
 

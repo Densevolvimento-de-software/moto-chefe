@@ -1,6 +1,6 @@
 // Teste de banco: roda contra o Postgres descartável do CI (job `banco` do ci.yml).
 // Como montar local: ver o cabeçalho de src/lib/pedido-venda.db.test.ts.
-import { after, before, mock, test } from 'node:test'
+import { after, before, mock, test, type TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
@@ -22,11 +22,13 @@ type DepsFaixa = import('@/lib/notagateway/inutilizar-faixa').DependenciasFaixa
 let db: Db['db']
 let m: Mod
 let mf: typeof import('@/lib/notagateway/inutilizar-faixa')
+let w: typeof import('@/lib/notagateway/aviso-webhook')
 
 before(async () => {
   ;({ db } = await import('@/lib/db'))
   m = await import('@/lib/notagateway/inutilizar')
   mf = await import('@/lib/notagateway/inutilizar-faixa')
+  w = await import('@/lib/notagateway/aviso-webhook')
 })
 
 after(async () => {
@@ -849,5 +851,159 @@ test('consulta que chega depois de a linha resolvida (clique e aviso juntos) nã
 
     const l = await f.linha()
     assert.deepEqual([l.situacao, l.status, l.motivo_status, l.protocolo], ['autorizada', 'Autorizada', null, AUTORIZADA.protocolo])
+  })
+})
+
+// Aviso da Nota Gateway (webhook, #66): só gatilho. Acha a linha pelo id externo e segue a consulta
+// do clique; daqui em diante a NG é trocada e o banco é o real.
+const TOKEN = 'token-do-webhook-de-teste'
+const CHAVE_3 = '33333333-3333-4333-8333-333333333333'
+
+/** Formato do aviso de inutilização que o suporte da NG mandou (comentário na #58). */
+const avisoDe = (idExterno: string, extra: Record<string, unknown> = {}) => ({
+  id: idExterno, ambienteEmissao: 'Homologacao', status: 'Negada', motivoStatus: 'motivo do corpo', serie: '1',
+  numeroInicial: 16, numeroFinal: 24, justificativa: 'Quebra na sequência da numeração', protocoloAutorizacao: 'PROTOCOLO-DO-CORPO', ...extra,
+})
+
+type Envio = { consultar: Consultar; headers?: Record<string, string>; tokenEsperado?: string; config?: typeof m.configDoAmbiente }
+
+function receber(tx: Tx, corpo: unknown, { consultar, headers = { 'x-token': TOKEN }, tokenEsperado = TOKEN, config = m.configDoAmbiente }: Envio) {
+  const req = new Request('http://localhost/api/webhooks/notagateway', {
+    method: 'POST', headers: { 'content-type': 'application/json', ...headers },
+    body: typeof corpo === 'string' ? corpo : JSON.stringify(corpo),
+  })
+  return w.receberAvisoDaNg(req, { ...depsDaConsulta(tx, consultar), config, tokenEsperado })
+}
+
+/** Cala o console a partir daqui e devolve o que o webhook escreveu, para provar que nada sensível sai. */
+function consoleDe(t: TestContext) {
+  const info = t.mock.method(console, 'info', () => {})
+  const erro = t.mock.method(console, 'error', () => {})
+  return () => [...info.mock.calls, ...erro.mock.calls].map(c => c.arguments.map(String).join(' '))
+}
+
+test('aviso: sem token no servidor 503; x-token ausente, errado ou de outro tamanho 401; nada muda', async t => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001')
+    const f = await faixaPendente(tx, a)
+    const ng = ngQueResponde(AUTORIZADA)
+    const aviso = avisoDe(f.idExterno)
+    consoleDe(t)
+
+    assert.equal((await receber(tx, aviso, { consultar: ng.consultar, tokenEsperado: '' })).status, 503)
+    assert.equal((await receber(tx, aviso, { consultar: ng.consultar, headers: {} })).status, 401)
+    assert.equal((await receber(tx, aviso, { consultar: ng.consultar, headers: { 'x-token': 'token-do-webhook-de-teszz' } })).status, 401)
+    assert.equal((await receber(tx, aviso, { consultar: ng.consultar, headers: { 'x-token': 'curto' } })).status, 401)
+    assert.equal((await f.linha()).situacao, 'pendente')
+    assert.equal(ng.chamadas.length, 0)
+  })
+})
+
+test('aviso: NF-e, corpo desconhecido, não JSON, id inexistente e ambiente diferente ou ausente: 200 sem consultar', async t => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001')
+    const f = await faixaPendente(tx, a)
+    const ng = ngQueResponde(AUTORIZADA)
+    const { ambienteEmissao: _sem, ...semAmbiente } = avisoDe(f.idExterno)
+    const corpos = [
+      { tipo: 'NF-e', empresaId: 'emp-1', nfeId: f.idExterno, nfeStatus: 'Autorizada' },
+      {}, 'isto nao e json', avisoDe('faixa-que-nao-existe'), avisoDe(f.idExterno, { ambienteEmissao: 'Producao' }), semAmbiente,
+    ]
+    consoleDe(t)
+
+    for (const corpo of corpos) assert.equal((await receber(tx, corpo, { consultar: ng.consultar })).status, 200, JSON.stringify(corpo))
+    assert.equal((await f.linha()).situacao, 'pendente')
+    assert.equal(ng.chamadas.length, 0)
+  })
+})
+
+test('aviso repetido de linha já resolvida: 200, sem consultar, linha intacta', async t => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001')
+    const f = await faixaPendente(tx, a)
+    await m.gravarResultadoDaInutilizacao(tx, { id: f.id, grupoId: a.grupoId }, { status: 'Autorizada', motivoStatus: null, protocolo: 'P-GRAVADO' })
+    const antes = await f.linha()
+    const ng = ngQueResponde({ status: 'Negada', motivoStatus: 'nao devia consultar', protocolo: null })
+    consoleDe(t)
+
+    assert.equal((await receber(tx, avisoDe(f.idExterno), { consultar: ng.consultar })).status, 200)
+    assert.deepEqual(await f.linha(), antes)
+    assert.equal(ng.chamadas.length, 0)
+  })
+})
+
+test('aviso de grupo sem credencial ou com a credencial noutro ambiente: 200 e segue pendente', async t => {
+  await emTransacaoDesfeita(async tx => {
+    const sem = await semearContaFaixa(tx, 'S', '00000000066003')
+    const outro = await semearContaFaixa(tx, 'P', '00000000066004')
+    const fSem = await faixaPendente(tx, sem)
+    const fOutro = await faixaPendente(tx, outro)
+    await tx.execute(sql`delete from notagateway_config where grupo_id = ${sem.grupoId}`)
+    await tx.execute(sql`update notagateway_config set ambiente = 'Producao' where grupo_id = ${outro.grupoId}`)
+    const ng = ngQueResponde(AUTORIZADA)
+    consoleDe(t)
+
+    assert.equal((await receber(tx, avisoDe(fSem.idExterno), { consultar: ng.consultar })).status, 200)
+    assert.equal((await receber(tx, avisoDe(fOutro.idExterno), { consultar: ng.consultar })).status, 200)
+    assert.equal((await fSem.linha()).situacao, 'pendente')
+    assert.equal((await fOutro.linha()).situacao, 'pendente')
+    assert.equal(ng.chamadas.length, 0)
+  })
+})
+
+test('aviso de pendente: grava o que a consulta devolveu, não o corpo; o console tem só o resultado', async t => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001', 'Homologacao', 'emp-A')
+    const autorizada = await faixaPendente(tx, a, CHAVE_1)
+    const negada = await faixaPendente(tx, a, CHAVE_2)
+    const andando = await faixaPendente(tx, a, CHAVE_3)
+    const recusa = { status: 'Negada', motivoStatus: '241 - Rejeicao: Um numero da faixa ja foi utilizado', protocolo: null }
+    const escrito = consoleDe(t)
+
+    // O corpo diz Negada com motivo e protocolo próprios; a consulta diz Autorizada (e vice-versa).
+    assert.equal((await receber(tx, avisoDe(autorizada.idExterno), { consultar: ngQueResponde(AUTORIZADA).consultar })).status, 200)
+    assert.equal((await receber(tx, avisoDe(negada.idExterno, { status: 'Autorizada', motivoStatus: null }), { consultar: ngQueResponde(recusa).consultar })).status, 200)
+    assert.equal((await receber(tx, avisoDe(andando.idExterno), { consultar: ngQueResponde({ status: 'Processando', motivoStatus: null, protocolo: null }).consultar })).status, 200)
+
+    const [la, ln] = [await autorizada.linha(), await negada.linha()]
+    assert.deepEqual([la.situacao, la.status, la.motivo_status, la.protocolo], ['autorizada', 'Autorizada', null, AUTORIZADA.protocolo])
+    assert.deepEqual([ln.situacao, ln.status, ln.motivo_status, ln.protocolo], ['negada', 'Negada', recusa.motivoStatus, null])
+    assert.equal((await andando.linha()).situacao, 'pendente')
+    const linhasDoConsole = escrito()
+    assert.equal(linhasDoConsole.length, 3)
+    for (const linha of linhasDoConsole) assert.doesNotMatch(linha, /faixa-|emp-A|token|PROTOCOLO|353190000062124/)
+  })
+})
+
+test('aviso com a NG fora (5xx, 4xx ou rede) ou a configuração sem ler: 500, segue pendente, console sem a mensagem', async t => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001', 'Homologacao', 'emp-A')
+    const f = await faixaPendente(tx, a)
+    const ngFora: Consultar = async () => { throw new Error('Falha ao consultar a inutilização: segredo emp-A') }
+    const configQuebrada: typeof m.configDoAmbiente = async () => { throw new Error('chave errada token-A') }
+    const escrito = consoleDe(t)
+
+    assert.equal((await receber(tx, avisoDe(f.idExterno), { consultar: ngFora })).status, 500)
+    assert.equal((await receber(tx, avisoDe(f.idExterno), { consultar: ngQueResponde(AUTORIZADA).consultar, config: configQuebrada })).status, 500)
+    assert.equal((await f.linha()).situacao, 'pendente')
+    for (const linha of escrito()) assert.doesNotMatch(linha, /segredo|emp-A|token-A|faixa-/)
+  })
+})
+
+test('isolamento: aviso com id da Conta A e grupo/empresa da B no corpo muda só a da A, com a credencial da A', async t => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearContaFaixa(tx, 'A', '00000000066001', 'Homologacao', 'emp-A')
+    const b = await semearContaFaixa(tx, 'B', '00000000066002', 'Homologacao', 'emp-B')
+    const fA = await faixaPendente(tx, a)
+    const fB = await faixaPendente(tx, b)
+    const ng = ngQueResponde(AUTORIZADA)
+    consoleDe(t)
+
+    const forjado = avisoDe(fA.idExterno, { grupoId: b.grupoId, empresaId: 'emp-B' })
+    assert.equal((await receber(tx, forjado, { consultar: ng.consultar })).status, 200)
+
+    assert.equal((await fA.linha()).situacao, 'autorizada')
+    assert.equal((await fB.linha()).situacao, 'pendente')
+    assert.deepEqual(ng.chamadas, [{ empresaId: 'emp-A', idExterno: fA.idExterno }])
   })
 })
