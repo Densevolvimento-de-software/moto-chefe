@@ -157,3 +157,15 @@ test('taxas da receita: a parte Pix do bruto − líquido das motos e das outras
     { taxasCartao: 209, tarifaPix: 9 },
   )
 })
+
+test('taxas da receita sem resíduo de ponto flutuante quando o recorte só tem Pix com centavos', () => {
+  // 1000,56 − 1000,19 − 0,37 em float dá −1,09e−13: a tela mostraria "−R$ 0,00" em vez de zero.
+  assert.deepEqual(
+    taxasDaReceita({ brutoMotos: 1000.56, liquidoMotos: 1000.19, tarifaPixMotos: 0.37, taxaCartaoOutras: 0, tarifaPixOutras: 0 }),
+    { taxasCartao: 0, tarifaPix: 0.37 },
+  )
+  assert.deepEqual(
+    taxasDaReceita({ brutoMotos: 0.3, liquidoMotos: 0.1, tarifaPixMotos: 0.1, taxaCartaoOutras: 0.1, tarifaPixOutras: 0.2 }),
+    { taxasCartao: 0.2, tarifaPix: 0.3 },
+  )
+})

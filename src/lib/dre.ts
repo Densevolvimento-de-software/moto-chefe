@@ -15,6 +15,8 @@
 //   dedução da receita bruta. No sistema o imposto entra pelo extrato quando é
 //   pago, não estimado por alíquota sobre cada venda — descontar nos dois lugares
 //   contaria o mesmo tributo duas vezes.
+import { centavos } from './centavos'
+
 
 export const GRUPOS_DRE = [
   { valor: 'pessoal',         rotulo: 'Pessoal' },
@@ -142,9 +144,12 @@ export function taxasDaReceita(p: {
   taxaCartaoOutras: number
   tarifaPixOutras: number
 }): { taxasCartao: number; tarifaPix: number } {
+  // Centavos: a subtração em ponto flutuante deixa resíduo (−1e−13) que a tela mostraria como "−R$ 0,00";
+  // o + 0 troca o −0 do arredondamento por 0.
+  const emCentavos = (v: number) => centavos(v) + 0
   return {
-    taxasCartao: p.brutoMotos - p.liquidoMotos - p.tarifaPixMotos + p.taxaCartaoOutras,
-    tarifaPix: p.tarifaPixMotos + p.tarifaPixOutras,
+    taxasCartao: emCentavos(p.brutoMotos - p.liquidoMotos - p.tarifaPixMotos + p.taxaCartaoOutras),
+    tarifaPix: emCentavos(p.tarifaPixMotos + p.tarifaPixOutras),
   }
 }
 
