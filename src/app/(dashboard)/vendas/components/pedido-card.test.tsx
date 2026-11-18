@@ -20,6 +20,7 @@ const PEDIDO = {
   id: 'p1', numero: 77, status: 'pendente', motoId: 'm1', lojaId: 'loja-1', vendedorId: 'v1', chassi: 'CHASSI1', cor: 'CINZA',
   marca: 'MOTOCHEFE', modelo: 'JET', lojaNome: 'Loja Exemplo', vendedorNome: 'Vendedor Exemplo', observacao: null,
   dataPedido: new Date('2026-11-14T12:00:00Z'), entrega: null, emAprovacao: false,
+  motos: [{ id: 'm1', marca: 'MOTOCHEFE', modelo: 'JET', chassi: 'CHASSI1', cor: 'CINZA', valor: '9490.00' }],
 } as unknown as PedidoComDetalhes
 
 let desmontarCard: (() => Promise<void>) | null = null
@@ -51,4 +52,30 @@ test('pedido em aprovação: "Aguardando aprovação", sem Efetivar nem Cancelar
   assert.match(document.body.textContent ?? '', /Aguardando aprovação/)
   assert.ok(!botoes().includes('Efetivar Venda'))
   assert.ok(!botoes().includes('Cancelar'))
+})
+
+// Card com todas as motos (#25, V2 do Luis): pedido de várias motos lista cada uma com o valor e o total.
+const moto = (id: string, modelo: string, final: string, valor: string | null) => ({ id, marca: 'MC', modelo, chassi: `9C2LA000000${final}`, cor: 'PRETA', valor })
+const textoDe = (el: Element | null | undefined) => (el?.textContent ?? '').replace(/\s+/g, ' ')
+
+test('pedido com 3 motos: o card diz "3 motos" e lista cada uma com o final do chassi, o valor e o total', async () => {
+  await desenhar({ ...PEDIDO, motos: [moto('m1', 'JET', '4131', '9490.00'), moto('m2', 'PITICA', '0088', '5200.00'), moto('m3', 'X12', '2207', '9300.00')] } as PedidoComDetalhes)
+  assert.match(textoDe(document.body), /3 motos/)
+  const linhas = [...document.querySelectorAll('[aria-label="Motos do pedido"] li')].map(textoDe)
+  assert.equal(linhas.length, 3)
+  assert.match(linhas[0], /MC JET final 4131\s*R\$ 9\.490,00/)
+  assert.match(linhas[2], /MC X12 final 2207\s*R\$ 9\.300,00/)
+  assert.match(textoDe(document.body), /Total das motos\s*R\$ 23\.990,00/)
+})
+
+test('moto ainda sem valor aparece "A definir" e o total não sai pela metade', async () => {
+  await desenhar({ ...PEDIDO, motos: [moto('m1', 'JET', '4131', null), moto('m2', 'PITICA', '0088', '5200.00')] } as PedidoComDetalhes)
+  assert.match(textoDe(document.querySelector('[aria-label="Motos do pedido"]')), /MC JET final 4131\s*A definir/)
+  assert.doesNotMatch(textoDe(document.body), /Total das motos/)
+})
+
+test('pedido de 1 moto: o card segue como antes (modelo, chassi e cor), sem a lista', async () => {
+  await desenhar(PEDIDO)
+  assert.match(textoDe(document.body), /MOTOCHEFE JET/)
+  assert.ok(!document.querySelector('[aria-label="Motos do pedido"]'))
 })

@@ -3,12 +3,12 @@ import { Kpi } from '@/components/kpi'
 import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { podeEditarVendaDaLoja } from '@/lib/acesso-registro'
-import { listarLojaIdsDoGrupoAtivo, listarLojasDoGrupoAtivo, podeAprovarVendaBaixoValor, podeAprovarPagamentoSensivelNoGrupoAtivo, getGrupoAtivo, contaDoGrupoAtivo } from '@/lib/grupo'
+import { listarLojaIdsDoGrupoAtivo, listarLojasDoGrupoAtivo, getGrupoAtivo, contaDoGrupoAtivo } from '@/lib/grupo'
 import { listarUsuariosDoGrupo } from '@/lib/usuarios-do-grupo'
 import { listarModelosDaConta, nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
 import { listarOrigensAtivasDoGrupo } from '@/lib/queries/origens-venda'
 import { listarPedidosPorLoja, listarTodosPedidos, listarVendas } from '@/lib/queries/vendas'
-import { listarAprovacoesPendentes } from '@/lib/queries/motos'
+import { aprovacoesDoPainel } from '@/lib/aprovacoes-do-painel'
 import { db } from '@/lib/db'
 import { motos, modelos, lojas } from '@/lib/db/schema'
 import { eq, inArray, and } from 'drizzle-orm'
@@ -114,7 +114,7 @@ export default async function VendasPage({
   const dataInicio = params.de  ?? dataDefault30Dias()
   const dataFim    = params.ate ?? undefined
 
-  const [pedidos, vendasList, motosDisponiveis, lojasOpts, modelosOpts, vendedoresOpts, aprovacoesPendentes, podeAprovarValorMinimo] = await Promise.all([
+  const [pedidos, vendasList, motosDisponiveis, lojasOpts, modelosOpts, vendedoresOpts, painel] = await Promise.all([
     isAdmin ? listarTodosPedidos(lojaIdsGrupo) : listarPedidosPorLoja(usuario.lojaId!),
     listarVendas({
       lojaId:      lojaValues,
@@ -142,14 +142,10 @@ export default async function VendasPage({
     listarLojasDoGrupoAtivo(usuario),
     contaDoGrupoAtivo(usuario).then(c => listarModelosDaConta(c)),
     listarUsuariosDoGrupo(grupoAtivo.id, { papeis: PAPEIS_VENDE }),
-    isAdmin ? listarAprovacoesPendentes(lojaIdsGrupo) : Promise.resolve([]),
-    // Todas as linhas de aprovacoesPendentes pertencem ao mesmo grupo ativo (lojaIdsGrupo),
-    // então uma checagem com qualquer loja do grupo já vale pra todas — ver podeAprovarVendaBaixoValor.
-    isAdmin && lojaIdsGrupo.length > 0 ? podeAprovarVendaBaixoValor(usuario, lojaIdsGrupo[0]) : Promise.resolve(false),
+    // Quem vê e quem aprova, no grupo ativo: a mesma regra do servidor (#25, ponto 3).
+    aprovacoesDoPainel(usuario),
   ])
-  // Mesma lógica do podeAprovarValorMinimo acima: a lista já vem filtrada pelo
-  // grupo ativo, então uma checagem no grupo ativo vale pra todas as linhas.
-  const podeAprovarSensivel = await podeAprovarPagamentoSensivelNoGrupoAtivo(usuario)
+  const { aprovacoes: aprovacoesPendentes, podeAprovarValorMinimo, podeAprovarSensivel } = painel
   // Só quem pode desfazer vê o quadro: o Editar moto que marca a venda é só de sócio e admin (#544).
   const vendidasSemVenda = isAdmin ? await listarMotosVendidasSemVenda(await contaDoGrupoAtivo(usuario), lojaIdsGrupo) : []
 
@@ -190,6 +186,7 @@ export default async function VendasPage({
 
       <AprovacoesPendentesPanel
         aprovacoes={aprovacoesPendentes}
+        motosDosPedidos={Object.fromEntries(pendentes.map(p => [p.id, p.motos]))}
         podeAprovarValorMinimo={podeAprovarValorMinimo}
         podeAprovarSensivel={podeAprovarSensivel}
       />

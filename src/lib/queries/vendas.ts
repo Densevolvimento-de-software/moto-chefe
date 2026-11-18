@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
+import { nomeDoModeloNaLoja, nomeDoModeloSql } from '@/lib/modelos-da-conta'
 import { pedidosVenda, vendas, motos, lojas, grupos, usuarios, modelos, origensVenda } from '@/lib/db/schema'
 import { eq, and, ilike, inArray, desc, sql, gte, lte } from 'drizzle-orm'
 import { inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
@@ -108,6 +108,29 @@ export async function listarVendas(filtros?: {
     .orderBy(desc(vendas.dataVenda))
 }
 
+/**
+ * As motos do pedido (#25), para o card e o painel: a do `moto_id` primeiro (o pedido de antes do #774 só tem ela, sem item), depois
+ * as dos itens na ordem em que entraram (a mesma regra do motosDoPedido); o modelo com o nome da Conta da loja. Valor em texto
+ * ('13000.00'), null quando ainda sem valor. As listas já filtram as lojas do pedido.
+ */
+const motosDoPedidoSql = sql<{ id: string; marca: string; modelo: string; chassi: string; cor: string; valor: string | null }[]>`coalesce((
+  select json_agg(json_build_object('id', mm.id, 'marca', mo.marca, 'modelo', ${nomeDoModeloSql('"mo"', '"mm"."loja_id"')},
+    'chassi', mm.chassi, 'cor', mm.cor, 'valor', x.valor::text) order by x.principal desc, x.criado_em, x.item_id)
+  from (
+    select i.moto_id, i.valor_unitario as valor, i.criado_em, i.id as item_id, i.moto_id = "pedidos_venda"."moto_id" as principal
+      from pedidos_venda_itens i
+     where i.pedido_venda_id = "pedidos_venda"."id" and i.moto_id is not null
+    union all
+    select "pedidos_venda"."moto_id", null, null, null, true
+     where not exists (select 1 from pedidos_venda_itens i where i.pedido_venda_id = "pedidos_venda"."id" and i.moto_id = "pedidos_venda"."moto_id")
+  ) x
+  join motos mm on mm.id = x.moto_id
+  join modelos mo on mo.id = mm.modelo_id
+  -- A moto também na Conta da loja do pedido, mesmo vindo de item já conferido na gravação.
+  where exists (select 1 from lojas lm join grupos gm on gm.id = lm.grupo_id, lojas lp join grupos gp on gp.id = lp.grupo_id
+                 where lm.id = mm.loja_id and lp.id = "pedidos_venda"."loja_id" and gm.conta_id = gp.conta_id)
+), '[]'::json)`
+
 export async function listarPedidosPorLoja(lojaId: string) {
   return db
     .select({
@@ -121,6 +144,7 @@ export async function listarPedidosPorLoja(lojaId: string) {
       lojaId: pedidosVenda.lojaId,
       chassi: motos.chassi,
       emAprovacao: pedidoEmAprovacaoSql(sql.raw('"pedidos_venda"."id"')),
+      motos: motosDoPedidoSql,
       cor: motos.cor,
       marca: modelos.marca,
       modelo: nomeDoModeloNaLoja(pedidosVenda.lojaId),
@@ -150,6 +174,7 @@ export async function listarTodosPedidos(lojaIds?: string[]) {
       lojaId: pedidosVenda.lojaId,
       chassi: motos.chassi,
       emAprovacao: pedidoEmAprovacaoSql(sql.raw('"pedidos_venda"."id"')),
+      motos: motosDoPedidoSql,
       cor: motos.cor,
       marca: modelos.marca,
       modelo: nomeDoModeloNaLoja(pedidosVenda.lojaId),
