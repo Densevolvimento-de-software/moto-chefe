@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, type AnyColumn } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql, type AnyColumn } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { lojas, modelos, motos, pecasCatalogo, pedidosVenda, pedidosVendaItens } from '@/lib/db/schema'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
@@ -66,12 +66,14 @@ export async function itensDoPedido(
     .where(eq(pedidosVendaItens.pedidoVendaId, pedidoId))
     .orderBy(asc(pedidosVendaItens.criadoEm), asc(pedidosVendaItens.id))
   const motoIds = motosDoPedido(pedido.motoId, itens)
+  // Sem Conta não há moto; admin_geral (undefined) lê sem filtro.
+  const motoDaConta = lojaDaConta(usuario, motos.lojaId)
   const fichas = await exec
     .select({ id: motos.id, chassi: motos.chassi, marca: modelos.marca, modelo: modelos.modelo, cor: motos.cor, lojaId: motos.lojaId, lojaNome: lojas.nome })
     .from(motos)
     .innerJoin(modelos, eq(modelos.id, motos.modeloId))
     .innerJoin(lojas, eq(lojas.id, motos.lojaId))
-    .where(and(inArray(motos.id, motoIds), lojaDaConta(usuario, motos.lojaId) ?? undefined))
+    .where(and(inArray(motos.id, motoIds), motoDaConta === null ? sql`false` : motoDaConta))
   return {
     lojaId: pedido.lojaId,
     motos: motoIds.flatMap(id => fichas.filter(f => f.id === id).map(f => ({
