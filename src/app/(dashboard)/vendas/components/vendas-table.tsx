@@ -17,9 +17,9 @@ import type { VendaComDetalhes } from '@/lib/queries/vendas'
 import { calcStatusMultiPagamento, type StatusConc } from '@/lib/conciliacao-status'
 import type { DescontoDaVenda } from '@/lib/queries/descontos'
 import { PAPEIS_QUE_CANCELAM_VENDA } from '@/lib/cancelar-venda'
+import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 
 const podeGarantia = new Set(['admin_geral', 'admin_socio', 'aux_adm'])
-const ADMINS       = new Set(['admin_geral', 'admin_socio'])
 
 // Só o que é específico de venda de moto fica aqui: o fallback para
 // vendas.status_conciliacao das vendas antigas, anteriores ao array `pagamentos`.
@@ -126,7 +126,7 @@ export function VendasTable(props: Props) {
   const [nfAberta, setNfAberta] = useState<NfDaVenda | null>(null)
   // Guarda só o id: depois de uma action, o revalidatePath traz a venda nova e o painel mostra ela.
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null)
-  const podeConciliacao = ADMINS.has(papel) || papel === 'aux_adm'
+  const podeConciliacao = podeGerirConciliacao(papel)
   const onAbrirNf = podeOperarNfSaida(papel) ? setNfAberta : undefined
 
   const searchParams = useSearchParams()
