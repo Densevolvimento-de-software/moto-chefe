@@ -356,7 +356,7 @@ export async function vincularVendaAction(conciliacaoId: string, alvoId: string,
       .set({ pecaVendaId: alvoId, vendaId: null, osId: null, conciliado: true, conciliadoEm: new Date() })
       .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
       .returning({ id: conciliacoesCartao.id })
-    if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
+    if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
     revalidatePath('/conciliacao')
     return
   }
@@ -370,7 +370,7 @@ export async function vincularVendaAction(conciliacaoId: string, alvoId: string,
       .set({ osId: alvoId, vendaId: null, pecaVendaId: null, conciliado: true, conciliadoEm: new Date() })
       .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
       .returning({ id: conciliacoesCartao.id })
-    if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
+    if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
     revalidatePath('/conciliacao')
     return
   }
@@ -390,7 +390,7 @@ export async function vincularVendaAction(conciliacaoId: string, alvoId: string,
     .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
     .returning({ id: conciliacoesCartao.id })
 
-  if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
+  if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
 
   revalidatePath('/conciliacao')
 }
@@ -405,7 +405,7 @@ export async function desvincularVendaAction(conciliacaoId: string) {
     .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id)))
     .returning({ id: conciliacoesCartao.id })
 
-  if (atualizadas.length === 0) throw new Error('Conciliação não encontrada')
+  if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
 
   revalidatePath('/conciliacao')
 }
