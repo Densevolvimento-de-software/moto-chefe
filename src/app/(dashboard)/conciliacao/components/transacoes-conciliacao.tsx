@@ -9,20 +9,22 @@ import { cn } from '@/lib/utils'
 import { brl } from '@/lib/dashboard-painel'
 import { dataPuraBr } from '@/lib/data-venda'
 import type { LinhaNaTela } from '@/lib/conciliacao-linha-tela'
-import { BotaoDesvincular, ChipDoAlvo, VincularVendaButton } from './vincular-venda-button'
+import { BotaoDesvincular, ChipDoAlvo, RotuloDoAlvo, VincularVendaButton } from './vincular-venda-button'
 
-const NAO_SE_VINCULA = 'Não se vincula: o dinheiro voltou ao cliente.'
+const NAO_SE_VINCULA = 'Não se vincula'
+const NAO_SE_VINCULA_PORQUE = `${NAO_SE_VINCULA}: o dinheiro voltou ao cliente.`
 
 /**
  * Transações da /conciliacao (#51, V2): tabela no desktop; no celular, lista de duas linhas e a folha de baixo com os
  * detalhes. Estornada sai apagada, com o valor riscado e o selo, e sem Vincular nem Desvincular (o servidor também
- * recusa, `cartaoNaoEstornado`).
+ * recusa, `cartaoNaoEstornado`). `podeVincular`: o mesmo `podeGerirConciliacao` com que o servidor recusa; sem ele, as
+ * linhas e as vendas ligadas aparecem sem os botões.
  */
-export function TransacoesConciliacao({ linhas }: { linhas: LinhaNaTela[] }) {
+export function TransacoesConciliacao({ linhas, podeVincular }: { linhas: LinhaNaTela[]; podeVincular: boolean }) {
   return (
     <>
-      <Tabela linhas={linhas} />
-      <ListaDoCelular linhas={linhas} />
+      <Tabela linhas={linhas} podeVincular={podeVincular} />
+      <ListaDoCelular linhas={linhas} podeVincular={podeVincular} />
     </>
   )
 }
@@ -34,18 +36,27 @@ const SeloDoTipo = ({ l }: { l: LinhaNaTela }) => (
 )
 const SeloEstornado = () => <Badge variant="destructive" className="text-xs">Estornado</Badge>
 
-const linkDaLinha = (l: LinhaNaTela, grande = false) => (
+const botaoVincular = (l: LinhaNaTela, tamanho?: 'toque' | 'largo') => (
   <VincularVendaButton
     conciliacaoId={l.id}
     dataRef={l.data}
     valorRef={l.valor}
     vendaVinculada={l.alvo}
     tipoVinculado={l.alvo?.tipo}
-    grande={grande}
+    tamanho={tamanho}
   />
 )
 
-function Tabela({ linhas }: { linhas: LinhaNaTela[] }) {
+type Props = { linhas: LinhaNaTela[]; podeVincular: boolean }
+
+// Coluna Venda da tabela: estornada não se vincula; sem permissão, só o que está ligado.
+function VendaNaTabela({ l, podeVincular }: { l: LinhaNaTela; podeVincular: boolean }) {
+  if (l.estornada) return <span className="text-xs">{NAO_SE_VINCULA}</span>
+  if (podeVincular) return botaoVincular(l)
+  return l.alvo ? <RotuloDoAlvo numero={l.alvo.numero} clienteNome={l.alvo.clienteNome} tipo={l.alvo.tipo} /> : null
+}
+
+function Tabela({ linhas, podeVincular }: Props) {
   const th = 'px-4 py-3 font-medium text-muted-foreground'
   return (
     <div className="hidden overflow-hidden rounded-lg border border-border bg-card md:block">
@@ -83,7 +94,7 @@ function Tabela({ linhas }: { linhas: LinhaNaTela[] }) {
               <td className="max-w-[120px] truncate px-4 py-3 font-mono text-xs text-muted-foreground" title={l.nsu ?? ''}>
                 {l.nsu ? l.nsu.slice(-8) : '-'}
               </td>
-              <td className="px-4 py-3">{l.estornada ? <span className="text-xs">Não se vincula</span> : linkDaLinha(l)}</td>
+              <td className="px-4 py-3"><VendaNaTabela l={l} podeVincular={podeVincular} /></td>
             </tr>
           ))}
         </tbody>
@@ -92,7 +103,7 @@ function Tabela({ linhas }: { linhas: LinhaNaTela[] }) {
   )
 }
 
-function ListaDoCelular({ linhas }: { linhas: LinhaNaTela[] }) {
+function ListaDoCelular({ linhas, podeVincular }: Props) {
   // Guarda só o id: depois da action, a lista recarregada traz a linha nova; se ela saiu do filtro, a folha fecha.
   const [abertaId, setAbertaId] = useState<string | null>(null)
   const aberta = linhas.find(l => l.id === abertaId)
@@ -113,10 +124,10 @@ function ListaDoCelular({ linhas }: { linhas: LinhaNaTela[] }) {
               <span className="flex flex-wrap gap-x-2.5 text-[13px] tabular-nums text-muted-foreground">
                 <span>{dataPuraBr(l.data).slice(0, 5)}</span>
                 <span>{l.operadora}</span>
-                {l.estornada && <span>Não se vincula</span>}
+                {l.estornada && <span>{NAO_SE_VINCULA}</span>}
               </span>
             </button>
-            {!l.estornada && !l.alvo ? linkDaLinha(l, true) : (
+            {podeVincular && !l.estornada && !l.alvo ? botaoVincular(l, 'toque') : (
               <span className="flex items-center gap-0.5 text-[13px]">
                 {l.alvo && !l.estornada && (
                   <span className="flex items-center gap-1 whitespace-nowrap font-medium text-success">
@@ -138,13 +149,20 @@ function ListaDoCelular({ linhas }: { linhas: LinhaNaTela[] }) {
       </ul>
 
       <GavetaDeBaixo aberta={!!aberta} onAbertaChange={o => !o && setAbertaId(null)}>
-        {aberta && <FolhaDaLinha l={aberta} />}
+        {aberta && <FolhaDaLinha l={aberta} podeVincular={podeVincular} />}
       </GavetaDeBaixo>
     </>
   )
 }
 
-function FolhaDaLinha({ l }: { l: LinhaNaTela }) {
+// Ação da folha: estornada explica por que não se vincula; sem permissão, nenhuma.
+function AcaoDaFolha({ l, podeVincular }: { l: LinhaNaTela; podeVincular: boolean }) {
+  if (l.estornada) return <p className="text-sm text-muted-foreground">{NAO_SE_VINCULA_PORQUE}</p>
+  if (!podeVincular) return null
+  return l.alvo ? <BotaoDesvincular conciliacaoId={l.id} cheio /> : botaoVincular(l, 'largo')
+}
+
+function FolhaDaLinha({ l, podeVincular }: { l: LinhaNaTela; podeVincular: boolean }) {
   return (
     <div className="space-y-4">
       {/* pr-10: o X de fechar da gaveta fica no canto de cima, à direita. */}
@@ -171,9 +189,7 @@ function FolhaDaLinha({ l }: { l: LinhaNaTela }) {
           </LinhaDeDetalhe>
         )}
       </div>
-      {l.estornada ? <p className="text-sm text-muted-foreground">{NAO_SE_VINCULA}</p>
-        : l.alvo ? <BotaoDesvincular conciliacaoId={l.id} cheio />
-        : linkDaLinha(l, true)}
+      <AcaoDaFolha l={l} podeVincular={podeVincular} />
     </div>
   )
 }

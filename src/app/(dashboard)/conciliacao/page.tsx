@@ -118,7 +118,7 @@ export default async function ConciliacaoPage({
           </p>
         </div>
       ) : (
-        <TransacoesConciliacao linhas={transacoes.map(t => linhaNaTela(t, alvos))} />
+        <TransacoesConciliacao linhas={transacoes.map(t => linhaNaTela(t, alvos))} podeVincular={podeGerirConciliacao(usuario.papel)} />
       )}
     </div>
   )

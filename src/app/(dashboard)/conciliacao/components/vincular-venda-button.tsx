@@ -6,6 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Link2, Link2Off, Loader2, CheckCircle2, Search } from 'lucide-react'
 import { buscarVendasParaVincular, buscarVendaManual, vincularVendaAction, desvincularVendaAction } from '../actions'
 import { dataPuraBr } from '@/lib/data-venda'
+import { brl } from '@/lib/dashboard-painel'
+import { cn } from '@/lib/utils'
 
 type Venda = Awaited<ReturnType<typeof buscarVendasParaVincular>>[number]
 type PgtoItem = { tipo: string; valor: number | string; operadora?: string; parcelas?: number; autorizacao?: string }
@@ -22,14 +24,25 @@ type Props = {
   valorRef: number
   vendaVinculada?: { id: string; numero: number; clienteNome: string; valor: string } | null
   tipoVinculado?: 'moto' | 'peca' | 'os'
-  /** Botão de 44 px, para o celular. */
-  grande?: boolean
+  /** 'toque': 44 px, na lista do celular; 'largo': 44 px na largura toda, na folha; padrão: pequeno, na tabela. */
+  tamanho?: 'toque' | 'largo'
 }
 
 /** "PA" (venda de peça) ou "OS" antes do número; venda de moto não tem. */
-export function ChipDoAlvo({ tipo }: { tipo?: 'moto' | 'peca' | 'os' }) {
+export function ChipDoAlvo({ tipo, className }: { tipo?: 'moto' | 'peca' | 'os'; className?: string }) {
   if (tipo !== 'peca' && tipo !== 'os') return null
-  return <span className="text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5">{tipo === 'peca' ? 'PA' : 'OS'}</span>
+  return <span className={cn('text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5', className)}>{tipo === 'peca' ? 'PA' : 'OS'}</span>
+}
+
+/** "#31902, Maria" com o selo de ligada: a venda da linha na tabela, com ou sem o Desvincular ao lado. */
+export function RotuloDoAlvo({ numero, clienteNome, tipo }: { numero: number; clienteNome: string; tipo?: 'moto' | 'peca' | 'os' }) {
+  return (
+    <span className="flex items-center gap-1 text-xs text-success font-medium">
+      <CheckCircle2 size={12} />
+      <ChipDoAlvo tipo={tipo} />
+      #{numero}, {clienteNome.split(' ')[0]}
+    </span>
+  )
 }
 
 /** Tira o vínculo da linha. `cheio`: botão largo da folha do celular; sem ele, só o ícone da tabela. */
@@ -68,7 +81,7 @@ export function BotaoDesvincular({ conciliacaoId, cheio = false }: { conciliacao
   )
 }
 
-export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVinculada, tipoVinculado, grande = false }: Props) {
+export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVinculada, tipoVinculado, tamanho }: Props) {
   const [open, setOpen]               = useState(false)
   const [vendas, setVendas]           = useState<Venda[]>([])
   const [carregando, setCarregando]   = useState(false)
@@ -135,16 +148,11 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
       >
         <div className="flex items-center justify-between">
           <span className="font-medium text-foreground">
-            {v.tipo === 'peca' && (
-              <span className="text-xs font-semibold text-info bg-info/10 rounded px-1.5 py-0.5 mr-1.5">PA</span>
-            )}
-            {v.tipo === 'os' && (
-              <span className="text-xs font-semibold text-info bg-info/10 rounded px-1.5 py-0.5 mr-1.5">OS</span>
-            )}
+            <ChipDoAlvo tipo={v.tipo} className="mr-1.5" />
             {v.tipo === 'os' ? `OS #${v.numero}` : `Venda #${v.numero}`}, {v.clienteNome}
           </span>
           <span className="font-semibold text-foreground">
-            {v.valor ? parseFloat(v.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
+            {v.valor ? brl(parseFloat(v.valor)) : '-'}
           </span>
         </div>
         <div className="text-xs text-muted-foreground mt-0.5">
@@ -178,11 +186,7 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
   if (vendaVinculada) {
     return (
       <div className="flex items-center gap-1.5">
-        <span className="flex items-center gap-1 text-xs text-success font-medium">
-          <CheckCircle2 size={12} />
-          <ChipDoAlvo tipo={tipoVinculado} />
-          #{vendaVinculada.numero}, {vendaVinculada.clienteNome.split(' ')[0]}
-        </span>
+        <RotuloDoAlvo numero={vendaVinculada.numero} clienteNome={vendaVinculada.clienteNome} tipo={tipoVinculado} />
         <BotaoDesvincular conciliacaoId={conciliacaoId} />
       </div>
     )
@@ -191,12 +195,12 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
   return (
     <>
       <Button
-        variant={grande ? 'outline' : 'ghost'}
+        variant={tamanho ? 'outline' : 'ghost'}
         size="sm"
-        className={grande ? 'h-11 px-3' : 'h-7 text-xs px-2 text-muted-foreground'}
+        className={tamanho === 'largo' ? 'h-11 w-full' : tamanho === 'toque' ? 'h-11 px-3' : 'h-7 text-xs px-2 text-muted-foreground'}
         onClick={abrirModal}
       >
-        <Link2 size={grande ? 16 : 12} className="mr-1" /> Vincular
+        <Link2 size={tamanho ? 16 : 12} className="mr-1" /> Vincular
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
