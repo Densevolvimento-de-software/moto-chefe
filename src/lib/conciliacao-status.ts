@@ -5,6 +5,14 @@ export type StatusConc = 'na' | 'pendente' | 'parcial' | 'conciliada'
 export const TIPOS_CARTAO = new Set(['cartao_credito', 'cartao_debito', 'link_pagamento'])
 export const PAGAMENTO_PIX: ReadonlySet<string> = new Set(['pix'])
 
+/**
+ * Tipos de pagamento da venda que uma linha da conciliação de cartão pode cobrir. A linha 'pix' só
+ * existe para o Pix da maquininha Mercado Pago (#51) e cobre o pagamento Pix; as outras, cartão.
+ */
+export function tiposDoPagamentoDaLinha(tipoLinha: string | undefined): ReadonlySet<string> {
+  return tipoLinha === LINHA_PIX ? PAGAMENTO_PIX : TIPOS_CARTAO
+}
+
 // Conciliação forçada na mão (quem pode: podeGerirConciliacao): o dinheiro entrou, mas não existe
 // lançamento correspondente no sistema (relatório da operadora não importado, PIX
 // fora do Open Finance, transferência avulsa). Fica gravada no próprio item do array
