@@ -295,3 +295,18 @@ test('falha registrada pela rodada ou pelo botão: hora e frase na linha do grup
   const [deB] = await execRows(sql`select ultima_falha_em from mercadopago_config where grupo_id = ${b.grupoId}`)
   assert.equal(deB.ultima_falha_em, null)
 })
+
+// A faixa lê da linha da credencial só o estado da importação: nunca o token, a conta nem o documento do titular.
+test('estado da faixa: nulo sem credencial; com ela, só hora, resumo e falha (sem token nem conta)', async () => {
+  const sem = await semearConta('A', { comCredencial: false })
+  assert.equal(await mod.estadoDaFaixaMp(sem.grupoId), null)
+  const a = await semearConta('B')
+  assert.deepEqual(await mod.estadoDaFaixaMp(a.grupoId), { ultimaImportacaoEm: null, resumo: null, falha: null })
+  await importar(a, [])
+  await mod.registrarFalhaMp(a.grupoId, 'falhou', AGORA)
+  const estado = await mod.estadoDaFaixaMp(a.grupoId)
+  assert.deepEqual(Object.keys(estado!).sort(), ['falha', 'resumo', 'ultimaImportacaoEm'])
+  assert.equal(estado!.ultimaImportacaoEm, AGORA.toISOString())
+  assert.deepEqual(estado!.falha, { em: AGORA.toISOString(), erro: 'falhou' })
+  assert.equal(JSON.stringify(estado).includes(a.token), false)
+})

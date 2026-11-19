@@ -137,3 +137,24 @@ async function marcarEstorno(tx: Tx, grupoId: string, nsu: string): Promise<Cont
 export async function registrarFalhaMp(grupoId: string, erro: string, agora: Date): Promise<void> {
   await db.update(mercadopagoConfig).set({ ultimaFalhaEm: agora, ultimaFalhaErro: erro }).where(eq(mercadopagoConfig.grupoId, grupoId))
 }
+
+export type EstadoDaFaixaMp = { ultimaImportacaoEm: string | null; resumo: ResumoDaImportacao | null; falha: { em: string; erro: string } | null }
+
+/**
+ * O que a faixa da /conciliacao recebe do grupo: nulo sem credencial (a faixa não aparece). Colunas explícitas:
+ * a mesma linha guarda o token e a conta, que não vão para a tela. Datas em ISO (vai ao componente de cliente).
+ */
+export async function estadoDaFaixaMp(grupoId: string): Promise<EstadoDaFaixaMp | null> {
+  const [c] = await db.select({
+    ultimaImportacaoEm: mercadopagoConfig.ultimaImportacaoEm,
+    ultimoResumo: mercadopagoConfig.ultimoResumo,
+    ultimaFalhaEm: mercadopagoConfig.ultimaFalhaEm,
+    ultimaFalhaErro: mercadopagoConfig.ultimaFalhaErro,
+  }).from(mercadopagoConfig).where(eq(mercadopagoConfig.grupoId, grupoId)).limit(1)
+  if (!c) return null
+  return {
+    ultimaImportacaoEm: c.ultimaImportacaoEm?.toISOString() ?? null,
+    resumo: (c.ultimoResumo as ResumoDaImportacao | null) ?? null,
+    falha: c.ultimaFalhaEm && c.ultimaFalhaErro ? { em: c.ultimaFalhaEm.toISOString(), erro: c.ultimaFalhaErro } : null,
+  }
+}
