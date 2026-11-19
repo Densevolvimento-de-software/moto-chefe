@@ -439,7 +439,6 @@ export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
   return pixDoAlvo(alvo)
 }
 
-
 // Busca livre: a lupa padrão só acha transação de valor praticamente idêntico. Quando
 // o valor lançado na venda não bate com o que a operadora reportou (taxa embutida,
 // digitação errada), é por aqui que se acha a transação — por autorização, NSU, data
@@ -518,7 +517,6 @@ async function exigirAlvoNoGrupoAtivo(alvo: AlvoConciliacao): Promise<Usuario> {
   if (!(await alvoNoGrupoAtivo(usuario, alvo))) throw alvoNaoEncontrado(tipoDoAlvo(alvo))
   return usuario
 }
-
 
 /** PIX livres do grupo (sem vínculo, desde o início da conciliação), sem transferência interna. */
 async function pixLivresDoGrupo(grupoId: string, filtro: SQL | undefined): Promise<PixLivre[]> {
@@ -621,7 +619,6 @@ function alvoNaoEncontrado(tipo: AlvoTipo) {
     : tipo === 'os'                         ? 'Ordem de serviço não encontrada'
     :                                         'Venda não encontrada')
 }
-
 
 async function alvoParaEdicao(alvo: AlvoConciliacao) {
   const usuario = await exigirAlvoNoGrupoAtivo(alvo)
