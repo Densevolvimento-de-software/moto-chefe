@@ -178,10 +178,10 @@ test('gravação na persona: vínculo, vendedor e chassi só do grupo liberado',
     assert.equal(await vendedorDaConta(c.deFora.mecanico, c.liberado.loja, g, tx), false, 'outra Conta')
 
     // Usuário de outra Conta não trabalha no grupo liberado, qualquer que seja o cadastro dele.
-    const marcaLiberado = await linha(tx, sql`insert into usuarios (id, nome, email, papel, loja_id, conta_id, grupos_acesso)
-      values (gen_random_uuid(), 'Marca', 'marca-517@teste.invalid', 'mecanico', ${c.deFora.loja}, (select conta_id from grupos where id = ${c.deFora.grupo}), array[${g}]::uuid[]) returning id`)
-    assert.equal(await vendedorDaConta(marcaLiberado.id, c.liberado.loja, g, tx), false, 'outra Conta, outro cadastro')
-    await assert.rejects(conferirVinculosDaConta(c.liberado.loja, { mecanicoId: marcaLiberado.id }, g, tx), /Mecânico não encontrado/, 'mecânico de outra Conta, outro cadastro')
+    const deOutraConta = await linha(tx, sql`insert into usuarios (id, nome, email, papel, loja_id, conta_id, grupos_acesso)
+      values (gen_random_uuid(), 'Fora', 'fora-517@teste.invalid', 'mecanico', ${c.deFora.loja}, (select conta_id from grupos where id = ${c.deFora.grupo}), array[${g}]::uuid[]) returning id`)
+    assert.equal(await vendedorDaConta(deOutraConta.id, c.liberado.loja, g, tx), false, 'outra Conta, outro cadastro')
+    await assert.rejects(conferirVinculosDaConta(c.liberado.loja, { mecanicoId: deOutraConta.id }, g, tx), /Mecânico não encontrado/, 'mecânico de outra Conta, outro cadastro')
 
     assert.equal((await motoDaContaPorChassi(c.liberado.chassi, c.dona, g, tx))?.chassi, c.liberado.chassi)
     assert.equal(await motoDaContaPorChassi(c.irmao.chassi, c.dona, g, tx), null, 'chassi do outro grupo da Conta dona')

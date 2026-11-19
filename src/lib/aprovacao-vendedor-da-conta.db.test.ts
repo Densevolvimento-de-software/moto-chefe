@@ -79,7 +79,7 @@ test('Conta B (aux e sócio) não acha o pedido de aprovação da Conta A, igual
   })
 })
 
-test('vendedor escolhido: vale o da loja e o sócio da Conta da moto (com grupo marcado ou só conta_id); o da Conta B não (#404)', async () => {
+test('vendedor escolhido: vale o da loja e os sócios da Conta da moto; os da Conta B não (#404)', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A', '00000000040434')
     const b = await semearConta(tx, 'B', '00000000040435')
@@ -97,10 +97,11 @@ test('vendedor escolhido: usuário de fora da Conta da moto não serve, em nenhu
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A', '00000000040436')
     const b = await semearConta(tx, 'B', '00000000040437')
-    const daBMarcando = await semearUsuario(tx, b.base, { papel: 'vendedor', rotulo: 'marcaA', semLoja: true, comConta: true })
-    const semContaMarcando = await semearUsuario(tx, b.base, { papel: 'vendedor', rotulo: 'semConta', semLoja: true })
-    await linhas(tx, sql`update usuarios set grupos_acesso = array[${a.base.grupoId}]::uuid[] where id in (${daBMarcando}, ${semContaMarcando})`)
-    assert.equal(await vendedorDaConta(daBMarcando, a.lojaId, null, tx), false, 'de outra Conta')
-    assert.equal(await vendedorDaConta(semContaMarcando, a.lojaId, null, tx), false, 'sem Conta e sem loja')
+    const deOutraConta = await semearUsuario(tx, b.base, { papel: 'vendedor', rotulo: 'foraA', semLoja: true, comConta: true })
+    const semContaNemLoja = await semearUsuario(tx, b.base, { papel: 'vendedor', rotulo: 'foraB', semLoja: true })
+    await linhas(tx, sql`update usuarios set grupos_acesso = array[${a.base.grupoId}]::uuid[] where id in (${deOutraConta}, ${semContaNemLoja})`)
+    assert.equal(await vendedorDaConta(deOutraConta, a.lojaId, null, tx), false, 'de outra Conta')
+    assert.equal(await vendedorDaConta(semContaNemLoja, a.lojaId, null, tx), false, 'sem Conta e sem loja')
+    assert.equal(await vendedorDaConta(crypto.randomUUID(), a.lojaId, null, tx), false, 'inexistente')
   })
 })
