@@ -51,6 +51,11 @@ export function usuarioDaConta(contaId: string): SQL {
   return eq(usuarios.contaId, contaId)
 }
 
+// Usuário da Conta para ligar ou exibir: conta_id da Conta ou loja dela (funcionário de loja pode ter só loja_id).
+export function usuarioOuLojaDaConta(contaId: string): SQL {
+  return or(usuarioDaConta(contaId), inArray(usuarios.lojaId, lojasDaConta(contaId)))!
+}
+
 // Escopo de lojas de quem consulta: as da Conta, ou só as do grupo liberado na persona do
 // admin_rede (#517), que nunca vê outro grupo da Conta dona.
 export type EscopoDoUsuario = { contaId: string | null; grupoLiberado?: string | null }
@@ -116,8 +121,7 @@ export async function nomesDeUsuariosVisiveis(
     .where(and(
       inArray(usuarios.id, [...new Set(ids)]),
       or(
-        usuarioDaConta(grupo.contaId),
-        inArray(usuarios.lojaId, lojasDaConta(grupo.contaId)),
+        usuarioOuLojaDaConta(grupo.contaId),
         eq(usuarios.papel, 'admin_geral'),
         inArray(usuarios.id, liberados),
       ),
