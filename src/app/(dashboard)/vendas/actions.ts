@@ -274,7 +274,6 @@ async function criarVendaTx(
   }
 ): Promise<{ vendaId: string }> {
   const { moto, data, vendedorId, efetivadoPor, dataVendaFinal, origem, grupoLiberado } = params
-  // Aqui, e não só na action: a aprovação guardada chega direto com o que a tela mandou.
   const pagamentos = pagamentosParaGravar(data.pagamentos, CAMPOS_PAGAMENTO_VENDA, [])
   // A aprovação grava bem depois do pedido: o status se confere de novo na linha travada.
   const naoVende = motivoParaNaoVender((await travarMotoNaoArquivada(tx, moto.id)).status)
@@ -1053,7 +1052,8 @@ async function registrarReserva(data: DadosReserva) {
 
   const moto = await motoDoUsuario(usuario, data.motoId)
   if (!moto) throw new RecusaUsuario('Moto não encontrada')
-  await conferirMaquininhas(db, moto.lojaId, data.pagamentos)
+  const pagamentos = pagamentosParaGravar(data.pagamentos ?? [], CAMPOS_PAGAMENTO_ENTRADA, [])
+  await conferirMaquininhas(db, moto.lojaId, pagamentos)
   if (moto.status === 'vendida' || moto.disponibilidade === 'vendida') {
     throw new RecusaUsuario('Moto já foi vendida')
   }
@@ -1083,7 +1083,6 @@ async function registrarReserva(data: DadosReserva) {
 
   const { clienteCpf } = conferirComprador(data.clienteCpf)
 
-  const pagamentos = pagamentosParaGravar(data.pagamentos ?? [], CAMPOS_PAGAMENTO_ENTRADA, [])
   if (pagamentos.some(p => !p.tipo || !(p.valor > 0))) {
     throw new RecusaUsuario('Toda forma de pagamento precisa de tipo e valor')
   }
