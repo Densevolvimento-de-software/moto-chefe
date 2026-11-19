@@ -242,12 +242,14 @@ test('vincular e desvincular com id da conciliação que não é uuid: "Concilia
   assert.deepEqual(await actions.desvincularVendaAction('abc'), CONCILIACAO_NAO_ENCONTRADA)
 })
 
-test('desvincular linha inexistente recebe a mesma frase da linha de outra Conta; o próprio vínculo se desfaz', async () => {
-  const { a, linha } = await contaComLinha()
+test('desvincular linha inexistente recebe a mesma frase da linha de outra Conta; o próprio vínculo se desfaz nos 3 tipos', async () => {
   assert.deepEqual(await actions.desvincularVendaAction(randomUUID()), CONCILIACAO_NAO_ENCONTRADA)
-  assert.deepEqual(await actions.vincularVendaAction(linha, { tipo: 'moto', id: a.alvos.moto }), OK)
-  assert.deepEqual(await actions.desvincularVendaAction(linha), OK)
-  assert.deepEqual(await linhaDe(linha), LIVRE)
+  for (const tipo of ALVO_TIPOS) {
+    const { a, linha } = await contaComLinha()
+    assert.deepEqual(await actions.vincularVendaAction(linha, { tipo, id: a.alvos[tipo] }), OK, tipo)
+    assert.deepEqual(await actions.desvincularVendaAction(linha), OK, tipo)
+    assert.deepEqual(await linhaDe(linha), LIVRE, tipo)
+  }
 })
 
 test('vendedor e mecânico não vinculam nem desvinculam: "Sem permissão" e nada muda', async () => {

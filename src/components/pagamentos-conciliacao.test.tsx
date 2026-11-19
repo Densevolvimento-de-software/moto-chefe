@@ -240,4 +240,5 @@ test('vincular a linha de cartão sugerida envia a linha e o alvo; a recusa apar
   await vincular()
   assert.deepEqual(vincularCartao.mock.calls.map(c => c.arguments), [['conc-1', ALVO], ['conc-1', ALVO]])
   assert.deepEqual(sucessos.map(s => s.mensagem), ['Pagamento conciliado'])
+  assert.equal(document.querySelector('button[aria-label^="Vincular "]'), null, 'o sucesso fecha a busca')
 })

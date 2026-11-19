@@ -1,11 +1,14 @@
 // Alvo da conciliação: a venda de moto, a venda de peça ou a OS cujos pagamentos se conciliam.
 // Vem do navegador nas Server Actions; tipo fora da lista ou id que não é uuid vale como inexistente.
 import { ehUuid } from './uuid'
-import { semAlvos, type Alvos } from './conciliacao-casamento'
 
 export const ALVO_TIPOS = ['moto', 'peca', 'os'] as const
 export type AlvoTipo = typeof ALVO_TIPOS[number]
 export type AlvoConciliacao = { tipo: AlvoTipo; id: string }
+
+/** Colunas de vínculo de uma linha de cartão com o alvo (no máximo uma preenchida). */
+export type Alvos = { vendaId: string | null; pecaVendaId: string | null; osId: string | null }
+export const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
 
 export const ehAlvoTipo = (x: unknown): x is AlvoTipo => (ALVO_TIPOS as readonly unknown[]).includes(x)
 

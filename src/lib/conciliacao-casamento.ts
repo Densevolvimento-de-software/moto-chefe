@@ -10,16 +10,13 @@ import { ordensServico, vendas, vendasPecas } from '@/lib/db/schema'
 import { PAGAMENTO_PIX, TIPOS_CARTAO, type PgtoOS } from '@/lib/conciliacao-status'
 import { addDias } from '@/lib/calendario'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
+import { semAlvos, type Alvos } from '@/lib/conciliacao-alvo'
 
 type Db = Pick<typeof db, 'select'>
-
-export type Alvos = { vendaId: string | null; pecaVendaId: string | null; osId: string | null }
 
 const TOLERANCIA = 0.05 // R$ 0,05 de tolerância no valor
 
 type Pagamento = Pick<PgtoOS, 'tipo' | 'valor' | 'parcelas'>
-
-export const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
 
 /**
  * Tipos de pagamento da venda que uma linha da conciliação de cartão pode cobrir. A linha 'pix' só
