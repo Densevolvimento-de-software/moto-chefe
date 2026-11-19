@@ -7,7 +7,7 @@ import { GavetaDeBaixo } from '@/components/gaveta-de-baixo'
 import { LinhaDeDetalhe } from '@/components/linha-de-detalhe'
 import { cn } from '@/lib/utils'
 import { brl } from '@/lib/dashboard-painel'
-import { dataPuraBr } from '@/lib/data-venda'
+import { dataPuraBr, diaMesBr } from '@/lib/data-venda'
 import type { LinhaNaTela } from '@/lib/conciliacao-linha-tela'
 import { BotaoDesvincular, ChipDoAlvo, RotuloDoAlvo, VincularVendaButton } from './vincular-venda-button'
 
@@ -122,7 +122,7 @@ function ListaDoCelular({ linhas, podeVincular }: Props) {
                 {l.estornada ? <SeloEstornado /> : <SeloDoTipo l={l} />}
               </span>
               <span className="flex flex-wrap gap-x-2.5 text-[13px] tabular-nums text-muted-foreground">
-                <span>{dataPuraBr(l.data).slice(0, 5)}</span>
+                <span>{diaMesBr(l.data)}</span>
                 <span>{l.operadora}</span>
                 {l.estornada && <span>{NAO_SE_VINCULA}</span>}
               </span>

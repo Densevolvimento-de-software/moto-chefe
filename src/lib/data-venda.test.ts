@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dataBrParaIso, dataPuraBr, dataEHoraBrt, diaBrt, diaCurtoBrt, diaEHoraBrt, fimDoDiaBrt, hojeBrt, inicioDoDiaBrt, mesBrt, parseDataInput, periodoDoMesBrt, primeiroDiaDoMesBrt, rotuloMesCurto, rotuloMesCurtoAA } from './data-venda'
+import { dataBrParaIso, dataPuraBr, dataEHoraBrt, diaBrt, diaMesBr, diaCurtoBrt, diaEHoraBrt, fimDoDiaBrt, hojeBrt, inicioDoDiaBrt, mesBrt, parseDataInput, periodoDoMesBrt, primeiroDiaDoMesBrt, rotuloMesCurto, rotuloMesCurtoAA } from './data-venda'
 
 test('mesBrt: virada de mês à noite NÃO pula pro mês seguinte', () => {
   // 01/08 02:00Z = 31/07 23:00 em Brasília — ainda é julho.
@@ -181,4 +181,9 @@ test('periodoDoMesBrt: 29/02 de ano bissexto é dia válido; só o fim na URL co
   const agora = new Date('2026-11-14T15:00:00.000Z')
   assert.deepEqual(periodoDoMesBrt({ de: '2024-02-29', ate: '2024-03-10' }, agora), { de: '2024-02-29', ate: '2024-03-10' })
   assert.deepEqual(periodoDoMesBrt({ ate: '2026-11-10' }, agora), { de: '2026-11-01', ate: '2026-11-10' })
+})
+
+test('diaMesBr: dia e mês da data pura, sem passar pelo fuso', () => {
+  assert.equal(diaMesBr('2026-10-09'), '09/10')
+  assert.equal(diaMesBr('2026-01-31'), '31/01')
 })
