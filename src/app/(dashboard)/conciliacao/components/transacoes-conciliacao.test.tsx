@@ -16,10 +16,11 @@ const SUGERIDA = {
   id: 'v9', tipo: 'moto', numero: 32001, clienteNome: 'Ana Reis', valor: '3550.00', dataVenda: '2026-11-06T12:00:00.000Z',
   formaPagamento: 'PIX', pagamentos: [{ tipo: 'pix', valor: 3550 }, { tipo: 'cartao_credito', valor: 100, parcelas: 1 }],
 }
+const sugeridas = mock.fn(async () => [SUGERIDA] as unknown[])
 const mocks = [
   mock.module('../actions', {
     namedExports: {
-      buscarVendasParaVincular: async () => [SUGERIDA], buscarVendaManual: async () => [],
+      buscarVendasParaVincular: () => sugeridas(), buscarVendaManual: async () => [],
       vincularVendaAction: vincular, desvincularVendaAction: desvincular,
     },
   }),
@@ -30,6 +31,7 @@ const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
   desvincular.mock.resetCalls()
   vincular.mock.resetCalls()
+  sugeridas.mock.restore()
   for (const d of montados.splice(0)) await d()
 })
 
@@ -176,4 +178,12 @@ test('Vincular da linha pix: selo "PIX na maquininha" e a venda sugerida mostra 
   const sugerida = [...(dialogo?.querySelectorAll('button') ?? [])].find(b => texto(b).includes('Venda #32001'))
   assert.ok(texto(sugerida).includes('PIX R$ 3.550,00'), texto(sugerida))
   assert.ok(!texto(sugerida).includes('Crédito'), texto(sugerida))
+})
+
+test('Vincular da linha pix sem venda no valor: o vazio fala de PIX', async () => {
+  sugeridas.mock.mockImplementation(async () => [])
+  const t = await montar()
+  const vincularDaTabela = [...linhaDaTabela('R$ 3.550,00')!.querySelectorAll('button')].find(b => texto(b) === 'Vincular')
+  await t.act(async () => { clicar(vincularDaTabela); await esperar(50) })
+  assert.ok(texto(document.querySelector('[data-slot="dialog-content"]')).includes('Nenhuma venda com PIX no valor exato encontrada.'))
 })

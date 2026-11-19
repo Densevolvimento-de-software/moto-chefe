@@ -3,7 +3,7 @@
 import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
-import { digitarTexto } from '@/test/eventos-dom'
+import { digitar, digitarTexto } from '@/test/eventos-dom'
 import { botao, clicar, esperar, montarDialogo } from '@/test/dialogo-em-tela'
 import type { AlvoConciliacao } from '@/app/(dashboard)/conciliacao/actions'
 import type { EstornoDoAlvo, PgtoOS } from '@/lib/conciliacao-status'
@@ -18,6 +18,8 @@ const desfazer = mock.fn(async (_alvo: AlvoConciliacao, _idx: number): Promise<R
 const buscarPixLivres = mock.fn(async (..._a: unknown[]): Promise<any[]> => [])
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const buscarConciliacoesPorValor = mock.fn(async (..._a: unknown[]): Promise<any[]> => [])
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const buscarConciliacoesLivres = mock.fn(async (..._a: unknown[]): Promise<any[]> => [])
 const vincularVenda = mock.fn(async (..._a: unknown[]) => {})
 const vincularPix = mock.fn(async (..._a: unknown[]) => {})
 const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { namedExports: {
@@ -28,7 +30,7 @@ const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { named
   buscarConciliacoesDoAlvo: async () => [],
   buscarPixDoAlvo: async () => [],
   buscarEstornosDoAlvo: async () => [],
-  buscarConciliacoesLivres: async () => [],
+  buscarConciliacoesLivres: (...a: unknown[]) => buscarConciliacoesLivres(...a),
   vincularVendaAction: (...a: unknown[]) => vincularVenda(...a),
   vincularPixAlvoAction: (...a: unknown[]) => vincularPix(...a),
 } })
@@ -43,7 +45,7 @@ after(() => { actionsMock.restore(); sonnerMock.restore() })
 
 const desmontagens: (() => Promise<void>)[] = []
 afterEach(async () => {
-  for (const f of [forcar, desfazer, buscarPixLivres, buscarConciliacoesPorValor, vincularVenda, vincularPix]) f.mock.resetCalls()
+  for (const f of [forcar, desfazer, buscarPixLivres, buscarConciliacoesPorValor, buscarConciliacoesLivres, vincularVenda, vincularPix]) f.mock.resetCalls()
   buscarPixLivres.mock.restore()
   buscarConciliacoesPorValor.mock.restore()
   forcar.mock.restore()
@@ -197,4 +199,14 @@ test('PIX conciliado pela linha pix da maquininha diz de onde veio', async () =>
   ])
   const textos = linhas().map(b => (b.textContent ?? '').replace(/\s+/g, ' '))
   assert.ok(textos.some(t => t.includes('Conciliado · PIX na maquininha Mercado Pago')), textos.join(' | '))
+})
+
+test('PIX sem nada nas duas origens: o vazio diz onde procurou; a busca livre procura nas duas', async () => {
+  const t = await montar('aux_adm', [{ tipo: 'pix', valor: 777 }])
+  await t.tocar(linha('PIX'))
+  assert.ok((document.body.textContent ?? '').includes('nem na maquininha nem no extrato do banco'), document.body.textContent ?? '')
+  await digitar(document.querySelector<HTMLInputElement>('input[type="search"]')!, 'MARIA')
+  await t.tocar(botao('Buscar'))
+  assert.deepEqual(buscarConciliacoesLivres.mock.calls.map(c => c.arguments), [['MARIA', 'pix']])
+  assert.deepEqual(buscarPixLivres.mock.calls.map(c => c.arguments).slice(-1), [[0, 'MARIA']])
 })

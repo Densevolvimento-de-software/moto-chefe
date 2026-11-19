@@ -216,3 +216,15 @@ test('busca livre só com dígitos acha a linha pelo final do NSU, além do valo
   const final = String(l.nsu).slice(-8)
   assert.deepEqual((await actions.buscarConciliacoesLivres(final, 'pix')).map(x => x.id), [l.id])
 })
+
+test('linha pix já ligada a uma venda ou estornada não aparece na busca por valor do PIX', async () => {
+  const a = await semearConta()
+  const venda = await vendaPeca(a, [{ tipo: 'pix', valor: 658.42 }])
+  const livre = await linha(a, 'pix', 658.42)
+  const ligada = await linha(a, 'pix', 658.42)
+  const estornada = await linha(a, 'pix', 658.42)
+  await linhas(sql`update conciliacoes_cartao set peca_venda_id = ${venda}, conciliado = true where id = ${ligada}`)
+  await linhas(sql`update conciliacoes_cartao set status = 'estornado' where id = ${estornada}`)
+  entrarComo(a)
+  assert.deepEqual((await actions.buscarConciliacoesPorValor(658.42, 'pix')).map(l => l.id), [livre])
+})
