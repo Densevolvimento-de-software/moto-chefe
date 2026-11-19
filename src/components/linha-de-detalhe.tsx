@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-/** Rótulo à esquerda e valor à direita, com divisória: as linhas da gaveta de detalhe no celular. */
+/** Rótulo à esquerda e valor à direita, com divisória: as linhas do detalhe (gaveta do celular, painel do desktop). */
 export function LinhaDeDetalhe({ rotulo, children }: { rotulo: string; children: ReactNode }) {
   return (
     <div className="flex justify-between gap-3 border-b border-border py-2 last:border-0">
