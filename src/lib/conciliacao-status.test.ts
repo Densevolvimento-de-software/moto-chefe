@@ -302,3 +302,13 @@ test('estornosDosPagamentos: pendente com estorno do mesmo meio e valor é marca
   // o 2º PIX de 450 não tem outro estorno.
   assert.deepEqual(estornosDosPagamentos(pgtos, cobertura, estornos), [true, false, false, false])
 })
+
+// #51 (PR6c, V1): depois de vincular, o painel diz de onde veio o PIX: "Conciliado · PIX na maquininha Mercado Pago".
+test('matchPagamentos: PIX coberto pela linha pix da maquininha guarda a operadora; pelo banco, não', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 3550 }, { tipo: 'pix', valor: 90 }]
+  const linhasDoAlvo = [{ id: 'mp', autorizacao: null, valorBruto: '3550.00', tipo: 'pix', operadora: 'mercadopago' }]
+  assert.deepEqual(matchPagamentos(pgtos, linhasDoAlvo, [{ id: 'bco', valor: '90.00' }]), [
+    { conciliado: true, coberto: 3550, pixDaMaquininha: 'mercadopago' },
+    { conciliado: true, coberto: 90 },
+  ])
+})

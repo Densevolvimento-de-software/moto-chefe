@@ -62,9 +62,10 @@ const FALHA_INTERNA = new Error('connect ECONNREFUSED 10.0.0.1:5432')
 const linhas = () => [...document.querySelectorAll<HTMLButtonElement>('button[aria-expanded], li > button[disabled]')]
 const linha = (tipo: string) => linhas().find(b => (b.textContent ?? '').startsWith(tipo))
 
-async function montar(papel: string, pagamentos: PgtoOS[], estornos: EstornoDoAlvo[] = []) {
+type Conc = { id: string; autorizacao: string | null; valorBruto: string; valorLiquido: string | null; operadora: string; tipo: string; dataTransacao: string }
+async function montar(papel: string, pagamentos: PgtoOS[], estornos: EstornoDoAlvo[] = [], concs: Conc[] = []) {
   const { PagamentosConciliacao } = await import('./pagamentos-conciliacao')
-  const dados = { concs: [], pixRecs: [], estornos, loading: false, recarregar: async () => {} }
+  const dados = { concs, pixRecs: [], estornos, loading: false, recarregar: async () => {} }
   const tela = await montarDialogo(PagamentosConciliacao, { alvo: ALVO, pagamentos, dados, papel })
   desmontagens.push(tela.desmontar)
   const tocar = (el: Element | undefined) => tela.act(async () => { clicar(el); await esperar(50) })
@@ -188,4 +189,12 @@ test('pagamento pendente com estorno da maquininha mostra "Estornado no Mercado 
   // Sem dia: o importador não grava quando estornou, e a data da linha é a da venda.
   assert.ok(textos.some(t => t.includes('Estornado no Mercado Pago') && !t.includes('05/11') && t.includes('450,00')), textos.join(' | '))
   assert.ok(!textos.some(t => t.includes('Estornado') && t.includes('90,00')), textos.join(' | '))
+})
+
+test('PIX conciliado pela linha pix da maquininha diz de onde veio', async () => {
+  await montar('aux_adm', [{ tipo: 'pix', valor: 3550 }], [], [
+    { id: 'mp', autorizacao: null, valorBruto: '3550.00', valorLiquido: '3514.50', operadora: 'mercadopago', tipo: 'pix', dataTransacao: '2026-11-06' },
+  ])
+  const textos = linhas().map(b => (b.textContent ?? '').replace(/\s+/g, ' '))
+  assert.ok(textos.some(t => t.includes('Conciliado · PIX na maquininha Mercado Pago')), textos.join(' | '))
 })

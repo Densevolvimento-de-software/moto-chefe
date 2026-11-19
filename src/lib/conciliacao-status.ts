@@ -88,11 +88,13 @@ export function valorConciliadoManual(pagamentos: unknown): number {
     .reduce((a, p) => a + (Number(p.valor) || 0), 0)
 }
 
-type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number; tipo?: string }
-type PixMatch  = { id: string; valor: string | number }
+type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number; tipo?: string; operadora?: string }
+// `operadora`: só a linha pix da maquininha (#51); o PIX do banco não tem.
+type PixMatch  = { id: string; valor: string | number; operadora?: string }
 
 /** Quanto do pagamento foi coberto por dinheiro que realmente entrou. */
-export type CoberturaPgto = { conciliado: boolean; coberto: number }
+/** `pixDaMaquininha`: a operadora, quando foi a linha pix da maquininha que cobriu o PIX (o painel diz de onde veio). */
+export type CoberturaPgto = { conciliado: boolean; coberto: number; pixDaMaquininha?: string }
 
 // Vendas, peças e OS podem ter mais de uma forma de pagamento por cartão/pix no mesmo
 // carrinho (ex.: Pix + Cartão). Casa cada item do array `pagamentos` com o que entrou,
@@ -109,7 +111,7 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
   const concs = linhasDoAlvo.filter(c => c.tipo !== LINHA_PIX)
   const pixRecs: PixMatch[] = [
     ...pixDoBanco,
-    ...linhasDoAlvo.filter(c => c.tipo === LINHA_PIX).map(c => ({ id: c.id, valor: c.valorBruto })),
+    ...linhasDoAlvo.filter(c => c.tipo === LINHA_PIX).map(c => ({ id: c.id, valor: c.valorBruto, operadora: c.operadora })),
   ]
   const usados    = new Set<string>()
   const resultado: CoberturaPgto[] = pgtos.map(() => ({ conciliado: false, coberto: 0 }))
@@ -156,7 +158,11 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
   pgtos.forEach((p, i) => {
     if (!PAGAMENTO_PIX.has(p.tipo) || resultado[i].conciliado) return
     const m = pixRecs.find(r => !pixUsados.has(r.id) && Math.abs(Number(r.valor) - p.valor) <= 0.05)
-    if (m) { resultado[i].coberto += Number(m.valor); pixUsados.add(m.id) }
+    if (m) {
+      resultado[i].coberto += Number(m.valor)
+      if (m.operadora) resultado[i].pixDaMaquininha = m.operadora
+      pixUsados.add(m.id)
+    }
   })
 
   // O que sobrou rateia entre as linhas PIX ainda descobertas, na ordem. Dois PIX

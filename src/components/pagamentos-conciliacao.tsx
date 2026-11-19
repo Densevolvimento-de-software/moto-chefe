@@ -87,8 +87,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const podeGerir = podeGerirConciliacao(papel)
 
   const [buscandoIdx, setBuscandoIdx]   = useState<number | null>(null)
-  // Cartão e PIX moram em tabelas diferentes; a linha aberta manda qual das duas
-  // buscar, e só uma das listas fica preenchida por vez.
+  // A linha aberta manda o que buscar: cartão só nas linhas de cartão (`candidatos`); PIX nas linhas pix da
+  // maquininha (`candidatos`) e no extrato do banco (`candidatosPix`), as duas ao mesmo tempo (#51).
   const [buscandoPix, setBuscandoPix]   = useState(false)
   const [candidatos, setCandidatos]     = useState<Candidato[]>([])
   const [candidatosPix, setCandidatosPix] = useState<PixLivre[]>([])
@@ -298,7 +298,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     // Achou dinheiro, mas menos do que foi lançado: nem verde nem vermelho.
     const parcial    = pendente && cobertura.coberto > 0.005
     const situacao = situacaoDe({ precisa, loading, forcado, conciliado, parcial })
-    return { p, i, situacao, coberto: cobertura.coberto }
+    return { p, i, situacao, coberto: cobertura.coberto, pixDaMaquininha: cobertura.pixDaMaquininha }
   }).filter(l => !somenteConciliaveis || l.situacao !== 'livre')
   const ordem: Record<Situacao, number> = { pendente: 0, parcial: 1, carregando: 2, forcado: 3, conciliado: 4, livre: 5 }
   itens.sort((x, y) => ordem[x.situacao] - ordem[y.situacao] || x.i - y.i)
@@ -328,7 +328,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
       )}
 
       <ul className="space-y-2">
-        {itens.map(({ p, i, situacao, coberto }) => {
+        {itens.map(({ p, i, situacao, coberto, pixDaMaquininha }) => {
           const resolvivel = RESOLVIVEL.has(situacao)
           const mostraBusca = buscandoIdx === i && podeGerir && p.tipo !== 'financiamento'
           const aberto = resolvivel && (buscandoIdx === i || forcandoIdx === i)
@@ -336,6 +336,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
           const estorno = situacao === 'pendente' && estornados[i]
           const complemento =
             estorno ? 'Estornado no Mercado Pago'
+            : situacao === 'conciliado' && pixDaMaquininha ? `PIX na maquininha ${nomeOperadora(pixDaMaquininha)}`
             : situacao === 'forcado' && p.conciliadoManual
               ? `${p.conciliadoManual.porNome} · ${new Date(p.conciliadoManual.em).toLocaleDateString('pt-BR')} · ${p.conciliadoManual.motivo}`
               : situacao === 'parcial'
