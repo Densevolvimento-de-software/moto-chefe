@@ -12,7 +12,7 @@ import {
   buscarConciliacoesPorValor,
   buscarConciliacoesLivres,
   buscarPixLivres,
-  contextoDaBuscaPix,
+  buscarPixParaOAlvo,
   vincularVendaAction,
   vincularPixAlvoAction,
   forcarConciliacaoAction,
@@ -91,7 +91,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const [candidatosPix, setCandidatosPix] = useState<PixLivre[]>([])
   const [buscaLoading, setBuscaLoading] = useState(false)
   // Só para PIX: o valor esperado no banco (sem o custo do PIX do grupo) e se o alvo é do grupo ativo.
-  const [contextoPix, setContextoPix] = useState<Awaited<ReturnType<typeof contextoDaBuscaPix>> | null>(null)
+  const [contextoPix, setContextoPix] = useState<{ esperado: number | null; noGrupoAtivo: boolean } | null>(null)
   const [vinculando, setVinculando]     = useState(false)
 
   const [buscaLivre, setBuscaLivre]         = useState('')
@@ -124,9 +124,9 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     limparBusca()
     try {
       if (ehPix) {
-        const ctx = await contextoDaBuscaPix(alvo, valor)
-        setContextoPix(ctx)
-        if (ctx.noGrupoAtivo) setCandidatosPix(await buscarPixLivres(valor))
+        const { esperado, noGrupoAtivo, pix } = await buscarPixParaOAlvo(alvo, valor)
+        setContextoPix({ esperado, noGrupoAtivo })
+        setCandidatosPix(pix)
       } else {
         setCandidatos(await buscarConciliacoesPorValor(valor))
       }
@@ -143,7 +143,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     setLivreLoading(true)
     setBuscouLivre(false)
     try {
-      if (buscandoPix) setLivresPix(await buscarPixLivres(0, buscaLivre))
+      if (buscandoPix) setLivresPix(await buscarPixLivres(buscaLivre))
       else             setLivres(await buscarConciliacoesLivres(buscaLivre))
       setBuscouLivre(true)
     } catch {
