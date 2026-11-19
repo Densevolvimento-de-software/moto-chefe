@@ -62,7 +62,15 @@ export async function conferirCredencialMp(
     return { ok: false, erro: recusado ? FRASES_MP.recusado : FRASES_MP.indisponivel }
   }
   if (deps.producao && conta.tags.includes('test_user')) return { ok: false, erro: FRASES_MP.teste }
-  const mensalidade = await deps.contaDaMensalidade().catch(() => null)
+  // Sem conferir a conta da mensalidade, o token não passa: com o MP instável (#51), aceitar calado deixaria
+  // entrar a conta do MOVA.
+  let mensalidade: string | null
+  try {
+    mensalidade = await deps.contaDaMensalidade()
+  } catch (e) {
+    console.error('[credencial-mp] conta da mensalidade falhou:', pistaDoErro(e))
+    return { ok: false, erro: FRASES_MP.indisponivel }
+  }
   if (mensalidade === conta.id) return { ok: false, erro: FRASES_MP.mensalidade }
 
   const outroCnpj = conta.documento !== null && digitos(conta.documento) !== digitos(cnpjDoGrupo)

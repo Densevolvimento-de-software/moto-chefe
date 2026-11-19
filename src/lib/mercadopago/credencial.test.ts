@@ -87,11 +87,16 @@ test('conta de teste: recusada em produção, aceita fora dela', async () => {
 
 test('a conta da mensalidade do MOVA é recusada pela conta, não pelo texto do token', async () => {
   assert.deepEqual(await conferirCredencialMp({ mpToken: TOKEN }, CNPJ, deps({ contaDaMensalidade: async () => '4820482' })), recusa(FRASES_MP.mensalidade))
-  // Sem a mensalidade configurada (ou ela fora do ar), não há com o que comparar.
-  for (const contaDaMensalidade of [async () => null, async () => { throw new Error('fora') }]) {
-    const r = await conferirCredencialMp({ mpToken: TOKEN }, CNPJ, deps({ contaDaMensalidade }))
-    assert.equal(r.ok && r.plano.acao, 'gravar')
-  }
+  // Sem a mensalidade configurada, não há com o que comparar.
+  const semMensalidade = await conferirCredencialMp({ mpToken: TOKEN }, CNPJ, deps({ contaDaMensalidade: async () => null }))
+  assert.equal(semMensalidade.ok && semMensalidade.plano.acao, 'gravar')
+})
+
+test('falha ao consultar a conta da mensalidade: indisponível, não aceita o token sem conferir', async t => {
+  const log = t.mock.method(console, 'error', () => {})
+  const r = await conferirCredencialMp({ mpToken: TOKEN }, CNPJ, deps({ contaDaMensalidade: async () => { throw new ErroMercadoPago('x', 503) } }))
+  assert.deepEqual(r, recusa(FRASES_MP.indisponivel))
+  assert.deepEqual(log.mock.calls.map(c => c.arguments.map(String).join(' ')), ['[credencial-mp] conta da mensalidade falhou: HTTP 503'])
 })
 
 // Decisão do Luis (#51): CNPJ do titular diferente do grupo = só aviso.
