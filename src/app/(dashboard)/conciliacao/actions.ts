@@ -14,7 +14,7 @@ import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-per
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { alvoValido, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
-import { creditoDoPix, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
+import { esperadoComTaxa, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
 import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
 import { comForcado, matchPagamentos, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
@@ -581,11 +581,6 @@ async function alvoNoGrupoAtivo(usuario: Usuario, alvo: AlvoConciliacao): Promis
   return alvoValido(alvo) && (await lojaIdDoAlvo(alvo, await listarLojaIdsDoGrupoAtivo(usuario))) !== null
 }
 
-/** Quanto um pagamento PIX de `valor` deve creditar no banco: sem o custo do PIX do grupo; null se o grupo não tem custo. */
-async function esperadoNoBanco(grupoId: string, valor: number): Promise<number | null> {
-  const taxa = await custoPixTaxaDoGrupo(grupoId)
-  return taxa > 0 ? creditoDoPix(valor, taxa).entra : null
-}
 
 /** PIX livres do grupo (sem vínculo, desde o início da conciliação), sem transferência interna. */
 async function pixLivresDoGrupo(grupoId: string, filtro: SQL | undefined): Promise<PixLivre[]> {
@@ -618,15 +613,17 @@ async function pixLivresDoGrupo(grupoId: string, filtro: SQL | undefined): Promi
  * a linha PIX pelo esperado, a TED ou linha sem tipo pelo valor cheio. Fora do grupo ativo não lista nada:
  * vincular e forçar só valem no grupo do PIX.
  */
-export async function buscarPixParaOAlvo(alvo: AlvoConciliacao, valor: number): Promise<{ esperado: number | null; noGrupoAtivo: boolean; pix: PixLivre[] }> {
+export async function buscarPixParaOAlvo(alvo: AlvoConciliacao, valor: number): Promise<{ esperado: number | null; taxa: number; noGrupoAtivo: boolean; pix: PixLivre[] }> {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
-  const [noGrupoAtivo, esperado] = await Promise.all([alvoNoGrupoAtivo(usuario, alvo), esperadoNoBanco(grupo.id, valor)])
-  if (!noGrupoAtivo) return { esperado, noGrupoAtivo, pix: [] }
+  const [noGrupoAtivo, taxa] = await Promise.all([alvoNoGrupoAtivo(usuario, alvo), custoPixTaxaDoGrupo(grupo.id)])
+  // A taxa vai junto para a tela preencher o forçar de PIX com o esperado do que falta (#92).
+  const esperado = esperadoComTaxa(valor, taxa)
+  if (!noGrupoAtivo) return { esperado, taxa, noGrupoAtivo, pix: [] }
   const filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric
     - CASE WHEN ${pixRecebimentosMcp.tipoOperacao} = ${OPERACAO_COM_CUSTO} THEN ${esperado ?? valor}::numeric ELSE ${valor}::numeric END) <= 5`
-  return { esperado, noGrupoAtivo, pix: await pixLivresDoGrupo(grupo.id, filtro) }
+  return { esperado, taxa, noGrupoAtivo, pix: await pixLivresDoGrupo(grupo.id, filtro) }
 }
 
 /** Busca digitada de PIX livres: pagador, descrição, data (AAAA-MM-DD) ou valor, como o crédito aparece no extrato. */

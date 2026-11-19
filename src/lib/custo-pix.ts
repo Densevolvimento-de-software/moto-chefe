@@ -49,6 +49,11 @@ export function custoDoPixVinculado(tipoOperacao: string | null, credito: number
   return { valorBruto: bruto, custoPix: custo, custoPixTaxa: taxa }
 }
 
+/** Quanto um PIX de `valor` deve creditar no banco com o custo `taxa` do grupo; null se o grupo não tem custo. */
+export function esperadoComTaxa(valor: number, taxa: number): number | null {
+  return taxa > 0 ? creditoDoPix(valor, taxa).entra : null
+}
+
 /** Recusa do forçar de PIX sem um valor que entrou na conta que se possa ler (#92). */
 export const VALOR_RECEBIDO_INVALIDO = 'Informe o valor que entrou na conta'
 

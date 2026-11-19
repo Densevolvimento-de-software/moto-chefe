@@ -1,7 +1,7 @@
 // Custo do PIX (#89): o banco credita o valor do PIX menos a porcentagem do grupo.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { creditoDoPix, custoDoPixForcado, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa, lerValorRecebido } from './custo-pix'
+import { creditoDoPix, custoDoPixForcado, esperadoComTaxa, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa, lerValorRecebido } from './custo-pix'
 
 test('crédito de R$ 9.980,00 com 0,20%: o PIX foi de R$ 10.000,00 e custou R$ 20,00', () => {
   assert.deepEqual(custoDoPixRecebido(9980, 0.002), { bruto: 10000, custo: 20 })
@@ -91,4 +91,10 @@ test('custoDoPixForcado: custo é a base menos o que entrou; a taxa é a efetiva
 test('custoDoPixForcado: entrou o valor cheio ou mais, custo 0', () => {
   assert.deepEqual(custoDoPixForcado(10000, 10000), { valorBruto: 10000, custoPix: 0, custoPixTaxa: 0 })
   assert.deepEqual(custoDoPixForcado(10000, 10050), { valorBruto: 10000, custoPix: 0, custoPixTaxa: 0 })
+})
+
+test('esperadoComTaxa: o crédito esperado com custo; sem custo, nenhum', () => {
+  assert.equal(esperadoComTaxa(10000, 0.002), 9980)
+  assert.equal(esperadoComTaxa(600, 0.002), 598.8)
+  assert.equal(esperadoComTaxa(10000, 0), null)
 })
