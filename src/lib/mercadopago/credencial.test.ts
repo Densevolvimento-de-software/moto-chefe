@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { conferirCredencialMp, FRASES_MP, type DependenciasCredencialMp } from './credencial'
+import { conferirCredencialMp, credencialMpParaTela, FRASES_MP, type DependenciasCredencialMp } from './credencial'
 import { ErroMercadoPago } from './cliente'
 import type { ContaMp } from './point'
 
@@ -88,4 +88,9 @@ test('titular com outro CNPJ grava com aviso; sem documento, sem aviso', async (
   assert.deepEqual(outro, { ok: true, plano: { acao: 'gravar', token: TOKEN, userId: '4820482', aviso: FRASES_MP.outroCnpj } })
   const semDoc = await conferirCredencialMp({ mpToken: TOKEN }, CNPJ, deps({ consultarConta: async () => conta({ documento: null }) }))
   assert.equal(semDoc.ok && semDoc.plano.acao === 'gravar' && semDoc.plano.aviso, null)
+})
+
+test('a tela leva só se há credencial e os 3 últimos dígitos da conta', () => {
+  assert.deepEqual(credencialMpParaTela('123454820482'), { mpConectado: true, mpFinal: '482' })
+  assert.deepEqual(credencialMpParaTela(null), { mpConectado: false, mpFinal: null })
 })
