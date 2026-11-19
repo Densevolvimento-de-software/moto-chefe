@@ -79,7 +79,7 @@ export default async function ConciliacaoPage({
   return (
     <div className="space-y-6">
       {/* Celular: título em cima e o envio do relatório embaixo (lado a lado estourava a largura). */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Conciliação de Cartão</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -92,17 +92,17 @@ export default async function ConciliacaoPage({
       {faixaMp && <FaixaMercadoPago estado={faixaMp} podeImportar={podeGerirConciliacao(usuario.papel)} />}
 
       {/* Filtros: 3 segmentos no celular (V2), botões no desktop */}
-      <nav aria-label="Filtrar" className="grid grid-cols-3 rounded-lg border border-border bg-muted p-[3px] md:flex md:gap-2 md:border-0 md:bg-transparent md:p-0">
+      <nav aria-label="Filtrar" className="grid grid-cols-3 rounded-lg border border-border bg-muted p-[3px] lg:flex lg:gap-2 lg:border-0 lg:bg-transparent lg:p-0">
         {(['pendentes', 'conciliadas', 'todas'] as const).map(f => (
           <a
             key={f}
             href={`/conciliacao?filtro=${f}`}
             aria-current={filtro === f ? 'page' : undefined}
             className={cn(
-              'flex min-h-10 items-center justify-center rounded-md text-sm font-medium transition-colors md:min-h-0 md:px-3 md:py-1.5',
+              'flex min-h-10 items-center justify-center rounded-md text-sm font-medium transition-colors lg:min-h-0 lg:px-3 lg:py-1.5',
               filtro === f
-                ? 'bg-card text-foreground shadow-sm md:bg-primary md:text-primary-foreground'
-                : 'text-muted-foreground md:border md:border-border md:bg-card md:hover:bg-muted',
+                ? 'bg-card text-foreground shadow-sm lg:bg-primary lg:text-primary-foreground'
+                : 'text-muted-foreground lg:border lg:border-border lg:bg-card lg:hover:bg-muted',
             )}
           >
             {f === 'pendentes' ? 'Pendentes' : f === 'conciliadas' ? 'Conciliadas' : 'Todas'}

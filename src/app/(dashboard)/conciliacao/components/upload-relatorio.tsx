@@ -45,9 +45,9 @@ export function UploadRelatorio({ maquininhas: doGrupo }: { maquininhas: Maquini
   return (
     <div className="space-y-2">
       {/* Celular: maquininha e Importar na 1ª linha, arquivo na 2ª; desktop: tudo numa linha. */}
-      <form onSubmit={handleSubmit} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 md:flex md:gap-3">
+      <form onSubmit={handleSubmit} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 lg:flex lg:gap-3">
         <Select value={operadora} onValueChange={v => v && setOperadora(v)}>
-          <SelectTrigger className="w-full md:w-44">
+          <SelectTrigger className="w-full lg:w-44">
             <SelectValue placeholder={semOpcao}>
               {(v: string | null) => v ? (maquininhas.find(m => m.operadora === v)?.nome ?? v) : semOpcao}
             </SelectValue>

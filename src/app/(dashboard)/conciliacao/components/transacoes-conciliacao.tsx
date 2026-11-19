@@ -15,8 +15,8 @@ const NAO_SE_VINCULA = 'Não se vincula'
 const NAO_SE_VINCULA_PORQUE = `${NAO_SE_VINCULA}: o dinheiro voltou ao cliente.`
 
 /**
- * Transações da /conciliacao (#51, V2): tabela no desktop; no celular, lista de duas linhas e a folha de baixo com os
- * detalhes. Estornada sai apagada, com o valor riscado e o selo, e sem Vincular nem Desvincular (o servidor também
+ * Transações da /conciliacao (#51, V2): tabela a partir do lg, como Vendas, OS e Peças (abaixo disso a coluna Venda
+ * não cabe); antes, lista de duas linhas e a folha de baixo com os detalhes. Estornada sai apagada, com o valor riscado e o selo, e sem Vincular nem Desvincular (o servidor também
  * recusa, `cartaoNaoEstornado`). `podeVincular`: o mesmo `podeGerirConciliacao` com que o servidor recusa; sem ele, as
  * linhas e as vendas ligadas aparecem sem os botões.
  */
@@ -59,7 +59,7 @@ function VendaNaTabela({ l, podeVincular }: { l: LinhaNaTela; podeVincular: bool
 function Tabela({ linhas, podeVincular }: Props) {
   const th = 'px-4 py-3 font-medium text-muted-foreground'
   return (
-    <div className="hidden overflow-hidden rounded-lg border border-border bg-card md:block">
+    <div className="hidden overflow-x-auto rounded-lg border border-border bg-card lg:block">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border bg-muted">
@@ -110,7 +110,7 @@ function ListaDoCelular({ linhas, podeVincular }: Props) {
 
   return (
     <>
-      <ul aria-label="Transações" className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card md:hidden">
+      <ul aria-label="Transações" className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card lg:hidden">
         {linhas.map(l => (
           <li
             key={l.id}
