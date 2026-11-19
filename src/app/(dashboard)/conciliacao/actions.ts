@@ -169,7 +169,8 @@ export async function importarRelatorioAction(formData: FormData) {
 }
 async function importarRelatorio(formData: FormData) {
   const usuario = await getUsuarioLogado()
-  if (!['admin_geral', 'admin_socio'].includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  // Quem gere a conciliação importa o relatório, o aux_adm inclusive (decisão do Luis, 19/11/2026, #51).
+  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
