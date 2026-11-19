@@ -3,7 +3,7 @@ import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { maquininhasDoGrupo } from '@/lib/maquininhas'
 import { gruposDoTerminalNaConta } from '@/lib/terminal-da-conta'
 import { db } from '@/lib/db'
-import { cartaoNaoEstornado, cartaoPendente, linhaDeCartao } from '@/lib/cartao-status'
+import { cartaoNaoEstornado, cartaoPendente, linhaDoPagamento } from '@/lib/cartao-status'
 import { conciliacoesCartao, pixRecebimentosMcp, vendas, modelos, motos, vendasPecas, ordensServico, clientes } from '@/lib/db/schema'
 import { eq, and, or, desc, gte, sql, isNull, ilike, inArray } from 'drizzle-orm'
 import { getUsuarioLogado } from '@/lib/auth'
@@ -16,7 +16,7 @@ import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
 import { casarPorAutorizacao, linhaDaTransacao, semAlvos, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
 import { detectarFormato } from '@/lib/conciliacao-formato'
-import type { TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
+import { ehLinhaProcurada, type LinhaProcurada, type TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
 import { lerRelatorioCielo } from '@/lib/conciliacao-cielo'
 import { lerRelatorioRede } from '@/lib/conciliacao-rede'
 import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
@@ -375,9 +375,11 @@ export async function desvincularVendaAction(conciliacaoId: string) {
   revalidatePath('/conciliacao')
 }
 
-export async function buscarConciliacoesPorValor(valor: number) {
+/** Linhas pendentes no valor do pagamento; `linha`: a que cobre o pagamento (cartão ou a pix da maquininha). */
+export async function buscarConciliacoesPorValor(valor: number, linha: LinhaProcurada = 'cartao') {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+  if (!ehLinhaProcurada(linha)) throw new Error('Linha inválida')
   const grupo = await getGrupoAtivo(usuario)
 
   return db
@@ -396,9 +398,9 @@ export async function buscarConciliacoesPorValor(valor: number) {
         eq(conciliacoesCartao.grupoId, grupo.id),
         // Fora do período de conciliação não é candidato — ver INICIO_CONCILIACAO.
         gte(conciliacoesCartao.dataTransacao, INICIO_CONCILIACAO),
-        sql`${conciliacoesCartao.vendaId} IS NULL`,
-        cartaoNaoEstornado,
-        linhaDeCartao,
+        // Sem nenhum vínculo (venda, peça ou OS) e não estornada: vincular não rouba o vínculo de outra.
+        cartaoPendente,
+        linhaDoPagamento(linha),
         sql`ABS(${conciliacoesCartao.valorBruto}::numeric - ${valor}) <= 0.05`,
       )
     )
@@ -491,9 +493,10 @@ export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
 // o valor lançado na venda não bate com o que a operadora reportou (taxa embutida,
 // digitação errada), é por aqui que se acha a transação — por autorização, NSU, data
 // ou valor aproximado, sem filtro de valor exato.
-export async function buscarConciliacoesLivres(query: string) {
+export async function buscarConciliacoesLivres(query: string, linha: LinhaProcurada = 'cartao') {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+  if (!ehLinhaProcurada(linha)) throw new Error('Linha inválida')
   const grupo = await getGrupoAtivo(usuario)
 
   const q = query.trim()
@@ -524,7 +527,7 @@ export async function buscarConciliacoesLivres(query: string) {
       eq(conciliacoesCartao.grupoId, grupo.id),
       gte(conciliacoesCartao.dataTransacao, INICIO_CONCILIACAO),
       cartaoPendente,
-      linhaDeCartao,
+      linhaDoPagamento(linha),
       filtro,
     ))
     .orderBy(desc(conciliacoesCartao.dataTransacao))

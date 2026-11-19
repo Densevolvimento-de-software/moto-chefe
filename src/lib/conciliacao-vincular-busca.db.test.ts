@@ -140,3 +140,37 @@ test('OS com cliente de outra Conta: as buscas do vincular mostram "Cliente não
   assert.deepEqual(porNumero.filter(v => v.id === os).map(v => v.clienteNome), ['Cliente não identificado'])
   assert.deepEqual((await actions.buscarVendaManual(nomeB)).map(v => v.id), [])
 })
+
+// #51 (PR6c): o painel da venda procura a linha que cobre o pagamento: pagamento PIX acha a linha pix da maquininha.
+test('buscas do painel para pagamento PIX oferecem só a linha pix pendente da Conta', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const cartao = await linha(a, 'credito', 626.17)
+  const pix = await linha(a, 'pix', 626.17)
+  const pixDeB = await linha(b, 'pix', 626.17)
+  entrarComo(a)
+  assert.deepEqual((await actions.buscarConciliacoesPorValor(626.17, 'pix')).map(l => l.id), [pix])
+  assert.deepEqual((await actions.buscarConciliacoesLivres('626,17', 'pix')).map(l => l.id), [pix])
+  // `cartao` (outra linha) e `pixDeB` (outra Conta) ficam de fora: as listas acima são exatas.
+  void cartao; void pixDeB
+})
+
+// D8: a busca por valor olhava só `venda_id IS NULL`: linha já ligada a uma OS aparecia e vincular roubava o vínculo.
+test('linha já ligada a uma OS não aparece na busca por valor', async () => {
+  const a = await semearConta()
+  const os = await semearOs(db, { lojaId: a.lojaId, usuarioId: a.usuarioId, em: '2026-11-05 12:00:00-03' }, [{ tipo: 'cartao_credito', valor: 636.29 }])
+  const ligada = await linha(a, 'credito', 636.29)
+  const livre = await linha(a, 'credito', 636.29)
+  await linhas(sql`update conciliacoes_cartao set os_id = ${os}, conciliado = true where id = ${ligada}`)
+  entrarComo(a)
+  assert.deepEqual((await actions.buscarConciliacoesPorValor(636.29)).map(l => l.id), [livre])
+})
+
+// O tipo da linha vem do navegador: só 'cartao' ou 'pix'; outro valor é recusado (pedido forjado, #891).
+test('tipo de linha forjado é recusado nas duas buscas', async () => {
+  const a = await semearConta()
+  await linha(a, 'credito', 646.31)
+  entrarComo(a)
+  await assert.rejects(actions.buscarConciliacoesPorValor(646.31, 'todas' as never), /Linha inválida/)
+  await assert.rejects(actions.buscarConciliacoesLivres('646,31', 'todas' as never), /Linha inválida/)
+})
