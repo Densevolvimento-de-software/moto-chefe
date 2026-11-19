@@ -13,7 +13,8 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { SheetTitle } from '@/components/ui/sheet'
+import { GavetaDeBaixo } from '@/components/gaveta-de-baixo'
 import { Trash2 } from 'lucide-react'
 import { excluirClienteAction } from '../actions'
 import { HistoricoCliente } from './historico-cliente'
@@ -146,49 +147,47 @@ export function ClientesTable({ clientes, isAdmin }: Props) {
         ))}
       </div>
 
-      <Sheet open={!!aberto} onOpenChange={o => !o && setAberto(null)}>
-        <SheetContent side="bottom" className="max-h-[85dvh] gap-0 overflow-y-auto rounded-t-2xl p-4 pb-8">
-          {aberto && (
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-2 pr-8">
-                <SheetTitle className="text-base">{aberto.nome}</SheetTitle>
-                <TipoTag c={aberto} />
-              </div>
-              <div className="text-sm">
-                <Linha rotulo={aberto.tipoPessoa === 'juridica' ? 'CNPJ' : 'CPF'}>
-                  <span className="font-mono text-xs">{formatarCpfCnpj(aberto.cpfCnpj)}</span>
-                </Linha>
-                <Linha rotulo="Celular">{aberto.celular ?? '—'}</Linha>
-                <Linha rotulo="E-mail">{aberto.email ?? '—'}</Linha>
-              </div>
-              <section>
-                <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Endereço</h3>
-                <p className="text-sm">{enderecoCompleto(aberto) || '—'}</p>
-              </section>
-              <section>
-                <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Histórico</h3>
-                <HistoricoCliente clienteId={aberto.id} cpfCnpj={aberto.cpfCnpj} />
-              </section>
-              <div className="flex gap-2">
-                <Link href={`/clientes/${aberto.id}`} className={buttonVariants({ className: 'h-11 flex-1' })}>
-                  Abrir cadastro
-                </Link>
-                {isAdmin && (
-                  <Button
-                    variant="outline"
-                    aria-label="Excluir cliente"
-                    disabled={isPending}
-                    onClick={e => handleExcluir(e, aberto.id, aberto.nome)}
-                    className="h-11 text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
+      <GavetaDeBaixo aberta={!!aberto} onAbertaChange={o => !o && setAberto(null)}>
+        {aberto && (
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-2 pr-8">
+              <SheetTitle className="text-base">{aberto.nome}</SheetTitle>
+              <TipoTag c={aberto} />
             </div>
-          )}
-        </SheetContent>
-      </Sheet>
+            <div className="text-sm">
+              <Linha rotulo={aberto.tipoPessoa === 'juridica' ? 'CNPJ' : 'CPF'}>
+                <span className="font-mono text-xs">{formatarCpfCnpj(aberto.cpfCnpj)}</span>
+              </Linha>
+              <Linha rotulo="Celular">{aberto.celular ?? '—'}</Linha>
+              <Linha rotulo="E-mail">{aberto.email ?? '—'}</Linha>
+            </div>
+            <section>
+              <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Endereço</h3>
+              <p className="text-sm">{enderecoCompleto(aberto) || '—'}</p>
+            </section>
+            <section>
+              <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Histórico</h3>
+              <HistoricoCliente clienteId={aberto.id} cpfCnpj={aberto.cpfCnpj} />
+            </section>
+            <div className="flex gap-2">
+              <Link href={`/clientes/${aberto.id}`} className={buttonVariants({ className: 'h-11 flex-1' })}>
+                Abrir cadastro
+              </Link>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  aria-label="Excluir cliente"
+                  disabled={isPending}
+                  onClick={e => handleExcluir(e, aberto.id, aberto.nome)}
+                  className="h-11 text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </GavetaDeBaixo>
 
       {/* Desktop: tabela. */}
       <div className="hidden overflow-x-auto lg:block">
