@@ -112,14 +112,19 @@ test('a tela leva só se há credencial e os 3 últimos dígitos da conta', () =
   assert.deepEqual(credencialMpParaTela(null), { mpConectado: false, mpFinal: null })
 })
 
-// #126: nenhum log leva o token nem pedaço dele (8 caracteres seguidos), em nenhum caminho de erro.
-test('nenhum console recebe o token nem pedaço dele, com o erro trazendo o token na mensagem', async t => {
+// #126: nem o log nem a resposta levam o token ou pedaço dele (8 caracteres seguidos), nos erros do /users/me e da
+// conta da mensalidade, com o erro trazendo o token na mensagem.
+test('nenhum console nem resposta recebe o token ou pedaço dele, com o erro trazendo o token na mensagem', async t => {
   const saidas = (['log', 'info', 'warn', 'error'] as const).map(m => t.mock.method(console, m, () => {}))
-  const comToken = [new ErroMercadoPago(`falhou ${TOKEN}`, 401), new ErroMercadoPago(`x ${TOKEN}`, 500), new TypeError(`Bearer ${TOKEN}`), new DOMException(TOKEN, 'TimeoutError')]
-  for (const e of comToken) {
-    await conferirCredencialMp({ mpToken: `${TOKEN.slice(0, 9)}\n${TOKEN.slice(9)}` }, CNPJ, deps({ consultarConta: async () => { throw e } }))
+  const colado = `${TOKEN.slice(0, 9)}\n${TOKEN.slice(9)}`
+  const comToken = () => [new ErroMercadoPago(`falhou ${TOKEN}`, 401), new ErroMercadoPago(`x ${TOKEN}`, 500), new TypeError(`Bearer ${TOKEN}`), new DOMException(TOKEN, 'TimeoutError')]
+  const respostas = []
+  for (const e of comToken()) {
+    respostas.push(await conferirCredencialMp({ mpToken: colado }, CNPJ, deps({ consultarConta: async () => { throw e } })))
+    respostas.push(await conferirCredencialMp({ mpToken: colado }, CNPJ, deps({ contaDaMensalidade: async () => { throw e } })))
   }
   const escrito = saidas.flatMap(s => s.mock.calls.map(c => c.arguments.map(String).join(' '))).join('\n')
-  assert.ok(escrito.length > 0, 'os erros deviam ter sido logados')
-  for (let i = 0; i + 8 <= TOKEN.length; i++) assert.equal(escrito.includes(TOKEN.slice(i, i + 8)), false, `pedaço ${i} do token no log`)
+  assert.equal(saidas[3].mock.callCount(), 8, 'os 8 erros deviam ter sido logados')
+  const tudo = `${escrito}\n${JSON.stringify(respostas)}`
+  for (let i = 0; i + 8 <= TOKEN.length; i++) assert.equal(tudo.includes(TOKEN.slice(i, i + 8)), false, `pedaço ${i} do token no log ou na resposta`)
 })
