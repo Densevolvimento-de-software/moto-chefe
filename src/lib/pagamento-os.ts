@@ -7,6 +7,7 @@ import type { PgtoOS } from '@/lib/conciliacao-status'
 import { TIPO_PAGAMENTO_CUPOM, normalizarCodigoCupom } from '@/lib/cupom-revisao'
 import { conferirMaquininhas, operadorasGravadas } from '@/lib/maquininhas'
 import { RecusaUsuario } from '@/lib/resultado-action'
+import { CAMPOS_PAGAMENTO_OS, pagamentosParaGravar } from '@/lib/pagamentos-gravacao'
 
 export type DadosPagamentoOS = {
   valorTotal: number
@@ -26,43 +27,47 @@ export async function conferirMaquininhasDaOS(
 // Aplica o pagamento de fato na OS, sem checagem de permissão: quem chama confere antes
 // (fechamento direto e aprovação de pagamento sensível). Fica fora de arquivo 'use server'
 // de propósito: lá, função exportada vira endpoint que qualquer usuário chama direto (#328).
-export async function aplicarPagamentoOS(osId: string, dados: DadosPagamentoOS) {
-  const [osAtual] = await db
-    .select({ status: ordensServico.status, lojaId: ordensServico.lojaId, numero: ordensServico.numero })
-    .from(ordensServico)
-    .where(eq(ordensServico.id, osId))
-    .limit(1)
-
+export async function aplicarPagamentoOS(os: { id: string; lojaId: string }, dados: DadosPagamentoOS) {
+  const osId = os.id
   // Aprovações de pagamento sensível criadas antes da migração pra array de
   // pagamentos guardam o formato antigo (só formaPagamento, sem `pagamentos`).
   // Normaliza aqui pra não quebrar ao aprovar uma aprovação pendente antiga.
   const legado = dados as unknown as { formaPagamento?: string }
-  const pagamentos = dados.pagamentos ?? (legado.formaPagamento
+  const daTela = dados.pagamentos ?? (legado.formaPagamento
     ? [{ tipo: legado.formaPagamento, valor: dados.valorTotal }]
     : [])
-  // Aqui, e não só no fechamento: a aprovação de pagamento sensível chega direto (#460).
-  await conferirMaquininhasDaOS(db, osId, pagamentos)
 
   const usuario = await getUsuarioLogado()
-  const pagamentosDinheiro = pagamentos.filter(p => p.tipo === 'dinheiro')
   // Data no fuso de SP — evita cair no dia anterior à noite (toISOString é UTC).
   const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
 
   await db.transaction(async (tx) => {
+    const daOS = and(eq(ordensServico.id, osId), eq(ordensServico.lojaId, os.lojaId))
+    const [osAtual] = await tx
+      .select({ status: ordensServico.status, lojaId: ordensServico.lojaId, numero: ordensServico.numero, pagamentos: ordensServico.pagamentos })
+      .from(ordensServico)
+      .where(daOS)
+      .for('update')
+    if (!osAtual) throw new RecusaUsuario('OS não encontrada')
+    const pagamentos = pagamentosParaGravar(daTela, CAMPOS_PAGAMENTO_OS, osAtual.pagamentos)
+    // Aqui, e não só no fechamento: a aprovação de pagamento sensível chega direto (#460).
+    await conferirMaquininhas(tx, osAtual.lojaId, pagamentos, operadorasGravadas(osAtual.pagamentos))
+    const pagamentosDinheiro = pagamentos.filter(p => p.tipo === 'dinheiro')
+
     await tx.update(ordensServico).set({
       valorTotal:     String(dados.valorTotal),
       formaPagamento: pagamentos[0]?.tipo ?? (dados.valorTotal < 0.01 ? 'Gratuita' : null),
       pagamentos:     pagamentos.length > 0 ? pagamentos : null,
-      ...(osAtual?.status === 'pendente_pagamento'
+      ...(osAtual.status === 'pendente_pagamento'
         ? { status: 'concluida' as any, dataConclusao: new Date() }
         : {}),
-    }).where(eq(ordensServico.id, osId))
+    }).where(daOS)
 
     // Recebimento em dinheiro entra no caixa da loja, como na venda de moto.
     // Re-sincroniza: apaga os lançamentos de dinheiro anteriores desta OS e
     // recria — assim editar o pagamento (ou trocá-lo por outra forma, ou zerar
     // uma OS gratuita) não duplica nem deixa resíduo no caixa.
-    if (osAtual?.lojaId) {
+    if (osAtual.lojaId) {
       await tx.delete(lancamentosCaixa)
         .where(and(eq(lancamentosCaixa.osId, osId), eq(lancamentosCaixa.tipo, 'entrada')))
       for (const pgto of pagamentosDinheiro) {

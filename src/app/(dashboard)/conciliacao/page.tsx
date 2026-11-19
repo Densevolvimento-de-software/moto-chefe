@@ -1,5 +1,4 @@
 import { maquininhasDoGrupo } from '@/lib/maquininhas'
-import { nomeOperadora } from '@/lib/operadoras'
 import { db } from '@/lib/db'
 import { conciliacoesCartao } from '@/lib/db/schema'
 import { resumosDoAlvoCartao } from '@/lib/rotulos-alvo'
@@ -10,15 +9,13 @@ import { getGrupoAtivo } from '@/lib/grupo'
 import { INICIO_CONCILIACAO } from '@/lib/conciliacao-periodo'
 import { cartaoPendente } from '@/lib/cartao-status'
 import { redirect } from 'next/navigation'
-import { Badge } from '@/components/ui/badge'
 import { UploadRelatorio } from './components/upload-relatorio'
-import { VincularVendaButton } from './components/vincular-venda-button'
-import { dataPuraBr } from '@/lib/data-venda'
-import { rotuloCurtoDaLinha } from '@/lib/conciliacao-cartao'
-import type { AlvoTipo } from '@/lib/conciliacao-alvo'
-
-const fmt = (v: string | number) =>
-  parseFloat(String(v)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+import { TransacoesConciliacao } from './components/transacoes-conciliacao'
+import { FaixaMercadoPago } from './components/faixa-mercadopago'
+import { estadoDaFaixaMp } from '@/lib/mercadopago/importar'
+import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
+import { linhaNaTela } from '@/lib/conciliacao-linha-tela'
+import { cn } from '@/lib/utils'
 
 export default async function ConciliacaoPage({
   searchParams,
@@ -55,6 +52,7 @@ export default async function ConciliacaoPage({
       valorBruto:    conciliacoesCartao.valorBruto,
       valorLiquido:  conciliacoesCartao.valorLiquido,
       nsu:           conciliacoesCartao.nsu,
+      status:        conciliacoesCartao.status,
       conciliado:    conciliacoesCartao.conciliado,
       vendaId:       conciliacoesCartao.vendaId,
       pecaVendaId:   conciliacoesCartao.pecaVendaId,
@@ -68,44 +66,50 @@ export default async function ConciliacaoPage({
 
   // Carrega dados das vendas (motos e peças) e OS vinculadas
   const idsDe = (k: 'vendaId' | 'pecaVendaId' | 'osId') => transacoes.flatMap(t => t[k] ? [t[k]] : [])
-  const { vendas: vendasMap, pecas: pecasVendaMap, os: osMap } =
+  const alvos =
     await resumosDoAlvoCartao(grupo, { vendaIds: idsDe('vendaId'), pecaVendaIds: idsDe('pecaVendaId'), osIds: idsDe('osId') })
 
-  const [totalPendentes, totalConciliadas] = await Promise.all([
+  // A faixa do Mercado Pago só aparece no grupo ativo com credencial (#51).
+  const [totalPendentes, totalConciliadas, faixaMp] = await Promise.all([
     db.$count(conciliacoesCartao, and(doPeriodo, cartaoPendente)),
     db.$count(conciliacoesCartao, and(doPeriodo, eq(conciliacoesCartao.conciliado, true))),
+    estadoDaFaixaMp(grupo.id),
   ])
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Até o xl, título em cima e o envio do relatório embaixo: lado a lado estoura (390 px; 1024 px com o menu). */}
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Conciliação de Cartão</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {totalPendentes} pendente{totalPendentes !== 1 ? 's' : ''} · {totalConciliadas} conciliada{totalConciliadas !== 1 ? 's' : ''}
           </p>
         </div>
-        <UploadRelatorio maquininhas={await maquininhasDoGrupo(db, grupo.id)} />
+        <UploadRelatorio maquininhas={await maquininhasDoGrupo(db, grupo.id)} podeImportar={podeGerirConciliacao(usuario.papel)} />
       </div>
 
-      {/* Filtros */}
-      <div className="flex gap-2">
+      {faixaMp && <FaixaMercadoPago estado={faixaMp} podeImportar={podeGerirConciliacao(usuario.papel)} />}
+
+      {/* Filtros: 3 segmentos no celular (V2), botões no desktop */}
+      <nav aria-label="Filtrar" className="grid grid-cols-3 rounded-lg border border-border bg-muted p-[3px] lg:flex lg:gap-2 lg:border-0 lg:bg-transparent lg:p-0">
         {(['pendentes', 'conciliadas', 'todas'] as const).map(f => (
           <a
             key={f}
             href={`/conciliacao?filtro=${f}`}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            aria-current={filtro === f ? 'page' : undefined}
+            className={cn(
+              'flex min-h-10 items-center justify-center rounded-md text-sm font-medium transition-colors lg:min-h-0 lg:px-3 lg:py-1.5',
               filtro === f
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-card border border-border text-muted-foreground hover:bg-muted'
-            }`}
+                ? 'bg-card text-foreground shadow-sm lg:bg-primary lg:text-primary-foreground'
+                : 'text-muted-foreground lg:border lg:border-border lg:bg-card lg:hover:bg-muted',
+            )}
           >
             {f === 'pendentes' ? 'Pendentes' : f === 'conciliadas' ? 'Conciliadas' : 'Todas'}
           </a>
         ))}
-      </div>
+      </nav>
 
-      {/* Tabela */}
       {transacoes.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <p className="text-sm">
@@ -115,78 +119,7 @@ export default async function ConciliacaoPage({
           </p>
         </div>
       ) : (
-        <div className="bg-card rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-muted border-b border-border">
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Data</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Operadora</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Tipo</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Portador</th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Bruto</th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Líquido</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">NSU</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Venda</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {transacoes.map(t => {
-                const raw = t.rawData as Record<string, string> | null
-                const bandeira = raw?.bandeira ?? ''
-                const portador = raw?.portador ?? ''
-                const vendaVinculada = t.vendaId
-                  ? (vendasMap.get(t.vendaId) ?? null)
-                  : t.pecaVendaId
-                    ? (pecasVendaMap.get(t.pecaVendaId) ?? null)
-                    : t.osId
-                      ? (osMap.get(t.osId) ?? null)
-                      : null
-                const tipoVinculado: AlvoTipo | undefined =
-                  t.vendaId ? 'moto' : t.pecaVendaId ? 'peca' : t.osId ? 'os' : undefined
-
-                return (
-                  <tr key={t.id} className="hover:bg-muted transition-colors">
-                    <td className="px-4 py-3 text-foreground whitespace-nowrap">
-                      {dataPuraBr(t.dataTransacao)}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {nomeOperadora(t.operadora)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <Badge variant={t.tipo === 'credito' ? 'default' : 'secondary'} className="text-xs">
-                          {rotuloCurtoDaLinha(t.tipo, t.parcelas)}
-                        </Badge>
-                        {bandeira && <span className="text-xs text-muted-foreground capitalize">{bandeira}</span>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground max-w-[140px] truncate" title={portador}>
-                      {portador || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-foreground whitespace-nowrap">
-                      {fmt(t.valorBruto)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-muted-foreground whitespace-nowrap">
-                      {t.valorLiquido ? fmt(t.valorLiquido) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground font-mono max-w-[120px] truncate" title={t.nsu ?? ''}>
-                      {t.nsu ? t.nsu.slice(-8) : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <VincularVendaButton
-                        conciliacaoId={t.id}
-                        dataRef={t.dataTransacao}
-                        valorRef={parseFloat(t.valorBruto)}
-                        vendaVinculada={vendaVinculada}
-                        tipoVinculado={tipoVinculado}
-                      />
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <TransacoesConciliacao linhas={transacoes.map(t => linhaNaTela(t, alvos))} podeVincular={podeGerirConciliacao(usuario.papel)} />
       )}
     </div>
   )

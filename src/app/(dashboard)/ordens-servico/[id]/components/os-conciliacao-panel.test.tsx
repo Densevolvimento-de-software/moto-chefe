@@ -1,4 +1,4 @@
-// Painel de conciliação da OS (#90): a dica "PIX conciliado à parte" some quando o PIX vinculado cobre o
+// Painel de conciliação da OS (#90): a dica de PIX pendente some quando o PIX vinculado cobre o
 // pagamento pelo valor do PIX, mesmo que o banco tenha creditado sem o custo. As actions são a fronteira de fora.
 import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
@@ -14,6 +14,7 @@ const pixDoAlvo = mock.fn(async (): Promise<PixDoAlvo[]> => [])
 const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { namedExports: {
   buscarPixDoAlvo: () => pixDoAlvo(),
   buscarConciliacoesDoAlvo: async () => [],
+  buscarEstornosDoAlvo: async () => [],
   buscarConciliacoesPorValor: async () => [],
   buscarConciliacoesLivres: async () => [],
   buscarPixLivres: async () => [],
@@ -32,13 +33,14 @@ afterEach(async () => {
   for (const desmontar of desmontagens.splice(0)) await desmontar()
 })
 
-const DICA = 'PIX conciliado à parte'
+// A dica aponta o próprio painel (maquininha ou banco) desde o #51 (PR6c).
+const DICA = 'PIX pendente: toque no pagamento acima'
 const pix = (valor: string, valorBruto: string | null): PixDoAlvo =>
   ({ id: 'p1', dataPagamento: new Date('2026-11-12T14:32:00Z'), valor, pagadorNome: 'Pagador Exemplo', observacao: null, valorBruto, custoPix: null, custoPixTaxa: null })
 
 async function montar() {
   const { OSConciliacaoPanel } = await import('./os-conciliacao-panel')
-  const tela = await montarDialogo(OSConciliacaoPanel, { osId: '2c9d47e2-c479-42bf-9372-f7a34308299f', osNumero: 42, pagamentos: [{ tipo: 'pix', valor: 10000 }], papel: 'aux_adm' })
+  const tela = await montarDialogo(OSConciliacaoPanel, { osId: '2c9d47e2-c479-42bf-9372-f7a34308299f', pagamentos: [{ tipo: 'pix', valor: 10000 }], papel: 'aux_adm' })
   desmontagens.push(tela.desmontar)
   await tela.act(() => esperar(50))
 }

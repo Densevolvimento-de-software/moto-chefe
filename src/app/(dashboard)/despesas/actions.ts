@@ -30,7 +30,7 @@ function assertAdmin(papel: string) {
 
 // A aba "Importar do Banco" é mais restrita que o resto da tela: todo sócio vê,
 // mas só quem passa por aqui categoriza. Ver podeCategorizarDespesaBanco.
-function assertPodeCategorizar(usuario: { papel: string; email: string }) {
+function assertPodeCategorizar(usuario: { papel: string; categorizaDespesaBanco: boolean | null }) {
   assertAdmin(usuario.papel)
   if (!podeCategorizarDespesaBanco(usuario)) {
     throw new Error('Sem permissão para categorizar saídas do banco')
@@ -207,6 +207,7 @@ async function lancarDespesaOpenFinance(
       lancadoEm: new Date(),
     }).where(and(
       eq(despesasOpenFinance.id, id),
+      eq(despesasOpenFinance.grupoId, grupo.id),
       isNull(despesasOpenFinance.despesaId),
     )).returning({ id: despesasOpenFinance.id })
 
@@ -240,16 +241,19 @@ async function editarCategorizacaoOpenFinance(
   const beneficiarioValidado = await categoriaEBeneficiario(grupo.id, categoria, beneficiario, linha.categoria)
 
   await db.transaction(async (tx) => {
-    await tx.update(despesas).set({
+    // Despesa e saída só do grupo ativo: saída que aponte para despesa de outro grupo não muda nada (#132).
+    const editadas = await tx.update(despesas).set({
       lojaId: lojaIdValida,
       categoria,
       beneficiario: beneficiarioValidado,
-    }).where(eq(despesas.id, linha.despesaId!))
+    }).where(and(eq(despesas.id, linha.despesaId!), eq(despesas.grupoId, grupo.id)))
+      .returning({ id: despesas.id })
+    if (editadas.length === 0) throw new Error('Saída não encontrada')
 
     await tx.update(despesasOpenFinance).set({
       categoria,
       lojaId: lojaIdValida,
-    }).where(eq(despesasOpenFinance.id, id))
+    }).where(and(eq(despesasOpenFinance.id, id), eq(despesasOpenFinance.grupoId, grupo.id)))
   })
 
   revalidatePath('/despesas')
@@ -283,9 +287,13 @@ export async function cancelarCategorizacaoOpenFinanceAction(id: string) {
       despesaId: null,
       lancadoPorId: null,
       lancadoEm: null,
-    }).where(eq(despesasOpenFinance.id, id))
+    }).where(and(eq(despesasOpenFinance.id, id), eq(despesasOpenFinance.grupoId, grupo.id)))
 
-    await tx.delete(despesas).where(eq(despesas.id, linha.despesaId!))
+    // Despesa de outro grupo não se apaga: a transação volta e a saída fica como estava (#132).
+    const apagadas = await tx.delete(despesas)
+      .where(and(eq(despesas.id, linha.despesaId!), eq(despesas.grupoId, grupo.id)))
+      .returning({ id: despesas.id })
+    if (apagadas.length === 0) throw new Error('Saída não encontrada')
   })
 
   revalidatePath('/despesas')

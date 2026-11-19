@@ -7,6 +7,7 @@ import { contaMarcas, contas, grupos } from '@/lib/db/schema'
 import { MARCAS_DA_CONTA_NOVA } from '@/lib/modelos-da-conta'
 import { preencherGruposComPrecoPadrao } from '@/lib/tabela-preco-padrao'
 import { ehUuid } from '@/lib/uuid'
+import { RecusaUsuario } from '@/lib/resultado-action'
 
 type Escritor = Parameters<Parameters<typeof db.transaction>[0]>[0]
 type DadosGrupo = Omit<typeof grupos.$inferInsert, 'id' | 'contaId'>
@@ -15,10 +16,10 @@ type DadosGrupo = Omit<typeof grupos.$inferInsert, 'id' | 'contaId'>
 export async function criarGrupo(tx: Escritor, dados: DadosGrupo, contaId: string | null): Promise<{ grupoId: string; contaId: string }> {
   let conta = contaId
   if (conta) {
-    if (!ehUuid(conta)) throw new Error('Conta não encontrada')
+    if (!ehUuid(conta)) throw new RecusaUsuario('Conta não encontrada')
     // Conta desativada (perdeu o grupo para outra, #554) não recebe grupo: mesma resposta de inexistente.
     const [existe] = await tx.select({ id: contas.id }).from(contas).where(and(eq(contas.id, conta), isNull(contas.desativadaEm))).limit(1)
-    if (!existe) throw new Error('Conta não encontrada')
+    if (!existe) throw new RecusaUsuario('Conta não encontrada')
   } else {
     const [nova] = await tx.insert(contas).values({ nome: dados.nome }).returning({ id: contas.id })
     await tx.insert(contaMarcas).values(MARCAS_DA_CONTA_NOVA.map(marca => ({ contaId: nova.id, marca })))

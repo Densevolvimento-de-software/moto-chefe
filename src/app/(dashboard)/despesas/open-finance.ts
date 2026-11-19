@@ -1,10 +1,12 @@
 import { db } from '@/lib/db'
-import { despesasOpenFinance, despesasOfSyncStatus, despesas, lojas, usuarios } from '@/lib/db/schema'
+import { despesasOpenFinance, despesasOfSyncStatus, despesas, lojas } from '@/lib/db/schema'
 import { buscarSaidasOpenFinance } from '@/lib/mcpai'
 import { LOJA_GALPAO_MATRIZ_ID } from '@/lib/loja-galpao'
 import { parearReemissoes } from '@/lib/reemissao-saida'
 import { eq, and, gte, lte, desc, inArray, isNull } from 'drizzle-orm'
 import { criarMedidor } from '@/lib/db-diag'
+import { rotulosDasSaidas } from '@/lib/saidas-banco'
+import type { GrupoDoRegistro } from '@/lib/rotulos-alvo'
 import { desdeDoSync, selecionarSumidas, dividirEmLotes, dataAposSync, cacheSaidasValido, MARGEM_SYNC_DIAS, HISTORICO_DESDE } from '@/lib/sync-incremental'
 
 // 9 parâmetros por linha: 1000 linhas ficam bem abaixo do limite de 65.535 do Postgres.
@@ -194,7 +196,7 @@ export async function sincronizarSaidas(
  * em toda visita para também pegar saídas que já estavam pendentes antes dela existir.
  */
 export async function buscarSaidasDoBanco(
-  grupo: { id: string },
+  grupo: GrupoDoRegistro,
   fromDate: Date,
   toDate: Date,
   usuarioId: string,
@@ -218,30 +220,14 @@ export async function buscarSaidasDoBanco(
     .orderBy(desc(despesasOpenFinance.data))
   medir('consultar_linhas', tLinhas)
 
-  const lojaIds = linhasRaw.map(l => l.lojaId).filter((id): id is string => !!id)
-  const lancadoPorIds = linhasRaw.map(l => l.lancadoPorId).filter((id): id is string => !!id)
-  const despesaIds = linhasRaw.map(l => l.despesaId).filter((id): id is string => !!id)
-
-  const [lojasDb, usuariosDb, despesasDb] = await Promise.all([
-    lojaIds.length > 0
-      ? db.select({ id: lojas.id, nome: lojas.nome }).from(lojas).where(inArray(lojas.id, lojaIds))
-      : Promise.resolve([] as { id: string; nome: string }[]),
-    lancadoPorIds.length > 0
-      ? db.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios).where(inArray(usuarios.id, lancadoPorIds))
-      : Promise.resolve([] as { id: string; nome: string }[]),
-    despesaIds.length > 0
-      ? db.select({ id: despesas.id, beneficiario: despesas.beneficiario }).from(despesas).where(inArray(despesas.id, despesaIds))
-      : Promise.resolve([] as { id: string; beneficiario: string | null }[]),
-  ])
-  const lojaNomeById = new Map(lojasDb.map(l => [l.id, l.nome]))
-  const usuarioNomeById = new Map(usuariosDb.map(u => [u.id, u.nome]))
-  const beneficiarioPorDespesa = new Map(despesasDb.map(d => [d.id, d.beneficiario]))
+  const idsDe = (k: 'lojaId' | 'despesaId' | 'lancadoPorId') => linhasRaw.flatMap(l => l[k] ? [l[k]] : [])
+  const rotulos = await rotulosDasSaidas(grupo, { lojaIds: idsDe('lojaId'), despesaIds: idsDe('despesaId'), lancadoPorIds: idsDe('lancadoPorId') })
 
   const linhas: SaidaComDetalhes[] = linhasRaw.map(l => ({
     ...l,
-    lojaNome: l.lojaId ? lojaNomeById.get(l.lojaId) ?? null : null,
-    lancadoPorNome: l.lancadoPorId ? usuarioNomeById.get(l.lancadoPorId) ?? null : null,
-    beneficiario: l.despesaId ? beneficiarioPorDespesa.get(l.despesaId) ?? null : null,
+    lojaNome: l.lojaId ? rotulos.lojaNome.get(l.lojaId) ?? null : null,
+    lancadoPorNome: l.lancadoPorId ? rotulos.lancadoPorNome.get(l.lancadoPorId) ?? null : null,
+    beneficiario: l.despesaId ? rotulos.beneficiario.get(l.despesaId) ?? null : null,
   }))
 
   return { linhas, syncStatusAtual: syncStatusAtual ?? null }

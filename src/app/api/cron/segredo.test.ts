@@ -17,6 +17,7 @@ const ROTAS: [string, () => Promise<Rota>, Metodo[]][] = [
   ['/api/cron/notas-contador', () => import('./notas-contador/route'), ['GET']],
   ['/api/cron/pedidos-fabrica', () => import('./pedidos-fabrica/route'), ['GET', 'POST']],
   ['/api/cron/inutilizacoes-pendentes', () => import('./inutilizacoes-pendentes/route'), ['GET']],
+  ['/api/cron/conciliacao-mercadopago', () => import('./conciliacao-mercadopago/route'), ['GET']],
   ['/api/conciliacao/cartao', () => import('../conciliacao/cartao/route'), ['POST']],
   ['/api/conciliacao/fila', () => import('../conciliacao/fila/route'), ['GET', 'POST']],
 ]

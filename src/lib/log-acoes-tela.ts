@@ -91,6 +91,7 @@ const brl = (v: unknown) => Number(v).toLocaleString('pt-BR', { style: 'currency
 const ROTULO_CAMPO_PERMISSAO: Record<string, string> = {
   papel: 'função', cargoId: 'cargo', lojaId: 'loja', gruposAcesso: 'empresas que enxerga',
   gruposAprovacao: 'aprova venda em', aprovaPagamentoSensivel: 'aprova transferência bancária',
+  categorizaDespesaBanco: 'categoriza saídas do banco',
   modulosExtras: 'módulos liberados a mais', modulosBloqueados: 'módulos bloqueados',
 }
 const ROTULO_ACAO_PERMISSAO: Record<string, string> = {

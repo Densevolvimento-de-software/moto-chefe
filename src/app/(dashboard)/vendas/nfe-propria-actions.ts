@@ -1,14 +1,14 @@
 'use server'
 import { db } from '@/lib/db'
 import { motos, modelos, motosFiscal, vendas, regrasFiscaisSaida, notasFiscaisSaida, usuarios } from '@/lib/db/schema'
-import { and, desc, eq, inArray, notInArray, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, notInArray, sql, type SQL } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { getUsuarioLogado } from '@/lib/auth'
 import { registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
 import { getGrupoIdDaLoja, podeUsuarioVerGrupo } from '@/lib/grupo'
 import { faltasParaEmitir, grupoEmissorDaVenda } from '@/lib/notagateway/grupo-emissor'
 import { configDaNotaExistente } from '@/lib/notagateway/emissor-da-nota'
-import { lojasDoEscopo } from '@/lib/conta'
+import { lojaNoEscopo } from '@/lib/conta'
 import { situacaoNfDaVenda } from '@/lib/assinatura/consulta'
 import { motivoBloqueioNf } from '@/lib/assinatura/nf'
 import { normalizarCest } from '@/lib/nfe-fiscal'
@@ -663,8 +663,7 @@ async function exigirGrupo(usuario: Usuario, grupoId: string) {
 
 async function exigirGrupoDaMoto(motoId: string, usuario: Usuario) {
   // Moto de outra Conta responde como inexistente (#404).
-  const daConta = usuario.papel === 'admin_geral' ? undefined
-    : usuario.contaId ? inArray(motos.lojaId, lojasDoEscopo(usuario)) : null
+  const daConta = lojaNoEscopo(usuario, motos.lojaId)
   if (daConta === null) throw new Error('Moto não encontrada')
   const [moto] = await db.select({ lojaId: motos.lojaId }).from(motos)
     .where(and(eq(motos.id, motoId), daConta))

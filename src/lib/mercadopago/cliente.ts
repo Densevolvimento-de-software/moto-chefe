@@ -8,6 +8,10 @@ export class ErroMercadoPago extends Error {
   constructor(mensagem: string, readonly status?: number) { super(mensagem) }
 }
 
+/** O Mercado Pago recusou o token (401 ou 403): credencial errada ou revogada, não instabilidade. */
+export const credencialRecusada = (e: unknown): e is ErroMercadoPago =>
+  e instanceof ErroMercadoPago && (e.status === 401 || e.status === 403)
+
 function token(): string {
   const t = process.env.MP_ACCESS_TOKEN
   if (!t) throw new ErroMercadoPago('MP_ACCESS_TOKEN não configurada')

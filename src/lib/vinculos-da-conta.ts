@@ -1,8 +1,9 @@
-import { and, arrayContains, eq, inArray, or } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { clientes, lojas, motos, ordensServico, usuarios } from '@/lib/db/schema'
 import { clientesDoEscopo, contaDaLoja, lojasDoEscopo } from '@/lib/conta'
 import { RecusaUsuario } from '@/lib/resultado-action'
+import { usuarioDoEscopo } from '@/lib/usuarios-do-grupo'
 
 type Executor = Pick<typeof db, 'select'>
 
@@ -42,15 +43,21 @@ export async function conferirVinculosDaConta(
     if (!os) throw new RecusaUsuario('OS não encontrada')
   }
 
-  if (vinculos.mecanicoId) {
-    // Funcionário de loja costuma ter só loja_id; sócio, só conta_id.
-    const [mecanico] = await exec.select({ id: usuarios.id }).from(usuarios)
-      .where(and(
-        eq(usuarios.id, vinculos.mecanicoId),
-        grupoLiberado
-          ? or(inArray(usuarios.lojaId, lojasDoEscopo(escopo)), arrayContains(usuarios.gruposAcesso, [grupoLiberado]))
-          : or(eq(usuarios.contaId, contaId), inArray(usuarios.lojaId, lojasDoEscopo(escopo))),
-      )).limit(1)
-    if (!mecanico) throw new RecusaUsuario('Mecânico não encontrado')
+  if (vinculos.mecanicoId && !(await mecanicoNoEscopo(escopo, vinculos.mecanicoId, exec))) {
+    throw new RecusaUsuario(MECANICO_NAO_ENCONTRADO)
   }
+}
+
+export const MECANICO_NAO_ENCONTRADO = 'Mecânico não encontrado'
+
+async function mecanicoNoEscopo(escopo: { contaId: string; grupoLiberado: string | null }, mecanicoId: string, exec: Executor) {
+  const [mecanico] = await exec.select({ nome: usuarios.nome }).from(usuarios)
+    .where(and(eq(usuarios.id, mecanicoId), usuarioDoEscopo(escopo))).limit(1)
+  return mecanico ?? null
+}
+
+// Mecânico que um registro da loja pode ligar, com o nome para o histórico: o da Conta da loja (ou do
+// grupo liberado, na persona). null para outra Conta e para id inexistente, que recebem a mesma frase.
+export async function mecanicoDaConta(lojaId: string, mecanicoId: string, grupoLiberado: string | null, exec: Executor = db) {
+  return mecanicoNoEscopo({ contaId: await contaDaLoja(lojaId, exec), grupoLiberado }, mecanicoId, exec)
 }

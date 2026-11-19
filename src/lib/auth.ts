@@ -10,6 +10,7 @@ import { usuarioComCargo } from '@/lib/usuario-com-cargo'
 import { gruposLiberadosVivos, usuarioDaRede } from '@/lib/grupos-liberados'
 import { PAPEL_FABRICA, ROTA_CONTA_DESATIVADA, ehPedidoDeAcao } from '@/lib/login-fabrica'
 import { ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
+import { guardaCategorizaDespesa } from '@/lib/listas-do-cadastro'
 
 // getUsuarioLogado roda PRIMEIRO em toda página (layout e página). Se a query de
 // usuário fica esperando uma conexão do pool (instância do Fluid com conexões
@@ -98,7 +99,7 @@ export function isAdmin(papel: string) {
 }
 
 // ─── Papéis acumulados ────────────────────────────────────────────────────────
-// Uma pessoa pode exercer mais de uma função (ex.: Tiago é aux_adm em Lavras e
+// Uma pessoa pode exercer mais de uma função (ex.: aux_adm de uma loja que
 // também vende). `papel` continua sendo o papel principal e governa todo o
 // sistema; `papeisExtras` só acrescenta.
 //
@@ -113,22 +114,14 @@ export function temPapel(
   return usuario.papel === papel || (usuario.papeisExtras ?? []).includes(papel)
 }
 
-// ─── Exceção pontual: categorizar saída do banco (/despesas) ──────────────────
-// Decisão do Cesar (12/08/2026): lançar, editar e cancelar a categorização das
-// saídas do Open Finance é só dele e do Mateus. Os demais sócios (Luiz Paulo,
-// Marina) continuam vendo a aba inteira — só não mexem. João Brito liberado em
-// 06/10/2026, também a pedido do Cesar.
-//
-// É nominal porque o Mateus é admin_socio igual aos outros: não existe papel que
-// separe os dois grupos.
-const EMAILS_CATEGORIZA_DESPESA_BANCO = [
-  'mateus@motochefesuldeminas.com.br',
-  'joao.brito@motochefesuldeminas.com.br',
-]
-
-export function podeCategorizarDespesaBanco(usuario: { papel: string; email: string }) {
+// ─── Categorizar saída do banco (/despesas) ───────────────────────────────────
+// Todo sócio vê a aba inteira; lançar, editar e cancelar a categorização é do admin_geral e de quem
+// tem a marca do cadastro (categoriza_despesa_banco), que só o admin_geral liga em /admin/usuarios (#149).
+// A marca só vale para o papel de guardaCategorizaDespesa (o da sessão: cargo já vem com a base e o
+// admin de rede como sócio; no grupo liberado de outra Conta a marca vem zerada).
+export function podeCategorizarDespesaBanco(usuario: { papel: string; categorizaDespesaBanco: boolean | null }) {
   if (usuario.papel === 'admin_geral') return true
-  return EMAILS_CATEGORIZA_DESPESA_BANCO.includes(usuario.email)
+  return guardaCategorizaDespesa(usuario.papel) && usuario.categorizaDespesaBanco === true
 }
 
 export function canEditLoja(usuarioLojaId: string | null, targetLojaId: string, papel: string) {

@@ -7,5 +7,6 @@ import v1_37_1 from './versoes/1.37.1'
 import v1_38_0 from './versoes/1.38.0'
 import v1_38_1 from './versoes/1.38.1'
 import v1_39_0 from './versoes/1.39.0'
+import v1_40_0 from './versoes/1.40.0'
 
-export const NOVIDADES_DA_VERSAO: readonly NovidadeDaVersao[] = [v1_36_0, v1_37_0, v1_37_1, v1_38_0, v1_38_1, v1_39_0]
+export const NOVIDADES_DA_VERSAO: readonly NovidadeDaVersao[] = [v1_36_0, v1_37_0, v1_37_1, v1_38_0, v1_38_1, v1_39_0, v1_40_0]
