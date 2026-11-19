@@ -22,9 +22,53 @@ type Props = {
   valorRef: number
   vendaVinculada?: { id: string; numero: number; clienteNome: string; valor: string } | null
   tipoVinculado?: 'moto' | 'peca' | 'os'
+  /** Botão de 44 px, para o celular. */
+  grande?: boolean
 }
 
-export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVinculada, tipoVinculado }: Props) {
+/** "PA" (venda de peça) ou "OS" antes do número; venda de moto não tem. */
+export function ChipDoAlvo({ tipo }: { tipo?: 'moto' | 'peca' | 'os' }) {
+  if (tipo !== 'peca' && tipo !== 'os') return null
+  return <span className="text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5">{tipo === 'peca' ? 'PA' : 'OS'}</span>
+}
+
+/** Tira o vínculo da linha. `cheio`: botão largo da folha do celular; sem ele, só o ícone da tabela. */
+export function BotaoDesvincular({ conciliacaoId, cheio = false }: { conciliacaoId: string; cheio?: boolean }) {
+  const [pending, startTransition] = useTransition()
+
+  function desvincular() {
+    startTransition(async () => {
+      try {
+        await desvincularVendaAction(conciliacaoId)
+        toast.success('Vínculo removido')
+      } catch {
+        toast.error('Erro ao desvincular')
+      }
+    })
+  }
+
+  const tamanho = cheio ? 16 : 12
+  const icone = pending ? <Loader2 size={tamanho} className="animate-spin" /> : <Link2Off size={tamanho} />
+  if (cheio) {
+    return (
+      <Button variant="outline" onClick={desvincular} disabled={pending} className="h-11 w-full text-destructive">
+        {icone} Desvincular da venda
+      </Button>
+    )
+  }
+  return (
+    <button
+      onClick={desvincular}
+      disabled={pending}
+      title="Desvincular"
+      className="text-muted-foreground hover:text-destructive transition-colors"
+    >
+      {icone}
+    </button>
+  )
+}
+
+export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVinculada, tipoVinculado, grande = false }: Props) {
   const [open, setOpen]               = useState(false)
   const [vendas, setVendas]           = useState<Venda[]>([])
   const [carregando, setCarregando]   = useState(false)
@@ -74,17 +118,6 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
     })
   }
 
-  function desvincular() {
-    startTransition(async () => {
-      try {
-        await desvincularVendaAction(conciliacaoId)
-        toast.success('Vínculo removido')
-      } catch {
-        toast.error('Erro ao desvincular')
-      }
-    })
-  }
-
   function renderVenda(v: Venda, force = false) {
     const pgtos = (v.pagamentos as PgtoItem[] | null) ?? []
     const pgtoCartao = pgtos.filter(p => p.tipo in TIPO_CARTAO_LABEL)
@@ -108,16 +141,16 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
             {v.tipo === 'os' && (
               <span className="text-xs font-semibold text-info bg-info/10 rounded px-1.5 py-0.5 mr-1.5">OS</span>
             )}
-            {v.tipo === 'os' ? `OS #${v.numero}` : `Venda #${v.numero}`} — {v.clienteNome}
+            {v.tipo === 'os' ? `OS #${v.numero}` : `Venda #${v.numero}`}, {v.clienteNome}
           </span>
           <span className="font-semibold text-foreground">
-            {v.valor ? parseFloat(v.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
+            {v.valor ? parseFloat(v.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
           </span>
         </div>
         <div className="text-xs text-muted-foreground mt-0.5">
           {v.dataVenda
             ? new Date(v.dataVenda).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-            : '—'}
+            : '-'}
           {' · '}{v.formaPagamento}
         </div>
         {pgtoCartao.length > 0 && (
@@ -147,30 +180,23 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
       <div className="flex items-center gap-1.5">
         <span className="flex items-center gap-1 text-xs text-success font-medium">
           <CheckCircle2 size={12} />
-          {tipoVinculado === 'peca' && (
-            <span className="text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5">PA</span>
-          )}
-          {tipoVinculado === 'os' && (
-            <span className="text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5">OS</span>
-          )}
-          #{vendaVinculada.numero} — {vendaVinculada.clienteNome.split(' ')[0]}
+          <ChipDoAlvo tipo={tipoVinculado} />
+          #{vendaVinculada.numero}, {vendaVinculada.clienteNome.split(' ')[0]}
         </span>
-        <button
-          onClick={desvincular}
-          disabled={pending}
-          title="Desvincular"
-          className="text-muted-foreground hover:text-destructive transition-colors"
-        >
-          {pending ? <Loader2 size={12} className="animate-spin" /> : <Link2Off size={12} />}
-        </button>
+        <BotaoDesvincular conciliacaoId={conciliacaoId} />
       </div>
     )
   }
 
   return (
     <>
-      <Button variant="ghost" size="sm" className="h-7 text-xs px-2 text-muted-foreground" onClick={abrirModal}>
-        <Link2 size={12} className="mr-1" /> Vincular
+      <Button
+        variant={grande ? 'outline' : 'ghost'}
+        size="sm"
+        className={grande ? 'h-11 px-3' : 'h-7 text-xs px-2 text-muted-foreground'}
+        onClick={abrirModal}
+      >
+        <Link2 size={grande ? 16 : 12} className="mr-1" /> Vincular
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
