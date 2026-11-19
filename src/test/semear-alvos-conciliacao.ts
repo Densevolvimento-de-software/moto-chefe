@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { idDoInsert, type Executor } from '@/test/semear-conta'
+import { idDoInsert, semearContaBase, semearModelo, semearUsuario, type Base, type Executor } from '@/test/semear-conta'
+import type { AlvoTipo } from '@/lib/conciliacao-alvo'
 
 /**
  * Os três alvos da conciliação (venda de moto, venda de peça e OS) com `pagamentos`, para os testes
@@ -40,4 +41,20 @@ export function semearPixRecebido(tx: Executor, grupoId: string, o: { valor: num
   return idDoInsert(tx, sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor, pagador_nome, tipo_operacao)
     values (${grupoId}, 'conta-sintetica', 'Banco sintético', ${randomUUID()}, now(), ${o.valor}, ${o.pagadorNome ?? 'Pagador sintético'},
       ${o.tipoOperacao === undefined ? 'PIX' : o.tipoOperacao}) returning id`)
+}
+
+/** Conta nova com uma venda de moto, uma OS e uma venda de peça, todas com os mesmos `pagamentos`. */
+export async function semearContaComAlvos(tx: Executor, prefixo: string, pagamentos: Pagamentos): Promise<Base & { alvos: Record<AlvoTipo, string>; balcao: Balcao }> {
+  const suf = randomUUID()
+  const base = await semearContaBase(tx, { prefixo, nome: suf, cnpj: suf })
+  const balcao = { lojaId: base.lojaId, usuarioId: await semearUsuario(tx, base, { papel: 'vendedor' }), modeloId: await semearModelo(tx, `${prefixo} ${suf}`) }
+  return {
+    ...base,
+    balcao,
+    alvos: {
+      moto: await semearVendaMoto(tx, balcao, pagamentos),
+      os:   await semearOs(tx, balcao, pagamentos),
+      peca: await semearVendaPeca(tx, balcao, pagamentos),
+    },
+  }
 }

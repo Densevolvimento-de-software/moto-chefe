@@ -5,9 +5,9 @@ import { after, afterEach, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearGrupo, semearLoja, semearModelo, semearUsuario, type Base } from '@/test/semear-conta'
-import { semearOs, semearPixRecebido, semearVendaMoto, semearVendaPeca, type Balcao } from '@/test/semear-alvos-conciliacao'
-import type { AlvoConciliacao } from '@/lib/conciliacao-alvo'
+import { semearGrupo, semearLoja, semearUsuario, type Base } from '@/test/semear-conta'
+import { semearContaComAlvos, semearPixRecebido, semearVendaMoto } from '@/test/semear-alvos-conciliacao'
+import { ALVO_TIPOS, type AlvoConciliacao } from '@/lib/conciliacao-alvo'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -38,28 +38,14 @@ after(async () => {
 })
 
 const PAGAMENTOS = [{ tipo: 'pix', valor: 1000 }]
-const TIPOS = ['moto', 'os', 'peca'] as const
-type Alvos = Record<AlvoConciliacao['tipo'], string>
+const TIPOS = ALVO_TIPOS
 const NAO_ENCONTRADO: Record<AlvoConciliacao['tipo'], string> = {
   moto: 'Venda não encontrada', os: 'Ordem de serviço não encontrada', peca: 'Venda de peça não encontrada',
 }
 const PIX_NAO_ENCONTRADO = { ok: false, erro: 'PIX não encontrado no grupo ativo' }
 const COLUNA: Record<AlvoConciliacao['tipo'], string> = { moto: 'venda_id', os: 'os_id', peca: 'peca_venda_id' }
 
-async function contaComAlvos(): Promise<Base & { alvos: Alvos; balcao: Balcao }> {
-  const suf = randomUUID()
-  const base = await semearContaBase(db, { prefixo: 'VP90', nome: suf, cnpj: suf })
-  const balcao = { lojaId: base.lojaId, usuarioId: await semearUsuario(db, base, { papel: 'vendedor' }), modeloId: await semearModelo(db, 'VP90 ' + suf) }
-  return {
-    ...base,
-    balcao,
-    alvos: {
-      moto: await semearVendaMoto(db, balcao, PAGAMENTOS),
-      os:   await semearOs(db, balcao, PAGAMENTOS),
-      peca: await semearVendaPeca(db, balcao, PAGAMENTOS),
-    },
-  }
-}
+const contaComAlvos = () => semearContaComAlvos(db, 'VP90', PAGAMENTOS)
 
 // Usuário semeado de verdade: o vincular grava quem lançou (lancado_por_id, FK de usuarios).
 const sessao = async (b: Base, papel: string, extra: Partial<Sessao> = {}): Promise<Sessao> =>

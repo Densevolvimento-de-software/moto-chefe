@@ -5,8 +5,9 @@ import { after, afterEach, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearGrupo, semearLoja, semearModelo, semearUsuario, type Base } from '@/test/semear-conta'
-import { semearOs, semearVendaMoto, semearVendaPeca, type Balcao } from '@/test/semear-alvos-conciliacao'
+import { semearGrupo, semearLoja, type Base } from '@/test/semear-conta'
+import { semearContaComAlvos, semearVendaPeca } from '@/test/semear-alvos-conciliacao'
+import { ALVO_TIPOS } from '@/lib/conciliacao-alvo'
 import type { AlvoConciliacao } from './actions'
 import type { PgtoOS } from '@/lib/conciliacao-status'
 
@@ -44,21 +45,7 @@ const MOTIVO = 'PIX caiu na conta pessoal'
 
 type Alvos = Record<AlvoConciliacao['tipo'], string>
 
-// Conta nova com uma venda de moto, uma OS e uma venda de peça, todas com PAGAMENTOS.
-async function contaComAlvos(): Promise<Base & { alvos: Alvos; balcao: Balcao }> {
-  const suf = randomUUID()
-  const base = await semearContaBase(db, { prefixo: 'FC79', nome: suf, cnpj: suf })
-  const balcao = { lojaId: base.lojaId, usuarioId: await semearUsuario(db, base, { papel: 'vendedor' }), modeloId: await semearModelo(db, 'FC79 ' + suf) }
-  return {
-    ...base,
-    balcao,
-    alvos: {
-      moto: await semearVendaMoto(db, balcao, PAGAMENTOS),
-      os:   await semearOs(db, balcao, PAGAMENTOS),
-      peca: await semearVendaPeca(db, balcao, PAGAMENTOS),
-    },
-  }
-}
+const contaComAlvos = () => semearContaComAlvos(db, 'FC79', PAGAMENTOS)
 
 const TABELA: Record<AlvoConciliacao['tipo'], string> = { moto: 'vendas', os: 'ordens_servico', peca: 'vendas_pecas' }
 const pagamentosDe = async (tipo: AlvoConciliacao['tipo'], id: string): Promise<PgtoOS[]> =>
@@ -67,7 +54,7 @@ const pagamentosDe = async (tipo: AlvoConciliacao['tipo'], id: string): Promise<
 const sessao = (b: Base, papel: string, extra: Partial<Sessao> = {}): Sessao =>
   ({ id: randomUUID(), nome: `${papel} de teste`, papel, lojaId: b.lojaId, contaId: b.contaId, gruposAcesso: [], gruposAprovacao: [], ...extra })
 
-const TIPOS = ['moto', 'os', 'peca'] as const
+const TIPOS = ALVO_TIPOS
 
 test('aux_adm e admin_socio forçam e desfazem o PIX pendente da venda de moto, da OS e da venda de peça', async () => {
   const a = await contaComAlvos()
