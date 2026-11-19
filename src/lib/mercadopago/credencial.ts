@@ -4,7 +4,8 @@ import { and, eq, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { mercadopagoConfig } from '@/lib/db/schema'
 import { cifrar } from '@/lib/cripto'
-import { ehChaveDuplicada } from '@/lib/entrada-motos'
+import { ehChaveDuplicada } from '@/lib/erro-pg'
+import { somenteDigitos } from '@/lib/grupo-cnpj'
 import { RecusaUsuario } from '@/lib/resultado-action'
 import { ErroMercadoPago } from './cliente'
 import { consultarConta, type ContaMp } from './point'
@@ -35,7 +36,6 @@ export const FRASES_MP = {
 // ainda ficar fora do formato não chega ao Mercado Pago.
 const FORMATO_TOKEN = /^[\x21-\x7e]{20,300}$/
 export const normalizarToken = (colado: unknown) => (typeof colado === 'string' ? colado.replace(/\s+/g, '') : '')
-const digitos = (s: string) => s.replace(/\D/g, '')
 
 // Só o status ou o nome do erro: a mensagem pode trazer o token.
 const pistaDoErro = (e: unknown) =>
@@ -73,7 +73,7 @@ export async function conferirCredencialMp(
   }
   if (mensalidade === conta.id) return { ok: false, erro: FRASES_MP.mensalidade }
 
-  const outroCnpj = conta.documento !== null && digitos(conta.documento) !== digitos(cnpjDoGrupo)
+  const outroCnpj = conta.documento !== null && somenteDigitos(conta.documento) !== somenteDigitos(cnpjDoGrupo)
   return { ok: true, plano: { acao: 'gravar', token, userId: conta.id, aviso: outroCnpj ? FRASES_MP.outroCnpj : null } }
 }
 
@@ -128,7 +128,7 @@ export async function aplicarCredencialMp(tx: Tx, grupoId: string, usuarioId: st
         setWhere: eq(mercadopagoConfig.grupoId, grupoId),
       })
   } catch (e) {
-    if (ehChaveDuplicada(e as Parameters<typeof ehChaveDuplicada>[0])) throw new RecusaUsuario(FRASES_MP.jaLigada)
+    if (ehChaveDuplicada(e)) throw new RecusaUsuario(FRASES_MP.jaLigada)
     throw e
   }
 }
