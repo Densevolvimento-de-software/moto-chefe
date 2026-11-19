@@ -9,3 +9,4 @@ Um arquivo por assunto da Nota Gateway, escrito à mão: o que a doc oficial diz
 | [ng-certificado-digital.md](ng-certificado-digital.md) | Certificado A1 matriz/filial e distribuição DF-e | Antes de alterar vínculo de certificado, CNPJ interessado ou leitura no Radar fiscal |
 | [ng-veiculo-transporte.md](ng-veiculo-transporte.md) | Veículo novo, faturamento direto e transporte na Nota Gateway | Antes de alterar tpOp, modalidade de frete ou local de entrega em NF-e de veículo novo |
 | [ng-informacoes-adicionais.md](ng-informacoes-adicionais.md) | Observação (informações adicionais) da NF-e: limite e texto que a NG acrescenta | Antes de mudar o texto padrão da garantia, a edição da observação ou o limite |
+| [ng-autenticacao.md](ng-autenticacao.md) | Autenticação: o token da API no header `Authorization: Basic` | Antes de mexer em como o token da NG é colado, gravado, enviado ou logado |

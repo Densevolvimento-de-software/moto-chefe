@@ -274,3 +274,24 @@ test('envio grava o site do grupo; site vazio fica sem site', async () => {
     throw new Desfazer()
   }), Desfazer)
 })
+
+// #126: nas falhas da NG (consulta e envio), o log da logo não leva a mensagem do erro, que pode trazer o token ou o
+// empresaId.
+test('falhas na Consultar Empresa e no envio: o log leva só o nome do erro', async t => {
+  const log = t.mock.method(console, 'error', () => {})
+  const segredo = 'tokenFicticioDaNg0123456789 empresa-a'
+  await assert.rejects(db.transaction(async tx => {
+    const c = await cenario(tx)
+    const consulta = dependencias(tx)
+    consulta.deps.dadosDaEmpresaNaNg = async () => { throw new TypeError(`falhou com ${segredo}`) }
+    await previaLogoDanfe(c.socioA, c.grupoA, png, '', consulta.deps, tx)
+    const envio = dependencias(tx)
+    envio.deps.vincularNaNg = async () => { throw new Error(`HTTP 401 ${segredo}`) }
+    await enviarLogoDanfe(c.socioA, c.grupoA, png, '', envio.deps, tx)
+    throw new Desfazer()
+  }), Desfazer)
+  assert.deepEqual(log.mock.calls.map(c => c.arguments.map(String).join(' ')), [
+    '[logo-danfe] Consultar Empresa falhou: TypeError',
+    '[logo-danfe] envio à NG falhou: Error',
+  ])
+})

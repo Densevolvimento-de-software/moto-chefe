@@ -1,3 +1,4 @@
+import { normalizarToken } from '@/lib/token-colado'
 import { db } from '@/lib/db'
 import { notagatewayConfig } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
@@ -28,7 +29,8 @@ export async function configNotaGateway(grupoId: string, exec: Pick<typeof db, '
   const [cfg] = await exec.select().from(notagatewayConfig).where(eq(notagatewayConfig.grupoId, grupoId)).limit(1)
   if (!cfg || !credencialCompleta(cfg)) return null
   return {
-    token: decifrar(cfg.token).toString('utf8'),
+    // Gravado antes da #126, o token pode ter vindo com quebra de linha da cópia.
+    token: normalizarToken(decifrar(cfg.token).toString('utf8')),
     empresaId: cfg.empresaId!,
     ambiente: ambienteDaNg(cfg.ambiente),
   }
