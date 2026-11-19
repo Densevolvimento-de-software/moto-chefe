@@ -1,7 +1,7 @@
 'use server'
 import { contasParaNovoGrupo, criarGrupo } from '@/lib/grupo-novo'
 import { db } from '@/lib/db'
-import { contas, grupos } from '@/lib/db/schema'
+import { contas, grupos, mercadopagoConfig } from '@/lib/db/schema'
 import { asc, eq, isNull, sql } from 'drizzle-orm'
 import { moverGrupo, previaMoverGrupo } from '@/lib/mover-grupo'
 import { origemDaRequisicaoAtual } from '@/lib/log-acoes'
@@ -11,10 +11,17 @@ import { cifrar, decifrar } from '@/lib/cripto'
 import { resumirEndpoint } from '@/lib/mcpai-credencial'
 import { alterarTransferenciaEntreGrupos } from '@/lib/transferencia-grupos'
 import { count } from 'drizzle-orm'
+import { acao, RecusaUsuario, type ResultadoAction } from '@/lib/resultado-action'
+import { ehUuid } from '@/lib/uuid'
+import {
+  aplicarCredencialMp, conferirCredencialMp, credencialMpParaTela, DEPENDENCIAS_CREDENCIAL_MP,
+} from '@/lib/mercadopago/credencial'
 
+// RecusaUsuario: nas actions que devolvem ResultadoAction, a frase chega à tela também em produção (#404).
 async function assertAdmin() {
   const u = await getUsuarioLogado()
-  if (u.papel !== 'admin_geral') throw new Error('Acesso restrito ao Admin Geral')
+  if (u.papel !== 'admin_geral') throw new RecusaUsuario('Acesso restrito ao Admin Geral')
+  return u
 }
 
 /**
@@ -26,13 +33,19 @@ async function assertAdmin() {
  */
 export async function listarGruposAction() {
   await assertAdmin()
-  const linhas = await db.select({ g: grupos, contaNome: contas.nome }).from(grupos)
-    .innerJoin(contas, eq(contas.id, grupos.contaId)).orderBy(grupos.nome)
-  return linhas.map(({ g: { mcpaiEndpointUrl, ...g }, contaNome }) => ({
+  // Da credencial do Mercado Pago, só a conta e o documento do titular, para o resumo; o token nunca entra no select.
+  const linhas = await db.select({
+    g: grupos, contaNome: contas.nome, mpUserId: mercadopagoConfig.userId, mpTitular: mercadopagoConfig.titularDocumento,
+  }).from(grupos)
+    .innerJoin(contas, eq(contas.id, grupos.contaId))
+    .leftJoin(mercadopagoConfig, eq(mercadopagoConfig.grupoId, grupos.id))
+    .orderBy(grupos.nome)
+  return linhas.map(({ g: { mcpaiEndpointUrl, ...g }, contaNome, mpUserId, mpTitular }) => ({
     ...g,
     contaNome,
     mcpaiConfigurado: !!mcpaiEndpointUrl,
     mcpaiResumo: mcpaiEndpointUrl ? resumoDaChave(mcpaiEndpointUrl) : null,
+    ...credencialMpParaTela(mpUserId, mpTitular, g.cnpj),
   }))
 }
 
@@ -60,6 +73,12 @@ type GrupoInput = {
    */
   mcpaiEndpointUrl?: string
   mcpaiRemover?: boolean
+  /**
+   * Access Token do Mercado Pago (só no Editar). Vazio não mexe; `mpRemover` apaga. Conferido no
+   * Mercado Pago antes de gravar (src/lib/mercadopago/credencial.ts).
+   */
+  mpToken?: string
+  mpRemover?: boolean
   // Qualificação da empresa no contrato de compra e venda. Sem os três, o envio
   // de contrato fica bloqueado neste grupo (ver @/lib/assinatura/documento).
   razaoSocial?: string
@@ -78,15 +97,25 @@ function cifrarChaveMcp(dados: GrupoInput): string | null | undefined {
   const url = dados.mcpaiEndpointUrl?.trim()
   if (!url) return undefined
   if (!/^https:\/\//i.test(url)) {
-    throw new Error('A chave do mcp.ai precisa ser a URL do endpoint, começando com https://')
+    throw new RecusaUsuario('A chave do mcp.ai precisa ser a URL do endpoint, começando com https://')
   }
   return cifrar(url)
 }
 
-export async function criarGrupoAction(dados: GrupoInput & { contaId?: string | null }) {
+function exigirNomeECnpj(dados: Pick<GrupoInput, 'nome' | 'cnpj'>) {
+  if (!dados.nome.trim()) throw new RecusaUsuario('Nome obrigatório')
+  if (!dados.cnpj.trim()) throw new RecusaUsuario('CNPJ obrigatório')
+}
+
+// Sem o Mercado Pago: o campo só existe no Editar Grupo (decisão do Luis, #51).
+type NovoGrupoInput = Omit<GrupoInput, 'mpToken' | 'mpRemover'> & { contaId?: string | null }
+
+export async function criarGrupoAction(dados: NovoGrupoInput): Promise<ResultadoAction> {
+  return acao(() => gravarNovoGrupo(dados))
+}
+async function gravarNovoGrupo(dados: NovoGrupoInput) {
   await assertAdmin()
-  if (!dados.nome.trim()) throw new Error('Nome obrigatório')
-  if (!dados.cnpj.trim()) throw new Error('CNPJ obrigatório')
+  exigirNomeECnpj(dados)
 
   // Conta nova (padrão) ou uma existente escolhida pelo admin_geral (#199, ADR-0018).
   await db.transaction(async tx => {
@@ -112,30 +141,42 @@ export async function listarContasAction() {
   return contasParaNovoGrupo()
 }
 
-export async function editarGrupoAction(id: string, dados: GrupoInput) {
-  await assertAdmin()
-  if (!dados.nome.trim()) throw new Error('Nome obrigatório')
-  if (!dados.cnpj.trim()) throw new Error('CNPJ obrigatório')
+/** `aviso`: a credencial gravou, mas há o que conferir (CNPJ do titular diferente, decisão do Luis). */
+export async function editarGrupoAction(id: string, dados: GrupoInput): Promise<ResultadoAction<{ aviso: string | null }>> {
+  return acao(() => editarGrupo(id, dados))
+}
+async function editarGrupo(id: string, dados: GrupoInput) {
+  const usuario = await assertAdmin()
+  exigirNomeECnpj(dados)
+  const [existe] = ehUuid(id) ? await db.select({ id: grupos.id }).from(grupos).where(eq(grupos.id, id)).limit(1) : []
+  if (!existe) throw new RecusaUsuario('Grupo não encontrado')
 
   const chaveMcp = cifrarChaveMcp(dados)
+  // O Mercado Pago é consultado antes, fora da transação; grupo e credencial gravam juntos ou nada grava.
+  const mp = await conferirCredencialMp({ mpToken: dados.mpToken, mpRemover: dados.mpRemover }, dados.cnpj, DEPENDENCIAS_CREDENCIAL_MP)
+  if (!mp.ok) throw new RecusaUsuario(mp.erro)
 
-  await db.update(grupos).set({
-    nome: dados.nome.trim(),
-    cnpj: dados.cnpj.trim(),
-    ativo: dados.ativo,
-    // Espalhamento condicional: sem chave nova e sem pedido de remoção, a
-    // coluna nem entra no UPDATE — é o que faz "campo em branco" preservar a
-    // credencial já cadastrada.
-    ...(chaveMcp !== undefined ? { mcpaiEndpointUrl: chaveMcp } : {}),
-    blingClientId: dados.blingClientId?.trim() || null,
-    blingClientSecret: dados.blingClientSecret?.trim() || null,
-    razaoSocial: dados.razaoSocial?.trim() || null,
-    enderecoSede: dados.enderecoSede?.trim() || null,
-    cidadeSede: dados.cidadeSede?.trim() || null,
-    comarcaForo: dados.comarcaForo?.trim() || null,
-  }).where(eq(grupos.id, id))
+  await db.transaction(async tx => {
+    await tx.update(grupos).set({
+      nome: dados.nome.trim(),
+      cnpj: dados.cnpj.trim(),
+      ativo: dados.ativo,
+      // Espalhamento condicional: sem chave nova e sem pedido de remoção, a
+      // coluna nem entra no UPDATE — é o que faz "campo em branco" preservar a
+      // credencial já cadastrada.
+      ...(chaveMcp !== undefined ? { mcpaiEndpointUrl: chaveMcp } : {}),
+      blingClientId: dados.blingClientId?.trim() || null,
+      blingClientSecret: dados.blingClientSecret?.trim() || null,
+      razaoSocial: dados.razaoSocial?.trim() || null,
+      enderecoSede: dados.enderecoSede?.trim() || null,
+      cidadeSede: dados.cidadeSede?.trim() || null,
+      comarcaForo: dados.comarcaForo?.trim() || null,
+    }).where(eq(grupos.id, id))
+    await aplicarCredencialMp(tx, id, usuario.id, mp.plano)
+  })
   revalidatePath('/admin/grupos')
   revalidatePath('/', 'layout')
+  return { aviso: mp.plano.acao === 'gravar' ? mp.plano.aviso : null }
 }
 
 /** Contas com mais de um grupo e a chave de transferência entre grupos (#552). */

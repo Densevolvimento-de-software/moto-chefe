@@ -8,12 +8,15 @@ import { Upload, Loader2 } from 'lucide-react'
 import { importarRelatorioAction } from '../actions'
 import { separarPorRelatorio } from '@/lib/operadoras'
 
-export function UploadRelatorio({ maquininhas: doGrupo }: { maquininhas: Maquininha[] }) {
+/** `podeImportar`: o mesmo `podeGerirConciliacao` com que `importarRelatorio` recusa; sem ele, nada aparece. */
+export function UploadRelatorio({ maquininhas: doGrupo, podeImportar }: { maquininhas: Maquininha[]; podeImportar: boolean }) {
   const { comRelatorio: maquininhas, manuais } = separarPorRelatorio(doGrupo)
   const semOpcao = manuais.length > 0 ? 'Nenhuma com relatório' : 'Nenhuma maquininha cadastrada'
   const fileRef = useRef<HTMLInputElement>(null)
   const [operadora, setOperadora] = useState(maquininhas[0]?.operadora ?? '')
   const [loading, setLoading] = useState(false)
+
+  if (!podeImportar) return null
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -44,9 +47,10 @@ export function UploadRelatorio({ maquininhas: doGrupo }: { maquininhas: Maquini
 
   return (
     <div className="space-y-2">
-      <form onSubmit={handleSubmit} className="flex items-center gap-3">
+      {/* Celular: maquininha e Importar na 1ª linha, arquivo na 2ª; desktop: tudo numa linha. */}
+      <form onSubmit={handleSubmit} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 lg:flex lg:gap-3">
         <Select value={operadora} onValueChange={v => v && setOperadora(v)}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-full lg:w-44">
             <SelectValue placeholder={semOpcao}>
               {(v: string | null) => v ? (maquininhas.find(m => m.operadora === v)?.nome ?? v) : semOpcao}
             </SelectValue>
@@ -60,10 +64,10 @@ export function UploadRelatorio({ maquininhas: doGrupo }: { maquininhas: Maquini
           ref={fileRef}
           type="file"
           accept=".csv,.txt"
-          className="text-sm text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-xs file:font-medium file:bg-card file:text-foreground hover:file:bg-muted cursor-pointer"
+          className="col-span-2 row-start-2 min-w-0 text-sm text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-xs file:font-medium file:bg-card file:text-foreground hover:file:bg-muted cursor-pointer"
         />
 
-        <Button type="submit" size="sm" disabled={loading}>
+        <Button type="submit" size="sm" disabled={loading} className="col-start-2 row-start-1">
           {loading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
           <span className="ml-1.5">{loading ? 'Importando...' : 'Importar'}</span>
         </Button>

@@ -114,11 +114,26 @@ test('admin_rede (persona real) importa no grupo liberado; em grupo não liberad
   assert.equal((await gravadasDoGrupo(naoLiberado.grupoId)).length, 0)
 })
 
-test('aux_adm continua sem permissão para importar', async () => {
+// Decisão do Luis (19/11, #51): quem gere a conciliação importa o relatório, o aux_adm inclusive (a tela já mostrava).
+test('aux_adm importa o relatório no grupo dele; com o cookie de um grupo de outra Conta, nada grava lá', async () => {
+  const a = await contaComCielo()
   const b = await contaComCielo()
-  usuario = socio(b, { papel: 'aux_adm' })
-  const r = await importar([vendaCielo({ 'Código da venda': codigos()(1) })])
-  assert.deepEqual(r, { ok: false, erro: 'Sem permissão' })
+  usuario = socio(a, { papel: 'aux_adm' })
+  grupoAtivoNoCookie = b.grupoId
+  const cod = codigos()
+  const r = await importar([vendaCielo({ 'Código da venda': cod(1) })])
+  assert.deepEqual(r, { ok: true, dados: { importadas: 1, duplicadas: 0, conciliadas: 0, semCodigo: 0, incompletas: 0 } })
+  assert.deepEqual((await gravadasDoGrupo(a.grupoId)).map(l => l.nsu), [cod(1)])
+  assert.equal((await gravadasDoGrupo(b.grupoId)).length, 0)
+})
+
+test('quem não gere a conciliação continua sem permissão e nada grava (sem vermelho: já valia)', async () => {
+  const b = await contaComCielo()
+  for (const papel of ['vendedor', 'mecanico', 'motorista', 'cargo', 'fabrica']) {
+    usuario = socio(b, { papel })
+    const r = await importar([vendaCielo({ 'Código da venda': codigos()(1) })])
+    assert.deepEqual(r, { ok: false, erro: 'Sem permissão' }, papel)
+  }
   assert.equal((await gravadasDoGrupo(b.grupoId)).length, 0)
 })
 
