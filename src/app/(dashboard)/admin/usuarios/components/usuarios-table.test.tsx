@@ -32,7 +32,7 @@ const gestor = (papel: string) => ({ id: 'g', papel, gruposVisiveis: [], gruposA
 const cargoGerente = { id: 'c1', nome: 'Gerente', papelBase: 'aux_adm', contaId: 'A' }
 const cargoCaixa = { id: 'c2', nome: 'Caixa', papelBase: 'aux_adm', contaId: 'A' }
 const base = { id: 'u', email: 'u@exemplo.com', papeisExtras: [], lojaId: null, lojaNome: 'Loja Centro', conecta: null, gruposAprovacao: [],
-  aprovaPagamentoSensivel: false, gruposAcesso: [], grupoDaLojaId: null, ativo: true, modulosExtras: [], modulosBloqueados: [], contaId: 'A' }
+  aprovaPagamentoSensivel: false, categorizaDespesaBanco: false, gruposAcesso: [], grupoDaLojaId: null, ativo: true, modulosExtras: [], modulosBloqueados: [], contaId: 'A' }
 const marina = { ...base, id: 'u1', nome: 'Marina Costa', papel: 'cargo', cargoId: 'c1' }
 const bruno = { ...base, id: 'u2', nome: 'Bruno Alves', papel: 'vendedor', cargoId: null }
 
@@ -290,7 +290,7 @@ test('painel (#558): desativar e depois reativar alterna de verdade; excluir fec
   document.body.appendChild(container)
   const limites = limitesDaTela({ id: 'geral', papel: 'admin_geral', gruposVisiveis: [], gruposAprovacao: [], itensLiberaveis: [], aprovaPagamentoSensivel: false })
   const usuario = { id: 'u1', nome: 'Helena Prado', email: 'helena@exemplo.com', papel: 'vendedor', papeisExtras: [], lojaId: null, lojaNome: 'Loja Centro', conecta: null,
-    gruposAprovacao: [], aprovaPagamentoSensivel: false, gruposAcesso: [], grupoDaLojaId: null, ativo: true, modulosExtras: [], modulosBloqueados: [], cargoId: null, contaId: 'A' }
+    gruposAprovacao: [], aprovaPagamentoSensivel: false, categorizaDespesaBanco: false, gruposAcesso: [], grupoDaLojaId: null, ativo: true, modulosExtras: [], modulosBloqueados: [], cargoId: null, contaId: 'A' }
   await act(async () => {
     createRoot(container).render(React.createElement(UsuariosTable, {
       usuarios: [usuario], lojas: [], grupos: [], limites, cargos: [], contaAtiva: 'A', liberaveis: null, liberadosPorUsuario: {},
@@ -308,4 +308,34 @@ test('painel (#558): desativar e depois reativar alterna de verdade; excluir fec
   await clicar(confirmar)
   assert.equal(chamadas.at(-1), 'excluir')
   assert.ok(![...document.querySelectorAll('h2')].some(h => h.textContent?.includes('Helena Prado')), 'o painel fechou')
+})
+
+// ─── Categoriza saídas do banco (#149) ─────────────────────────────────────────
+const socioCategoriza = { ...socioAlvo, id: 'u8', nome: 'Sócio Que Categoriza', categorizaDespesaBanco: true }
+const abaAprovacao = () => [...document.querySelectorAll('[role=tab]')].find(t => t.textContent?.trim() === 'Aprovação')
+const abrirFicha = async (nome: string) => clicar([...document.querySelectorAll('button')].find(b => b.textContent?.includes(nome)))
+
+test('admin_geral vê a caixa Categoriza saídas do banco livre na aba Aprovação do sócio e o salvar manda o valor (#149)', async () => {
+  await montar('admin_geral', [socioCategoriza])
+  await abrirFicha('Sócio Que Categoriza')
+  await clicar(abaAprovacao())
+  assert.equal(caixaDe('Categoriza saídas do banco')?.checked, true)
+  assert.equal(caixaDe('Categoriza saídas do banco')?.disabled, false)
+  editadas.length = 0
+  await clicar(botao('Salvar'))
+  assert.equal(editadas.at(-1)?.dados.categorizaDespesaBanco, true, 'salvar outro campo não desmarca')
+})
+
+test('sócio vê a caixa Categoriza saídas do banco travada (#149)', async () => {
+  await montar('admin_socio', [socioCategoriza], { gestor: gestorSocio })
+  await abrirFicha('Sócio Que Categoriza')
+  await clicar(abaAprovacao())
+  assert.equal(caixaDe('Categoriza saídas do banco')?.checked, true)
+  assert.equal(caixaDe('Categoriza saídas do banco')?.disabled, true)
+})
+
+test('a caixa Categoriza saídas do banco não aparece para quem não é sócio (#149)', async () => {
+  await montar('admin_geral', [{ ...base, id: 'u9', nome: 'Aux Da Loja', papel: 'aux_adm', cargoId: null }])
+  await abrirFicha('Aux Da Loja')
+  assert.ok(!caixaDe('Categoriza saídas do banco'))
 })
