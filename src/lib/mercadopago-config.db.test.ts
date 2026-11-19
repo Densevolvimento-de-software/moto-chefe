@@ -69,7 +69,11 @@ test('falha da última rodada só grava com hora e frase juntas', async () => {
       tx.transaction(async sp => {
         await sp.execute(sql`update mercadopago_config set ultima_falha_em = ${em}::timestamptz, ultima_falha_erro = ${erro} where grupo_id = ${a}`)
       })
-    const recusa = (e: unknown) => (e as { cause?: { code?: string } }).cause?.code === '23514' || (e as { code?: string }).code === '23514'
+    type ErroPg = { code?: string; constraint?: string; cause?: ErroPg }
+    const recusa = (e: unknown) => {
+      const pg = (e as ErroPg).cause ?? (e as ErroPg)
+      return pg.code === '23514' && pg.constraint === 'mercadopago_config_ultima_falha_par'
+    }
     await assert.rejects(falha('2026-11-18T12:00:00Z', null), recusa)
     await assert.rejects(falha(null, 'O Mercado Pago recusou a credencial deste grupo (HTTP 401).'), recusa)
     await falha('2026-11-18T12:00:00Z', 'O Mercado Pago recusou a credencial deste grupo (HTTP 401).')
