@@ -6,15 +6,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Link2, Link2Off, Loader2, CheckCircle2, Search } from 'lucide-react'
 import { buscarVendasParaVincular, buscarVendaManual, vincularVendaAction, desvincularVendaAction } from '../actions'
 import { dataPuraBr } from '@/lib/data-venda'
+import { brl } from '@/lib/dashboard-painel'
+import { cn } from '@/lib/utils'
+import { LINHA_PIX } from '@/lib/conciliacao-cartao'
+import { tiposDoPagamentoDaLinha } from '@/lib/conciliacao-status'
 import type { AlvoTipo } from '@/lib/conciliacao-alvo'
 
 type Venda = Awaited<ReturnType<typeof buscarVendasParaVincular>>[number]
 type PgtoItem = { tipo: string; valor: number | string; operadora?: string; parcelas?: number; autorizacao?: string }
 
-const TIPO_CARTAO_LABEL: Record<string, string> = {
+// Rótulo do pagamento que a linha cobre (cartão, ou PIX para a linha pix da maquininha).
+const ROTULO_DO_PAGAMENTO: Record<string, string> = {
   cartao_credito: 'Crédito',
   cartao_debito:  'Débito',
   link_pagamento: 'Link',
+  pix:            'PIX',
 }
 
 type Props = {
@@ -23,9 +29,81 @@ type Props = {
   valorRef: number
   vendaVinculada?: { id: string; numero: number; clienteNome: string; valor: string } | null
   tipoVinculado?: AlvoTipo
+  /** Tipo da linha: a linha pix da maquininha procura e mostra o pagamento PIX da venda (#51). */
+  tipoLinha?: string
+  tamanho?: Tamanho
 }
 
-export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVinculada, tipoVinculado }: Props) {
+/** 'toque': 44 px, na lista do celular; 'largo': 44 px na largura toda, na folha; sem tamanho: pequeno, na tabela. */
+type Tamanho = 'toque' | 'largo'
+const CLASSE_DO_VINCULAR: Record<Tamanho | 'tabela', string> = {
+  tabela: 'h-7 text-xs px-2 text-muted-foreground',
+  toque: 'h-11 px-3',
+  largo: 'h-11 w-full',
+}
+
+/** "PA" (venda de peça) ou "OS" antes do número; venda de moto não tem. */
+export function ChipDoAlvo({ tipo, className }: { tipo?: AlvoTipo; className?: string }) {
+  if (tipo !== 'peca' && tipo !== 'os') return null
+  return <span className={cn('text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5', className)}>{tipo === 'peca' ? 'PA' : 'OS'}</span>
+}
+
+/**
+ * "#31902, Maria": a venda da linha na tabela, com ou sem o Desvincular ao lado. `estornada`: a venda de que o dinheiro
+ * voltou, sem o selo verde de ligada.
+ */
+export function RotuloDoAlvo({ numero, clienteNome, tipo, estornada = false }: {
+  numero: number; clienteNome: string; tipo?: AlvoTipo; estornada?: boolean
+}) {
+  return (
+    <span className={cn('flex items-center gap-1 text-xs font-medium', !estornada && 'text-success')}>
+      {!estornada && <CheckCircle2 size={12} />}
+      <ChipDoAlvo tipo={tipo} />
+      #{numero}, {clienteNome.split(' ')[0]}
+    </span>
+  )
+}
+
+/** Tira o vínculo da linha. 'largo': botão da folha do celular; sem tamanho, só o ícone da tabela. */
+export function BotaoDesvincular({ conciliacaoId, tamanho }: { conciliacaoId: string; tamanho?: 'largo' }) {
+  const [pending, startTransition] = useTransition()
+
+  function desvincular() {
+    startTransition(async () => {
+      try {
+        const r = await desvincularVendaAction(conciliacaoId)
+        if (!r.ok) { toast.error(r.erro); return }
+        toast.success('Vínculo removido')
+      } catch {
+        toast.error('Erro ao desvincular')
+      }
+    })
+  }
+
+  const px = tamanho ? 16 : 12
+  const icone = pending ? <Loader2 size={px} className="animate-spin" /> : <Link2Off size={px} />
+  if (tamanho) {
+    return (
+      <Button variant="outline" onClick={desvincular} disabled={pending} className="h-11 w-full text-destructive">
+        {icone} Desvincular da venda
+      </Button>
+    )
+  }
+  return (
+    <button
+      onClick={desvincular}
+      disabled={pending}
+      title="Desvincular"
+      className="text-muted-foreground hover:text-destructive transition-colors"
+    >
+      {icone}
+    </button>
+  )
+}
+
+export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVinculada, tipoVinculado, tipoLinha, tamanho }: Props) {
+  const tiposDaLinha = tiposDoPagamentoDaLinha(tipoLinha)
+  const linhaPix = tipoLinha === LINHA_PIX
   const [open, setOpen]               = useState(false)
   const [vendas, setVendas]           = useState<Venda[]>([])
   const [carregando, setCarregando]   = useState(false)
@@ -77,21 +155,9 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
     })
   }
 
-  function desvincular() {
-    startTransition(async () => {
-      try {
-        const r = await desvincularVendaAction(conciliacaoId)
-        if (!r.ok) { toast.error(r.erro); return }
-        toast.success('Vínculo removido')
-      } catch {
-        toast.error('Erro ao desvincular')
-      }
-    })
-  }
-
   function renderVenda(v: Venda, force = false) {
     const pgtos = (v.pagamentos as PgtoItem[] | null) ?? []
-    const pgtoCartao = pgtos.filter(p => p.tipo in TIPO_CARTAO_LABEL)
+    const pgtoDaLinha = pgtos.filter(p => tiposDaLinha.has(p.tipo))
 
     return (
       <button
@@ -106,34 +172,29 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
       >
         <div className="flex items-center justify-between">
           <span className="font-medium text-foreground">
-            {v.tipo === 'peca' && (
-              <span className="text-xs font-semibold text-info bg-info/10 rounded px-1.5 py-0.5 mr-1.5">PA</span>
-            )}
-            {v.tipo === 'os' && (
-              <span className="text-xs font-semibold text-info bg-info/10 rounded px-1.5 py-0.5 mr-1.5">OS</span>
-            )}
-            {v.tipo === 'os' ? `OS #${v.numero}` : `Venda #${v.numero}`} — {v.clienteNome}
+            <ChipDoAlvo tipo={v.tipo} className="mr-1.5" />
+            {v.tipo === 'os' ? `OS #${v.numero}` : `Venda #${v.numero}`}, {v.clienteNome}
           </span>
           <span className="font-semibold text-foreground">
-            {v.valor ? parseFloat(v.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
+            {v.valor ? brl(parseFloat(v.valor)) : '-'}
           </span>
         </div>
         <div className="text-xs text-muted-foreground mt-0.5">
           {v.dataVenda
             ? new Date(v.dataVenda).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-            : '—'}
+            : '-'}
           {' · '}{v.formaPagamento}
         </div>
-        {pgtoCartao.length > 0 && (
+        {pgtoDaLinha.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">
-            {pgtoCartao.map((p, i) => (
+            {pgtoDaLinha.map((p, i) => (
               <span
                 key={i}
                 className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                   force ? 'bg-warning/15 text-warning' : 'bg-info/15 text-info'
                 }`}
               >
-                {TIPO_CARTAO_LABEL[p.tipo]}
+                {ROTULO_DO_PAGAMENTO[p.tipo]}
                 {p.parcelas && p.parcelas > 1 ? ` ${p.parcelas}x` : ''}{' '}
                 {parseFloat(String(p.valor)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 {p.autorizacao ? ` · ${p.autorizacao}` : ''}
@@ -149,38 +210,30 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
   if (vendaVinculada) {
     return (
       <div className="flex items-center gap-1.5">
-        <span className="flex items-center gap-1 text-xs text-success font-medium">
-          <CheckCircle2 size={12} />
-          {tipoVinculado === 'peca' && (
-            <span className="text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5">PA</span>
-          )}
-          {tipoVinculado === 'os' && (
-            <span className="text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5">OS</span>
-          )}
-          #{vendaVinculada.numero} — {vendaVinculada.clienteNome.split(' ')[0]}
-        </span>
-        <button
-          onClick={desvincular}
-          disabled={pending}
-          title="Desvincular"
-          className="text-muted-foreground hover:text-destructive transition-colors"
-        >
-          {pending ? <Loader2 size={12} className="animate-spin" /> : <Link2Off size={12} />}
-        </button>
+        <RotuloDoAlvo numero={vendaVinculada.numero} clienteNome={vendaVinculada.clienteNome} tipo={tipoVinculado} />
+        <BotaoDesvincular conciliacaoId={conciliacaoId} />
       </div>
     )
   }
 
   return (
     <>
-      <Button variant="ghost" size="sm" className="h-7 text-xs px-2 text-muted-foreground" onClick={abrirModal}>
-        <Link2 size={12} className="mr-1" /> Vincular
+      <Button
+        variant={tamanho ? 'outline' : 'ghost'}
+        size="sm"
+        className={CLASSE_DO_VINCULAR[tamanho ?? 'tabela']}
+        onClick={abrirModal}
+      >
+        <Link2 size={tamanho ? 16 : 12} className="mr-1" /> Vincular
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Vincular a uma venda</DialogTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <DialogTitle>Vincular a uma venda</DialogTitle>
+              {linhaPix && <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">PIX na maquininha</span>}
+            </div>
             <p className="text-sm text-muted-foreground">
               Recebimento de{' '}
               <span className="font-semibold">{valorRef.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
@@ -202,7 +255,7 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
 
             {!carregando && vendas.length === 0 && (
               <p className="text-sm text-muted-foreground py-2">
-                Nenhuma venda com cartão no valor exato encontrada.
+                {linhaPix ? 'Nenhuma venda com PIX no valor exato encontrada.' : 'Nenhuma venda com cartão no valor exato encontrada.'}
               </p>
             )}
 

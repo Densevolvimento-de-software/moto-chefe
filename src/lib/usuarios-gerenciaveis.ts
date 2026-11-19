@@ -24,6 +24,7 @@ export async function listarUsuariosGerenciaveis(
       conecta:  usuarios.conecta,
       gruposAprovacao:         usuarios.gruposAprovacao,
       aprovaPagamentoSensivel: usuarios.aprovaPagamentoSensivel,
+      categorizaDespesaBanco:  usuarios.categorizaDespesaBanco,
       gruposAcesso:            usuarios.gruposAcesso,
       ativo:                   usuarios.ativo,
       modulosExtras:           usuarios.modulosExtras,

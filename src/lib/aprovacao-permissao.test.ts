@@ -1,37 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  aprovaBaixoValorEmQualquerGrupo,
   aprovaEmGrupoExtra,
   aprovaPagamentoSensivelNoGrupo,
   socioAprovaNoGrupo,
-  EMAIL_ACESSO_MULTI_GRUPO,
 } from './aprovacao-permissao'
 
 const SUL_DE_MINAS = 'grupo-sdm'
 const BH = 'grupo-bh'
 const VALE = 'grupo-vale'
-
-test('admin_geral aprova em qualquer grupo', () => {
-  assert.equal(aprovaBaixoValorEmQualquerGrupo({ papel: 'admin_geral', email: 'x@y.com' }), true)
-})
-
-// O bug: o sócio multi-grupo (loja fixa no Sul de Minas) não conseguia aprovar
-// no BH porque o gate amarrava a aprovação ao grupo da loja fixa dele.
-test('usuário multi-grupo aprova em qualquer grupo (Sul de Minas E BH)', () => {
-  assert.equal(
-    aprovaBaixoValorEmQualquerGrupo({ papel: 'admin_socio', email: EMAIL_ACESSO_MULTI_GRUPO }),
-    true,
-  )
-})
-
-test('admin_socio comum não aprova fora do próprio grupo', () => {
-  assert.equal(aprovaBaixoValorEmQualquerGrupo({ papel: 'admin_socio', email: 'socio.bh@y.com' }), false)
-})
-
-test('vendedor nunca é aprovador global', () => {
-  assert.equal(aprovaBaixoValorEmQualquerGrupo({ papel: 'vendedor', email: 'v@y.com' }), false)
-})
 
 test('admin_socio aprova venda do próprio grupo', () => {
   assert.equal(
@@ -62,76 +39,74 @@ test('não-sócio não passa pela regra de grupo', () => {
 })
 
 // ─── grupos liberados no cadastro (usuarios.grupos_aprovacao) ─────────────────
-// Caso do João Brito: loja fixa em Itajubá (Sul de Minas), liberado no BH e no Vale.
+// Sócio com loja fixa no Sul de Minas, liberado no BH e no Vale.
 
-const JOAO = {
+const SOCIO_LIBERADO = {
   papel: 'admin_socio',
-  email: 'joao.brito@motochefesuldeminas.com.br',
-  lojaId: 'loja-itajuba',
+  lojaId: 'loja-sdm',
   gruposAprovacao: [BH, VALE],
   aprovaPagamentoSensivel: true,
 }
 
 test('sócio liberado aprova baixo valor no grupo extra', () => {
-  assert.equal(aprovaEmGrupoExtra(JOAO, BH), true)
-  assert.equal(aprovaEmGrupoExtra(JOAO, VALE), true)
+  assert.equal(aprovaEmGrupoExtra(SOCIO_LIBERADO, BH), true)
+  assert.equal(aprovaEmGrupoExtra(SOCIO_LIBERADO, VALE), true)
 })
 
 test('grupo fora da lista não é liberado pelo cadastro', () => {
   // Sul de Minas não está na lista — ele aprova lá pela loja fixa (socioAprovaNoGrupo).
-  assert.equal(aprovaEmGrupoExtra(JOAO, SUL_DE_MINAS), false)
+  assert.equal(aprovaEmGrupoExtra(SOCIO_LIBERADO, SUL_DE_MINAS), false)
 })
 
 test('grupo extra não vale para papel que não aprova', () => {
   assert.equal(
-    aprovaEmGrupoExtra({ ...JOAO, papel: 'vendedor' }, BH),
+    aprovaEmGrupoExtra({ ...SOCIO_LIBERADO, papel: 'vendedor' }, BH),
     false,
   )
 })
 
 test('sem grupos no cadastro, nada é liberado', () => {
-  const socioComum = { papel: 'admin_socio', email: 'luiz@y.com', lojaId: 'loja-x' }
+  const socioComum = { papel: 'admin_socio', lojaId: 'loja-x' }
   assert.equal(aprovaEmGrupoExtra(socioComum, BH), false)
 })
 
 // ─── financiamento / transferência ────────────────────────────────────────────
 
-test('João aprova financiamento no grupo da loja dele e nos grupos extras', () => {
-  assert.equal(aprovaPagamentoSensivelNoGrupo(JOAO, SUL_DE_MINAS, SUL_DE_MINAS), true)
-  assert.equal(aprovaPagamentoSensivelNoGrupo(JOAO, BH, SUL_DE_MINAS), true)
-  assert.equal(aprovaPagamentoSensivelNoGrupo(JOAO, VALE, SUL_DE_MINAS), true)
+test('sócio liberado aprova financiamento no grupo da loja dele e nos grupos extras', () => {
+  assert.equal(aprovaPagamentoSensivelNoGrupo(SOCIO_LIBERADO, SUL_DE_MINAS, SUL_DE_MINAS), true)
+  assert.equal(aprovaPagamentoSensivelNoGrupo(SOCIO_LIBERADO, BH, SUL_DE_MINAS), true)
+  assert.equal(aprovaPagamentoSensivelNoGrupo(SOCIO_LIBERADO, VALE, SUL_DE_MINAS), true)
 })
 
 test('sócio sem a liberação não aprova financiamento nem no próprio grupo', () => {
   const socioComum = {
     papel: 'admin_socio',
-    email: 'luiz.paulo@motochefesuldeminas.com.br',
-    lojaId: 'loja-galpao',
+    lojaId: 'loja-sdm',
     gruposAprovacao: [],
     aprovaPagamentoSensivel: false,
   }
   assert.equal(aprovaPagamentoSensivelNoGrupo(socioComum, SUL_DE_MINAS, SUL_DE_MINAS), false)
 })
 
-test('usuário multi-grupo continua aprovando financiamento em qualquer grupo', () => {
-  const cesar = { papel: 'admin_geral', email: EMAIL_ACESSO_MULTI_GRUPO, lojaId: null }
-  assert.equal(aprovaPagamentoSensivelNoGrupo(cesar, BH, null), true)
-})
-
-// admin_geral não ganha financiamento pelo cargo — é liberação nominal.
-test('admin_geral sem a liberação não aprova financiamento', () => {
-  const outroAdmin = { papel: 'admin_geral', email: 'admin@motochefe.com', lojaId: null }
+// admin_geral não ganha financiamento pelo cargo: precisa da liberação no cadastro.
+test('guarda: admin_geral sem a liberação não aprova financiamento', () => {
+  const outroAdmin = { papel: 'admin_geral', lojaId: null }
   assert.equal(aprovaPagamentoSensivelNoGrupo(outroAdmin, BH, null), false)
 })
 
 test('liberação de financiamento não vale fora dos grupos do usuário', () => {
-  const soBH = { ...JOAO, gruposAprovacao: [BH] }
+  const soBH = { ...SOCIO_LIBERADO, gruposAprovacao: [BH] }
   assert.equal(aprovaPagamentoSensivelNoGrupo(soBH, VALE, SUL_DE_MINAS), false)
 })
 
 test('financiamento não vale para papel que não aprova', () => {
   assert.equal(
-    aprovaPagamentoSensivelNoGrupo({ ...JOAO, papel: 'aux_adm' }, BH, SUL_DE_MINAS),
+    aprovaPagamentoSensivelNoGrupo({ ...SOCIO_LIBERADO, papel: 'aux_adm' }, BH, SUL_DE_MINAS),
     false,
   )
+})
+
+test('admin_geral com a liberação aprova financiamento em qualquer grupo, sem loja nem grupos no cadastro (#149)', () => {
+  const geral = { papel: 'admin_geral', lojaId: null, gruposAprovacao: [], aprovaPagamentoSensivel: true }
+  for (const grupo of [SUL_DE_MINAS, BH, VALE]) assert.equal(aprovaPagamentoSensivelNoGrupo(geral, grupo, null), true, grupo)
 })

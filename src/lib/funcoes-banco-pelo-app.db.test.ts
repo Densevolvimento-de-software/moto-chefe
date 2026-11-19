@@ -4,7 +4,7 @@
 import { after, before, describe, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { semearContaBase, semearGrupo, semearUsuario } from '@/test/semear-conta'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -36,7 +36,7 @@ let transf: typeof import('@/app/(dashboard)/transferencias/actions')
 let garantiasActions: typeof import('@/app/(dashboard)/garantias/actions')
 let alterarStatusAction: typeof import('@/app/(dashboard)/estoque/[id]/actions')['alterarStatusAction']
 let correcaoStatusAdminAction: typeof import('@/app/(dashboard)/admin/acoes/actions')['correcaoStatusAdminAction']
-const s = { contaId: '', grupoId: '', lojaId: '', destinoId: '', modeloId: '', contaBId: '', grupoBId: '' }
+const s = { contaId: '', grupoId: '', lojaId: '', destinoId: '', modeloId: '', contaBId: '', grupoBId: '', mecanicoA: '', mecanicoB: '', grupoA2Id: '', mecanicoA2: '' }
 const quem = { socio: {}, aux: {}, admin: {}, socioB: {}, auxB: {} } as Record<'socio' | 'aux' | 'admin' | 'socioB' | 'auxB', Record<string, unknown>>
 
 const umaLinha = async (q: ReturnType<typeof sql>) => (await execRows(q))[0]
@@ -68,6 +68,12 @@ before(async () => {
   const comumB = { gruposAcesso: [contaB.grupoId], contaId: contaB.contaId, grupoLiberado: null }
   quem.socioB = { ...comumB, id: await semearUsuario(db, contaB, { papel: 'admin_socio', rotulo: 'socio', semLoja: true, comGrupo: true }), papel: 'admin_socio', lojaId: null }
   quem.auxB = { ...comumB, id: await semearUsuario(db, contaB, { papel: 'aux_adm', rotulo: 'aux' }), papel: 'aux_adm', lojaId: contaB.lojaId }
+  s.mecanicoA = await semearUsuario(db, base, { papel: 'mecanico', rotulo: 'mec', nomeDoUsuario: 'Mecânico A', comConta: true })
+  s.mecanicoB = await semearUsuario(db, contaB, { papel: 'mecanico', rotulo: 'mec', nomeDoUsuario: 'Mecânico B', comConta: true })
+  // Outro grupo da Conta A: na persona do admin_rede com o grupo da A liberado, o mecânico daqui não vale.
+  const a2 = await semearGrupo(db, base.contaId, { prefixo: P, nome: 'A2', cnpj: '00000000089113' })
+  s.grupoA2Id = a2.grupoId
+  s.mecanicoA2 = await semearUsuario(db, { ...base, ...a2, nome: 'A2' }, { papel: 'mecanico', rotulo: 'mec', nomeDoUsuario: 'Mecânico A2', comConta: true })
 })
 
 after(async () => {
@@ -79,8 +85,8 @@ after(async () => {
   await db.execute(sql`delete from modelos where modelo = ${P}`)
   await db.execute(sql`delete from usuarios where email like ${'%-' + P.toLowerCase() + '-%'}`)
   await db.execute(sql`update lojas set fabrica_email = null, fabrica_senha = null where id = ${s.lojaId}`)
-  await db.execute(sql`delete from lojas where grupo_id in (${s.grupoId}, ${s.grupoBId})`)
-  await db.execute(sql`delete from grupos where id in (${s.grupoId}, ${s.grupoBId})`)
+  await db.execute(sql`delete from lojas where grupo_id in (${s.grupoId}, ${s.grupoBId}, ${s.grupoA2Id})`)
+  await db.execute(sql`delete from grupos where id in (${s.grupoId}, ${s.grupoBId}, ${s.grupoA2Id})`)
   await db.execute(sql`delete from contas where id in (${s.contaId}, ${s.contaBId})`)
   for (const m of mocks) m.restore()
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
@@ -137,6 +143,36 @@ test('alterar status da moto grava o status e o histórico com quem mudou', asyn
     { status_anterior: 'montada', status_novo: 'em_garantia', observacao: 'barulho no motor', usuario_id: quem.aux.id })
 })
 
+test('guarda: montar a moto com mecânico da Conta grava o responsável, a data e o histórico com o nome', async () => {
+  const motoId = await novaMoto('caixa')
+  usuarioDaSessao = quem.aux
+  await alterarStatusAction(motoId, 'montada', undefined, s.mecanicoA, '2026-11-10')
+  assert.deepEqual(await umaLinha(sql`select status, responsavel_montagem_id, data_montagem::text, disponibilidade from motos where id = ${motoId}`),
+    { status: 'montada', responsavel_montagem_id: s.mecanicoA, data_montagem: '2026-11-10', disponibilidade: 'disponivel' })
+  assert.equal((await ultimoHistorico(motoId)).observacao, 'Mecânico responsável: Mecânico A')
+})
+
+const montadaCom = async (motoId: string) => umaLinha(sql`select status, responsavel_montagem_id from motos where id = ${motoId}`)
+
+test('guarda: admin_geral (sem Conta) monta com mecânico da Conta da moto', async () => {
+  const motoId = await novaMoto('caixa')
+  usuarioDaSessao = { ...quem.admin, contaId: null, gruposAcesso: [] }
+  await alterarStatusAction(motoId, 'montada', undefined, s.mecanicoA)
+  assert.deepEqual(await montadaCom(motoId), { status: 'montada', responsavel_montagem_id: s.mecanicoA })
+})
+
+test('admin_rede na persona do grupo liberado: monta com mecânico dele; o de outro grupo da Conta dona recebe "não encontrado"', async () => {
+  const persona = { id: quem.socioB.id, papel: 'admin_socio', papelReal: 'admin_rede', lojaId: null, contaId: s.contaId,
+    gruposAcesso: [s.grupoId], gruposAprovacao: [], grupoLiberado: s.grupoId }
+  usuarioDaSessao = persona
+  const recusada = await novaMoto('caixa')
+  await assert.rejects(alterarStatusAction(recusada, 'montada', undefined, s.mecanicoA2), { message: 'Mecânico não encontrado' })
+  assert.deepEqual(await montadaCom(recusada), { status: 'caixa', responsavel_montagem_id: null })
+  const montada = await novaMoto('caixa')
+  await alterarStatusAction(montada, 'montada', undefined, s.mecanicoA)
+  assert.deepEqual(await montadaCom(montada), { status: 'montada', responsavel_montagem_id: s.mecanicoA })
+})
+
 test('correção de status pelo admin grava o status e o histórico', async () => {
   const motoId = await novaMoto('montada')
   usuarioDaSessao = quem.admin
@@ -154,7 +190,7 @@ describe('usuário de outra Conta', () => {
       try { await agir(alvo); return 'aceitou' } catch (e) { return (e as Error).message }
     }
     const paraInexistente = await frase(inexistente)
-    assert.match(paraInexistente, /não encontrada?$/)
+    assert.match(paraInexistente, /não encontrad[oa]$/)
     assert.equal(await frase(id), paraInexistente)
   }
 
@@ -174,6 +210,15 @@ describe('usuário de outra Conta', () => {
     usuarioDaSessao = quem.socioB
     await recusaIgualAInexistente(alvo => garantiasActions.encerrarGarantiaAction(alvo, 'x'), id)
     assert.equal((await umaLinha(sql`select status from garantias where id = ${id}`)).status, 'ativa')
+  })
+
+  test('montagem com mecânico da Conta B: mesma frase de mecânico inexistente e a moto fica intacta', async () => {
+    const motoId = await novaMoto('caixa')
+    usuarioDaSessao = quem.aux
+    await recusaIgualAInexistente(mec => alterarStatusAction(motoId, 'montada', undefined, mec), s.mecanicoB)
+    assert.deepEqual(await umaLinha(sql`select status, responsavel_montagem_id, data_montagem, disponibilidade,
+      (select count(*)::int from historico_estoque where moto_id = ${motoId}) as historicos from motos where id = ${motoId}`),
+    { status: 'caixa', responsavel_montagem_id: null, data_montagem: null, disponibilidade: 'disponivel', historicos: 0 })
   })
 
   test('não muda o status de moto da Conta A', async () => {

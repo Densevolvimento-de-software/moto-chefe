@@ -32,7 +32,7 @@ const gestor = (papel: string) => ({ id: 'g', papel, gruposVisiveis: [], gruposA
 const cargoGerente = { id: 'c1', nome: 'Gerente', papelBase: 'aux_adm', contaId: 'A' }
 const cargoCaixa = { id: 'c2', nome: 'Caixa', papelBase: 'aux_adm', contaId: 'A' }
 const base = { id: 'u', email: 'u@exemplo.com', papeisExtras: [], lojaId: null, lojaNome: 'Loja Centro', conecta: null, gruposAprovacao: [],
-  aprovaPagamentoSensivel: false, gruposAcesso: [], grupoDaLojaId: null, ativo: true, modulosExtras: [], modulosBloqueados: [], contaId: 'A' }
+  aprovaPagamentoSensivel: false, categorizaDespesaBanco: false, gruposAcesso: [], grupoDaLojaId: null, ativo: true, modulosExtras: [], modulosBloqueados: [], contaId: 'A' }
 const marina = { ...base, id: 'u1', nome: 'Marina Costa', papel: 'cargo', cargoId: 'c1' }
 const bruno = { ...base, id: 'u2', nome: 'Bruno Alves', papel: 'vendedor', cargoId: null }
 
@@ -290,7 +290,7 @@ test('painel (#558): desativar e depois reativar alterna de verdade; excluir fec
   document.body.appendChild(container)
   const limites = limitesDaTela({ id: 'geral', papel: 'admin_geral', gruposVisiveis: [], gruposAprovacao: [], itensLiberaveis: [], aprovaPagamentoSensivel: false })
   const usuario = { id: 'u1', nome: 'Helena Prado', email: 'helena@exemplo.com', papel: 'vendedor', papeisExtras: [], lojaId: null, lojaNome: 'Loja Centro', conecta: null,
-    gruposAprovacao: [], aprovaPagamentoSensivel: false, gruposAcesso: [], grupoDaLojaId: null, ativo: true, modulosExtras: [], modulosBloqueados: [], cargoId: null, contaId: 'A' }
+    gruposAprovacao: [], aprovaPagamentoSensivel: false, categorizaDespesaBanco: false, gruposAcesso: [], grupoDaLojaId: null, ativo: true, modulosExtras: [], modulosBloqueados: [], cargoId: null, contaId: 'A' }
   await act(async () => {
     createRoot(container).render(React.createElement(UsuariosTable, {
       usuarios: [usuario], lojas: [], grupos: [], limites, cargos: [], contaAtiva: 'A', liberaveis: null, liberadosPorUsuario: {},
@@ -308,4 +308,51 @@ test('painel (#558): desativar e depois reativar alterna de verdade; excluir fec
   await clicar(confirmar)
   assert.equal(chamadas.at(-1), 'excluir')
   assert.ok(![...document.querySelectorAll('h2')].some(h => h.textContent?.includes('Helena Prado')), 'o painel fechou')
+})
+
+// ─── Categoriza saídas do banco (#149) ─────────────────────────────────────────
+const socioCategoriza = { ...socioAlvo, id: 'u8', nome: 'Sócio Que Categoriza', categorizaDespesaBanco: true }
+const abaAprovacao = () => [...document.querySelectorAll('[role=tab]')].find(t => t.textContent?.trim() === 'Aprovação')
+const abrirFicha = async (nome: string) => clicar([...document.querySelectorAll('button')].find(b => b.textContent?.includes(nome)))
+
+test('admin_geral vê a caixa Categoriza saídas do banco livre na aba Aprovação do sócio e o salvar manda o valor (#149)', async () => {
+  await montar('admin_geral', [socioCategoriza])
+  await abrirFicha('Sócio Que Categoriza')
+  await clicar(abaAprovacao())
+  assert.equal(caixaDe('Categoriza saídas do banco')?.checked, true)
+  assert.equal(caixaDe('Categoriza saídas do banco')?.disabled, false)
+  editadas.length = 0
+  await clicar(botao('Salvar'))
+  assert.equal(editadas.at(-1)?.dados.categorizaDespesaBanco, true, 'salvar sem mexer na caixa manda a marca que ele tem')
+})
+
+test('sócio vê a caixa Categoriza saídas do banco travada (#149)', async () => {
+  await montar('admin_socio', [socioCategoriza], { gestor: gestorSocio })
+  await abrirFicha('Sócio Que Categoriza')
+  await clicar(abaAprovacao())
+  assert.equal(caixaDe('Categoriza saídas do banco')?.checked, true)
+  assert.equal(caixaDe('Categoriza saídas do banco')?.disabled, true)
+})
+
+test('a caixa Categoriza saídas do banco não aparece para quem não é sócio, mesmo com a aba Aprovação (#149)', async () => {
+  await montar('admin_geral', [{ ...base, id: 'u9', nome: 'Outro Admin Geral', papel: 'admin_geral', cargoId: null }])
+  await abrirFicha('Outro Admin Geral')
+  await clicar(abaAprovacao())
+  assert.ok(caixaDe('Aprova transferência bancária'), 'a aba Aprovação abriu')
+  assert.ok(!caixaDe('Categoriza saídas do banco'))
+})
+
+test('a caixa Categoriza saídas do banco aparece para cargo com base Admin Sócio e para admin de rede (#149)', async () => {
+  const cargoSocioCaixa = { id: 'c9', nome: 'Gerente Sócio', papelBase: 'admin_socio', contaId: 'A' }
+  await montar('admin_geral', [{ ...base, id: 'u10', nome: 'Gerente Com Cargo', papel: 'cargo', cargoId: 'c9' }], { cargos: [cargoSocioCaixa] })
+  await abrirFicha('Gerente Com Cargo')
+  await clicar(abaAprovacao())
+  assert.ok(caixaDe('Categoriza saídas do banco'))
+  const { act } = await import('react')
+  await act(async () => { for (const r of raizes.splice(0)) r.unmount() })
+  document.body.innerHTML = ''
+  await montar('admin_geral', [{ ...base, id: 'u11', nome: 'Rede Da Conta', papel: 'admin_rede', cargoId: null }])
+  await abrirFicha('Rede Da Conta')
+  await clicar(abaAprovacao())
+  assert.ok(caixaDe('Categoriza saídas do banco'))
 })

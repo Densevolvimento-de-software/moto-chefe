@@ -15,7 +15,7 @@ import { CargosDialog, type CargoDaConta } from './cargos-dialog'
 import { cargosDoAlvo } from '@/lib/cargos-opcoes'
 import { OPCOES_DE_PAPEL, rotuloDoPapelGravado } from '@/lib/rotulo-do-papel'
 import type { LimitesDaTela } from '@/lib/gestao-usuarios'
-import { guardaAcessoAGrupos, guardaAprovacao, papelDasListas } from '@/lib/listas-do-cadastro'
+import { guardaAcessoAGrupos, guardaAprovacao, guardaCategorizaDespesa, papelDasListas } from '@/lib/listas-do-cadastro'
 import { diferencaDaFuncao } from '@/lib/modulos-picker-estado'
 import { ITENS } from '@/lib/navegacao'
 import { contaDoFormulario, gruposDaConta } from '@/lib/grupos-do-formulario'
@@ -40,6 +40,7 @@ type Usuario = {
   conecta: string | null
   gruposAprovacao: string[]
   aprovaPagamentoSensivel: boolean
+  categorizaDespesaBanco: boolean
   gruposAcesso: string[]
   grupoDaLojaId: string | null
   ativo: boolean
@@ -58,6 +59,7 @@ type DadosForm = {
   conecta: string | null
   gruposAprovacao: string[]
   aprovaPagamentoSensivel: boolean
+  categorizaDespesaBanco: boolean
   gruposAcesso: string[]
   modulosExtras: string[]
   modulosBloqueados: string[]
@@ -141,6 +143,7 @@ function FormUsuario({
   const [conecta, setConecta] = useState(inicial?.conecta ?? '')
   const [gruposAprov, setGruposAprov] = useState<string[]>(inicial?.gruposAprovacao ?? [])
   const [aprovaSensivel, setAprovaSensivel] = useState(inicial?.aprovaPagamentoSensivel ?? false)
+  const [categoriza, setCategoriza] = useState(inicial?.categorizaDespesaBanco ?? false)
   const [gruposAcesso, setGruposAcesso] = useState<string[]>(inicial?.gruposAcesso ?? [])
   const [modulosExtras, setModulosExtras] = useState<string[]>(inicial?.modulosExtras ?? [])
   const [modulosBloqueados, setModulosBloqueados] = useState<string[]>(inicial?.modulosBloqueados ?? [])
@@ -204,6 +207,8 @@ function FormUsuario({
       conecta: conecta.trim() || null,
       gruposAprovacao: mostrarAprovacao ? gruposAprov : [],
       aprovaPagamentoSensivel: mostrarAprovacao && aprovaSensivel,
+      // Vai o valor da ficha; o servidor só deixa o admin_geral mudar e zera para quem a marca não vale (#149).
+      categorizaDespesaBanco: guardaCategorizaDespesa(papelEfetivo) && categoriza,
       gruposAcesso: mostrarAcessoGrupos ? gruposAcesso : [],
       modulosExtras,
       modulosBloqueados,
@@ -336,6 +341,13 @@ function FormUsuario({
                 <>Aprova transferência bancária <span className="block text-xs text-muted-foreground">Nos mesmos grupos. Sem isto, ele só aprova venda abaixo do preço.</span></>,
                 !limites.aprovaPagamentoSensivel && !inicial?.aprovaPagamentoSensivel)}
             </div>
+            {guardaCategorizaDespesa(papelEfetivo) && (
+              <div className="border-t pt-3">
+                {caixa(categoriza, () => setCategoriza(v => !v),
+                  <>Categoriza saídas do banco <span className="block text-xs text-muted-foreground">Lança, edita e cancela a categorização na aba Importar do Banco de Despesas. Só o Admin Geral marca.</span></>,
+                  !limites.marcaCategorizaDespesa)}
+              </div>
+            )}
           </TabsContent>
         )}
 
@@ -416,6 +428,7 @@ export function UsuariosTable({ usuarios, lojas, grupos, limites, cargos, contaA
           conecta:   dados.conecta,
           gruposAprovacao:         dados.gruposAprovacao,
           aprovaPagamentoSensivel: dados.aprovaPagamentoSensivel,
+          categorizaDespesaBanco:  dados.categorizaDespesaBanco,
           gruposAcesso:            dados.gruposAcesso,
           modulosExtras:           dados.modulosExtras,
           modulosBloqueados:       dados.modulosBloqueados,

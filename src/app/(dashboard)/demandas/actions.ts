@@ -8,6 +8,7 @@ import { eq, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { modeloUsavelNaLoja } from '@/lib/modelos-da-conta'
 import { pagamentosFecham, somaPagamentos, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
+import { CAMPOS_PAGAMENTO_ENTRADA, pagamentosParaGravar } from '@/lib/pagamentos-gravacao'
 import { lerDocumentoCliente } from '@/lib/documento'
 
 const ADMINS = ['admin_geral', 'admin_socio']
@@ -53,16 +54,15 @@ function validarSnapshot(s: ClienteSnapshot) {
  * Confere o sinal e devolve a forma principal — a que vai para `meio_pagamento`,
  * lido pelo recibo impresso. O detalhe completo vai no jsonb `pagamentos`.
  */
-function validarSinal(sinal: DadosSinal): PagamentoEntrada {
-  if (!(sinal.valorSinal > 0)) throw new Error('Valor do sinal é obrigatório')
-  const pgs = sinal.pagamentos ?? []
+function validarSinal(valorSinal: number, pgs: PagamentoEntrada[]): PagamentoEntrada {
+  if (!(valorSinal > 0)) throw new Error('Valor do sinal é obrigatório')
   if (pgs.length === 0) throw new Error('Meio de pagamento do sinal é obrigatório')
   if (pgs.some(p => !p.tipo || !(p.valor > 0))) {
     throw new Error('Toda forma de pagamento precisa de tipo e valor')
   }
-  if (!pagamentosFecham(pgs, sinal.valorSinal)) {
+  if (!pagamentosFecham(pgs, valorSinal)) {
     throw new Error(
-      `A soma das formas de pagamento (${somaPagamentos(pgs).toFixed(2)}) não bate com o sinal (${sinal.valorSinal.toFixed(2)})`,
+      `A soma das formas de pagamento (${somaPagamentos(pgs).toFixed(2)}) não bate com o sinal (${valorSinal.toFixed(2)})`,
     )
   }
   return pgs[0]
@@ -95,7 +95,8 @@ export async function criarDemandaAction(dados: NovaDemanda): Promise<{ id: stri
   if (dados.modeloId && !(await modeloUsavelNaLoja(effectiveLojaId, dados.modeloId))) {
     throw new Error('Modelo não encontrado')
   }
-  if (dados.sinal) await conferirMaquininhas(db, effectiveLojaId, dados.sinal.pagamentos ?? [])
+  const pagamentosDoSinal = pagamentosParaGravar(dados.sinal?.pagamentos ?? [], CAMPOS_PAGAMENTO_ENTRADA, [])
+  if (dados.sinal) await conferirMaquininhas(db, effectiveLojaId, pagamentosDoSinal)
 
   const base = {
     modelo: dados.modelo.trim(),
@@ -107,13 +108,13 @@ export async function criarDemandaAction(dados: NovaDemanda): Promise<{ id: stri
 
   if (dados.sinal) {
     validarSnapshot(dados.sinal)
-    const principal = validarSinal(dados.sinal)
+    const principal = validarSinal(dados.sinal.valorSinal, pagamentosDoSinal)
     const [row] = await db.insert(demandas).values({
       ...base,
       sinalRecebido: true,
       valorSinal: String(dados.sinal.valorSinal),
       meioPagamento: principal.tipo,
-      pagamentos: dados.sinal.pagamentos,
+      pagamentos: pagamentosDoSinal,
       numero: sql`nextval('numero_venda_seq')`,
       sinalRecebidoEm: new Date(),
       ...snapshotCols(dados.sinal),
@@ -154,14 +155,15 @@ export async function marcarSinalDemandaAction(demandaId: string, sinal: DadosSi
   if (!demanda || !(await podeAgirNaLoja(usuario, demanda.lojaId))) throw new Error('Demanda não encontrada')
 
   validarSnapshot(sinal)
-  const principal = validarSinal(sinal)
-  await conferirMaquininhas(db, demanda.lojaId, sinal.pagamentos ?? [])
+  const pagamentos = pagamentosParaGravar(sinal.pagamentos ?? [], CAMPOS_PAGAMENTO_ENTRADA, [])
+  const principal = validarSinal(sinal.valorSinal, pagamentos)
+  await conferirMaquininhas(db, demanda.lojaId, pagamentos)
 
   await db.update(demandas).set({
     sinalRecebido: true,
     valorSinal: String(sinal.valorSinal),
     meioPagamento: principal.tipo,
-    pagamentos: sinal.pagamentos,
+    pagamentos,
     // atribui número do recibo só na primeira vez
     numero: demanda.numero ?? sql`nextval('numero_venda_seq')`,
     sinalRecebidoEm: new Date(),

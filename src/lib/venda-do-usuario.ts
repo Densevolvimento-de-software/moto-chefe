@@ -1,9 +1,9 @@
-import { and, desc, eq, inArray, type SQL } from 'drizzle-orm'
+import { and, desc, eq, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { grupos, lojas, vendas } from '@/lib/db/schema'
 import { podeAbrirRegistroDaLoja, podeAgirNaLoja } from '@/lib/acesso-registro'
 import { podeVerGrupo } from '@/lib/acesso-grupo'
-import { lojasDoEscopo, type EscopoDoUsuario } from '@/lib/conta'
+import { lojaNoEscopo, type EscopoDoUsuario } from '@/lib/conta'
 
 type Executor = Pick<typeof db, 'select'>
 
@@ -12,8 +12,7 @@ type Executor = Pick<typeof db, 'select'>
  * admin_geral (vê tudo), null para quem não tem Conta (não vê nada).
  */
 export function vendasDoEscopo(usuario: EscopoDoUsuario & { papel: string }): SQL | undefined | null {
-  if (usuario.papel === 'admin_geral') return undefined
-  return usuario.contaId ? inArray(vendas.lojaId, lojasDoEscopo(usuario)) : null
+  return lojaNoEscopo(usuario, vendas.lojaId)
 }
 
 /**

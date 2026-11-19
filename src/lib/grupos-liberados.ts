@@ -41,6 +41,7 @@ type UsuarioBase = {
   contaId: string | null
   gruposAcesso: string[]
   gruposAprovacao: string[]
+  categorizaDespesaBanco?: boolean
 }
 
 export type UsuarioComRede<U extends UsuarioBase> = Omit<U, 'papel'> & {
@@ -75,6 +76,8 @@ export function usuarioDaRede<U extends UsuarioBase>(usuario: U, liberados: Grup
     gruposAcesso: [ativo.grupoId],
     // Aprova no grupo liberado só se o admin_geral marcou a aprovação nele (decisão do Luis).
     gruposAprovacao: usuario.gruposAprovacao.includes(ativo.grupoId) ? [ativo.grupoId] : [],
+    // A marca de categorizar saídas do banco é da própria Conta: não vale no grupo liberado (decisão do Luis, #149).
+    categorizaDespesaBanco: false,
     gruposLiberados: [],
     grupoLiberado: ativo.grupoId,
   }

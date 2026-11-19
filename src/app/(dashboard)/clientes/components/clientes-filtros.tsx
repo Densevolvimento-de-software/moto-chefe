@@ -4,7 +4,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Filter, Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { SheetTitle } from '@/components/ui/sheet'
+import { GavetaDeBaixo } from '@/components/gaveta-de-baixo'
 
 type Valores = { busca?: string; tipoPessoa?: string; sexo?: string; cidade?: string }
 
@@ -115,21 +116,19 @@ export function ClientesFiltros({ valores, cidades }: { valores: Valores; cidade
         </Button>
       </form>
 
-      <Sheet open={aberto} onOpenChange={setAberto}>
-        <SheetContent side="bottom" className="max-h-[85dvh] gap-0 overflow-y-auto rounded-t-2xl p-4 pb-8">
-          <SheetTitle className="mb-3 text-base">Filtros</SheetTitle>
-          <form method="GET" className="space-y-4">
-            {termo.trim() && <input type="hidden" name="busca" value={termo.trim()} />}
-            {pilulas('tipoPessoa', TIPOS, valores.tipoPessoa)}
-            {pilulas('sexo', SEXOS, valores.sexo)}
-            {cidade}
-            <div className="flex gap-2 pt-2">
-              <a href={valores.busca ? `?busca=${encodeURIComponent(valores.busca)}` : '?'} className={buttonVariants({ variant: 'outline', className: 'h-11 flex-1 border-input' })}>Limpar</a>
-              <Button type="submit" className="h-11 flex-1">Aplicar</Button>
-            </div>
-          </form>
-        </SheetContent>
-      </Sheet>
+      <GavetaDeBaixo aberta={aberto} onAbertaChange={setAberto}>
+        <SheetTitle className="mb-3 text-base">Filtros</SheetTitle>
+        <form method="GET" className="space-y-4">
+          {termo.trim() && <input type="hidden" name="busca" value={termo.trim()} />}
+          {pilulas('tipoPessoa', TIPOS, valores.tipoPessoa)}
+          {pilulas('sexo', SEXOS, valores.sexo)}
+          {cidade}
+          <div className="flex gap-2 pt-2">
+            <a href={valores.busca ? `?busca=${encodeURIComponent(valores.busca)}` : '?'} className={buttonVariants({ variant: 'outline', className: 'h-11 flex-1 border-input' })}>Limpar</a>
+            <Button type="submit" className="h-11 flex-1">Aplicar</Button>
+          </div>
+        </form>
+      </GavetaDeBaixo>
 
       {/* Desktop: tudo em linha. */}
       <form method="GET" className="hidden items-end gap-3 lg:flex">

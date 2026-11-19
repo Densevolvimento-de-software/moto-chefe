@@ -3,10 +3,10 @@
 import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
-import { digitarTexto } from '@/test/eventos-dom'
+import { digitar, digitarTexto } from '@/test/eventos-dom'
 import { botao, clicar, esperar, montarDialogo } from '@/test/dialogo-em-tela'
 import type { AlvoConciliacao, PixLivre } from '@/app/(dashboard)/conciliacao/actions'
-import type { PgtoOS } from '@/lib/conciliacao-status'
+import type { EstornoDoAlvo, PgtoOS } from '@/lib/conciliacao-status'
 import type { ResultadoAction } from '@/lib/resultado-action'
 
 const { desmontar: desmontarDom } = montarDom()
@@ -20,16 +20,18 @@ type PixRec = Awaited<ReturnType<Actions['buscarPixDoAlvo']>>[number]
 const buscarPixLivres = mock.fn(async (_query: string): Promise<PixLivre[]> => [])
 const paraOAlvo = mock.fn(async (_alvo: AlvoConciliacao, _valor: number): Promise<ParaOAlvo> => ({ esperado: null, noGrupoAtivo: true, pix: [] }))
 const vincularPix = mock.fn(async (_pixId: string, _alvo: AlvoConciliacao): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
-const buscarConciliacoesPorValor = mock.fn(async (): Promise<unknown[]> => [])
+const buscarConciliacoesPorValor = mock.fn(async (..._a: unknown[]): Promise<unknown[]> => [])
+const buscarConciliacoesLivres = mock.fn(async (..._a: unknown[]): Promise<unknown[]> => [])
 const vincularCartao = mock.fn(async (_id: string, _alvo: AlvoConciliacao): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { namedExports: {
   forcarConciliacaoAction: (a: AlvoConciliacao, i: number, m: string) => forcar(a, i, m),
   desfazerConciliacaoForcadaAction: (a: AlvoConciliacao, i: number) => desfazer(a, i),
   buscarPixLivres: (q: string) => buscarPixLivres(q),
-  buscarConciliacoesPorValor: () => buscarConciliacoesPorValor(),
+  buscarConciliacoesPorValor: (...a: unknown[]) => buscarConciliacoesPorValor(...a),
   buscarConciliacoesDoAlvo: async () => [],
   buscarPixDoAlvo: async () => [],
-  buscarConciliacoesLivres: async () => [],
+  buscarEstornosDoAlvo: async () => [],
+  buscarConciliacoesLivres: (...a: unknown[]) => buscarConciliacoesLivres(...a),
   vincularVendaAction: (c: string, a: AlvoConciliacao) => vincularCartao(c, a),
   vincularPixAlvoAction: (p: string, a: AlvoConciliacao) => vincularPix(p, a),
   buscarPixParaOAlvo: (a: AlvoConciliacao, v: number) => paraOAlvo(a, v),
@@ -45,7 +47,7 @@ after(() => { actionsMock.restore(); sonnerMock.restore() })
 
 const desmontagens: (() => Promise<void>)[] = []
 afterEach(async () => {
-  for (const f of [forcar, desfazer, buscarPixLivres, buscarConciliacoesPorValor, vincularPix, paraOAlvo, vincularCartao]) f.mock.resetCalls()
+  for (const f of [forcar, desfazer, buscarPixLivres, buscarConciliacoesPorValor, buscarConciliacoesLivres, vincularPix, paraOAlvo, vincularCartao]) f.mock.resetCalls()
   paraOAlvo.mock.restore()
   buscarConciliacoesPorValor.mock.restore()
   vincularCartao.mock.restore()
@@ -67,9 +69,10 @@ const FALHA_INTERNA = new Error('connect ECONNREFUSED 10.0.0.1:5432')
 const linhas = () => [...document.querySelectorAll<HTMLButtonElement>('button[aria-expanded], li > button[disabled]')]
 const linha = (tipo: string) => linhas().find(b => (b.textContent ?? '').startsWith(tipo))
 
-async function montar(papel: string, pagamentos: PgtoOS[], pixRecs: PixRec[] = []) {
+type Conc = { id: string; autorizacao: string | null; valorBruto: string; valorLiquido: string | null; operadora: string; tipo: string; dataTransacao: string }
+async function montar(papel: string, pagamentos: PgtoOS[], pixRecs: PixRec[] = [], estornos: EstornoDoAlvo[] = [], concs: Conc[] = []) {
   const { PagamentosConciliacao } = await import('./pagamentos-conciliacao')
-  const dados = { concs: [], pixRecs, loading: false, recarregar: async () => {} }
+  const dados = { concs, pixRecs, estornos, loading: false, recarregar: async () => {} }
   const tela = await montarDialogo(PagamentosConciliacao, { alvo: ALVO, pagamentos, dados, papel })
   desmontagens.push(tela.desmontar)
   const tocar = (el: Element | undefined) => tela.act(async () => { clicar(el); await esperar(50) })
@@ -241,4 +244,67 @@ test('vincular a linha de cartão sugerida envia a linha e o alvo; a recusa apar
   assert.deepEqual(vincularCartao.mock.calls.map(c => c.arguments), [['conc-1', ALVO], ['conc-1', ALVO]])
   assert.deepEqual(sucessos.map(s => s.mensagem), ['Pagamento conciliado'])
   assert.ok(document.querySelector('button[aria-label^="Vincular "]') === null, 'o sucesso fecha a busca')
+})
+
+// #51 (PR6c, V1): o PIX pode ter entrado pela maquininha Mercado Pago ou pelo banco; a busca olha as duas.
+test('PIX pendente procura na maquininha e no banco; lista única com a origem; cada Vincular usa a sua action', async () => {
+  buscarConciliacoesPorValor.mock.mockImplementation(async () => [{
+    id: 'mp-1', operadora: 'mercadopago', autorizacao: null, nsu: '9900004821', valorBruto: '3550.00',
+    dataTransacao: '2026-11-06', tipo: 'pix', rawData: null,
+  }])
+  paraOAlvo.mock.mockImplementation(async () => ({ esperado: null, noGrupoAtivo: true, pix: [{
+    id: 'bco-1', data: new Date('2026-11-06T17:32:00.000Z'), valor: '3548.00', pagadorNome: 'MARIA SOUZA', descricao: 'PIX recebido',
+  } as PixLivre] }))
+  const t = await montar('aux_adm', [{ tipo: 'pix', valor: 3550 }])
+  await t.tocar(linha('PIX'))
+  assert.deepEqual(buscarConciliacoesPorValor.mock.calls.map(c => c.arguments), [[3550, 'pix']])
+  assert.deepEqual(paraOAlvo.mock.calls.map(c => c.arguments), [[ALVO, 3550]])
+
+  const sugestoes = [...document.querySelectorAll('button[aria-label^="Vincular"]')].map(b => b.getAttribute('aria-label'))
+  assert.equal(sugestoes.length, 2, sugestoes.join(' | '))
+  assert.match(sugestoes[0]!, /^Vincular PIX na maquininha Mercado Pago/)
+  assert.match(sugestoes[1]!, /^Vincular PIX de MARIA SOUZA/)
+  const texto = document.body.textContent ?? ''
+  assert.ok(texto.includes('NSU 00004821') && texto.includes('Extrato do banco'), texto)
+
+  await t.tocar(document.querySelector('button[aria-label^="Vincular PIX na maquininha"]')!)
+  assert.deepEqual(vincularCartao.mock.calls.map(c => c.arguments), [['mp-1', ALVO]])
+  await t.tocar(linha('PIX'))
+  await t.tocar(document.querySelector('button[aria-label^="Vincular PIX de MARIA"]')!)
+  assert.deepEqual(vincularPix.mock.calls.map(c => c.arguments), [['bco-1', ALVO]])
+})
+
+test('cartão pendente procura só a linha de cartão, sem o PIX do banco', async () => {
+  const t = await montar('aux_adm', [{ tipo: 'cartao_credito', valor: 1200, parcelas: 3 }])
+  await t.tocar(linha('Cartão de Crédito'))
+  assert.deepEqual(buscarConciliacoesPorValor.mock.calls.map(c => c.arguments), [[1200, 'cartao']])
+  assert.equal(paraOAlvo.mock.callCount(), 0)
+})
+
+// #51 (PR6c): pagamento que voltou a pendente pelo estorno diz isso, em vez de só "Pendente".
+test('pagamento pendente com estorno da maquininha mostra "Estornado no Mercado Pago"', async () => {
+  await montar('aux_adm', [{ tipo: 'pix', valor: 450 }, { tipo: 'pix', valor: 90 }], [], [
+    { id: 'e1', valorBruto: '450.00', tipo: 'pix' },
+  ])
+  const textos = linhas().map(b => (b.textContent ?? '').replace(/\s+/g, ' '))
+  assert.ok(textos.some(t => t.includes('Pendente · Estornado no Mercado Pago') && t.includes('450,00')), textos.join(' | '))
+  assert.ok(!textos.some(t => t.includes('Estornado') && t.includes('90,00')), textos.join(' | '))
+})
+
+test('PIX conciliado pela linha pix da maquininha diz de onde veio', async () => {
+  await montar('aux_adm', [{ tipo: 'pix', valor: 3550 }], [], [], [
+    { id: 'mp', autorizacao: null, valorBruto: '3550.00', valorLiquido: '3514.50', operadora: 'mercadopago', tipo: 'pix', dataTransacao: '2026-11-06' },
+  ])
+  const textos = linhas().map(b => (b.textContent ?? '').replace(/\s+/g, ' '))
+  assert.ok(textos.some(t => t.includes('Conciliado · PIX na maquininha Mercado Pago')), textos.join(' | '))
+})
+
+test('PIX sem nada nas duas origens: o vazio diz onde procurou; a busca livre procura nas duas', async () => {
+  const t = await montar('aux_adm', [{ tipo: 'pix', valor: 777 }])
+  await t.tocar(linha('PIX'))
+  assert.ok((document.body.textContent ?? '').includes('nem na maquininha nem no extrato do banco'), document.body.textContent ?? '')
+  await digitar(document.querySelector<HTMLInputElement>('input[type="search"]')!, 'MARIA')
+  await t.tocar(botao('Buscar'))
+  assert.deepEqual(buscarConciliacoesLivres.mock.calls.map(c => c.arguments), [['MARIA', 'pix']])
+  assert.deepEqual(buscarPixLivres.mock.calls.map(c => c.arguments), [['MARIA']])
 })

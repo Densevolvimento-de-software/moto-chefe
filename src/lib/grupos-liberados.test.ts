@@ -70,3 +70,9 @@ test('admin_rede com Gerenciar cargos: gerencia fora da persona e no cookie sem 
   assert.equal(podeGerenciarCargos(usuarioDaRede(rede, [LIBERADO], LIBERADO.grupoId)), false, 'grupo liberado de outra Conta')
   assert.equal(podeGerenciarCargos(usuarioDaRede({ ...usuario('admin_rede') }, [LIBERADO], null)), false, 'sem a permissão ligada')
 })
+
+test('admin_rede marcado para categorizar saídas do banco: leva a marca na própria Conta, não no grupo liberado de outra (#149)', () => {
+  const marcado = { ...usuario('admin_rede'), categorizaDespesaBanco: true }
+  assert.equal(usuarioDaRede(marcado, [LIBERADO], null).categorizaDespesaBanco, true, 'na própria Conta')
+  assert.equal(usuarioDaRede(marcado, [LIBERADO], LIBERADO.grupoId).categorizaDespesaBanco, false, 'no grupo liberado')
+})

@@ -6,7 +6,7 @@ import { getUsuarioLogado } from '@/lib/auth'
 import { lojaDaMotoParaGravar, travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { db } from '@/lib/db'
-import { motos, usuarios, reservas, vendas } from '@/lib/db/schema'
+import { motos, reservas, vendas } from '@/lib/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
 import {
   getTransicoesStatusPermitidas,
@@ -25,6 +25,7 @@ import { modeloUsavelNaLoja } from '@/lib/modelos-da-conta'
 import { garantias, historicoEstoque } from '@/lib/db/schema'
 import { normalizarCor } from '@/lib/cores-moto'
 import { corrigirPrecoCompra } from '@/lib/preco-compra-moto'
+import { MECANICO_NAO_ENCONTRADO, mecanicoDaConta } from '@/lib/vinculos-da-conta'
 
 /**
  * A venda não cancelada desta moto, se houver. Cancelar venda apaga a linha
@@ -72,16 +73,13 @@ export async function alterarStatusAction(
     throw new Error(`Transição ${moto.status} → ${novoStatus} não permitida`)
   }
 
-  // Monta observação incluindo o mecânico responsável quando aplicável
+  // Monta observação incluindo o mecânico responsável quando aplicável. O mecânico vem do navegador:
+  // de outra Conta ou inexistente, a mesma frase e nada gravado (#133).
   let obsHistorico = observacao ?? null
   if (novoStatus === 'montada' && mecanicoId) {
-    const [mecanico] = await db
-      .select({ nome: usuarios.nome })
-      .from(usuarios)
-      .where(eq(usuarios.id, mecanicoId))
-      .limit(1)
-    const mecanicoNome = mecanico?.nome ?? 'Desconhecido'
-    const partes = [`Mecânico responsável: ${mecanicoNome}`]
+    const mecanico = await mecanicoDaConta(moto.lojaId, mecanicoId, usuario.grupoLiberado)
+    if (!mecanico) throw new RecusaUsuario(MECANICO_NAO_ENCONTRADO)
+    const partes = [`Mecânico responsável: ${mecanico.nome}`]
     if (observacao) partes.push(observacao)
     obsHistorico = partes.join(' — ')
   }

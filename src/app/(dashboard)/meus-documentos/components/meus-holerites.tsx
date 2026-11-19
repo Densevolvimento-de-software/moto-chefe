@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { FileText, ExternalLink } from 'lucide-react'
 import { fmtTamanho } from '@/lib/holerites-tela'
+import { comMaiuscula } from '@/lib/texto'
 import type { MeuHoleriteRow } from '../../folha-pagamento/holerites-actions'
 import { getMeuHoleriteUrlAction } from '../../folha-pagamento/holerites-actions'
 
@@ -16,7 +17,7 @@ function fmtMes(mes: string) {
   // viraria o anterior no fuso de Brasília.
   const [ano, m] = mes.split('-')
   const nome = new Date(Number(ano), Number(m) - 1, 15).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-  return nome.charAt(0).toUpperCase() + nome.slice(1)
+  return comMaiuscula(nome)
 }
 
 function Documento({ holerite }: { holerite: MeuHoleriteRow }) {

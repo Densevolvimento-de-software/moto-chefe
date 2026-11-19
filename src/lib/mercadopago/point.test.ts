@@ -1,6 +1,6 @@
 import { test, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { buscarPagamentosAlterados, consultarConta } from './point'
+import { buscarPagamentosAlterados, buscarPagamentosDaRodada, consultarConta, juntarPorId, type PagamentoMp } from './point'
 import { ErroMercadoPago } from './cliente'
 
 const TOKEN = 'TEST-tok-0000'
@@ -51,17 +51,22 @@ test('401 vira mensagem de credencial recusada sem o token', async () => {
   await assert.rejects(buscarPagamentosAlterados(TOKEN, periodo), (err: unknown) => {
     assert.ok(err instanceof ErroMercadoPago)
     assert.equal(err.status, 401)
-    // Sem apontar tela: a do cadastro ainda não existe (#51).
-    assert.equal(err.message, 'Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.')
+    // Diz quem resolve e onde (Grupos, PR5 da #51): quem vê a frase na conciliação não cadastra credencial.
+    assert.equal(err.message, 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.')
     assert.ok(!err.message.includes(TOKEN))
     return true
   })
 })
 
-test('consultarConta devolve id como string', async () => {
-  const chamadas = mockFetch([{ body: { id: 123456, nickname: 'LOJA BH', email: 'x@y.z' } }])
-  assert.deepEqual(await consultarConta(TOKEN), { id: '123456', nickname: 'LOJA BH' })
+test('consultarConta devolve id como string, as tags e o documento do titular, sem o e-mail', async () => {
+  const chamadas = mockFetch([{ body: { id: 123456, nickname: 'LOJA X', email: 'x@y.z', tags: ['normal', 'test_user'], identification: { type: 'CNPJ', number: '00000000000191' } } }])
+  assert.deepEqual(await consultarConta(TOKEN), { id: '123456', nickname: 'LOJA X', tags: ['normal', 'test_user'], documento: '00000000000191' })
   assert.equal(chamadas[0].url.pathname, '/users/me')
+})
+
+test('consultarConta sem tags nem documento: lista vazia e documento nulo', async () => {
+  mockFetch([{ body: { id: 9, nickname: 'LOJA Y' } }])
+  assert.deepEqual(await consultarConta(TOKEN), { id: '9', nickname: 'LOJA Y', tags: [], documento: null })
 })
 
 test('sem paging.total segue até vir página incompleta', async () => {
@@ -79,7 +84,45 @@ test('403 também vira credencial recusada sem o token', async () => {
   await assert.rejects(buscarPagamentosAlterados(TOKEN, periodo), (err: unknown) => {
     assert.ok(err instanceof ErroMercadoPago)
     assert.equal(err.status, 403)
-    assert.equal(err.message, 'Credencial do Mercado Pago recusada (HTTP 403). Cadastre o token novo.')
+    assert.equal(err.message, 'O Mercado Pago recusou a credencial deste grupo (HTTP 403). Peça ao administrador para cadastrá-la de novo em Grupos.')
     return true
   })
+})
+
+// Decisão B do Luis (#51): a mesma busca do MP devolve ora 9, ora 17 (os cartões somem e voltam). A rodada busca 2
+// vezes e junta por id.
+test('rodada busca 2 vezes e junta: 1ª devolve 1, 2ª devolve 3 com o mesmo de antes, ficam 3', async () => {
+  const chamadas = mockFetch([
+    { body: { paging: { total: 1 }, results: pagamentos(1, 5) } },
+    { body: { paging: { total: 3 }, results: pagamentos(3, 4) } },
+  ])
+  const r = await buscarPagamentosDaRodada(TOKEN, periodo)
+  assert.deepEqual(r.map(p => p.id).sort(), [4, 5, 6])
+  assert.equal(chamadas.length, 2)
+})
+
+const alterado = (id: number, status: string, quando: string) =>
+  ({ id, status, date_last_updated: quando }) as PagamentoMp
+
+test('juntarPorId: o mesmo id nas duas listas fica uma vez, com a versão de date_last_updated mais nova', () => {
+  const aprovado = alterado(7, 'approved', '2026-11-10T14:00:05.000-03:00')
+  const estornado = alterado(7, 'refunded', '2026-11-11T09:00:00.000-03:00')
+  const outro = alterado(8, 'approved', '2026-11-10T15:00:00.000-03:00')
+  assert.deepEqual(juntarPorId([[aprovado, outro], [estornado]]), [estornado, outro])
+  assert.deepEqual(juntarPorId([[estornado], [aprovado, outro]]), [estornado, outro])
+})
+
+test('juntarPorId: a mesma lista 2 vezes não repete nada', () => {
+  const lista = [alterado(1, 'approved', '2026-11-10T10:00:00Z'), alterado(2, 'approved', '2026-11-10T11:00:00Z')]
+  assert.deepEqual(juntarPorId([lista, lista]), lista)
+})
+
+// A importação busca tudo antes de gravar: a 2ª busca falhando não pode deixar passar só a 1ª.
+test('rodada: a 2ª busca recusada rejeita, sem devolver a 1ª', async () => {
+  const chamadas = mockFetch([
+    { body: { paging: { total: 1 }, results: pagamentos(1) } },
+    { status: 401, body: { message: 'unauthorized' } },
+  ])
+  await assert.rejects(buscarPagamentosDaRodada(TOKEN, periodo), (err: unknown) => err instanceof ErroMercadoPago && err.status === 401)
+  assert.equal(chamadas.length, 2)
 })
