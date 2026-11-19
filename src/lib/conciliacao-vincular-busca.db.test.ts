@@ -188,6 +188,21 @@ test('estornos do alvo: só as linhas estornadas ligadas à venda; Conta B não 
   const alvo = { tipo: 'peca' as const, id: venda }
   assert.deepEqual((await actions.buscarEstornosDoAlvo(alvo)).map(e => [e.id, e.tipo, Number(e.valorBruto), e.dataTransacao]), [[estornada, 'pix', 456.78, '2026-11-05']])
   assert.deepEqual((await actions.buscarConciliacoesDoAlvo(alvo)).map(c => c.id), [conciliada])
+})
+
+// Isolamento: registro de outra Conta e id inexistente recebem a mesma resposta (lista vazia), nas três leituras do alvo.
+test('alvo de outra Conta e alvo inexistente: as três leituras do painel devolvem vazio, sem revelar que existe', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const venda = await vendaPeca(a, [{ tipo: 'pix', valor: 467.89 }])
+  const estornada = await linha(a, 'pix', 467.89)
+  await linhas(sql`update conciliacoes_cartao set peca_venda_id = ${venda}, status = 'estornado', conciliado = false where id = ${estornada}`)
+  const daA = { tipo: 'peca' as const, id: venda }
+  const inexistente = { tipo: 'peca' as const, id: randomUUID() }
   entrarComo(b)
-  await assert.rejects(actions.buscarEstornosDoAlvo(alvo), /Sem permissão/)
+  for (const alvo of [daA, inexistente]) {
+    assert.deepEqual(await actions.buscarEstornosDoAlvo(alvo), [])
+    assert.deepEqual(await actions.buscarConciliacoesDoAlvo(alvo), [])
+    assert.deepEqual(await actions.buscarPixDoAlvo(alvo), [])
+  }
 })

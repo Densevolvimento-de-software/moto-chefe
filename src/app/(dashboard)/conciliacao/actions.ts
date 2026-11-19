@@ -441,20 +441,22 @@ async function lojaIdDoAlvo(alvo: AlvoConciliacao): Promise<string | null> {
   return r?.lojaId ?? null
 }
 
-// Quem pode ver as linhas ligadas ao alvo e por qual coluna elas se ligam; null: alvo inexistente.
-async function colunaDoAlvoVisivel(alvo: AlvoConciliacao) {
+// O usuário vê o alvo? Alvo de outro grupo ou Conta e alvo inexistente dão o mesmo false, e as leituras do painel
+// devolvem lista vazia nos dois: a resposta não revela que o registro existe. A regra de quem vê (podeVerGrupo, por
+// papel) não cabe num where; a loja lida pelo id não sai na resposta.
+async function alvoVisivel(alvo: AlvoConciliacao): Promise<boolean> {
   const usuario = await getUsuarioLogado()
   const lojaId  = await lojaIdDoAlvo(alvo)
-  if (!lojaId) return null
-  if (podeGerirConciliacao(usuario.papel) ? !(await podeAbrirRegistroDaLoja(usuario, lojaId)) : lojaId !== usuario.lojaId) throw new Error('Sem permissão')
-  return alvo.tipo === 'peca' ? conciliacoesCartao.pecaVendaId
-    : alvo.tipo === 'os'      ? conciliacoesCartao.osId
-    :                           conciliacoesCartao.vendaId
+  if (!lojaId) return false
+  return podeGerirConciliacao(usuario.papel) ? podeAbrirRegistroDaLoja(usuario, lojaId) : lojaId === usuario.lojaId
 }
 
+const colunaCartaoDoAlvo = (alvo: AlvoConciliacao) =>
+  alvo.tipo === 'peca' ? conciliacoesCartao.pecaVendaId : alvo.tipo === 'os' ? conciliacoesCartao.osId : conciliacoesCartao.vendaId
+
 export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
-  const coluna = await colunaDoAlvoVisivel(alvo)
-  if (!coluna) return []
+  if (!(await alvoVisivel(alvo))) return []
+  const coluna = colunaCartaoDoAlvo(alvo)
 
   return db
     .select({
@@ -472,8 +474,8 @@ export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
 
 /** Linhas da maquininha ligadas ao alvo e estornadas no Mercado Pago (#51): o painel diz que o pagamento voltou. */
 export async function buscarEstornosDoAlvo(alvo: AlvoConciliacao) {
-  const coluna = await colunaDoAlvoVisivel(alvo)
-  if (!coluna) return []
+  if (!(await alvoVisivel(alvo))) return []
+  const coluna = colunaCartaoDoAlvo(alvo)
   return db
     .select({
       id:            conciliacoesCartao.id,
@@ -486,10 +488,7 @@ export async function buscarEstornosDoAlvo(alvo: AlvoConciliacao) {
 }
 
 export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
-  const usuario = await getUsuarioLogado()
-  const lojaId  = await lojaIdDoAlvo(alvo)
-  if (!lojaId) return []
-  if (podeGerirConciliacao(usuario.papel) ? !(await podeAbrirRegistroDaLoja(usuario, lojaId)) : lojaId !== usuario.lojaId) throw new Error('Sem permissão')
+  if (!(await alvoVisivel(alvo))) return []
 
   // Fonte única desde 15/09/2026: o PIX do ValidaPix saiu junto com a
   // integração. Venda de antes de julho/2026, cujo pagamento só existia lá,
