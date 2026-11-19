@@ -93,14 +93,14 @@ test('vendedor escolhido: vale o da loja e o sócio da Conta da moto (com grupo 
   })
 })
 
-test('vendedor escolhido: marcar o grupo da Conta da moto em grupos_acesso não faz o usuário ser dela; igual a inexistente', async () => {
+test('vendedor escolhido: usuário de fora da Conta da moto não serve, em nenhum cadastro; igual a inexistente', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A', '00000000040436')
     const b = await semearConta(tx, 'B', '00000000040437')
     const daBMarcando = await semearUsuario(tx, b.base, { papel: 'vendedor', rotulo: 'marcaA', semLoja: true, comConta: true })
     const semContaMarcando = await semearUsuario(tx, b.base, { papel: 'vendedor', rotulo: 'semConta', semLoja: true })
     await linhas(tx, sql`update usuarios set grupos_acesso = array[${a.base.grupoId}]::uuid[] where id in (${daBMarcando}, ${semContaMarcando})`)
-    assert.equal(await vendedorDaConta(daBMarcando, a.lojaId, null, tx), false, 'da Conta B com o grupo da A marcado')
-    assert.equal(await vendedorDaConta(semContaMarcando, a.lojaId, null, tx), false, 'sem Conta, sem loja, com o grupo da A marcado')
+    assert.equal(await vendedorDaConta(daBMarcando, a.lojaId, null, tx), false, 'de outra Conta')
+    assert.equal(await vendedorDaConta(semContaMarcando, a.lojaId, null, tx), false, 'sem Conta e sem loja')
   })
 })
