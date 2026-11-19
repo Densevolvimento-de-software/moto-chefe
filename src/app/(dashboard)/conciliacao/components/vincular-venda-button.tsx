@@ -66,10 +66,12 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
   function vincular(alvoId: string, tipo: AlvoTipo) {
     startTransition(async () => {
       try {
-        await vincularVendaAction(conciliacaoId, { tipo, id: alvoId })
+        const r = await vincularVendaAction(conciliacaoId, { tipo, id: alvoId })
+        if (!r.ok) { toast.error(r.erro); return }
         toast.success('Venda vinculada')
         setOpen(false)
       } catch {
+        // A recusa com frase já voltou em `r.erro`; aqui só cai falha interna, sem frase legível.
         toast.error('Erro ao vincular')
       }
     })
@@ -78,7 +80,8 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
   function desvincular() {
     startTransition(async () => {
       try {
-        await desvincularVendaAction(conciliacaoId)
+        const r = await desvincularVendaAction(conciliacaoId)
+        if (!r.ok) { toast.error(r.erro); return }
         toast.success('Vínculo removido')
       } catch {
         toast.error('Erro ao desvincular')

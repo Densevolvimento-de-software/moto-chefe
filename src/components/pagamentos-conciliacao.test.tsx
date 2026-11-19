@@ -20,7 +20,8 @@ type PixRec = Awaited<ReturnType<Actions['buscarPixDoAlvo']>>[number]
 const buscarPixLivres = mock.fn(async (_query: string): Promise<PixLivre[]> => [])
 const paraOAlvo = mock.fn(async (_alvo: AlvoConciliacao, _valor: number): Promise<ParaOAlvo> => ({ esperado: null, noGrupoAtivo: true, pix: [] }))
 const vincularPix = mock.fn(async (_pixId: string, _alvo: AlvoConciliacao): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
-const buscarConciliacoesPorValor = mock.fn(async () => [])
+const buscarConciliacoesPorValor = mock.fn(async (): Promise<unknown[]> => [])
+const vincularCartao = mock.fn(async (_id: string, _alvo: AlvoConciliacao): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { namedExports: {
   forcarConciliacaoAction: (a: AlvoConciliacao, i: number, m: string) => forcar(a, i, m),
   desfazerConciliacaoForcadaAction: (a: AlvoConciliacao, i: number) => desfazer(a, i),
@@ -29,7 +30,7 @@ const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { named
   buscarConciliacoesDoAlvo: async () => [],
   buscarPixDoAlvo: async () => [],
   buscarConciliacoesLivres: async () => [],
-  vincularVendaAction: async () => {},
+  vincularVendaAction: (c: string, a: AlvoConciliacao) => vincularCartao(c, a),
   vincularPixAlvoAction: (p: string, a: AlvoConciliacao) => vincularPix(p, a),
   buscarPixParaOAlvo: (a: AlvoConciliacao, v: number) => paraOAlvo(a, v),
 } })
@@ -44,8 +45,10 @@ after(() => { actionsMock.restore(); sonnerMock.restore() })
 
 const desmontagens: (() => Promise<void>)[] = []
 afterEach(async () => {
-  for (const f of [forcar, desfazer, buscarPixLivres, buscarConciliacoesPorValor, vincularPix, paraOAlvo]) f.mock.resetCalls()
+  for (const f of [forcar, desfazer, buscarPixLivres, buscarConciliacoesPorValor, vincularPix, paraOAlvo, vincularCartao]) f.mock.resetCalls()
   paraOAlvo.mock.restore()
+  buscarConciliacoesPorValor.mock.restore()
+  vincularCartao.mock.restore()
   forcar.mock.restore()
   desfazer.mock.restore()
   buscarPixLivres.mock.restore()
@@ -218,4 +221,23 @@ test('linha parcial diz quanto foi coberto e quanto falta', async () => {
   await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }], [pixRec({ valor: '4990.00', valorBruto: '5000.00', custoPix: '10.00' })])
   assert.ok(tela().includes('Parcial · Coberto R$ 5.000,00 · faltam R$ 5.000,00'), tela())
   assert.equal(tela().includes('Parcial · Entrou'), false)
+})
+
+const CARTAO_LIVRE = { id: 'conc-1', operadora: 'mercadopago', autorizacao: '123456', valorBruto: '1000.00', dataTransacao: '2026-11-12', tipo: 'credito', rawData: null }
+
+test('vincular a linha de cartão sugerida envia a linha e o alvo; a recusa aparece com a frase da action (#129)', async () => {
+  buscarConciliacoesPorValor.mock.mockImplementation(async () => [CARTAO_LIVRE])
+  const { tocar } = await montar('aux_adm', [{ tipo: 'cartao_credito', valor: 1000, parcelas: 1 }])
+  await tocar(linhas()[0])
+  const vincular = () => tocar(document.querySelector('button[aria-label^="Vincular "]') ?? undefined)
+
+  vincularCartao.mock.mockImplementation(async () => ({ ok: false, erro: 'Venda não encontrada' }))
+  await vincular()
+  assert.deepEqual(erros, ['Venda não encontrada'])
+  assert.equal(sucessos.length, 0)
+
+  vincularCartao.mock.mockImplementation(async () => ({ ok: true, dados: undefined }))
+  await vincular()
+  assert.deepEqual(vincularCartao.mock.calls.map(c => c.arguments), [['conc-1', ALVO], ['conc-1', ALVO]])
+  assert.deepEqual(sucessos.map(s => s.mensagem), ['Pagamento conciliado'])
 })

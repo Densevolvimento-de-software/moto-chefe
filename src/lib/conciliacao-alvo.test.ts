@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { alvoValido, tipoDoAlvo } from './conciliacao-alvo'
+import { alvoValido, colunasDoAlvo, tipoDoAlvo } from './conciliacao-alvo'
 
 const ID = '2c9d47e2-c479-42bf-9372-f7a34308299f'
 
@@ -24,4 +24,10 @@ test('tipoDoAlvo: tipo da lista vale, inclusive com id inválido; fora da lista 
   assert.equal(tipoDoAlvo({ tipo: 'os', id: 'os-1' }), 'os')
   assert.equal(tipoDoAlvo({ tipo: 'peca', id: ID }), 'peca')
   for (const alvo of [{ tipo: 'xyz', id: ID }, { id: ID }, null, 'os']) assert.equal(tipoDoAlvo(alvo), 'moto', JSON.stringify(alvo))
+})
+
+test('colunasDoAlvo: só a coluna do tipo leva o id; as outras ficam nulas', () => {
+  assert.deepEqual(colunasDoAlvo({ tipo: 'moto', id: ID }), { vendaId: ID, pecaVendaId: null, osId: null })
+  assert.deepEqual(colunasDoAlvo({ tipo: 'peca', id: ID }), { vendaId: null, pecaVendaId: ID, osId: null })
+  assert.deepEqual(colunasDoAlvo({ tipo: 'os', id: ID }), { vendaId: null, pecaVendaId: null, osId: ID })
 })

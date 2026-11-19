@@ -19,3 +19,10 @@ export function tipoDoAlvo(alvo: unknown): AlvoTipo {
   const tipo = typeof alvo === 'object' && alvo !== null ? (alvo as Record<string, unknown>).tipo : undefined
   return ehAlvoTipo(tipo) ? tipo : 'moto'
 }
+
+/** Colunas do vínculo de uma linha de cartão: a do tipo do alvo com o id, as outras nulas. */
+export const colunasDoAlvo = ({ tipo, id }: AlvoConciliacao) => ({
+  vendaId:     tipo === 'moto' ? id : null,
+  pecaVendaId: tipo === 'peca' ? id : null,
+  osId:        tipo === 'os'   ? id : null,
+})
