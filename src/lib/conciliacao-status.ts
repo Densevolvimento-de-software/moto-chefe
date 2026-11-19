@@ -105,9 +105,10 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
   // A linha 'pix' da conciliação de cartão é o Pix da maquininha Mercado Pago (#51): é dinheiro de
   // Pix e cobre o pagamento Pix, como o recebimento do banco.
   const concs = linhasDoAlvo.filter(c => c.tipo !== LINHA_PIX)
-  const pixRecs: PixMatch[] = [
-    ...pixDoBanco,
-    ...linhasDoAlvo.filter(c => c.tipo === LINHA_PIX).map(c => ({ id: c.id, valor: c.valorBruto })),
+  // `doBanco`: só o PIX recebido do banco tem custo e vira `pixId` na cobertura.
+  const pixRecs: (PixMatch & { doBanco: boolean })[] = [
+    ...pixDoBanco.map(r => ({ ...r, doBanco: true })),
+    ...linhasDoAlvo.filter(c => c.tipo === LINHA_PIX).map(c => ({ id: c.id, valor: c.valorBruto, doBanco: false })),
   ]
   const usados    = new Set<string>()
   const resultado: CoberturaPgto[] = pgtos.map(() => ({ conciliado: false, coberto: 0 }))
@@ -156,7 +157,7 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
     const m = pixRecs.find(r => !pixUsados.has(r.id) && Math.abs(valorQueCobre(r) - p.valor) <= 0.05)
     if (!m) return
     resultado[i].coberto += valorQueCobre(m)
-    if (pixDoBanco.includes(m)) resultado[i].pixId = m.id
+    if (m.doBanco) resultado[i].pixId = m.id
     pixUsados.add(m.id)
   })
 
