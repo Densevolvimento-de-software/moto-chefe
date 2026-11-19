@@ -16,6 +16,7 @@ import { conferirComprador, conferirCompradorDaVenda, gravarCompradorDaVenda } f
 import { contaDoGrupoAtivo, getGrupoIdDaLoja, podeAprovarVendaBaixoValor, podeAprovarPagamentoSensivelNaLoja, podeUsuarioVerGrupo } from '@/lib/grupo'
 import { aplicarPagamentoOS, type DadosPagamentoOS } from '@/lib/pagamento-os'
 import { aplicarVendaPeca, type DadosVendaPeca } from '@/lib/venda-peca'
+import { CAMPOS_PAGAMENTO_ENTRADA, CAMPOS_PAGAMENTO_VENDA, pagamentosParaGravar } from '@/lib/pagamentos-gravacao'
 import { virarLeadKommo, type ResultadoVirarLead } from '@/lib/kommo'
 import { notificarVendaWhatsapp, type ResultadoAvisoVenda } from '@/lib/whatsapp/venda'
 import { parseDataInput, hojeBrt } from '@/lib/data-venda'
@@ -273,11 +274,12 @@ async function criarVendaTx(
   }
 ): Promise<{ vendaId: string }> {
   const { moto, data, vendedorId, efetivadoPor, dataVendaFinal, origem, grupoLiberado } = params
+  const pagamentos = pagamentosParaGravar(data.pagamentos, CAMPOS_PAGAMENTO_VENDA, [])
   // A aprovação grava bem depois do pedido: o status se confere de novo na linha travada.
   const naoVende = motivoParaNaoVender((await travarMotoNaoArquivada(tx, moto.id)).status)
   if (naoVende) throw new RecusaUsuario(naoVende)
   // Aqui, e não só na action: a aprovação guardada chega direto (#460).
-  await conferirMaquininhas(tx, moto.lojaId, data.pagamentos)
+  await conferirMaquininhas(tx, moto.lojaId, pagamentos)
   const valorNum = parseFloat(data.valorTotal)
 
   // Verificar reserva ativa para linkar
@@ -378,8 +380,8 @@ async function criarVendaTx(
     clienteCidade: data.clienteCidade,
     clienteEstado: data.clienteEstado,
     valor: data.valorTotal,
-    formaPagamento: data.pagamentos[0].tipo,
-    pagamentos: data.pagamentos,
+    formaPagamento: pagamentos[0].tipo,
+    pagamentos,
     reservaId: reservaAtiva?.id ?? null,
     dataVenda: dataVendaFinal,
     origemId: origem.origemId,
@@ -417,7 +419,7 @@ async function criarVendaTx(
     cartao_debito: 'Cartão de Débito', financiamento: 'Financiamento',
     link_pagamento: 'Link de Pagamento', transferencia: 'Transferência',
   }
-  const descPagamentos = data.pagamentos
+  const descPagamentos = pagamentos
     .map(p => `${tipoLabel[p.tipo] ?? p.tipo}: R$ ${p.valor.toFixed(2)}`)
     .join(' + ')
   await tx.insert(historicoEstoque).values({
@@ -431,7 +433,7 @@ async function criarVendaTx(
   })
 
   // Registrar pagamentos em dinheiro no caixa automaticamente
-  const pagamentosDinheiro = data.pagamentos.filter(p => p.tipo === 'dinheiro')
+  const pagamentosDinheiro = pagamentos.filter(p => p.tipo === 'dinheiro')
   for (const pgto of pagamentosDinheiro) {
     await tx.insert(lancamentosCaixa).values({
       lojaId: moto.lojaId,
@@ -1050,7 +1052,8 @@ async function registrarReserva(data: DadosReserva) {
 
   const moto = await motoDoUsuario(usuario, data.motoId)
   if (!moto) throw new RecusaUsuario('Moto não encontrada')
-  await conferirMaquininhas(db, moto.lojaId, data.pagamentos)
+  const pagamentos = pagamentosParaGravar(data.pagamentos ?? [], CAMPOS_PAGAMENTO_ENTRADA, [])
+  await conferirMaquininhas(db, moto.lojaId, pagamentos)
   if (moto.status === 'vendida' || moto.disponibilidade === 'vendida') {
     throw new RecusaUsuario('Moto já foi vendida')
   }
@@ -1080,7 +1083,6 @@ async function registrarReserva(data: DadosReserva) {
 
   const { clienteCpf } = conferirComprador(data.clienteCpf)
 
-  const pagamentos = data.pagamentos ?? []
   if (pagamentos.some(p => !p.tipo || !(p.valor > 0))) {
     throw new RecusaUsuario('Toda forma de pagamento precisa de tipo e valor')
   }
@@ -1357,18 +1359,19 @@ async function editarVenda(vendaId: string, dados: {
     ? (dados.notaFiscalSaida?.trim() || vendaAtual.notaFiscalSaida)
     : vendaAtual.notaFiscalSaida
 
-  const formaPagamento = dados.pagamentos.length === 1
-    ? dados.pagamentos[0].tipo
-    : 'multiplos'
-
   await db.transaction(async tx => {
-    // Atualiza a venda
+    const daVenda = and(eq(vendas.id, vendaId), eq(vendas.lojaId, vendaAtual.lojaId))
+    const [gravada] = await tx.select({ pagamentos: vendas.pagamentos }).from(vendas).where(daVenda).for('update')
+    if (!gravada) throw new RecusaUsuario('Venda não encontrada')
+    const pagamentos = pagamentosParaGravar(dados.pagamentos, CAMPOS_PAGAMENTO_VENDA, gravada.pagamentos)
+    const formaPagamento = pagamentos.length === 1 ? pagamentos[0].tipo : 'multiplos'
+
     await tx.update(vendas)
       .set({
         valor:              dados.valor,
         dataVenda:          parseDataInput(dados.dataVenda),
         notaFiscalSaida:    nfFinal,
-        pagamentos:         dados.pagamentos,
+        pagamentos,
         formaPagamento,
         ...(dados.vendedorId ? { vendedorId: dados.vendedorId } : {}),
         ...(origemCorrigida ? {
@@ -1376,7 +1379,7 @@ async function editarVenda(vendaId: string, dados: {
           origemDetalhe: origemCorrigida.origemDetalhe,
         } : {}),
       })
-      .where(eq(vendas.id, vendaId))
+      .where(daVenda)
     await gravarCompradorDaVenda(tx, { id: vendaId, lojaId: vendaAtual.lojaId }, usuario.grupoLiberado, {
       ...comprador,
       // A edição manda o formulário inteiro: campo vazio apaga, como antes.
@@ -1401,7 +1404,7 @@ async function editarVenda(vendaId: string, dados: {
     await tx.delete(lancamentosCaixa)
       .where(and(eq(lancamentosCaixa.vendaId, vendaId), eq(lancamentosCaixa.tipo, 'entrada')))
 
-    const pagamentosDinheiro = dados.pagamentos.filter(p => p.tipo === 'dinheiro')
+    const pagamentosDinheiro = pagamentos.filter(p => p.tipo === 'dinheiro')
     for (const pgto of pagamentosDinheiro) {
       await tx.insert(lancamentosCaixa).values({
         lojaId:    vendaAtual.lojaId,
@@ -1728,7 +1731,7 @@ async function aprovarVenda(aprovacaoId: string) {
         .returning({ id: aprovacoesVenda.id })
       if (!claimed) throw new RecusaUsuario('Esta solicitação não está mais pendente. Recarregue a página.')
     })
-    await aplicarPagamentoOS(aprovacao.osId, aprovacao.dadosVenda as unknown as DadosPagamentoOS)
+    await aplicarPagamentoOS({ id: aprovacao.osId, lojaId: aprovacao.lojaId }, aprovacao.dadosVenda as unknown as DadosPagamentoOS)
     revalidatePath('/vendas')
     return
   }

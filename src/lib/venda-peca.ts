@@ -7,6 +7,7 @@ import { moverSaldo } from '@/lib/estoque-pecas-loja'
 import { recusaDaQuantidadeVendida } from '@/lib/quantidade-vendida'
 import { conferirMaquininhas } from '@/lib/maquininhas'
 import { sincronizarCaixaDaVendaPeca } from '@/lib/caixa-venda-peca'
+import { CAMPOS_PAGAMENTO_VENDA, pagamentosParaGravar } from '@/lib/pagamentos-gravacao'
 
 // `valorUnitario` sobrepõe o preço do catálogo só naquela venda (desconto/ajuste de
 // balcão). Só gestor pode mandar — quem decide é o servidor, não o cliente; ver
@@ -33,7 +34,9 @@ export async function aplicarVendaPeca(
   vendedorId: string,
   input: DadosVendaPeca,
 ) {
-  const valorTotal = input.pagamentos.reduce((s, p) => s + p.valor, 0)
+  // Aqui, e não só na action: a aprovação guardada chega direto com o que a tela mandou.
+  const pagamentos = pagamentosParaGravar(input.pagamentos, CAMPOS_PAGAMENTO_VENDA, [])
+  const valorTotal = pagamentos.reduce((s, p) => s + p.valor, 0)
 
   const pecaIds = input.itens.map(i => i.pecaId)
   const pecas = await tx
@@ -52,14 +55,14 @@ export async function aplicarVendaPeca(
   // Também aqui, e não só na action: a aprovação de venda guardada chega direto (#195).
   const recusaQuantidade = recusaDaQuantidadeVendida(input.itens)
   if (recusaQuantidade) throw new RecusaUsuario(recusaQuantidade)
-  await conferirMaquininhas(tx, input.lojaId, input.pagamentos)
+  await conferirMaquininhas(tx, input.lojaId, pagamentos)
   for (const item of input.itens) {
     const peca = pecaById.get(item.pecaId)
     if (!peca) throw new RecusaUsuario('Peça não encontrada')
     if (item.quantidade <= 0) throw new RecusaUsuario(`Quantidade inválida para ${peca.nome}`)
   }
 
-  const formaPagamento = input.pagamentos.length === 1 ? input.pagamentos[0].tipo : 'multiplo'
+  const formaPagamento = pagamentos.length === 1 ? pagamentos[0].tipo : 'multiplo'
 
   const [venda] = await tx.insert(vendasPecas).values({
     lojaId: input.lojaId,
@@ -69,7 +72,7 @@ export async function aplicarVendaPeca(
     clienteTipoPessoa: input.clienteTipoPessoa === 'juridica' ? 'juridica' : 'fisica',
     clienteDocumento: input.clienteDocumento || null,
     formaPagamento,
-    pagamentos: input.pagamentos,
+    pagamentos,
     valorTotal: valorTotal.toFixed(2),
     caixaAutomatico: true,
   }).returning({ id: vendasPecas.id, numero: vendasPecas.numero, dataVenda: vendasPecas.dataVenda })
@@ -91,7 +94,7 @@ export async function aplicarVendaPeca(
     await moverSaldo(tx, item.pecaId, input.lojaId, -item.quantidade)
   }
 
-  await sincronizarCaixaDaVendaPeca(tx, { ...venda, lojaId: input.lojaId, caixaAutomatico: true }, input.pagamentos, vendedorId)
+  await sincronizarCaixaDaVendaPeca(tx, { ...venda, lojaId: input.lojaId, caixaAutomatico: true }, pagamentos, vendedorId)
 
   return { id: venda.id }
 }
