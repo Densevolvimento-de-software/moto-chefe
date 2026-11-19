@@ -491,6 +491,8 @@ function Sugestao({ titulo, selo, detalhes, valor, onVincular, rotulo, vinculand
           <span className="truncate">{titulo}</span>
           {selo && <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{selo}</span>}
         </p>
+        {/* Celular: o valor vem aqui, acima dos detalhes (que cortam); a partir do sm, ao lado do Vincular. */}
+        <p className="text-sm font-semibold tabular-nums sm:hidden">{fmt(valor)}</p>
         {detalhes.filter(Boolean).map(l => <p key={l} className="truncate text-xs text-muted-foreground">{l}</p>)}
       </div>
       <span className="hidden text-sm tabular-nums sm:block">{fmt(valor)}</span>
