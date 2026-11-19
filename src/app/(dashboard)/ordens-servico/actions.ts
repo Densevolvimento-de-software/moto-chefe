@@ -211,7 +211,7 @@ export async function registrarPagamentoOSAction(...a: Parameters<typeof registr
   return acao(() => registrarPagamentoOS(...a))
 }
 async function registrarPagamentoOS(osId: string, dados: DadosPagamentoOS) {
-  const { usuario } = await verificarAcessoOS(osId, GESTORES)
+  const { usuario, os: osDoAcesso } = await verificarAcessoOS(osId, GESTORES)
 
   await validarCupomDoPagamento(usuario, osId, dados.pagamentos)
   await conferirMaquininhasDaOS(db, osId, dados.pagamentos)
@@ -251,7 +251,7 @@ async function registrarPagamentoOS(osId: string, dados: DadosPagamentoOS) {
     }
   }
 
-  await aplicarPagamentoOS(osId, dados)
+  await aplicarPagamentoOS({ id: osId, lojaId: osDoAcesso.lojaId }, dados)
   return { aguardandoAprovacao: false }
 }
 
