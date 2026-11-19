@@ -251,3 +251,70 @@ test('sem empresa gravada, o token novo é aceito sem consultar a NG', async () 
     throw new Desfazer()
   }), Desfazer)
 })
+
+// #126: token colado pela tela é normalizado antes de qualquer uso; nas falhas da Consultar Empresa, o log não leva o
+// token nem pedaço dele.
+const TOKEN_NG = 'ngTokenFicticio0123456789abcdefABCDEF'
+const EMPRESA_126 = '11111111-2222-4333-8444-555555555555'
+
+test('token colado com quebra de linha e espaços: grava e consulta a NG com o token normalizado', async () => {
+  const { decifrar } = await import('@/lib/cripto')
+  await assert.rejects(db.transaction(async tx => {
+    const c = await cenario(tx)
+    const ng = ngFalsa({}, { cnpjPorToken: { [TOKEN_NG]: '49366097000140' } })
+    const colado = ` ${TOKEN_NG.slice(0, 10)}\n${TOKEN_NG.slice(10, 20)}\r\n\t${TOKEN_NG.slice(20)} `
+    const r = await salvarCredencial(c.geral, { grupoId: c.grupo, token: colado, empresaId: EMPRESA_126, ambiente: 'Producao' }, ng.deps, tx)
+    assert.deepEqual(r, { ok: true })
+    const [linha] = ((await tx.execute(sql`select token from notagateway_config where grupo_id = ${c.grupo}`)) as unknown as { rows: { token: string }[] }).rows
+    assert.equal(decifrar(linha.token).toString('utf8'), TOKEN_NG)
+    throw new Desfazer()
+  }), Desfazer)
+})
+
+test('token fora do formato depois de normalizado: frase, sem consultar a NG e sem gravar', async () => {
+  await assert.rejects(db.transaction(async tx => {
+    const c = await cenario(tx)
+    const ng = ngFalsa({ [EMPRESA_126]: '49366097000140' })
+    for (const token of [`${TOKEN_NG}\u0000`, `${TOKEN_NG}ç`]) {
+      const r = await salvarCredencial(c.geral, { grupoId: c.grupo, token, empresaId: EMPRESA_126, ambiente: 'Producao' }, ng.deps, tx)
+      assert.deepEqual(r, { ok: false, erro: 'Esse token não está no formato da Nota Gateway. Copie de novo o Token Basic inteiro no painel da Nota Gateway.' })
+    }
+    assert.deepEqual(ng.chamadas, [])
+    assert.equal(await configDoGrupo(tx, c.grupo), null)
+    throw new Desfazer()
+  }), Desfazer)
+})
+
+test('falha na Consultar Empresa: nem o log nem a resposta levam o token, pedaço dele ou o empresaId', async t => {
+  const saidas = (['log', 'info', 'warn', 'error'] as const).map(m => t.mock.method(console, m, () => {}))
+  const respostas: unknown[] = []
+  await assert.rejects(db.transaction(async tx => {
+    const c = await cenario(tx)
+    for (const erro of [new TypeError(`falhou com ${TOKEN_NG}`), new Error(`Consultar Empresa respondeu HTTP 401 em /v2/empresas/${EMPRESA_126}`)]) {
+      const deps = { cnpjDaEmpresaNaNg: async () => { throw erro } }
+      respostas.push(await salvarCredencial(c.geral, { grupoId: c.grupo, token: TOKEN_NG, empresaId: EMPRESA_126, ambiente: 'Producao' }, deps, tx))
+    }
+    throw new Desfazer()
+  }), Desfazer)
+  const linhas = saidas.flatMap(s => s.mock.calls.map(c => c.arguments.map(String).join(' ')))
+  assert.deepEqual(linhas, ['[credencial-ng] Consultar Empresa falhou: TypeError', '[credencial-ng] Consultar Empresa falhou: Error'])
+  const tudo = `${linhas.join('\n')}\n${JSON.stringify(respostas)}`
+  assert.equal(tudo.includes(EMPRESA_126), false)
+  for (let i = 0; i + 8 <= TOKEN_NG.length; i++) assert.equal(tudo.includes(TOKEN_NG.slice(i, i + 8)), false, `pedaço ${i} do token`)
+})
+
+test('token já gravado com quebra de linha chega à NG normalizado', async () => {
+  const { cifrar } = await import('@/lib/cripto')
+  const { configNotaGateway } = await import('@/lib/notagateway/client')
+  await assert.rejects(db.transaction(async tx => {
+    const c = await cenario(tx)
+    await tx.execute(sql`insert into notagateway_config (grupo_id, token, empresa_id, ambiente)
+      values (${c.grupo}, ${cifrar(`${TOKEN_NG.slice(0, 12)}\r\n${TOKEN_NG.slice(12)}`)}, ${EMPRESA_126}, 'Homologacao')`)
+    assert.equal((await configNotaGateway(c.grupo, tx))?.token, TOKEN_NG)
+
+    // Token novo vazio reconfere a empresa com o token gravado: normalizado também.
+    const ng = ngFalsa({}, { cnpjPorToken: { [TOKEN_NG]: '49366097000140' } })
+    assert.deepEqual(await salvarCredencial(c.geral, { grupoId: c.grupo, token: '', empresaId: EMPRESA_126, ambiente: 'Homologacao' }, ng.deps, tx), { ok: true })
+    throw new Desfazer()
+  }), Desfazer)
+})

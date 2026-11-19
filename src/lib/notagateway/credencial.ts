@@ -4,6 +4,7 @@ import { grupos, notagatewayConfig } from '@/lib/db/schema'
 import { cifrar, decifrar } from '@/lib/cripto'
 import type { ConfigNotaGateway } from './client'
 import { ehUuid } from '@/lib/uuid'
+import { normalizarToken } from '@/lib/token-colado'
 
 /**
  * Credencial da Nota Gateway do grupo (#446). Só o admin_geral grava: o token
@@ -33,6 +34,9 @@ export const podeGravarCredencialNg = (papel: string) => papel === 'admin_geral'
 // A doc da NG diz só 'string': não depende de uuid, mas nada que mude o caminho da URL.
 const ID_EMPRESA_NG = /^[A-Za-z0-9_-]{1,64}$/
 const digitos = (s: string) => s.replace(/\D/g, '')
+// A doc da NG diz só "string segura e única" (/v2/reference/autenticação). Depois de normalizado (#126), só caracteres
+// visíveis: token de API em header de autenticação é ASCII (token68, RFC 7235); o resto não chega à NG.
+const TOKEN_NG = /^[\x21-\x7e]+$/
 
 export async function salvarCredencial(
   usuario: { papel: string },
@@ -51,8 +55,11 @@ export async function salvarCredencial(
     .from(notagatewayConfig)
     .where(eq(notagatewayConfig.grupoId, data.grupoId))
     .limit(1)
-  const token = data.token.trim()
+  const token = normalizarToken(data.token)
   if (!atual && !token) return { ok: false, erro: 'Informe o token da Nota Gateway para configurar este grupo' }
+  if (token && !TOKEN_NG.test(token)) {
+    return { ok: false, erro: 'Esse token não está no formato da Nota Gateway. Copie de novo o Token Basic inteiro no painel da Nota Gateway.' }
+  }
 
   const empresaId = data.empresaId.trim()
   if (empresaId) {
@@ -75,11 +82,11 @@ export async function salvarCredencial(
   if (empresaAConferir) {
     let cnpjNaNg: string
     try {
-      const tokenNg = token || decifrar(atual!.token).toString('utf8')
+      const tokenNg = token || normalizarToken(decifrar(atual!.token).toString('utf8'))
       cnpjNaNg = await deps.cnpjDaEmpresaNaNg({ token: tokenNg, empresaId: empresaAConferir, ambiente: data.ambiente })
     } catch (e) {
-      // Só a mensagem, que o client.ts monta com o status HTTP; nunca token nem empresaId.
-      console.error('[credencial-ng] Consultar Empresa falhou:', e instanceof Error ? e.message : 'erro desconhecido')
+      // Só o nome do erro (#126; a pista com o status fica para a #140).
+      console.error('[credencial-ng] Consultar Empresa falhou:', e instanceof Error ? e.name : 'erro desconhecido')
       return { ok: false, erro: 'Não deu para confirmar a empresa na Nota Gateway agora. Confira o token e o id e tente de novo.' }
     }
     if (digitos(cnpjNaNg) !== digitos(g.cnpj)) {
