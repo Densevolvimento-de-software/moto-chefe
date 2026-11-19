@@ -290,25 +290,58 @@ test('pedido forjado: valor do PIX, custo e grupo vindos da tela são ignorados;
   assert.deepEqual(await execRows(sql`select id from pix_recebimentos_mcp where grupo_id = ${b.grupoId}`), [])
 })
 
-test('busca de PIX livre: o PIX pelo esperado sem o custo, a TED pelo valor cheio; grupo sem custo e busca digitada como hoje', async () => {
+test('busca de PIX para o alvo: o PIX pelo esperado sem o custo, a TED e a linha sem tipo pelo cheio; busca digitada e grupo sem custo como hoje', async () => {
   const a = await contaComAlvos()
   await custoDoGrupo(a.grupoId, 0.002)
   usuario = await sessao(a, 'aux_adm')
+  const alvo = { tipo: 'moto' as const, id: a.alvos.moto }
   const pixLiquido = await semearPixRecebido(db, a.grupoId, { valor: 9980 })
-  const pixCheio = await semearPixRecebido(db, a.grupoId, { valor: 10000 })
+  await semearPixRecebido(db, a.grupoId, { valor: 10000 })
   const tedCheia = await semearPixRecebido(db, a.grupoId, { valor: 10000, tipoOperacao: 'TED' })
   const tedLiquida = await semearPixRecebido(db, a.grupoId, { valor: 9980, tipoOperacao: 'TED' })
   // Linha antiga, sem tipo: entra inteira, como a TED.
   const semTipoCheia = await semearPixRecebido(db, a.grupoId, { valor: 10000, tipoOperacao: null, pagadorNome: 'Pagador antigo' })
   const semTipoLiquida = await semearPixRecebido(db, a.grupoId, { valor: 9980, tipoOperacao: null })
   const ids = (l: { id: string }[]) => l.map(p => p.id).sort()
-  assert.deepEqual(ids(await actions.buscarPixLivres(10000)), [pixLiquido, tedCheia, semTipoCheia].sort(), '0,20%: PIX pelo esperado, TED e sem tipo pelo cheio')
-  assert.deepEqual(ids(await actions.buscarPixLivres(0, '9980')), [pixLiquido, tedLiquida, semTipoLiquida].sort(), 'valor digitado: como hoje')
-  assert.deepEqual(ids(await actions.buscarPixLivres(0, 'Pagador antigo')), [semTipoCheia], 'texto digitado: como hoje')
+  const r = await actions.buscarPixParaOAlvo(alvo, 10000)
+  assert.deepEqual([r.esperado, r.noGrupoAtivo], [9980, true])
+  assert.deepEqual(ids(r.pix), [pixLiquido, tedCheia, semTipoCheia].sort(), '0,20%: PIX pelo esperado, TED e sem tipo pelo cheio')
+  assert.deepEqual(ids(await actions.buscarPixLivres('9980')), [pixLiquido, tedLiquida, semTipoLiquida].sort(), 'valor digitado: como hoje')
+  assert.deepEqual(ids(await actions.buscarPixLivres('Pagador antigo')), [semTipoCheia], 'texto digitado: como hoje')
 
   const semCusto = await contaComAlvos()
   usuario = await sessao(semCusto, 'aux_adm')
   await semearPixRecebido(db, semCusto.grupoId, { valor: 9980 })
   const cheio = await semearPixRecebido(db, semCusto.grupoId, { valor: 10000 })
-  assert.deepEqual(ids(await actions.buscarPixLivres(10000)), [cheio], 'grupo sem custo: como hoje')
+  const s = await actions.buscarPixParaOAlvo({ tipo: 'os', id: semCusto.alvos.os }, 10000)
+  assert.deepEqual([s.esperado, s.noGrupoAtivo, ids(s.pix)], [null, true, [cheio]], 'grupo sem custo: como hoje')
+})
+
+// ─── Tela (#90, 90b): o que a busca do PIX mostra antes de vincular ─────────────────────────────────
+
+
+test('busca de PIX para o alvo: alvo de outro grupo da mesma Conta, de outra Conta, inexistente ou forjado não é do grupo ativo e não lista PIX', async () => {
+  const a = await contaComAlvos()
+  const suf = randomUUID()
+  const outro = await semearGrupo(db, a.contaId, { prefixo: 'VP90', nome: suf, cnpj: suf })
+  const lojaOutro = await semearLoja(db, outro.grupoId, 'VP90 loja ' + suf)
+  const vendaOutro = await semearVendaMoto(db, { ...a.balcao, lojaId: lojaOutro }, PAGAMENTOS)
+  const b = await contaComAlvos()
+  await semearPixRecebido(db, a.grupoId, { valor: 10000 })
+  usuario = await sessao(a, 'admin_socio', { lojaId: null, gruposAcesso: [a.grupoId, outro.grupoId] })
+  grupoAtivoNoCookie = a.grupoId
+  for (const alvo of [{ tipo: 'moto', id: vendaOutro }, { tipo: 'os', id: b.alvos.os }, { tipo: 'peca', id: randomUUID() }, { tipo: 'xyz', id: a.alvos.moto }] as unknown as AlvoConciliacao[]) {
+    const r = await actions.buscarPixParaOAlvo(alvo, 10000)
+    assert.deepEqual([r.noGrupoAtivo, r.pix], [false, []], JSON.stringify(alvo))
+  }
+  const r = await actions.buscarPixParaOAlvo({ tipo: 'moto', id: a.alvos.moto }, 10000)
+  assert.deepEqual([r.noGrupoAtivo, r.pix.length], [true, 1])
+})
+
+test('busca de PIX para o alvo: vendedor e mecânico recebem Sem permissão', async () => {
+  const a = await contaComAlvos()
+  for (const papel of ['vendedor', 'mecanico']) {
+    usuario = await sessao(a, papel)
+    await assert.rejects(actions.buscarPixParaOAlvo({ tipo: 'moto', id: a.alvos.moto }, 1000), /Sem permissão/, papel)
+  }
 })

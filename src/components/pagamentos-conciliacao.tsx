@@ -12,6 +12,7 @@ import {
   buscarConciliacoesPorValor,
   buscarConciliacoesLivres,
   buscarPixLivres,
+  buscarPixParaOAlvo,
   vincularVendaAction,
   vincularPixAlvoAction,
   forcarConciliacaoAction,
@@ -21,6 +22,7 @@ import {
 } from '@/app/(dashboard)/conciliacao/actions'
 import { dataPuraBr } from '@/lib/data-venda'
 import { rotuloDaLinha } from '@/lib/conciliacao-cartao'
+import { ContaDoPix } from '@/components/conta-do-pix'
 
 type Conc      = Awaited<ReturnType<typeof buscarConciliacoesDoAlvo>>[number]
 type PixRec    = Awaited<ReturnType<typeof buscarPixDoAlvo>>[number]
@@ -89,6 +91,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const [candidatos, setCandidatos]     = useState<Candidato[]>([])
   const [candidatosPix, setCandidatosPix] = useState<PixLivre[]>([])
   const [buscaLoading, setBuscaLoading] = useState(false)
+  // Só para PIX: o valor esperado no banco (sem o custo do PIX do grupo) e se o alvo é do grupo ativo.
+  const [contextoPix, setContextoPix] = useState<{ esperado: number | null; noGrupoAtivo: boolean } | null>(null)
   const [vinculando, setVinculando]     = useState(false)
 
   const [buscaLivre, setBuscaLivre]         = useState('')
@@ -106,6 +110,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   function limparBusca() {
     setCandidatos([])
     setCandidatosPix([])
+    setContextoPix(null)
     setLivres([])
     setLivresPix([])
     setBuscaLivre('')
@@ -119,8 +124,13 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     setBuscaLoading(true)
     limparBusca()
     try {
-      if (ehPix) setCandidatosPix(await buscarPixLivres(valor))
-      else       setCandidatos(await buscarConciliacoesPorValor(valor))
+      if (ehPix) {
+        const { esperado, noGrupoAtivo, pix } = await buscarPixParaOAlvo(alvo, valor)
+        setContextoPix({ esperado, noGrupoAtivo })
+        setCandidatosPix(pix)
+      } else {
+        setCandidatos(await buscarConciliacoesPorValor(valor))
+      }
     } catch {
       toast.error(ehPix ? 'Erro ao buscar recebimentos PIX' : 'Erro ao buscar transações')
       setBuscandoIdx(null)
@@ -134,7 +144,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     setLivreLoading(true)
     setBuscouLivre(false)
     try {
-      if (buscandoPix) setLivresPix(await buscarPixLivres(0, buscaLivre))
+      if (buscandoPix) setLivresPix(await buscarPixLivres(buscaLivre))
       else             setLivres(await buscarConciliacoesLivres(buscaLivre))
       setBuscouLivre(true)
     } catch {
@@ -251,6 +261,9 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   }
 
   const modo = buscandoPix ? MODO.pix : MODO.cartao
+  // PIX: fora do grupo ativo o servidor não vincula nem força; com custo no grupo, procura pelo esperado.
+  const pixForaDoGrupo = buscandoPix && contextoPix !== null && !contextoPix.noGrupoAtivo
+  const esperadoPix = buscandoPix ? contextoPix?.esperado ?? null : null
   const sugestoes = buscandoPix ? candidatosPix.map(renderCandidatoPix) : candidatos.map(renderCandidato)
   const achadosLivres = buscandoPix ? livresPix.map(renderCandidatoPix) : livres.map(renderCandidato)
 
@@ -264,7 +277,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     // Achou dinheiro, mas menos do que foi lançado: nem verde nem vermelho.
     const parcial    = pendente && cobertura.coberto > 0.005
     const situacao = situacaoDe({ precisa, loading, forcado, conciliado, parcial })
-    return { p, i, situacao, coberto: cobertura.coberto }
+    const pix = cobertura.pixId ? pixRecs.find(r => r.id === cobertura.pixId) : undefined
+    return { p, i, situacao, coberto: cobertura.coberto, pix }
   }).filter(l => !somenteConciliaveis || l.situacao !== 'livre')
   const ordem: Record<Situacao, number> = { pendente: 0, parcial: 1, carregando: 2, forcado: 3, conciliado: 4, livre: 5 }
   itens.sort((x, y) => ordem[x.situacao] - ordem[y.situacao] || x.i - y.i)
@@ -294,7 +308,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
       )}
 
       <ul className="space-y-2">
-        {itens.map(({ p, i, situacao, coberto }) => {
+        {itens.map(({ p, i, situacao, coberto, pix }) => {
           const resolvivel = RESOLVIVEL.has(situacao)
           const mostraBusca = buscandoIdx === i && podeGerir && p.tipo !== 'financiamento'
           const aberto = resolvivel && (buscandoIdx === i || forcandoIdx === i)
@@ -303,8 +317,10 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
             situacao === 'forcado' && p.conciliadoManual
               ? `${p.conciliadoManual.porNome} · ${new Date(p.conciliadoManual.em).toLocaleDateString('pt-BR')} · ${p.conciliadoManual.motivo}`
               : situacao === 'parcial'
-                ? `Entrou ${fmt(coberto)} · faltam ${fmt(p.valor - coberto)}`
-                : detalhe
+                ? `Coberto ${fmt(coberto)} · faltam ${fmt(p.valor - coberto)}`
+                : situacao === 'conciliado' && pix?.pagadorNome
+                  ? pix.pagadorNome
+                  : detalhe
           return (
             <li key={i} className={cn('overflow-hidden rounded-xl border border-l-4 border-border', SITUACAO[situacao].borda, aberto && 'shadow-sm')}>
               <button
@@ -326,6 +342,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                   <ChevronDown aria-hidden className={cn('size-4 text-muted-foreground transition-transform', aberto && 'rotate-180')} />
                 )}
               </button>
+
+              {situacao === 'conciliado' && pix && Number(pix.custoPixTaxa) > 0 && <ContaDoPixConciliado pix={pix} />}
 
               {situacao === 'forcado' && podeGerir && (
                 <div className="flex justify-end border-t border-border px-3">
@@ -371,15 +389,24 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                     </div>
                   ) : (
                     <>
-                      {mostraBusca && (
+                      {mostraBusca && pixForaDoGrupo ? (
+                        <p className="text-sm text-muted-foreground">Este pagamento é de outro grupo. Troque o grupo ativo para procurar e vincular o PIX.</p>
+                      ) : mostraBusca && (
                         <>
+                          {esperadoPix !== null && !buscaLoading && (
+                            <p className="text-xs text-muted-foreground">
+                              O banco deposita sem o custo do PIX. Procurando perto de <b className="text-foreground">{fmt(esperadoPix)}</b>.
+                            </p>
+                          )}
                           {buscaLoading ? (
                             <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Procurando recebimentos…</p>
                           ) : sugestoes.length > 0 ? (
                             <div className="space-y-2">
-                              <p className="text-xs text-muted-foreground">
-                                {modo.nome} de valor próximo a <b className="text-foreground">{fmt(p.valor)}</b> ainda sem vínculo:
-                              </p>
+                              {esperadoPix === null && (
+                                <p className="text-xs text-muted-foreground">
+                                  {modo.nome} de valor próximo a <b className="text-foreground">{fmt(p.valor)}</b> ainda sem vínculo:
+                                </p>
+                              )}
                               {sugestoes}
                             </div>
                           ) : (
@@ -416,7 +443,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                         </>
                       )}
 
-                      {podeGerir && (
+                      {podeGerir && !(mostraBusca && pixForaDoGrupo) && (
                         <div className={cn('flex items-center gap-3', mostraBusca && 'border-t border-border pt-3')}>
                           <p className="min-w-0 flex-1 text-xs text-muted-foreground">
                             {p.tipo === 'financiamento'
@@ -440,6 +467,20 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
           )
         })}
       </ul>
+    </div>
+  )
+}
+
+// O PIX conciliado com custo: valor do PIX, custo com a taxa gravada no vínculo e o que entrou.
+function ContaDoPixConciliado({ pix }: { pix: PixRec }) {
+  const taxa = (Number(pix.custoPixTaxa) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+  return (
+    <div className="mx-3 mb-3 overflow-hidden rounded-lg border border-border">
+      <ContaDoPix linhas={[
+        { rotulo: 'Valor do PIX', valor: Number(pix.valorBruto ?? pix.valor) },
+        { rotulo: `Custo (${taxa}%)`, valor: Number(pix.custoPix ?? 0), custo: true },
+        { rotulo: 'Entrou', valor: Number(pix.valor) },
+      ]} />
     </div>
   )
 }

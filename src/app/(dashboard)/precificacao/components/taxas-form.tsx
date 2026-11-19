@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { salvarTaxasAction, type TaxasPayload } from '../actions'
 import { CUSTO_PIX_FORA_DA_FAIXA, creditoDoPix, custoPixDoCampo } from '@/lib/custo-pix'
 import { fmtBRL } from '@/lib/preco-minimo'
+import { ContaDoPix } from '@/components/conta-do-pix'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { ChevronDown, Save } from 'lucide-react'
 
@@ -102,22 +103,14 @@ const PIX_DO_EXEMPLO = 10000
 /** A conta inteira de um PIX de exemplo com o custo digitado: valor, custo e o que entra na conta. */
 function ExemploPix({ taxa }: { taxa: number }) {
   const { custo, entra } = creditoDoPix(PIX_DO_EXEMPLO, taxa)
-  const linhas = [
-    { rotulo: 'Valor do PIX', valor: PIX_DO_EXEMPLO, cor: '' },
-    { rotulo: 'Custo do PIX', valor: custo, cor: 'text-destructive' },
-    { rotulo: 'Entra na conta', valor: entra, cor: '' },
-  ]
   return (
     <div className="max-w-lg rounded-lg border overflow-hidden">
       <p className="bg-muted px-3 py-2 text-xs font-semibold text-foreground">Como fica um PIX de {fmtBRL(PIX_DO_EXEMPLO)}</p>
-      <dl className="grid divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        {linhas.map(l => (
-          <div key={l.rotulo} className="flex items-center justify-between gap-2 px-3 py-2 sm:block">
-            <dt className="text-xs text-muted-foreground">{l.rotulo}</dt>
-            <dd className={`text-sm font-semibold tabular-nums ${l.cor}`}>{fmtBRL(l.valor)}</dd>
-          </div>
-        ))}
-      </dl>
+      <ContaDoPix linhas={[
+        { rotulo: 'Valor do PIX', valor: PIX_DO_EXEMPLO },
+        { rotulo: 'Custo do PIX', valor: custo, custo: true },
+        { rotulo: 'Entra na conta', valor: entra },
+      ]} />
     </div>
   )
 }

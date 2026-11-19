@@ -14,19 +14,24 @@ after(desmontarDom)
 
 const forcar = mock.fn(async (_alvo: AlvoConciliacao, _idx: number, _motivo: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const desfazer = mock.fn(async (_alvo: AlvoConciliacao, _idx: number): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
-const buscarPixLivres = mock.fn(async (): Promise<PixLivre[]> => [])
+type Actions = typeof import('@/app/(dashboard)/conciliacao/actions')
+type ParaOAlvo = Awaited<ReturnType<Actions['buscarPixParaOAlvo']>>
+type PixRec = Awaited<ReturnType<Actions['buscarPixDoAlvo']>>[number]
+const buscarPixLivres = mock.fn(async (_query: string): Promise<PixLivre[]> => [])
+const paraOAlvo = mock.fn(async (_alvo: AlvoConciliacao, _valor: number): Promise<ParaOAlvo> => ({ esperado: null, noGrupoAtivo: true, pix: [] }))
 const vincularPix = mock.fn(async (_pixId: string, _alvo: AlvoConciliacao): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const buscarConciliacoesPorValor = mock.fn(async () => [])
 const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { namedExports: {
   forcarConciliacaoAction: (a: AlvoConciliacao, i: number, m: string) => forcar(a, i, m),
   desfazerConciliacaoForcadaAction: (a: AlvoConciliacao, i: number) => desfazer(a, i),
-  buscarPixLivres: () => buscarPixLivres(),
+  buscarPixLivres: (q: string) => buscarPixLivres(q),
   buscarConciliacoesPorValor: () => buscarConciliacoesPorValor(),
   buscarConciliacoesDoAlvo: async () => [],
   buscarPixDoAlvo: async () => [],
   buscarConciliacoesLivres: async () => [],
   vincularVendaAction: async () => {},
   vincularPixAlvoAction: (p: string, a: AlvoConciliacao) => vincularPix(p, a),
+  buscarPixParaOAlvo: (a: AlvoConciliacao, v: number) => paraOAlvo(a, v),
 } })
 type AcaoDoToast = { action?: { label: string; onClick: () => void } }
 const erros: string[] = []
@@ -39,7 +44,8 @@ after(() => { actionsMock.restore(); sonnerMock.restore() })
 
 const desmontagens: (() => Promise<void>)[] = []
 afterEach(async () => {
-  for (const f of [forcar, desfazer, buscarPixLivres, buscarConciliacoesPorValor, vincularPix]) f.mock.resetCalls()
+  for (const f of [forcar, desfazer, buscarPixLivres, buscarConciliacoesPorValor, vincularPix, paraOAlvo]) f.mock.resetCalls()
+  paraOAlvo.mock.restore()
   forcar.mock.restore()
   desfazer.mock.restore()
   buscarPixLivres.mock.restore()
@@ -58,9 +64,9 @@ const FALHA_INTERNA = new Error('connect ECONNREFUSED 10.0.0.1:5432')
 const linhas = () => [...document.querySelectorAll<HTMLButtonElement>('button[aria-expanded], li > button[disabled]')]
 const linha = (tipo: string) => linhas().find(b => (b.textContent ?? '').startsWith(tipo))
 
-async function montar(papel: string, pagamentos: PgtoOS[]) {
+async function montar(papel: string, pagamentos: PgtoOS[], pixRecs: PixRec[] = []) {
   const { PagamentosConciliacao } = await import('./pagamentos-conciliacao')
-  const dados = { concs: [], pixRecs: [], loading: false, recarregar: async () => {} }
+  const dados = { concs: [], pixRecs, loading: false, recarregar: async () => {} }
   const tela = await montarDialogo(PagamentosConciliacao, { alvo: ALVO, pagamentos, dados, papel })
   desmontagens.push(tela.desmontar)
   const tocar = (el: Element | undefined) => tela.act(async () => { clicar(el); await esperar(50) })
@@ -90,7 +96,7 @@ test('aux_adm abre o financiamento pendente direto no Forçar, sem procurar lan�
   const { tocar } = await montar('aux_adm', [{ tipo: 'financiamento', valor: 8000 }])
   await tocar(linha('Financiamento'))
   assert.ok(botao('Forçar'))
-  assert.equal(buscarPixLivres.mock.callCount() + buscarConciliacoesPorValor.mock.callCount(), 0)
+  assert.equal(paraOAlvo.mock.callCount() + buscarConciliacoesPorValor.mock.callCount(), 0)
 })
 
 test('recusa do forçar aparece no aviso e o formulário fica aberto com o motivo', async () => {
@@ -137,13 +143,13 @@ test('vendedor não abre a linha pendente nem vê o Desfazer forçado', async ()
   await montar('vendedor', [{ tipo: 'pix', valor: 1000 }, { tipo: 'cartao_credito', valor: 500, conciliadoManual: FORCADO }])
   assert.equal(linha('PIX')?.disabled, true)
   assert.equal(botao('Desfazer forçado'), undefined)
-  assert.equal(botao('Forçar'), undefined)
+  assert.equal(botao('Forçar')?.textContent ?? null, null)
 })
 
 const PIX_LIVRE: PixLivre = { id: 'pix-1', data: new Date('2026-11-12T14:32:00Z'), valor: '1000.00', pagadorNome: 'Pagador Exemplo', descricao: null }
 
 test('vincular o PIX sugerido envia o PIX e o alvo; a recusa aparece com a frase da action', async () => {
-  buscarPixLivres.mock.mockImplementation(async () => [PIX_LIVRE])
+  paraOAlvo.mock.mockImplementation(async () => ({ esperado: null, noGrupoAtivo: true, pix: [PIX_LIVRE] }))
   const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 1000 }])
   await tocar(linha('PIX'))
   const vincular = () => tocar(document.querySelector('button[aria-label^="Vincular PIX de Pagador Exemplo"]') ?? undefined)
@@ -157,4 +163,59 @@ test('vincular o PIX sugerido envia o PIX e o alvo; a recusa aparece com a frase
   await vincular()
   assert.deepEqual(vincularPix.mock.calls.map(c => c.arguments), [['pix-1', ALVO], ['pix-1', ALVO]])
   assert.deepEqual(sucessos.map(s => s.mensagem), ['PIX conciliado'])
+})
+
+// ─── Custo do PIX na tela (#90, variante B) ──────────────────────────────────────────────────────────
+const tela = () => (document.body.textContent ?? '').replace(/\s+/g, ' ')
+const contaDoPix = () => [...document.querySelectorAll('dl > div')].map(d => [d.querySelector('dt')?.textContent, (d.querySelector('dd')?.textContent ?? '').replace(/\s/g, ' ')])
+const pixRec = (o: Partial<PixRec>): PixRec => ({ id: 'p1', dataPagamento: new Date('2026-11-12T14:32:00Z'), valor: '9980.00', pagadorNome: 'Pagador Exemplo',
+  observacao: null, valorBruto: '10000.00', custoPix: '20.00', custoPixTaxa: '0.002000', ...o })
+
+test('PIX pendente no grupo com custo: procura perto do valor sem o custo e diz por quê', async () => {
+  paraOAlvo.mock.mockImplementation(async () => ({ esperado: 9980, noGrupoAtivo: true, pix: [{ ...PIX_LIVRE, valor: '9980.00' }] }))
+  const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }])
+  await tocar(linha('PIX'))
+  assert.deepEqual(paraOAlvo.mock.calls.map(c => c.arguments), [[ALVO, 10000]])
+  assert.ok(tela().includes('O banco deposita sem o custo do PIX. Procurando perto de R$ 9.980,00.'), tela())
+  assert.ok(document.querySelector('button[aria-label^="Vincular PIX de Pagador Exemplo"]'))
+})
+
+test('PIX pendente no grupo sem custo: o texto de hoje, pelo valor do pagamento', async () => {
+  paraOAlvo.mock.mockImplementation(async () => ({ esperado: null, noGrupoAtivo: true, pix: [PIX_LIVRE] }))
+  const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 1000 }])
+  await tocar(linha('PIX'))
+  assert.ok(tela().includes('PIX de valor próximo a R$ 1.000,00 ainda sem vínculo:'), tela())
+  assert.equal(tela().includes('custo do PIX'), false)
+})
+
+test('PIX de venda de outro grupo: pede para trocar o grupo ativo e não procura nem oferece Vincular nem Forçar', async () => {
+  paraOAlvo.mock.mockImplementation(async () => ({ esperado: 9980, noGrupoAtivo: false, pix: [] }))
+  const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }])
+  await tocar(linha('PIX'))
+  assert.ok(tela().includes('Este pagamento é de outro grupo. Troque o grupo ativo para procurar e vincular o PIX.'), tela())
+  assert.equal(document.querySelector('button[aria-label^="Vincular PIX"]'), null)
+  // O servidor também recusa forçar fora do grupo ativo (alvoParaEdicao): a tela não oferece.
+  assert.equal(botao('Forçar')?.textContent ?? null, null)
+})
+
+test('PIX conciliado com custo: pagador e as três colunas, Valor do PIX, Custo e Entrou', async () => {
+  await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }], [pixRec({})])
+  assert.ok(tela().includes('Conciliado · Pagador Exemplo'), tela())
+  assert.deepEqual(contaDoPix(), [['Valor do PIX', 'R$ 10.000,00'], ['Custo (0,20%)', 'R$ 20,00'], ['Entrou', 'R$ 9.980,00']])
+})
+
+test('PIX conciliado sem custo gravado (TED, grupo sem custo ou vínculo antigo): mostra quem pagou, sem as colunas', async () => {
+  for (const rec of [pixRec({ valorBruto: '9980.00', custoPix: '0.00', custoPixTaxa: '0.000000' }), pixRec({ valor: '10000.00', valorBruto: null, custoPix: null, custoPixTaxa: null })]) {
+    const { desmontar } = await montar('aux_adm', [{ tipo: 'pix', valor: rec.valorBruto ? 9980 : 10000 }], [rec])
+    assert.ok(tela().includes('Conciliado · Pagador Exemplo'), tela())
+    assert.deepEqual(contaDoPix(), [], JSON.stringify(rec))
+    await desmontar()
+  }
+})
+
+// Decisão do Luis (19/11/2026): na linha parcial é "Coberto" (pelo valor do PIX); "Entrou" fica para o crédito, nas três colunas.
+test('linha parcial diz quanto foi coberto e quanto falta', async () => {
+  await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }], [pixRec({ valor: '4990.00', valorBruto: '5000.00', custoPix: '10.00' })])
+  assert.ok(tela().includes('Parcial · Coberto R$ 5.000,00 · faltam R$ 5.000,00'), tela())
+  assert.equal(tela().includes('Parcial · Entrou'), false)
 })

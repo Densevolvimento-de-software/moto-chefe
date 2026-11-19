@@ -5,7 +5,7 @@ import { gruposDoTerminalNaConta } from '@/lib/terminal-da-conta'
 import { db } from '@/lib/db'
 import { cartaoNaoEstornado, cartaoPendente, linhaDeCartao } from '@/lib/cartao-status'
 import { conciliacoesCartao, pixRecebimentosMcp, vendas, modelos, motos, vendasPecas, ordensServico, clientes } from '@/lib/db/schema'
-import { eq, and, or, desc, gte, sql, isNull, ilike, inArray } from 'drizzle-orm'
+import { eq, and, or, desc, gte, sql, isNull, ilike, inArray, type SQL } from 'drizzle-orm'
 import { getUsuarioLogado } from '@/lib/auth'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
@@ -566,37 +566,21 @@ export type PixLivre = {
   descricao: string | null
 }
 
-/**
- * PIX livres pra conciliar com o alvo. Sem `query`, procura por valor aproximado
- * (o mesmo ±5 do cartão): a linha PIX pelo esperado sem o custo do PIX do grupo (o banco
- * credita sem ele, #90) e a TED ou linha sem tipo pelo valor cheio. Com `query`, casa por
- * pagador, descrição, data (AAAA-MM-DD) ou valor digitado, como o crédito aparece no extrato.
- */
-export async function buscarPixLivres(valor: number, query?: string): Promise<PixLivre[]> {
-  const usuario = await getUsuarioLogado()
-  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
-  const grupo = await getGrupoAtivo(usuario)
+type Usuario = Awaited<ReturnType<typeof getUsuarioLogado>>
 
-  const q = (query ?? '').trim()
-  let filtro
-  if (!q) {
-    const esperado = creditoDoPix(valor, await custoPixTaxaDoGrupo(grupo.id)).entra
-    filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric
-      - CASE WHEN ${pixRecebimentosMcp.tipoOperacao} = ${OPERACAO_COM_CUSTO} THEN ${esperado}::numeric ELSE ${valor}::numeric END) <= 5`
-  } else {
-    const valorBusca = parseFloat(q.replace(/\./g, '').replace(',', '.'))
-    if (/^\d{4}-\d{2}-\d{2}$/.test(q)) {
-      filtro = sql`${pixRecebimentosMcp.data}::date = ${q}::date`
-    } else if (Number.isFinite(valorBusca) && valorBusca > 0) {
-      filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric - ${valorBusca}) <= 5`
-    } else {
-      filtro = or(
-        ilike(pixRecebimentosMcp.pagadorNome, `%${q}%`),
-        ilike(pixRecebimentosMcp.descricao, `%${q}%`),
-      )
-    }
-  }
+/** O alvo só vale nas lojas do grupo ativo, o grupo do PIX: nem outra Conta nem outro grupo da mesma Conta. */
+async function alvoNoGrupoAtivo(usuario: Usuario, alvo: AlvoConciliacao): Promise<boolean> {
+  return alvoValido(alvo) && (await lojaIdDoAlvo(alvo, await listarLojaIdsDoGrupoAtivo(usuario))) !== null
+}
 
+/** Quanto um pagamento PIX de `valor` deve creditar no banco: sem o custo do PIX do grupo; null se o grupo não tem custo. */
+async function esperadoNoBanco(grupoId: string, valor: number): Promise<number | null> {
+  const taxa = await custoPixTaxaDoGrupo(grupoId)
+  return taxa > 0 ? creditoDoPix(valor, taxa).entra : null
+}
+
+/** PIX livres do grupo (sem vínculo, desde o início da conciliação), sem transferência interna. */
+async function pixLivresDoGrupo(grupoId: string, filtro: SQL | undefined): Promise<PixLivre[]> {
   const linhas = await db
     .select({
       id:          pixRecebimentosMcp.id,
@@ -607,7 +591,7 @@ export async function buscarPixLivres(valor: number, query?: string): Promise<Pi
     })
     .from(pixRecebimentosMcp)
     .where(and(
-      eq(pixRecebimentosMcp.grupoId, grupo.id),
+      eq(pixRecebimentosMcp.grupoId, grupoId),
       gte(pixRecebimentosMcp.data, INICIO_CONCILIACAO_EM),
       isNull(pixRecebimentosMcp.tipoCorrespondencia),
       filtro,
@@ -620,6 +604,39 @@ export async function buscarPixLivres(valor: number, query?: string): Promise<Pi
   return linhas.filter(l => !ehTransferenciaInterna(l.pagadorNome)).slice(0, 15)
 }
 
+/**
+ * O que a tela mostra ao abrir um pagamento PIX do alvo (#90): o valor esperado no banco (null sem custo
+ * do PIX no grupo), se o alvo é do grupo ativo e os PIX livres de valor próximo (± R$ 5, o mesmo do cartão):
+ * a linha PIX pelo esperado, a TED ou linha sem tipo pelo valor cheio. Fora do grupo ativo não lista nada:
+ * vincular e forçar só valem no grupo do PIX.
+ */
+export async function buscarPixParaOAlvo(alvo: AlvoConciliacao, valor: number): Promise<{ esperado: number | null; noGrupoAtivo: boolean; pix: PixLivre[] }> {
+  const usuario = await getUsuarioLogado()
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+  const grupo = await getGrupoAtivo(usuario)
+  const [noGrupoAtivo, esperado] = await Promise.all([alvoNoGrupoAtivo(usuario, alvo), esperadoNoBanco(grupo.id, valor)])
+  if (!noGrupoAtivo) return { esperado, noGrupoAtivo, pix: [] }
+  const filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric
+    - CASE WHEN ${pixRecebimentosMcp.tipoOperacao} = ${OPERACAO_COM_CUSTO} THEN ${esperado ?? valor}::numeric ELSE ${valor}::numeric END) <= 5`
+  return { esperado, noGrupoAtivo, pix: await pixLivresDoGrupo(grupo.id, filtro) }
+}
+
+/** Busca digitada de PIX livres: pagador, descrição, data (AAAA-MM-DD) ou valor, como o crédito aparece no extrato. */
+export async function buscarPixLivres(query: string): Promise<PixLivre[]> {
+  const usuario = await getUsuarioLogado()
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+  const grupo = await getGrupoAtivo(usuario)
+
+  const q = query.trim()
+  const valorBusca = parseFloat(q.replace(/\./g, '').replace(',', '.'))
+  const filtro = /^\d{4}-\d{2}-\d{2}$/.test(q)
+    ? sql`${pixRecebimentosMcp.data}::date = ${q}::date`
+    : Number.isFinite(valorBusca) && valorBusca > 0
+      ? sql`ABS(${pixRecebimentosMcp.valor}::numeric - ${valorBusca}) <= 5`
+      : or(ilike(pixRecebimentosMcp.pagadorNome, `%${q}%`), ilike(pixRecebimentosMcp.descricao, `%${q}%`))
+  return pixLivresDoGrupo(grupo.id, filtro)
+}
+
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
 export async function vincularPixAlvoAction(pixId: string, alvo: AlvoConciliacao) {
   return acao(() => vincularPixAlvo(pixId, alvo))
@@ -629,10 +646,7 @@ async function vincularPixAlvo(pixId: string, alvo: AlvoConciliacao) {
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   if (!alvoValido(alvo)) throw alvoNaoEncontrado(tipoDoAlvo(alvo))
   const grupo = await getGrupoAtivo(usuario)
-
-  // O alvo só vale nas lojas do grupo do PIX (o ativo): nem outra Conta nem outro grupo da mesma Conta.
-  const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
-  if (!(await lojaIdDoAlvo(alvo, lojaIdsGrupo))) throw alvoNaoEncontrado(alvo.tipo)
+  if (!(await alvoNoGrupoAtivo(usuario, alvo))) throw alvoNaoEncontrado(alvo.tipo)
 
   // `tipoCorrespondencia` usa 'venda' pra moto — é o enum que /pix-mcp já grava.
   const vinculo = alvo.tipo === 'peca' ? { tipo: 'peca' as const, pecaVendaId: alvo.id }

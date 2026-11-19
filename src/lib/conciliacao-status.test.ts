@@ -289,7 +289,7 @@ test('linha de crédito não cobre pagamento Pix', () => {
 test('PIX creditado sem o custo cobre o pagamento pelo valor do PIX gravado na conciliação', () => {
   const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000 }]
   const r = matchPagamentos(pgtos, [], [{ id: 'p1', valor: '9980.00', valorBruto: '10000.00' }])
-  assert.deepEqual(r, [{ conciliado: true, coberto: 10000 }])
+  assert.deepEqual(r, [{ conciliado: true, coberto: 10000, pixId: 'p1' }])
 })
 
 test('rateio pelo valor do PIX: dois PIX creditados sem o custo fecham o pagamento', () => {
@@ -300,6 +300,18 @@ test('rateio pelo valor do PIX: dois PIX creditados sem o custo fecham o pagamen
 
 test('PIX vinculado antes do custo (sem valor do PIX gravado) segue cobrindo pelo crédito', () => {
   const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000 }]
-  assert.deepEqual(matchPagamentos(pgtos, [], [{ id: 'p1', valor: 10000, valorBruto: null }]), [{ conciliado: true, coberto: 10000 }])
+  assert.deepEqual(matchPagamentos(pgtos, [], [{ id: 'p1', valor: 10000, valorBruto: null }]), [{ conciliado: true, coberto: 10000, pixId: 'p1' }])
   assert.deepEqual(matchPagamentos(pgtos, [], [{ id: 'p1', valor: 9980, valorBruto: null }]), [{ conciliado: false, coberto: 9980 }])
+})
+
+// #90 (tela): a linha mostra o valor do PIX, o custo e o que entrou do PIX que a cobriu inteira.
+test('linha coberta por um PIX inteiro diz qual foi; rateio entre PIX e linha sem PIX não dizem', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000 }, { tipo: 'pix', valor: 3000 }, { tipo: 'cartao_credito', valor: 500 }]
+  const r = matchPagamentos(pgtos, [], [
+    { id: 'inteiro', valor: 9980, valorBruto: 10000 },
+    { id: 'parte1', valor: 1497, valorBruto: 1500 },
+    { id: 'parte2', valor: 1497, valorBruto: 1500 },
+  ])
+  assert.deepEqual(r.map(x => x.pixId), ['inteiro', undefined, undefined])
+  assert.deepEqual(r.map(x => x.conciliado), [true, true, false])
 })
