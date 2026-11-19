@@ -11,6 +11,7 @@ import { DespesaDialog } from './despesa-dialog'
 import { ListaDetalhe } from './lista-detalhe'
 import type { Loja, DespesaRow } from '../types'
 import { dataPuraBr } from '@/lib/data-venda'
+import { SEM_NOME_DE_QUEM_LANCOU } from '@/lib/nome-de-quem-lancou'
 
 type Props = {
   despesas: DespesaRow[]
@@ -124,7 +125,7 @@ export function DespesasTable({ despesas, lojas, categorias, categoriasComBenefi
                 ['Data', dataPuraBr(d.data)],
                 ['Pagamento', d.formaPagamento],
                 ['Banco', d.banco],
-                ['Lançada por', d.usuarioNome],
+                ['Lançada por', d.usuarioNome ?? SEM_NOME_DE_QUEM_LANCOU],
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4 border-b border-border pb-2">
                   <dt className="text-muted-foreground">{k}</dt>
