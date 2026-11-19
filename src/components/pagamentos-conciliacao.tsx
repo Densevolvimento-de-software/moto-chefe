@@ -20,7 +20,7 @@ import {
   type PixLivre,
 } from '@/app/(dashboard)/conciliacao/actions'
 import { dataPuraBr } from '@/lib/data-venda'
-import { rotuloDaLinha } from '@/lib/conciliacao-cartao'
+import { LINHA_PIX, rotuloDaLinha } from '@/lib/conciliacao-cartao'
 
 type Conc      = Awaited<ReturnType<typeof buscarConciliacoesDoAlvo>>[number]
 type PixRec    = Awaited<ReturnType<typeof buscarPixDoAlvo>>[number]
@@ -119,8 +119,13 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     setBuscaLoading(true)
     limparBusca()
     try {
-      if (ehPix) setCandidatosPix(await buscarPixLivres(valor))
-      else       setCandidatos(await buscarConciliacoesPorValor(valor))
+      // PIX entra pela maquininha Mercado Pago ou pelo banco (#51): procura nas duas.
+      const [maquininha, banco] = await Promise.all([
+        buscarConciliacoesPorValor(valor, ehPix ? 'pix' : 'cartao'),
+        ehPix ? buscarPixLivres(valor) : [],
+      ])
+      setCandidatos(maquininha)
+      setCandidatosPix(banco)
     } catch {
       toast.error(ehPix ? 'Erro ao buscar recebimentos PIX' : 'Erro ao buscar transações')
       setBuscandoIdx(null)
@@ -134,8 +139,12 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     setLivreLoading(true)
     setBuscouLivre(false)
     try {
-      if (buscandoPix) setLivresPix(await buscarPixLivres(0, buscaLivre))
-      else             setLivres(await buscarConciliacoesLivres(buscaLivre))
+      const [maquininha, banco] = await Promise.all([
+        buscarConciliacoesLivres(buscaLivre, buscandoPix ? 'pix' : 'cartao'),
+        buscandoPix ? buscarPixLivres(0, buscaLivre) : [],
+      ])
+      setLivres(maquininha)
+      setLivresPix(banco)
       setBuscouLivre(true)
     } catch {
       toast.error('Erro na busca')
@@ -216,6 +225,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   }
 
   function renderCandidato(c: Candidato) {
+    if (c.tipo === LINHA_PIX) return renderPixDaMaquininha(c)
     const raw = c.rawData as { bandeira?: string; portador?: string } | null
     const titulo = `${nomeOperadora(c.operadora)}${raw?.bandeira ? ` · ${raw.bandeira}` : ''} · ${rotuloDaLinha(c.tipo)}`
     const data = c.dataTransacao ? dataPuraBr(c.dataTransacao) : '—'
@@ -232,6 +242,24 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     )
   }
 
+  // Linha pix da maquininha (#51, V1): mesmo Vincular das linhas de cartão, com o selo da origem.
+  function renderPixDaMaquininha(c: Candidato) {
+    const operadora = nomeOperadora(c.operadora)
+    const data = dataPuraBr(c.dataTransacao)
+    return (
+      <Sugestao
+        key={c.id}
+        titulo="PIX na maquininha"
+        selo={operadora}
+        detalhes={[[data, c.nsu ? `NSU ${c.nsu.slice(-8)}` : '', fmt(c.valorBruto)].filter(Boolean).join(' · ')]}
+        valor={c.valorBruto}
+        onVincular={() => vincular(c.id)}
+        vinculando={vinculando}
+        rotulo={`Vincular PIX na maquininha ${operadora}, ${data}, ${fmt(c.valorBruto)}`}
+      />
+    )
+  }
+
   function renderCandidatoPix(p: PixLivre) {
     const quando = new Date(p.data).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
     const quem = p.pagadorNome ?? 'Pagador não informado'
@@ -239,6 +267,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
       <Sugestao
         key={p.id}
         titulo={quem}
+        selo="Extrato do banco"
         detalhes={[[p.descricao, quando, fmt(p.valor)].filter(Boolean).join(' · ')]}
         valor={p.valor}
         onVincular={() => vincularPix(p.id)}
@@ -249,8 +278,9 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   }
 
   const modo = buscandoPix ? MODO.pix : MODO.cartao
-  const sugestoes = buscandoPix ? candidatosPix.map(renderCandidatoPix) : candidatos.map(renderCandidato)
-  const achadosLivres = buscandoPix ? livresPix.map(renderCandidatoPix) : livres.map(renderCandidato)
+  // Uma lista só: maquininha primeiro (valor exato), depois o banco (valor próximo); cada item diz a origem.
+  const sugestoes = [...candidatos.map(renderCandidato), ...candidatosPix.map(renderCandidatoPix)]
+  const achadosLivres = [...livres.map(renderCandidato), ...livresPix.map(renderCandidatoPix)]
 
   // Situação de cada pagamento, já na ordem em que aparece: pendentes primeiro.
   const itens = pagamentos.map((p, i) => {
@@ -442,11 +472,14 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   )
 }
 
-function Sugestao({ titulo, detalhes, valor, onVincular, rotulo, vinculando }: { titulo: string; detalhes: string[]; valor: string | number; onVincular: () => void; rotulo: string; vinculando: boolean }) {
+function Sugestao({ titulo, selo, detalhes, valor, onVincular, rotulo, vinculando }: { titulo: string; selo?: string; detalhes: string[]; valor: string | number; onVincular: () => void; rotulo: string; vinculando: boolean }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{titulo}</p>
+        <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+          <span className="truncate">{titulo}</span>
+          {selo && <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{selo}</span>}
+        </p>
         {detalhes.filter(Boolean).map(l => <p key={l} className="truncate text-xs text-muted-foreground">{l}</p>)}
       </div>
       <span className="hidden text-sm tabular-nums sm:block">{fmt(valor)}</span>
@@ -490,8 +523,8 @@ function situacaoDe(s: { precisa: boolean; loading: boolean; forcado: boolean; c
 const MODO = {
   pix: {
     nome: 'PIX', procurar: 'Procurar outro PIX', nada: 'Nenhum PIX encontrado.',
-    placeholder: 'Pagador, descrição, data (AAAA-MM-DD) ou valor',
-    vazio: 'Nenhum PIX livre com esse valor por enquanto. Sincronize o Open Finance em /pix-mcp, ou procure por outro valor ou data:',
+    placeholder: 'Pagador, descrição, NSU, data (AAAA-MM-DD) ou valor',
+    vazio: 'Nenhum PIX livre com esse valor, nem na maquininha nem no extrato do banco. Importe do Mercado Pago em /conciliacao ou sincronize o Open Finance em /pix-mcp, ou procure por outro valor ou data:',
   },
   cartao: {
     nome: 'Transações', procurar: 'Procurar outra transação', nada: 'Nenhuma transação encontrada.',
