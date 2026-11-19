@@ -81,7 +81,10 @@ export function valorConciliadoManual(pagamentos: unknown): number {
 }
 
 type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number; tipo?: string }
-type PixMatch  = { id: string; valor: string | number }
+// `valorBruto`: o valor do PIX gravado ao vincular (#90); o `valor` é o que o banco creditou, já sem o custo.
+type PixMatch  = { id: string; valor: string | number; valorBruto?: string | number | null }
+// O PIX cobre o pagamento pelo valor do PIX, como o cartão pelo valor bruto; sem ele gravado (vínculo antigo), pelo crédito.
+const valorQueCobre = (r: PixMatch) => Number(r.valorBruto ?? r.valor)
 
 /** Quanto do pagamento foi coberto por dinheiro que realmente entrou. */
 export type CoberturaPgto = { conciliado: boolean; coberto: number }
@@ -147,13 +150,13 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
   const pixUsados = new Set<string>()
   pgtos.forEach((p, i) => {
     if (!PAGAMENTO_PIX.has(p.tipo) || resultado[i].conciliado) return
-    const m = pixRecs.find(r => !pixUsados.has(r.id) && Math.abs(Number(r.valor) - p.valor) <= 0.05)
-    if (m) { resultado[i].coberto += Number(m.valor); pixUsados.add(m.id) }
+    const m = pixRecs.find(r => !pixUsados.has(r.id) && Math.abs(valorQueCobre(r) - p.valor) <= 0.05)
+    if (m) { resultado[i].coberto += valorQueCobre(m); pixUsados.add(m.id) }
   })
 
   // O que sobrou rateia entre as linhas PIX ainda descobertas, na ordem. Dois PIX
   // lançados e um só recebimento fecham um, não os dois.
-  let poolPix = pixRecs.filter(r => !pixUsados.has(r.id)).reduce((a, r) => a + (Number(r.valor) || 0), 0)
+  let poolPix = pixRecs.filter(r => !pixUsados.has(r.id)).reduce((a, r) => a + (valorQueCobre(r) || 0), 0)
   pgtos.forEach((p, i) => {
     if (!PAGAMENTO_PIX.has(p.tipo) || resultado[i].conciliado || poolPix <= 0) return
     const falta = p.valor - resultado[i].coberto
