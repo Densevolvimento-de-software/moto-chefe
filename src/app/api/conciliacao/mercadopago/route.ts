@@ -12,7 +12,8 @@ export const dynamic = 'force-dynamic'
 
 /**
  * Botão "Importar agora" da /conciliacao (#51): importa só o grupo ativo da sessão, pela mesma função da rotina
- * diária (a falha fica gravada para a faixa). Toda recusa e falha volta como `{ error }`, que é o que a tela lê;
+ * diária (a falha fica gravada para a faixa). Toda recusa e falha volta como `{ error }` com frase inteira (a tela
+ * mostra sem prefixo);
  * o resultado bom também fica gravado, e a tela recarrega para mostrar.
  */
 export async function POST() {
@@ -20,10 +21,10 @@ export async function POST() {
   try {
     usuario = await getUsuarioLogado()
   } catch {
-    return NextResponse.json({ error: 'Sessão expirada' }, { status: 401 })
+    return NextResponse.json({ error: 'Sua sessão expirou. Entre de novo para importar.' }, { status: 401 })
   }
   if (!usuarioPodeAcessar(usuario, '/conciliacao') || !podeGerirConciliacao(usuario.papel)) {
-    return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
+    return NextResponse.json({ error: 'Só quem gere a conciliação importa do Mercado Pago.' }, { status: 403 })
   }
   try {
     const grupo = await getGrupoAtivo(usuario)

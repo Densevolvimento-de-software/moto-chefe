@@ -84,7 +84,7 @@ export function FaixaMercadoPago({ estado, podeImportar }: Props) {
         <p role="alert" className="mt-3 text-xs text-destructive">{fraseDaFalha(estado.falha.em, estado.falha.erro)}</p>
       )}
       {erroDoBotao && (
-        <p role="alert" className="mt-3 text-xs text-destructive">Não deu para importar: {erroDoBotao}</p>
+        <p role="alert" className="mt-3 text-xs text-destructive">{erroDoBotao}</p>
       )}
 
       {resumo && (

@@ -63,13 +63,13 @@ const faixa = async (grupoId: string) => (await execRows(sql`select ultima_impor
 const chamar = async () => { const r = await POST(); return { status: r.status, corpo: await r.json() } }
 
 test('sem sessão: 401 com { error }', async () => {
-  assert.deepEqual(await chamar(), { status: 401, corpo: { error: 'Sessão expirada' } })
+  assert.deepEqual(await chamar(), { status: 401, corpo: { error: 'Sua sessão expirou. Entre de novo para importar.' } })
 })
 
 test('vendedor (sem gerir a conciliação): 403 com { error }, e nada importa', async () => {
   const a = await conta('A')
   sessao = a.comoVendedor
-  assert.deepEqual(await chamar(), { status: 403, corpo: { error: 'Sem permissão' } })
+  assert.deepEqual(await chamar(), { status: 403, corpo: { error: 'Só quem gere a conciliação importa do Mercado Pago.' } })
   assert.equal((await faixa(a.grupoId)).ultima_importacao_em, null)
 })
 

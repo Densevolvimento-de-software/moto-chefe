@@ -70,11 +70,28 @@ test('Importar agora: um pedido só mesmo com dois cliques, botão travado enqua
 })
 
 test('recusa da rota (sessão, permissão) aparece embaixo; sem permissão de gerir, o botão não aparece', async () => {
-  globalThis.fetch = (async () => ({ json: async () => ({ error: 'Sem permissão' }) })) as unknown as typeof fetch
+  const frase = 'Só quem gere a conciliação importa do Mercado Pago.'
+  globalThis.fetch = (async () => ({ json: async () => ({ error: frase }) })) as unknown as typeof fetch
   const t = await montar(ESTADO)
   await t.clique('Importar agora')
-  assert.equal(document.querySelector('[role="alert"]')?.textContent ?? null, 'Não deu para importar: Sem permissão')
+  assert.equal(document.querySelector('[role="alert"]')?.textContent ?? null, frase)
   await t.desmontar()
   await montar(ESTADO, false)
   assert.equal(botao('Importar agora')?.outerHTML ?? null, null)
+})
+
+// A rota já devolve frase inteira: a tela não põe prefixo, e não repete a falha que acabou de ser gravada.
+test('erro 500 da rota aparece uma vez, sem prefixo; 502 com a mesma frase já gravada não se repete', async () => {
+  const interna = 'Não deu para importar. Tente de novo em alguns minutos.'
+  globalThis.fetch = (async () => ({ json: async () => ({ error: interna }) })) as unknown as typeof fetch
+  const t = await montar(ESTADO)
+  await t.clique('Importar agora')
+  assert.deepEqual([...document.querySelectorAll('[role="alert"]')].map(e => e.textContent), [interna])
+  await t.desmontar()
+
+  const recusada = 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.'
+  globalThis.fetch = (async () => ({ json: async () => ({ error: recusada }) })) as unknown as typeof fetch
+  const t2 = await montar({ ...ESTADO, falha: { em: '2026-11-19T12:02:00.000Z', erro: recusada } })
+  await t2.clique('Importar agora')
+  assert.deepEqual([...document.querySelectorAll('[role="alert"]')].map(e => e.textContent), [`A importação de 19/11 às 09:02 falhou: ${recusada}`])
 })
