@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNotNull, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { agendamentos, clientes, contas, grupos, lojas, ordensServico, usuarios, vendas, vendasPecas } from '@/lib/db/schema'
+import { agendamentos, clientes, contas, grupos, gruposLiberados, lojas, ordensServico, usuarios, vendas, vendasPecas } from '@/lib/db/schema'
 
 type Executor = Pick<typeof db, 'select'>
 
@@ -99,4 +99,28 @@ export async function contaDoGrupoUsaBling(grupoId: string, exec: Executor = db)
     .where(and(inArray(grupos.contaId, daConta), sql`coalesce(${grupos.blingClientId}, '') <> ''`, sql`coalesce(${grupos.blingClientSecret}, '') <> ''`))
     .limit(1)
   return !!comBling
+}
+
+// Nome de quem lançou ou enviou um registro do grupo, para exibir. Aparece quem é da Conta do grupo
+// (conta_id ou loja da Conta), o admin_geral e quem teve o grupo liberado (admin_rede, #517), mesmo
+// revogado ou com outro papel hoje: autoria é histórico (decisão do Luis, 18/11/2026). Marcação em
+// grupos_acesso não conta (ADR-0018).
+export async function nomesDeUsuariosVisiveis(
+  grupo: { id: string; contaId: string },
+  ids: string[],
+  exec: Executor = db,
+): Promise<Map<string, string>> {
+  if (!ids.length) return new Map()
+  const liberados = exec.select({ id: gruposLiberados.usuarioId }).from(gruposLiberados).where(eq(gruposLiberados.grupoId, grupo.id))
+  const linhas = await exec.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios)
+    .where(and(
+      inArray(usuarios.id, [...new Set(ids)]),
+      or(
+        usuarioDaConta(grupo.contaId),
+        inArray(usuarios.lojaId, lojasDaConta(grupo.contaId)),
+        eq(usuarios.papel, 'admin_geral'),
+        inArray(usuarios.id, liberados),
+      ),
+    ))
+  return new Map(linhas.map(l => [l.id, l.nome]))
 }
