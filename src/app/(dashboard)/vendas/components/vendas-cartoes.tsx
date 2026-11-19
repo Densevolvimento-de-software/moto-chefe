@@ -2,7 +2,8 @@
 import { useState } from 'react'
 import { Check, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { SheetTitle } from '@/components/ui/sheet'
+import { GavetaDeBaixo } from '@/components/gaveta-de-baixo'
 import type { VendaComDetalhes } from '@/lib/queries/vendas'
 import type { StatusConc } from '@/lib/conciliacao-status'
 import type { DescontoDaVenda } from '@/lib/queries/descontos'
@@ -218,21 +219,19 @@ export function CartoesVendas({ itens, acoes, onAbrirNf, podeConciliacao, descon
         ))}
       </div>
 
-      <Sheet open={!!aberta} onOpenChange={o => !o && setAbertaId(null)}>
-        <SheetContent side="bottom" className="max-h-[85dvh] gap-0 overflow-y-auto rounded-t-2xl p-4 pb-8">
-          {aberta && (
-            <PainelVenda
-              key={aberta.venda.id}
-              item={aberta}
-              acoes={acoes(aberta.venda)}
-              onAbrirNf={onAbrirNf}
-              podeConciliacao={podeConciliacao}
-              desconto={descontos?.get(aberta.venda.id)}
-              titulo={<SheetTitle className="text-lg">{aberta.venda.modelo} <span className="font-normal text-muted-foreground">· {aberta.venda.cor}</span></SheetTitle>}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
+      <GavetaDeBaixo aberta={!!aberta} onAbertaChange={o => !o && setAbertaId(null)}>
+        {aberta && (
+          <PainelVenda
+            key={aberta.venda.id}
+            item={aberta}
+            acoes={acoes(aberta.venda)}
+            onAbrirNf={onAbrirNf}
+            podeConciliacao={podeConciliacao}
+            desconto={descontos?.get(aberta.venda.id)}
+            titulo={<SheetTitle className="text-lg">{aberta.venda.modelo} <span className="font-normal text-muted-foreground">· {aberta.venda.cor}</span></SheetTitle>}
+          />
+        )}
+      </GavetaDeBaixo>
     </>
   )
 }
