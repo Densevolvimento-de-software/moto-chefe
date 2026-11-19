@@ -29,12 +29,12 @@ export type ResumosDoAlvoCartao = {
 
 const SEM_CLIENTE = 'Cliente não identificado'
 
-const porId = <T extends { id: string }, V>(linhas: T[], valor: (l: T) => V) => new Map(linhas.map(l => [l.id, valor(l)]))
+export const porId = <T extends { id: string }, V>(linhas: T[], valor: (l: T) => V) => new Map(linhas.map(l => [l.id, valor(l)]))
 
 const doGrupo = (t: { id: AnyPgColumn; lojaId: AnyPgColumn }, ids: string[], grupoId: string) =>
   and(inArray(t.id, ids), inArray(t.lojaId, lojasDoGrupo(grupoId)))
 
-async function seHouver<T>(ids: string[], ler: (ids: string[]) => Promise<T[]>): Promise<T[]> {
+export async function seHouver<T>(ids: string[], ler: (ids: string[]) => Promise<T[]>): Promise<T[]> {
   return ids.length > 0 ? ler([...new Set(ids)]) : []
 }
 

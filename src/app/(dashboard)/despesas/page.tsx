@@ -5,9 +5,9 @@ import { hojeBrt, mesBrt, primeiroDiaDoMesBrt } from '@/lib/data-venda'
 import { getGrupoAtivo, listarLojasDoGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { db } from '@/lib/db'
 import { criarMedidor } from '@/lib/db-diag'
-import { despesas, lojas, usuarios, despesasOpenFinance, lancamentosCaixa, beneficiariosDespesa } from '@/lib/db/schema'
+import { beneficiariosDespesa } from '@/lib/db/schema'
 import { categoriasCaixaDoGrupo, categoriasDespesaDoGrupo } from '@/lib/categorias-do-grupo'
-import { eq, ne, desc, and, gte, lte, asc, sql, inArray } from 'drizzle-orm'
+import { eq, and, asc } from 'drizzle-orm'
 import { redirect } from 'next/navigation'
 import { ResumoFaixa } from '@/components/resumo-faixa'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -21,6 +21,9 @@ import { buscarSaidasDoBanco, type ModoSync } from './open-finance'
 import { SaidasTopo } from './components/saidas-topo'
 import { urlDespesasSemSync, cacheSaidasValido } from '@/lib/sync-incremental'
 import { Suspense } from 'react'
+import { despesasManuaisDoPeriodo } from '@/lib/despesas-manuais'
+import { lancamentosCaixaDoPeriodo } from '@/lib/lancamentos-caixa'
+import { SEM_NOME_DE_QUEM_LANCOU } from '@/lib/nome-de-quem-lancou'
 
 export default async function DespesasPage({
   searchParams,
@@ -56,7 +59,7 @@ export default async function DespesasPage({
     : 'normal'
 
   // A tela só lê o que já está no banco; o sync com o mcp.ai roda no navegador (SaidasTopo), sem prender a página.
-  const { linhas: saidas, syncStatusAtual } = await buscarSaidasDoBanco({ id: grupo.id }, sfrom, sto, usuario.id)
+  const { linhas: saidas, syncStatusAtual } = await buscarSaidasDoBanco(grupo, sfrom, sto, usuario.id)
   const sincronizarAoAbrir = modoSync !== 'normal' || !cacheSaidasValido(syncStatusAtual?.ultimaSincronizacao)
 
   medir('saidas_do_banco')
@@ -64,32 +67,7 @@ export default async function DespesasPage({
   const [
     rowsManuais, lojasOpts, categoriasDespesaGrupo, beneficiarios, saidasCaixa, categoriasCaixaGrupo,
   ] = await Promise.all([
-    db
-      .select({
-        id:             despesas.id,
-        lojaId:         despesas.lojaId,
-        lojaNome:       lojas.nome,
-        categoria:      despesas.categoria,
-        beneficiario:   despesas.beneficiario,
-        descricao:      despesas.descricao,
-        valor:          despesas.valor,
-        data:           despesas.data,
-        formaPagamento: despesas.formaPagamento,
-        banco:          despesas.banco,
-        usuarioNome:    usuarios.nome,
-      })
-      .from(despesas)
-      .leftJoin(lojas,    eq(despesas.lojaId,    lojas.id))
-      .innerJoin(usuarios, eq(despesas.usuarioId, usuarios.id))
-      .where(and(
-        eq(despesas.grupoId, grupo.id),
-        gte(despesas.data, inicioMes),
-        lte(despesas.data, ultimoDia),
-        // Só as lançadas à mão. A que nasceu de uma saída do banco vive na aba
-        // "Importar do Banco" — antes aparecia nas duas e dava impressão de dobra.
-        sql`NOT EXISTS (SELECT 1 FROM ${despesasOpenFinance} o WHERE o.despesa_id = ${despesas.id})`,
-      ))
-      .orderBy(desc(despesas.data), desc(despesas.criadoEm)),
+    despesasManuaisDoPeriodo(grupo, { inicio: inicioMes, fim: ultimoDia }),
 
     listarLojasDoGrupoAtivo(usuario, { somenteAtivas: false }),
 
@@ -106,28 +84,7 @@ export default async function DespesasPage({
 
     // Dinheiro pago da gaveta pelo administrativo da loja. Reprovado fica de fora,
     // igual faz o /caixa.
-    db
-      .select({
-        id:          lancamentosCaixa.id,
-        lojaId:      lancamentosCaixa.lojaId,
-        lojaNome:    lojas.nome,
-        categoria:   lancamentosCaixa.categoria,
-        descricao:   lancamentosCaixa.descricao,
-        valor:       lancamentosCaixa.valor,
-        data:        lancamentosCaixa.data,
-        usuarioNome: usuarios.nome,
-      })
-      .from(lancamentosCaixa)
-      .innerJoin(lojas,    eq(lancamentosCaixa.lojaId,    lojas.id))
-      .innerJoin(usuarios, eq(lancamentosCaixa.usuarioId, usuarios.id))
-      .where(and(
-        eq(lancamentosCaixa.tipo, 'saida'),
-        inArray(lancamentosCaixa.lojaId, lojaIdsGrupo),
-        gte(lancamentosCaixa.data, inicioMes),
-        lte(lancamentosCaixa.data, ultimoDia),
-        ne(lancamentosCaixa.statusAprovacao, 'reprovado'),
-      ))
-      .orderBy(desc(lancamentosCaixa.data)),
+    lancamentosCaixaDoPeriodo(grupo, { lojaIds: lojaIdsGrupo, inicio: inicioMes, fim: ultimoDia, tipo: 'saida', semReprovados: true }),
 
     categoriasCaixaDoGrupo(db, grupo.id),
   ])
@@ -332,7 +289,8 @@ export default async function DespesasPage({
               beneficiario: s.beneficiario,
               lojaId: s.lojaId,
               lojaNome: s.lojaNome,
-              lancadoPorNome: s.lancadoPorNome,
+              // "Automático" na tela é só sem ninguém lançado; nome que a Conta não enxerga vira o texto comum.
+              lancadoPorNome: s.lancadoPorNome ?? (s.lancadoPorId ? SEM_NOME_DE_QUEM_LANCOU : null),
               lancadoEm: s.lancadoEm ? s.lancadoEm.toISOString() : null,
             }))}
             lojas={lojasOpts}
