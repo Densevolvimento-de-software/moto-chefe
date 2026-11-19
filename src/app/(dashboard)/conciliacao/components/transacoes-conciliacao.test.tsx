@@ -1,7 +1,6 @@
 // Transações da /conciliacao (#51, PR6b, V2): a tabela do desktop e a lista do celular com a folha de baixo. Linha
-// estornada sai apagada, com o valor riscado e o selo, e sem Vincular nem Desvincular (o servidor também recusa).
-// O servidor também recusa estornada (`cartaoNaoEstornado`, src/lib/cartao-status.db.test.ts). As actions são a
-// fronteira de fora.
+// estornada sai com o valor riscado, o selo e "Não se vincula", sem Vincular nem Desvincular; o servidor também recusa
+// (`cartaoNaoEstornado`, src/lib/cartao-status.db.test.ts). As actions são a fronteira de fora.
 import { test, after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
@@ -62,7 +61,7 @@ const selos = (el: Element | null | undefined) => [...(el?.querySelectorAll('[da
 const abrirFolha = (t: { act: (f: () => Promise<void>) => Promise<void> }, valor: string) =>
   t.act(async () => { clicar(itemDaLista(valor)!.querySelector('button')); await esperar(50) })
 
-test('tabela: pendente com Vincular; ligada com a venda e Desvincular; estornada apagada, riscada, com selo e sem botões', async () => {
+test('tabela: pendente com Vincular; ligada com a venda e Desvincular; estornada riscada, com selo e sem botões', async () => {
   await montar()
   assert.deepEqual(botoes(linhaDaTabela('R$ 3.550,00')), ['Vincular'])
   assert.deepEqual(selos(linhaDaTabela('R$ 3.550,00')), ['PIX'])
@@ -107,11 +106,12 @@ test('folha da ligada: detalhes e Desvincular chama a action da linha', async ()
   assert.deepEqual(desvincular.mock.calls.map(c => c.arguments), [['c2']])
 })
 
-test('folha da estornada: mostra a venda e "Não se vincula", sem Desvincular nem Vincular', async () => {
+test('folha da estornada: selos, a venda e "Não se vincula", sem Desvincular nem Vincular', async () => {
   const t = await montar()
   await t.act(async () => { clicar(itemDaLista('R$ 450,00')!.querySelector('button')); await esperar(50) })
   assert.ok(texto(folha()).includes('#31903, João Prado'), texto(folha()))
   assert.ok(texto(folha()).includes('Não se vincula: o dinheiro voltou ao cliente.'), texto(folha()))
+  assert.deepEqual(selos(folha()), ['Déb', 'Estornado'])
   assert.deepEqual(botoes(folha() ?? undefined).filter(b => /vincular/i.test(b)), [])
 })
 
@@ -126,7 +126,7 @@ test('linha que sai do filtro depois da action fecha a folha; a que fica mostra 
   assert.equal(folha(), null)
 })
 
-test('Vincular de dentro da folha: o diálogo abre por cima e escolher a venda chama a action com o id da linha', async () => {
+test('Vincular de dentro da folha: o diálogo abre com a folha ainda aberta e escolher a venda chama a action com o id da linha', async () => {
   const t = await montar()
   await abrirFolha(t, 'R$ 3.550,00')
   const vincularNaFolha = [...folha()!.querySelectorAll('button')].find(b => texto(b) === 'Vincular')
@@ -145,10 +145,22 @@ test('sem permissão de gerir: nenhum Vincular nem Desvincular na tabela, na lis
   const naTabela = [...document.querySelectorAll('table tbody tr')].flatMap(r => botoes(r))
   assert.deepEqual(naTabela, [])
   assert.ok(texto(linhaDaTabela('R$ 8.900,00')).includes('#31902, Maria'), texto(linhaDaTabela('R$ 8.900,00')))
-  const naLista = [...document.querySelectorAll('ul[aria-label="Transações"] > li')].flatMap(r => botoes(r).slice(1))
-  assert.ok(naLista.every(b => b === 'Abrir detalhes'), naLista.join(', '))
+  const naLista = [...document.querySelectorAll('ul[aria-label="Transações"] > li')].map(r => botoes(r).slice(1))
+  assert.deepEqual(naLista, [['Abrir detalhes'], ['Abrir detalhes'], ['Abrir detalhes']])
   for (const valor of ['R$ 3.550,00', 'R$ 8.900,00']) {
     await abrirFolha(t, valor)
     assert.deepEqual(botoes(folha() ?? undefined).filter(b => /vincular/i.test(b)), [], valor)
   }
+})
+
+// O caso mais comum: o estorno chega antes de alguém ligar a linha a uma venda.
+test('estornada sem venda ligada: sem Vincular na tabela, na lista e na folha', async () => {
+  const sozinha: LinhaNaTela = { ...BASE, id: 'c5', rotulo: 'Cré', credito: true, valor: 199, liquido: 190, estornada: true }
+  const t = await montar([sozinha])
+  assert.deepEqual(botoes(linhaDaTabela('R$ 199,00')), [])
+  assert.ok(texto(linhaDaTabela('R$ 199,00')).includes('Não se vincula'), texto(linhaDaTabela('R$ 199,00')))
+  assert.deepEqual(botoes(itemDaLista('R$ 199,00')).slice(1), ['Abrir detalhes'])
+  await abrirFolha(t, 'R$ 199,00')
+  assert.ok(texto(folha()).includes('Não se vincula: o dinheiro voltou ao cliente.'), texto(folha()))
+  assert.deepEqual(botoes(folha() ?? undefined).filter(b => /vincular/i.test(b)), [])
 })
