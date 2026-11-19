@@ -22,6 +22,7 @@ import {
 } from '@/app/(dashboard)/conciliacao/actions'
 import { dataPuraBr } from '@/lib/data-venda'
 import { rotuloDaLinha } from '@/lib/conciliacao-cartao'
+import { ContaDoPix } from '@/components/conta-do-pix'
 
 type Conc      = Awaited<ReturnType<typeof buscarConciliacoesDoAlvo>>[number]
 type PixRec    = Awaited<ReturnType<typeof buscarPixDoAlvo>>[number]
@@ -342,7 +343,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                 )}
               </button>
 
-              {situacao === 'conciliado' && pix && Number(pix.custoPixTaxa) > 0 && <ContaDoPix pix={pix} />}
+              {situacao === 'conciliado' && pix && Number(pix.custoPixTaxa) > 0 && <ContaDoPixConciliado pix={pix} />}
 
               {situacao === 'forcado' && podeGerir && (
                 <div className="flex justify-end border-t border-border px-3">
@@ -470,23 +471,17 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   )
 }
 
-// A conta inteira do PIX conciliado (variante B): valor do PIX, custo e o que entrou. No celular, linhas empilhadas.
-function ContaDoPix({ pix }: { pix: PixRec }) {
+// O PIX conciliado com custo: valor do PIX, custo com a taxa gravada no vínculo e o que entrou.
+function ContaDoPixConciliado({ pix }: { pix: PixRec }) {
   const taxa = (Number(pix.custoPixTaxa) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
-  const colunas: [string, string, string?][] = [
-    ['Valor do PIX', fmt(pix.valorBruto ?? pix.valor)],
-    [`Custo (${taxa}%)`, fmt(pix.custoPix ?? 0), 'text-destructive'],
-    ['Entrou', fmt(pix.valor)],
-  ]
   return (
-    <dl className="mx-3 mb-3 grid grid-cols-1 rounded-lg border border-border sm:grid-cols-3">
-      {colunas.map(([rotulo, valor, cor], n) => (
-        <div key={rotulo} className={cn('flex items-baseline justify-between gap-3 px-3 py-2 sm:block', n > 0 && 'border-t border-border sm:border-t-0 sm:border-l')}>
-          <dt className="text-xs text-muted-foreground">{rotulo}</dt>
-          <dd className={cn('text-sm font-semibold tabular-nums', cor)}>{valor}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className="mx-3 mb-3 overflow-hidden rounded-lg border border-border">
+      <ContaDoPix linhas={[
+        { rotulo: 'Valor do PIX', valor: Number(pix.valorBruto ?? pix.valor) },
+        { rotulo: `Custo (${taxa}%)`, valor: Number(pix.custoPix ?? 0), custo: true },
+        { rotulo: 'Entrou', valor: Number(pix.valor) },
+      ]} />
+    </div>
   )
 }
 
