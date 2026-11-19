@@ -7,9 +7,9 @@ import { ehTransferenciaInterna } from './pix-internos'
 import { RecusaUsuario } from './resultado-action'
 import { ehUuid } from './uuid'
 
-export const PIX_NAO_ENCONTRADO = 'PIX não encontrado no grupo ativo'
+const PIX_NAO_ENCONTRADO = 'PIX não encontrado no grupo ativo'
 // Decisão do Luis (18/11/2026): trocar o vínculo é desvincular e vincular de novo.
-export const PIX_JA_VINCULADO = 'Este PIX já está vinculado. Desvincule antes de vincular de novo.'
+const PIX_JA_VINCULADO = 'Este PIX já está vinculado. Desvincule antes de vincular de novo.'
 const PIX_INTERNO = 'Essa transferência é interna (maquininha/conta do próprio grupo) e não pode ser conciliada com uma venda'
 
 /** Um alvo só: os outros ids ficam nulos. */

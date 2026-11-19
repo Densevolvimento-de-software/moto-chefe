@@ -159,7 +159,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     }
   }
 
-  async function vincularPix(pixId: string) {
+  async function vincularPixSugerido(pixId: string) {
     setVinculando(true)
     try {
       const r = await vincularPixAlvoAction(pixId, alvo)
@@ -243,7 +243,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
         titulo={quem}
         detalhes={[[p.descricao, quando, fmt(p.valor)].filter(Boolean).join(' · ')]}
         valor={p.valor}
-        onVincular={() => vincularPix(p.id)}
+        onVincular={() => vincularPixSugerido(p.id)}
         vinculando={vinculando}
         rotulo={`Vincular PIX de ${quem}, ${quando}, ${fmt(p.valor)}`}
       />
