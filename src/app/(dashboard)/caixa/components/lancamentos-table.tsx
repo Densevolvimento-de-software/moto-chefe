@@ -11,6 +11,7 @@ import { excluirLancamentoAction, getComprovanteUrlAction, aprovarLancamentoActi
 import { useRouter } from 'next/navigation'
 import { useState, useMemo } from 'react'
 import { dataPuraBr } from '@/lib/data-venda'
+import { SEM_NOME_DE_QUEM_LANCOU } from '@/lib/nome-de-quem-lancou'
 
 type Lancamento = {
   id: string
@@ -20,7 +21,7 @@ type Lancamento = {
   valor: string
   data: string
   lojaNome: string
-  usuarioNome: string
+  usuarioNome: string | null
   comprovanteUrl: string | null
   statusAprovacao: string
   aprovadoPorNome: string | null
@@ -95,7 +96,7 @@ export function LancamentosTable({ lancamentos, isAdmin, podeAprovar }: Props) {
     if (filtros.descricao && !l.descricao?.toLowerCase().includes(filtros.descricao.toLowerCase())) return false
     if (filtros.loja && l.lojaNome !== filtros.loja) return false
     if (filtros.aprovacao && l.statusAprovacao !== filtros.aprovacao) return false
-    if (filtros.registradoPor && !l.usuarioNome.toLowerCase().includes(filtros.registradoPor.toLowerCase())) return false
+    if (filtros.registradoPor && !(l.usuarioNome ?? SEM_NOME_DE_QUEM_LANCOU).toLowerCase().includes(filtros.registradoPor.toLowerCase())) return false
     return true
   }), [lancamentos, filtros])
 
@@ -314,7 +315,7 @@ export function LancamentosTable({ lancamentos, isAdmin, podeAprovar }: Props) {
                 )}
               </TableCell>
 
-              <TableCell className="text-xs text-muted-foreground">{l.usuarioNome}</TableCell>
+              <TableCell className="text-xs text-muted-foreground">{l.usuarioNome ?? SEM_NOME_DE_QUEM_LANCOU}</TableCell>
               {isAdmin && (
                 <TableCell>
                   <Button

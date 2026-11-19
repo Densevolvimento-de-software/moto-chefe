@@ -86,8 +86,8 @@ async function montar(usuario: UsuarioLogo, grupoId: string, arquivo: Buffer, si
     if (!cfg) return { ok: false, erro: 'Configure a Nota Gateway deste grupo antes de enviar a logo.' }
     dados = await deps.dadosDaEmpresaNaNg(cfg)
   } catch (e) {
-    // Só a mensagem, que o client.ts monta com o status HTTP; nunca token nem empresaId.
-    console.error('[logo-danfe] Consultar Empresa falhou:', e instanceof Error ? e.message : 'erro desconhecido')
+    // Só o nome do erro: a mensagem pode trazer o token ou o empresaId (#126; a pista com o status fica para a #140).
+    console.error('[logo-danfe] Consultar Empresa falhou:', e instanceof Error ? e.name : 'erro desconhecido')
     return { ok: false, erro: 'Não deu para ler o cadastro da empresa na Nota Gateway agora. Tente de novo em alguns minutos.' }
   }
   if (digitos(dados.cnpj) !== digitos(g.cnpj)) {
@@ -118,8 +118,8 @@ export async function enviarLogoDanfe(
   try {
     await deps.vincularNaNg(logo.cfg, logo.png)
   } catch (e) {
-    // Só a mensagem, que nunca leva token nem empresaId (logo-ng.ts põe só o status HTTP).
-    console.error('[logo-danfe] envio à NG falhou:', e instanceof Error ? e.message : 'erro desconhecido')
+    // Só o nome do erro: a mensagem pode trazer o token ou o empresaId (#126; a pista com o status fica para a #140).
+    console.error('[logo-danfe] envio à NG falhou:', e instanceof Error ? e.name : 'erro desconhecido')
     return { ok: false, erro: 'Não deu para enviar a logo à Nota Gateway agora. Tente de novo em alguns minutos.' }
   }
   // Daqui em diante a NG já imprime a logo nova: o log registra mesmo se a cópia falhar.

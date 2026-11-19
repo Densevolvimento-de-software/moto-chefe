@@ -13,6 +13,7 @@ import { daContaDaLoja } from '@/lib/pecas-da-conta'
 import { moverSaldo } from '@/lib/estoque-pecas-loja'
 import { recusaDaQuantidadeVendida } from '@/lib/quantidade-vendida'
 import { sincronizarCaixaDaVendaPeca } from '@/lib/caixa-venda-peca'
+import { CAMPOS_PAGAMENTO_VENDA, pagamentosParaGravar } from '@/lib/pagamentos-gravacao'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -26,8 +27,11 @@ export type EdicaoVendaPeca = {
 }
 
 export async function editarVendaPecaTx(tx: Tx, e: EdicaoVendaPeca) {
-  const [venda] = await tx.select().from(vendasPecas).where(eq(vendasPecas.id, e.vendaId)).for('update')
+  const lojasDoGrupo = tx.select({ id: lojas.id }).from(lojas).where(eq(lojas.grupoId, e.grupoId))
+  const [venda] = await tx.select().from(vendasPecas)
+    .where(and(eq(vendasPecas.id, e.vendaId), inArray(vendasPecas.lojaId, lojasDoGrupo))).for('update')
   if (!venda) throw new RecusaUsuario('Venda não encontrada')
+  const pagamentos = pagamentosParaGravar(e.pagamentos, CAMPOS_PAGAMENTO_VENDA, venda.pagamentos)
 
   const antigos = await tx.select().from(vendasPecasItens).where(eq(vendasPecasItens.vendaPecaId, e.vendaId))
   const precoAnterior = new Map(antigos.map(i => [i.pecaId, i.valorUnitario]))
@@ -45,7 +49,7 @@ export async function editarVendaPecaTx(tx: Tx, e: EdicaoVendaPeca) {
   // Também aqui, e não só na action: a edição aprovada aplica o que ficou guardado (#195).
   const recusaQuantidade = recusaDaQuantidadeVendida(e.itens)
   if (recusaQuantidade) throw new RecusaUsuario(recusaQuantidade)
-  await conferirMaquininhas(tx, venda.lojaId, e.pagamentos, operadorasGravadas(venda.pagamentos))
+  await conferirMaquininhas(tx, venda.lojaId, pagamentos, operadorasGravadas(venda.pagamentos))
   for (const item of e.itens) {
     const peca = pecaById.get(item.pecaId)
     if (!peca) throw new RecusaUsuario('Peça não encontrada')
@@ -71,12 +75,12 @@ export async function editarVendaPecaTx(tx: Tx, e: EdicaoVendaPeca) {
   await tx.delete(vendasPecasItens).where(eq(vendasPecasItens.vendaPecaId, e.vendaId))
   await tx.insert(vendasPecasItens).values(novos)
 
-  const valorTotal = e.pagamentos.reduce((s, p) => s + p.valor, 0)
-  const formaPagamento = e.pagamentos.length === 1 ? e.pagamentos[0].tipo : 'multiplo'
+  const valorTotal = pagamentos.reduce((s, p) => s + p.valor, 0)
+  const formaPagamento = pagamentos.length === 1 ? pagamentos[0].tipo : 'multiplo'
   await tx.update(vendasPecas)
-    .set({ pagamentos: e.pagamentos, formaPagamento, valorTotal: valorTotal.toFixed(2) })
-    .where(eq(vendasPecas.id, e.vendaId))
-  await sincronizarCaixaDaVendaPeca(tx, venda, e.pagamentos, e.usuarioId)
+    .set({ pagamentos, formaPagamento, valorTotal: valorTotal.toFixed(2) })
+    .where(and(eq(vendasPecas.id, e.vendaId), eq(vendasPecas.lojaId, venda.lojaId)))
+  await sincronizarCaixaDaVendaPeca(tx, venda, pagamentos, e.usuarioId)
 
   const antes = {
     itens: antigos.map(i => ({ pecaId: i.pecaId, descricao: i.descricao, quantidade: Number(i.quantidade), valorUnitario: Number(i.valorUnitario) })),
@@ -86,7 +90,7 @@ export async function editarVendaPecaTx(tx: Tx, e: EdicaoVendaPeca) {
   }
   const depois = {
     itens: novos.map(i => ({ pecaId: i.pecaId, descricao: i.descricao, quantidade: Number(i.quantidade), valorUnitario: Number(i.valorUnitario) })),
-    pagamentos: e.pagamentos,
+    pagamentos,
     formaPagamento,
     valorTotal,
   }
