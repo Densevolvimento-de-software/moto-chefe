@@ -148,6 +148,34 @@ test('vendedor e mecânico recebem Sem permissão no vincular e no desvincular, 
   assert.deepEqual(await vinculoDe(livre), LIVRE)
 })
 
+test('buscas do alvo: o gestor e o vendedor da loja veem o PIX e o cartão do alvo; vendedor de outra loja recebe vazio', async () => {
+  const a = await contaComAlvos()
+  usuario = await sessao(a, 'aux_adm')
+  const esperado: Record<string, { pix: string; cartao: string }> = {}
+  for (const tipo of TIPOS) {
+    const pix = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
+    assert.equal((await actions.vincularPixAlvoAction(pix, { tipo, id: a.alvos[tipo] })).ok, true, tipo)
+    const [c] = await execRows(sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, valor_bruto, ${sql.raw(COLUNA[tipo])}, conciliado)
+      values (${a.grupoId}, 'cielo', current_date, 1000, ${a.alvos[tipo]}, true) returning id`)
+    esperado[tipo] = { pix, cartao: c.id }
+  }
+  const outraLoja = await semearLoja(db, a.grupoId, 'VP90 outra loja ' + randomUUID())
+  const veem = [await sessao(a, 'aux_adm'), await sessao(a, 'vendedor')]
+  for (const quem of veem) {
+    usuario = quem
+    for (const tipo of TIPOS) {
+      const alvo = { tipo, id: a.alvos[tipo] }
+      assert.deepEqual((await actions.buscarPixDoAlvo(alvo)).map(p => p.id), [esperado[tipo].pix], `${quem.papel} PIX ${tipo}`)
+      assert.deepEqual((await actions.buscarConciliacoesDoAlvo(alvo)).map(c => c.id), [esperado[tipo].cartao], `${quem.papel} cartão ${tipo}`)
+    }
+  }
+  usuario = await sessao(a, 'vendedor', { lojaId: outraLoja })
+  for (const tipo of TIPOS) {
+    assert.deepEqual(await actions.buscarPixDoAlvo({ tipo, id: a.alvos[tipo] }), [], `outra loja PIX ${tipo}`)
+    assert.deepEqual(await actions.buscarConciliacoesDoAlvo({ tipo, id: a.alvos[tipo] }), [], `outra loja cartão ${tipo}`)
+  }
+})
+
 test('buscas do alvo: alvo da Conta A visto pela Conta B responde como o inexistente, sem erro', async () => {
   const { a } = await vinculadoNaContaA()
   const b = await contaComAlvos()
