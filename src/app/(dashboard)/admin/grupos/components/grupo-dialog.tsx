@@ -21,6 +21,9 @@ type Grupo = {
   // valor não trafega para o navegador.
   mcpaiConfigurado: boolean
   mcpaiResumo: string | null
+  // Do Mercado Pago, só se há credencial e os 3 últimos dígitos da conta: o token não sai do servidor.
+  mpConectado: boolean
+  mpFinal: string | null
   razaoSocial: string | null
   enderecoSede: string | null
   cidadeSede: string | null
@@ -54,8 +57,13 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
   // significa "mantém o que está lá".
   const [mcpaiEndpointUrl, setMcpaiEndpointUrl] = useState('')
   const [mcpaiRemover, setMcpaiRemover] = useState(false)
+  // Como o mcp.ai: começa vazio, vazio mantém, remover apaga ao salvar.
+  const [mpToken, setMpToken] = useState('')
+  const [mpRemover, setMpRemover] = useState(false)
+  // Recusa do servidor: fica à vista no rodapé e o diálogo não fecha.
+  const [erro, setErro] = useState<string | null>(null)
   // Abre sozinha quando já há integração: o "Configurada" e o "Remover chave" ficam à vista.
-  const integracaoConfigurada = !!(inicial?.blingClientId || inicial?.mcpaiConfigurado)
+  const integracaoConfigurada = !!(inicial?.blingClientId || inicial?.mcpaiConfigurado || inicial?.mpConectado)
   const [integracoesAbertas, setIntegracoesAbertas] = useState(integracaoConfigurada)
   const [razaoSocial, setRazaoSocial] = useState(inicial?.razaoSocial ?? '')
   const [enderecoSede, setEnderecoSede] = useState(inicial?.enderecoSede ?? '')
@@ -70,23 +78,29 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
       return
     }
     setLoading(true)
+    setErro(null)
     try {
       const dados = {
         nome, cnpj, ativo, blingClientId, blingClientSecret,
         mcpaiEndpointUrl, mcpaiRemover,
         razaoSocial, enderecoSede, cidadeSede, comarcaForo,
       }
-      if (modo === 'criar') {
-        await criarGrupoAction({ ...dados, contaId: contaId || null })
-        toast.success('Grupo criado!')
-      } else {
-        await editarGrupoAction(inicial!.id, dados)
-        toast.success('Grupo atualizado!')
+      // As actions devolvem a recusa como valor: lançada, ela some no build de produção (#404).
+      const r = modo === 'criar'
+        ? await criarGrupoAction({ ...dados, contaId: contaId || null })
+        : await editarGrupoAction(inicial!.id, { ...dados, mpToken, mpRemover })
+      if (!r.ok) {
+        setErro(r.erro)
+        return
       }
+      toast.success(modo === 'criar' ? 'Grupo criado!' : 'Grupo atualizado!')
+      const aviso = r.dados && 'aviso' in r.dados ? r.dados.aviso : null
+      if (aviso) toast.warning(aviso, { duration: 15000 })
+      setMpToken('')
       onOpenChange?.(false)
       router.refresh()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao salvar')
+    } catch {
+      setErro('Não deu para salvar agora. Tente de novo.')
     } finally {
       setLoading(false)
     }
@@ -104,12 +118,12 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-xs">Nome *</Label>
-              <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex: BH" className="h-9 text-sm" />
+              <Label htmlFor="grupo-nome" className="text-xs">Nome *</Label>
+              <Input id="grupo-nome" value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex: BH" className="h-9 text-sm" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">CNPJ *</Label>
-              <Input value={cnpj} onChange={e => setCnpj(e.target.value)} placeholder="00.000.000/0001-00" className="h-9 text-sm" />
+              <Label htmlFor="grupo-cnpj" className="text-xs">CNPJ *</Label>
+              <Input id="grupo-cnpj" value={cnpj} onChange={e => setCnpj(e.target.value)} placeholder="00.000.000/0001-00" className="h-9 text-sm" />
             </div>
 
             {modo === 'criar' && (
@@ -190,26 +204,28 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
             {/* Com remoção pendente, abre e o título avisa: recolhida, a remoção não passa calada. */}
             <details
               className="rounded-lg border px-3 py-2 sm:col-span-2"
-              open={integracoesAbertas || mcpaiRemover}
+              open={integracoesAbertas || mcpaiRemover || mpRemover}
               onToggle={e => setIntegracoesAbertas(e.currentTarget.open)}
             >
               <summary className="cursor-pointer text-sm font-medium">
                 Integrações (opcional){' '}
-                {mcpaiRemover
-                  ? <span className="ml-1 text-xs font-normal text-destructive">chave do Open Finance será removida</span>
-                  : <span className="ml-1 text-xs font-normal text-muted-foreground">{integracaoConfigurada ? 'configurada' : 'Bling, Open Finance'}</span>}
+                {mcpaiRemover || mpRemover
+                  ? <span className="ml-1 text-xs font-normal text-destructive">
+                      {[mcpaiRemover && 'chave do Open Finance', mpRemover && 'credencial do Mercado Pago'].filter(Boolean).join(' e ')} será removida
+                    </span>
+                  : <span className="ml-1 text-xs font-normal text-muted-foreground">{integracaoConfigurada ? 'configurada' : 'Bling, Open Finance, Mercado Pago'}</span>}
               </summary>
               <div className="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Bling — Client ID</Label>
+                  <Label className="text-xs">Bling: Client ID</Label>
                   <Input value={blingClientId} onChange={e => setBlingClientId(e.target.value)} className="h-9 text-sm" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Bling — Client Secret</Label>
+                  <Label className="text-xs">Bling: Client Secret</Label>
                   <Input type="password" value={blingClientSecret} onChange={e => setBlingClientSecret(e.target.value)} className="h-9 text-sm" />
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label className="text-xs">Open Finance (mcp.ai) — URL do endpoint</Label>
+                  <Label className="text-xs">Open Finance (mcp.ai): URL do endpoint</Label>
                   <Input
                     type="password"
                     value={mcpaiEndpointUrl}
@@ -233,7 +249,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                     </div>
                   ) : (
                     <p className="text-[11px] text-warning">
-                      Sem chave própria, esta empresa usa a conta global do sistema — e só enxerga extrato,
+                      Sem chave própria, esta empresa usa a conta global do sistema, e só enxerga extrato,
                       PIX e cartão se o CNPJ dela estiver conectado lá.
                     </p>
                   )}
@@ -243,8 +259,45 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                     </p>
                   )}
                 </div>
+                {modo === 'editar' && (
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="grupo-mp-token" className="text-xs">Maquininha Mercado Pago: Access Token</Label>
+                    <Input
+                      id="grupo-mp-token"
+                      type="password"
+                      autoComplete="off"
+                      value={mpToken}
+                      onChange={e => { setMpToken(e.target.value); setMpRemover(false) }}
+                      placeholder={inicial?.mpConectado ? 'Deixe em branco para manter a atual' : 'APP_USR-...'}
+                      className="h-9 text-sm"
+                      disabled={mpRemover}
+                    />
+                    {inicial?.mpConectado ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] text-primary-text">Configurada: conta final {inicial.mpFinal}</p>
+                        <button
+                          type="button"
+                          onClick={() => { setMpRemover(v => !v); setMpToken('') }}
+                          className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-destructive"
+                        >
+                          {mpRemover ? 'Cancelar remoção' : 'Remover credencial'}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">Sem credencial, a importação do Mercado Pago fica desligada neste grupo.</p>
+                    )}
+                    {mpRemover && (
+                      <p className="text-[11px] text-destructive">
+                        A credencial será apagada ao salvar. A importação para neste grupo; o que já foi importado continua na conciliação.
+                      </p>
+                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      O Salvar confere a conta no Mercado Pago antes de gravar. Com a credencial, a conciliação de cartão importa as vendas da maquininha.
+                    </p>
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground sm:col-span-2">
-                  A URL do mcp.ai é gravada cifrada e nunca volta para esta tela — por isso o campo aparece vazio.
+                  As chaves são gravadas cifradas e nunca voltam para esta tela, por isso os campos aparecem vazios.
                   Bling é a emissão de NF-e. O login da fábrica fica no cadastro de cada loja.
                 </p>
               </div>
@@ -257,6 +310,9 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
           </div>
         </div>
 
+        {erro && (
+          <p role="alert" className="border-t border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive sm:px-6">{erro}</p>
+        )}
         <div className="flex justify-end gap-2 border-t bg-muted/40 px-4 py-3 sm:px-6">
           <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => onOpenChange?.(false)}>Cancelar</Button>
           <Button className="flex-1 sm:flex-none" onClick={handleSalvar} disabled={loading}>
