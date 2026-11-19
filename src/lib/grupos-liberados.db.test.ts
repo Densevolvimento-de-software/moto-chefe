@@ -60,8 +60,8 @@ async function cenario(tx: Tx) {
     const chassi = 'R517' + cnpj
     const moto = await linha(tx, sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
       values (${chassi}, ${modelo.id}, ${l.id}, 'CINZA', '1', 'vendida', 'vendida') returning id`)
-    const mecanico = await linha(tx, sql`insert into usuarios (id, nome, email, papel, loja_id)
-      values (gen_random_uuid(), 'Mecânico', ${'mec-517-' + cnpj + '@teste.invalid'}, 'mecanico', ${l.id}) returning id`)
+    const mecanico = await linha(tx, sql`insert into usuarios (id, nome, email, papel, loja_id, conta_id)
+      values (gen_random_uuid(), 'Mecânico', ${'mec-517-' + cnpj + '@teste.invalid'}, 'mecanico', ${l.id}, ${conta}) returning id`)
     const os = await linha(tx, sql`insert into ordens_servico (loja_id, aberta_por, descricao) values (${l.id}, ${mecanico.id}, 'OS 517') returning id`)
     const cliente = await linha(tx, sql`insert into clientes (nome, cpf_cnpj, conta_id) values ('Cliente', ${cnpj}, ${conta}) returning id`)
     await tx.execute(sql`update agendamentos set cliente_id = ${cliente.id} where id = ${ag.id}`)
@@ -176,6 +176,12 @@ test('gravação na persona: vínculo, vendedor e chassi só do grupo liberado',
     assert.equal(await vendedorDaConta(c.irmao.mecanico, c.liberado.loja, g, tx), false, 'vendedor do outro grupo da Conta dona')
     assert.equal(await vendedorDaConta(c.socioDona, c.liberado.loja, g, tx), false, 'sócio só com conta_id')
     assert.equal(await vendedorDaConta(c.deFora.mecanico, c.liberado.loja, g, tx), false, 'outra Conta')
+
+    // Usuário de outra Conta não trabalha no grupo liberado, qualquer que seja o cadastro dele.
+    const deOutraConta = await linha(tx, sql`insert into usuarios (id, nome, email, papel, loja_id, conta_id, grupos_acesso)
+      values (gen_random_uuid(), 'Fora', 'fora-517@teste.invalid', 'mecanico', ${c.deFora.loja}, (select conta_id from grupos where id = ${c.deFora.grupo}), array[${g}]::uuid[]) returning id`)
+    assert.equal(await vendedorDaConta(deOutraConta.id, c.liberado.loja, g, tx), false, 'outra Conta, outro cadastro')
+    await assert.rejects(conferirVinculosDaConta(c.liberado.loja, { mecanicoId: deOutraConta.id }, g, tx), /Mecânico não encontrado/, 'mecânico de outra Conta, outro cadastro')
 
     assert.equal((await motoDaContaPorChassi(c.liberado.chassi, c.dona, g, tx))?.chassi, c.liberado.chassi)
     assert.equal(await motoDaContaPorChassi(c.irmao.chassi, c.dona, g, tx), null, 'chassi do outro grupo da Conta dona')

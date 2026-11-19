@@ -40,7 +40,7 @@ const linhas = async (tx: Tx, q: ReturnType<typeof sql>) => ((await tx.execute(q
 async function semearConta(tx: Tx, nome: string, cnpj: string) {
   const base = await semearContaBase(tx, { prefixo: 'AV404', nome, cnpj })
   const vendedorId = await semearUsuario(tx, base, { papel: 'vendedor' })
-  const socioId = await semearUsuario(tx, base, { papel: 'admin_socio', rotulo: 'socio', semLoja: true, comGrupo: true })
+  const socioId = await semearUsuario(tx, base, { papel: 'admin_socio', rotulo: 'socio', semLoja: true, comGrupo: true, comConta: true })
   const socioSoContaId = await semearUsuario(tx, base, { papel: 'admin_socio', rotulo: 'socioSoConta', semLoja: true, comConta: true })
   const [modelo] = await linhas(tx, sql`insert into modelos (marca, modelo, categoria, potencia_w, motor, velocidade_max) values ('M', ${'AV404 ' + nome}, 'autopropelido', '1000', 'hub', '32') returning id`)
   const [moto] = await linhas(tx, sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
@@ -48,6 +48,7 @@ async function semearConta(tx: Tx, nome: string, cnpj: string) {
   const [aprovacao] = await linhas(tx, sql`insert into aprovacoes_venda (moto_id, loja_id, vendedor_id, valor, dados_venda, motivo)
     values (${moto.id}, ${base.lojaId}, ${vendedorId}, 1000, '{}'::jsonb, 'abaixo do mínimo') returning id`)
   return {
+    base,
     lojaId: base.lojaId,
     aprovacaoId: aprovacao.id as string,
     vendedorId,
@@ -78,7 +79,7 @@ test('Conta B (aux e sócio) não acha o pedido de aprovação da Conta A, igual
   })
 })
 
-test('vendedor escolhido: vale o da loja, o sócio com acesso e o sócio só com conta_id da Conta da moto; o da Conta B não (#404)', async () => {
+test('vendedor escolhido: vale o da loja e os sócios da Conta da moto; os da Conta B não (#404)', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A', '00000000040434')
     const b = await semearConta(tx, 'B', '00000000040435')
@@ -89,5 +90,18 @@ test('vendedor escolhido: vale o da loja, o sócio com acesso e o sócio só com
     assert.equal(await vendedorDaConta(b.socioId, a.lojaId, null, tx), false)
     assert.equal(await vendedorDaConta(b.socioSoContaId, a.lojaId, null, tx), false)
     assert.equal(await vendedorDaConta(crypto.randomUUID(), a.lojaId, null, tx), false)
+  })
+})
+
+test('vendedor escolhido: usuário de fora da Conta da moto não serve, em nenhum cadastro; igual a inexistente', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A', '00000000040436')
+    const b = await semearConta(tx, 'B', '00000000040437')
+    const deOutraConta = await semearUsuario(tx, b.base, { papel: 'vendedor', rotulo: 'foraA', semLoja: true, comConta: true })
+    const semContaNemLoja = await semearUsuario(tx, b.base, { papel: 'vendedor', rotulo: 'foraB', semLoja: true })
+    await linhas(tx, sql`update usuarios set grupos_acesso = array[${a.base.grupoId}]::uuid[] where id in (${deOutraConta}, ${semContaNemLoja})`)
+    assert.equal(await vendedorDaConta(deOutraConta, a.lojaId, null, tx), false, 'de outra Conta')
+    assert.equal(await vendedorDaConta(semContaNemLoja, a.lojaId, null, tx), false, 'sem Conta e sem loja')
+    assert.equal(await vendedorDaConta(crypto.randomUUID(), a.lojaId, null, tx), false, 'inexistente')
   })
 })
