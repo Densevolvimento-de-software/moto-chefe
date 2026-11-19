@@ -330,7 +330,7 @@ async function vincularVenda(conciliacaoId: string, alvo: AlvoConciliacao) {
     : []
   if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
 
-  revalidarTelasDaConciliacao()
+  revalidarTelasDaConciliacao(alvo)
 }
 
 export async function desvincularVendaAction(conciliacaoId: string) {
@@ -594,7 +594,7 @@ async function vincularPixAlvo(pixId: string, alvo: AlvoConciliacao) {
     :                                    { tipo: 'venda' as const, vendaId: alvo.id }
   await vincularPix(pixId, grupo.id, vinculo, usuario.id)
 
-  revalidarTelasDaConciliacao()
+  revalidarTelasDaConciliacao(alvo)
 }
 
 export async function desvincularPixAlvoAction(pixId: string) {
