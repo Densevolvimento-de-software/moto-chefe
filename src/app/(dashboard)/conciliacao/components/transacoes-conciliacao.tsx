@@ -1,9 +1,10 @@
 'use client'
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { SheetTitle } from '@/components/ui/sheet'
 import { GavetaDeBaixo } from '@/components/gaveta-de-baixo'
+import { LinhaDeDetalhe } from '@/components/linha-de-detalhe'
 import { cn } from '@/lib/utils'
 import { brl } from '@/lib/dashboard-painel'
 import { dataPuraBr } from '@/lib/data-venda'
@@ -143,13 +144,6 @@ function ListaDoCelular({ linhas }: { linhas: LinhaNaTela[] }) {
   )
 }
 
-const Dado = ({ rotulo, children }: { rotulo: string; children: ReactNode }) => (
-  <>
-    <dt className="text-muted-foreground">{rotulo}</dt>
-    <dd className="text-right tabular-nums [overflow-wrap:anywhere]">{children}</dd>
-  </>
-)
-
 function FolhaDaLinha({ l }: { l: LinhaNaTela }) {
   return (
     <div className="space-y-4">
@@ -161,22 +155,22 @@ function FolhaDaLinha({ l }: { l: LinhaNaTela }) {
           {l.estornada && <SeloEstornado />}
         </span>
       </div>
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
-        <Dado rotulo="Data">{dataPuraBr(l.data)}</Dado>
-        <Dado rotulo="Operadora">
+      <div className="text-sm tabular-nums">
+        <LinhaDeDetalhe rotulo="Data">{dataPuraBr(l.data)}</LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Operadora">
           {l.operadora}{l.bandeira && <>, <span className="capitalize">{l.bandeira}</span></>}
-        </Dado>
-        {l.liquido !== null && <Dado rotulo="Líquido"><Valor valor={l.liquido} riscado={l.estornada} /></Dado>}
-        {l.nsu && <Dado rotulo="NSU">{l.nsu}</Dado>}
-        {l.portador && <Dado rotulo="Portador">{l.portador}</Dado>}
+        </LinhaDeDetalhe>
+        {l.liquido !== null && <LinhaDeDetalhe rotulo="Líquido"><Valor valor={l.liquido} riscado={l.estornada} /></LinhaDeDetalhe>}
+        {l.nsu && <LinhaDeDetalhe rotulo="NSU">{l.nsu}</LinhaDeDetalhe>}
+        {l.portador && <LinhaDeDetalhe rotulo="Portador">{l.portador}</LinhaDeDetalhe>}
         {l.alvo && (
-          <Dado rotulo="Venda">
+          <LinhaDeDetalhe rotulo="Venda">
             <span className={cn('inline-flex items-center gap-1', !l.estornada && 'text-success')}>
               <ChipDoAlvo tipo={l.alvo.tipo} />#{l.alvo.numero}, {l.alvo.clienteNome}
             </span>
-          </Dado>
+          </LinhaDeDetalhe>
         )}
-      </dl>
+      </div>
       {l.estornada ? <p className="text-sm text-muted-foreground">{NAO_SE_VINCULA}</p>
         : l.alvo ? <BotaoDesvincular conciliacaoId={l.id} cheio />
         : linkDaLinha(l, true)}
