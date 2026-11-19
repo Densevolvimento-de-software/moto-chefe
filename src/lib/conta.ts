@@ -102,8 +102,9 @@ export async function contaDoGrupoUsaBling(grupoId: string, exec: Executor = db)
 }
 
 // Nome de quem lançou ou enviou um registro do grupo, para exibir. Aparece quem é da Conta do grupo
-// (conta_id ou loja da Conta), o admin_geral e o admin_rede que teve o grupo liberado, mesmo revogado:
-// autoria é histórico (decisão do Luis, 18/11/2026). Marcação em grupos_acesso não conta (ADR-0018).
+// (conta_id ou loja da Conta), o admin_geral e quem teve o grupo liberado (admin_rede, #517), mesmo
+// revogado ou com outro papel hoje: autoria é histórico (decisão do Luis, 18/11/2026). Marcação em
+// grupos_acesso não conta (ADR-0018).
 export async function nomesDeUsuariosVisiveis(
   grupo: { id: string; contaId: string },
   ids: string[],
@@ -118,7 +119,7 @@ export async function nomesDeUsuariosVisiveis(
         usuarioDaConta(grupo.contaId),
         inArray(usuarios.lojaId, lojasDaConta(grupo.contaId)),
         eq(usuarios.papel, 'admin_geral'),
-        and(eq(usuarios.papel, 'admin_rede'), inArray(usuarios.id, liberados)),
+        inArray(usuarios.id, liberados),
       ),
     ))
   return new Map(linhas.map(l => [l.id, l.nome]))

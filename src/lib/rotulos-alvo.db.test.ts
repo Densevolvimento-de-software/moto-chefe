@@ -125,7 +125,7 @@ test('guarda: sem ids, nada é lido', async () => {
   })
 })
 
-test('quem lançou: aparece o usuário da Conta (só loja, só Conta) e o admin_geral', async () => {
+test('guarda: quem lançou aparece se é da Conta (só loja, só Conta) ou admin_geral', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A')
     const soLoja = await semearUsuario(tx, a.base, { papel: 'aux_adm', rotulo: `loja-${randomUUID()}`, nomeDoUsuario: 'Só loja' })
@@ -147,20 +147,33 @@ test('quem lançou: usuário de outra Conta não aparece, nem marcando o grupo e
   })
 })
 
-test('quem lançou: admin_rede de outra Conta aparece com o grupo liberado, inclusive revogado; liberado em outro grupo, não', async () => {
+// admin_rede de outra Conta: liberado no grupo A (vivo e revogado) e liberado só num outro grupo da Conta A.
+async function redesLiberados(tx: Tx) {
+  const a = await semearConta(tx, 'A')
+  const b = await semearConta(tx, 'B')
+  const geral = await semearUsuario(tx, a.base, { papel: 'admin_geral', rotulo: `geral-${randomUUID()}`, semLoja: true })
+  const rede = (rotulo: string) => semearUsuario(tx, b.base, { papel: 'admin_rede', rotulo: `${rotulo}-${randomUUID()}`, nomeDoUsuario: rotulo, semLoja: true, comConta: true })
+  const [vivo, revogado, deOutroGrupo] = [await rede('Vivo'), await rede('Revogado'), await rede('Outro grupo')]
+  const outro = await semearGrupo(tx, a.base.contaId, { prefixo: 'ROT128', nome: `A2-${randomUUID()}`, cnpj: randomUUID() })
+  const liberar = (usuario: string, grupo: string, revogadoEm: string | null) => tx.execute(sql`
+    insert into grupos_liberados (usuario_id, grupo_id, liberado_por, revogado_em) values (${usuario}, ${grupo}, ${geral}, ${revogadoEm}::timestamptz)`)
+  await liberar(vivo, a.base.grupoId, null)
+  await liberar(revogado, a.base.grupoId, '2026-11-01T12:00:00Z')
+  await liberar(deOutroGrupo, outro.grupoId, null)
+  return { a, vivo, revogado, deOutroGrupo }
+}
+
+test('guarda: admin_rede de outra Conta com o grupo liberado aparece, inclusive com a liberação revogada', async () => {
   await emTransacaoDesfeita(async tx => {
-    const a = await semearConta(tx, 'A')
-    const b = await semearConta(tx, 'B')
-    const geral = await semearUsuario(tx, a.base, { papel: 'admin_geral', rotulo: `geral-${randomUUID()}`, semLoja: true })
-    const rede = (rotulo: string) => semearUsuario(tx, b.base, { papel: 'admin_rede', rotulo: `${rotulo}-${randomUUID()}`, nomeDoUsuario: rotulo, semLoja: true, comConta: true })
-    const [vivo, revogado, deOutroGrupo] = [await rede('Vivo'), await rede('Revogado'), await rede('Outro grupo')]
-    const outro = await semearGrupo(tx, a.base.contaId, { prefixo: 'ROT128', nome: `A2-${randomUUID()}`, cnpj: randomUUID() })
-    const liberar = (usuario: string, grupo: string, revogadoEm: string | null) => tx.execute(sql`
-      insert into grupos_liberados (usuario_id, grupo_id, liberado_por, revogado_em) values (${usuario}, ${grupo}, ${geral}, ${revogadoEm}::timestamptz)`)
-    await liberar(vivo, a.base.grupoId, null)
-    await liberar(revogado, a.base.grupoId, '2026-11-01T12:00:00Z')
-    await liberar(deOutroGrupo, outro.grupoId, null)
-    const nomes = await conta.nomesDeUsuariosVisiveis(grupoDe(a.base), [vivo, revogado, deOutroGrupo], tx)
-    assert.deepEqual([vivo, revogado, deOutroGrupo].map(id => nomes.get(id) ?? null), ['Vivo', 'Revogado', null])
+    const { a, vivo, revogado } = await redesLiberados(tx)
+    const nomes = await conta.nomesDeUsuariosVisiveis(grupoDe(a.base), [vivo, revogado], tx)
+    assert.deepEqual([vivo, revogado].map(id => nomes.get(id)), ['Vivo', 'Revogado'])
+  })
+})
+
+test('quem lançou: admin_rede liberado só em outro grupo da Conta não aparece', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const { a, deOutroGrupo } = await redesLiberados(tx)
+    assert.deepEqual([...(await conta.nomesDeUsuariosVisiveis(grupoDe(a.base), [deOutroGrupo], tx))], [])
   })
 })
