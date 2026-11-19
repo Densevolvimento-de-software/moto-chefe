@@ -5,6 +5,14 @@ export type StatusConc = 'na' | 'pendente' | 'parcial' | 'conciliada'
 export const TIPOS_CARTAO = new Set(['cartao_credito', 'cartao_debito', 'link_pagamento'])
 export const PAGAMENTO_PIX: ReadonlySet<string> = new Set(['pix'])
 
+/**
+ * Tipos de pagamento da venda que uma linha da conciliação de cartão pode cobrir. A linha 'pix' só
+ * existe para o Pix da maquininha Mercado Pago (#51) e cobre o pagamento Pix; as outras, cartão.
+ */
+export function tiposDoPagamentoDaLinha(tipoLinha: string | undefined): ReadonlySet<string> {
+  return tipoLinha === LINHA_PIX ? PAGAMENTO_PIX : TIPOS_CARTAO
+}
+
 // Conciliação forçada na mão (quem pode: podeGerirConciliacao): o dinheiro entrou, mas não existe
 // lançamento correspondente no sistema (relatório da operadora não importado, PIX
 // fora do Open Finance, transferência avulsa). Fica gravada no próprio item do array
@@ -80,11 +88,13 @@ export function valorConciliadoManual(pagamentos: unknown): number {
     .reduce((a, p) => a + (Number(p.valor) || 0), 0)
 }
 
-type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number; tipo?: string }
-type PixMatch  = { id: string; valor: string | number }
+type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number; tipo?: string; operadora?: string }
+// `operadora`: só a linha pix da maquininha (#51); o PIX do banco não tem.
+type PixMatch  = { id: string; valor: string | number; operadora?: string }
 
 /** Quanto do pagamento foi coberto por dinheiro que realmente entrou. */
-export type CoberturaPgto = { conciliado: boolean; coberto: number }
+/** `pixDaMaquininha`: a operadora, quando foi a linha pix da maquininha que cobriu o PIX (o painel diz de onde veio). */
+export type CoberturaPgto = { conciliado: boolean; coberto: number; pixDaMaquininha?: string }
 
 // Vendas, peças e OS podem ter mais de uma forma de pagamento por cartão/pix no mesmo
 // carrinho (ex.: Pix + Cartão). Casa cada item do array `pagamentos` com o que entrou,
@@ -101,7 +111,7 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
   const concs = linhasDoAlvo.filter(c => c.tipo !== LINHA_PIX)
   const pixRecs: PixMatch[] = [
     ...pixDoBanco,
-    ...linhasDoAlvo.filter(c => c.tipo === LINHA_PIX).map(c => ({ id: c.id, valor: c.valorBruto })),
+    ...linhasDoAlvo.filter(c => c.tipo === LINHA_PIX).map(c => ({ id: c.id, valor: c.valorBruto, operadora: c.operadora })),
   ]
   const usados    = new Set<string>()
   const resultado: CoberturaPgto[] = pgtos.map(() => ({ conciliado: false, coberto: 0 }))
@@ -148,7 +158,11 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
   pgtos.forEach((p, i) => {
     if (!PAGAMENTO_PIX.has(p.tipo) || resultado[i].conciliado) return
     const m = pixRecs.find(r => !pixUsados.has(r.id) && Math.abs(Number(r.valor) - p.valor) <= 0.05)
-    if (m) { resultado[i].coberto += Number(m.valor); pixUsados.add(m.id) }
+    if (m) {
+      resultado[i].coberto += Number(m.valor)
+      if (m.operadora) resultado[i].pixDaMaquininha = m.operadora
+      pixUsados.add(m.id)
+    }
   })
 
   // O que sobrou rateia entre as linhas PIX ainda descobertas, na ordem. Dois PIX
@@ -230,4 +244,22 @@ export function pagamentosEfetivosOS(
   if (!formaPagamento) return []
   const tipo = LABEL_PARA_TIPO_OS[formaPagamento] ?? formaPagamento.toLowerCase()
   return [{ tipo, valor: Number(valorTotal) || 0 }]
+}
+
+/** Linha da maquininha ligada ao alvo e estornada no Mercado Pago. */
+export type EstornoDoAlvo = { id: string; valorBruto: string | number; tipo: string }
+
+const estornoCobre = (p: PgtoOS, e: EstornoDoAlvo) =>
+  tiposDoPagamentoDaLinha(e.tipo).has(p.tipo) && Math.abs(Number(e.valorBruto) - p.valor) <= 0.05
+
+/**
+ * Para cada pagamento, se um estorno no Mercado Pago o deixou pendente: pagamento ainda não conciliado com um estorno
+ * ligado ao alvo do mesmo meio e valor. Cada estorno explica um pagamento só. Sem o dia: o importador não grava quando
+ * estornou, e a data da linha é a da venda.
+ */
+export function estornosDosPagamentos(pgtos: PgtoOS[], cobertura: CoberturaPgto[], estornos: EstornoDoAlvo[]): boolean[] {
+  return pgtos.reduce<{ marcados: boolean[]; usados: ReadonlySet<string> }>((acc, p, i) => {
+    const e = cobertura[i]?.conciliado ? undefined : estornos.find(x => !acc.usados.has(x.id) && estornoCobre(p, x))
+    return { marcados: [...acc.marcados, Boolean(e)], usados: e ? new Set([...acc.usados, e.id]) : acc.usados }
+  }, { marcados: [], usados: new Set() }).marcados
 }

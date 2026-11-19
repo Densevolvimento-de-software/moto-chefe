@@ -3,11 +3,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { ChevronDown, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { matchPagamentos, precisaConciliar, type PgtoOS } from '@/lib/conciliacao-status'
+import { estornosDosPagamentos, matchPagamentos, precisaConciliar, type EstornoDoAlvo, type PgtoOS } from '@/lib/conciliacao-status'
 import { nomeOperadora } from '@/lib/operadoras'
 import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import {
   buscarConciliacoesDoAlvo,
+  buscarEstornosDoAlvo,
   buscarPixDoAlvo,
   buscarConciliacoesPorValor,
   buscarConciliacoesLivres,
@@ -20,7 +21,7 @@ import {
   type PixLivre,
 } from '@/app/(dashboard)/conciliacao/actions'
 import { dataPuraBr } from '@/lib/data-venda'
-import { rotuloDaLinha } from '@/lib/conciliacao-cartao'
+import { LINHA_PIX, rotuloDaLinha } from '@/lib/conciliacao-cartao'
 
 type Conc      = Awaited<ReturnType<typeof buscarConciliacoesDoAlvo>>[number]
 type PixRec    = Awaited<ReturnType<typeof buscarPixDoAlvo>>[number]
@@ -42,6 +43,7 @@ const fmt = (v: string | number) => Number(v).toLocaleString('pt-BR', { style: '
 export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
   const [concs, setConcs]     = useState<Conc[]>([])
   const [pixRecs, setPixRecs] = useState<PixRec[]>([])
+  const [estornos, setEstornos] = useState<EstornoDoAlvo[]>([])
   const [loading, setLoading] = useState(false)
 
   const { tipo, id } = alvo
@@ -49,12 +51,14 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
   const recarregar = useCallback(async () => {
     setLoading(true)
     try {
-      const [c, px] = await Promise.all([
+      const [c, px, est] = await Promise.all([
         buscarConciliacoesDoAlvo({ tipo, id }),
         buscarPixDoAlvo({ tipo, id }),
+        buscarEstornosDoAlvo({ tipo, id }),
       ])
       setConcs(c)
       setPixRecs(px)
+      setEstornos(est)
     } finally {
       setLoading(false)
     }
@@ -64,7 +68,7 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
     if (ativo) recarregar()
   }, [ativo, recarregar])
 
-  return { concs, pixRecs, loading, recarregar }
+  return { concs, pixRecs, estornos, loading, recarregar }
 }
 
 type Props = {
@@ -83,8 +87,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const podeGerir = podeGerirConciliacao(papel)
 
   const [buscandoIdx, setBuscandoIdx]   = useState<number | null>(null)
-  // Cartão e PIX moram em tabelas diferentes; a linha aberta manda qual das duas
-  // buscar, e só uma das listas fica preenchida por vez.
+  // A linha aberta manda o que buscar: cartão só nas linhas de cartão (`candidatos`); PIX nas linhas pix da
+  // maquininha (`candidatos`) e no extrato do banco (`candidatosPix`), as duas ao mesmo tempo (#51).
   const [buscandoPix, setBuscandoPix]   = useState(false)
   const [candidatos, setCandidatos]     = useState<Candidato[]>([])
   const [candidatosPix, setCandidatosPix] = useState<PixLivre[]>([])
@@ -102,6 +106,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const [salvando, setSalvando]       = useState(false)
 
   const conciliados = matchPagamentos(pagamentos, concs, pixRecs)
+  // Pagamento que voltou a pendente porque a linha da maquininha foi estornada no Mercado Pago (#51).
+  const estornados = estornosDosPagamentos(pagamentos, conciliados, dados.estornos)
 
   function limparBusca() {
     setCandidatos([])
@@ -119,8 +125,13 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     setBuscaLoading(true)
     limparBusca()
     try {
-      if (ehPix) setCandidatosPix(await buscarPixLivres(valor))
-      else       setCandidatos(await buscarConciliacoesPorValor(valor))
+      // PIX entra pela maquininha Mercado Pago ou pelo banco (#51): procura nas duas.
+      const [maquininha, banco] = await Promise.all([
+        buscarConciliacoesPorValor(valor, ehPix ? 'pix' : 'cartao'),
+        ehPix ? buscarPixLivres(valor) : [],
+      ])
+      setCandidatos(maquininha)
+      setCandidatosPix(banco)
     } catch {
       toast.error(ehPix ? 'Erro ao buscar recebimentos PIX' : 'Erro ao buscar transações')
       setBuscandoIdx(null)
@@ -134,8 +145,12 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     setLivreLoading(true)
     setBuscouLivre(false)
     try {
-      if (buscandoPix) setLivresPix(await buscarPixLivres(0, buscaLivre))
-      else             setLivres(await buscarConciliacoesLivres(buscaLivre))
+      const [maquininha, banco] = await Promise.all([
+        buscarConciliacoesLivres(buscaLivre, buscandoPix ? 'pix' : 'cartao'),
+        buscandoPix ? buscarPixLivres(0, buscaLivre) : [],
+      ])
+      setLivres(maquininha)
+      setLivresPix(banco)
       setBuscouLivre(true)
     } catch {
       toast.error('Erro na busca')
@@ -216,6 +231,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   }
 
   function renderCandidato(c: Candidato) {
+    if (c.tipo === LINHA_PIX) return renderPixDaMaquininha(c)
     const raw = c.rawData as { bandeira?: string; portador?: string } | null
     const titulo = `${nomeOperadora(c.operadora)}${raw?.bandeira ? ` · ${raw.bandeira}` : ''} · ${rotuloDaLinha(c.tipo)}`
     const data = c.dataTransacao ? dataPuraBr(c.dataTransacao) : '—'
@@ -232,6 +248,24 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     )
   }
 
+  // Linha pix da maquininha (#51, V1): mesmo Vincular das linhas de cartão, com o selo da origem.
+  function renderPixDaMaquininha(c: Candidato) {
+    const operadora = nomeOperadora(c.operadora)
+    const data = dataPuraBr(c.dataTransacao)
+    return (
+      <Sugestao
+        key={c.id}
+        titulo="PIX na maquininha"
+        selo={operadora}
+        detalhes={[[data, c.nsu ? `NSU ${c.nsu.slice(-8)}` : '', fmt(c.valorBruto)].filter(Boolean).join(' · ')]}
+        valor={c.valorBruto}
+        onVincular={() => vincular(c.id)}
+        vinculando={vinculando}
+        rotulo={`Vincular PIX na maquininha ${operadora}, ${data}, ${fmt(c.valorBruto)}`}
+      />
+    )
+  }
+
   function renderCandidatoPix(p: PixLivre) {
     const quando = new Date(p.data).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
     const quem = p.pagadorNome ?? 'Pagador não informado'
@@ -239,6 +273,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
       <Sugestao
         key={p.id}
         titulo={quem}
+        selo="Extrato do banco"
         detalhes={[[p.descricao, quando, fmt(p.valor)].filter(Boolean).join(' · ')]}
         valor={p.valor}
         onVincular={() => vincularPix(p.id)}
@@ -249,8 +284,9 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   }
 
   const modo = buscandoPix ? MODO.pix : MODO.cartao
-  const sugestoes = buscandoPix ? candidatosPix.map(renderCandidatoPix) : candidatos.map(renderCandidato)
-  const achadosLivres = buscandoPix ? livresPix.map(renderCandidatoPix) : livres.map(renderCandidato)
+  // Uma lista só: maquininha primeiro (valor exato), depois o banco (valor próximo); cada item diz a origem.
+  const sugestoes = [...candidatos.map(renderCandidato), ...candidatosPix.map(renderCandidatoPix)]
+  const achadosLivres = [...livres.map(renderCandidato), ...livresPix.map(renderCandidatoPix)]
 
   // Situação de cada pagamento, já na ordem em que aparece: pendentes primeiro.
   const itens = pagamentos.map((p, i) => {
@@ -262,7 +298,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     // Achou dinheiro, mas menos do que foi lançado: nem verde nem vermelho.
     const parcial    = pendente && cobertura.coberto > 0.005
     const situacao = situacaoDe({ precisa, loading, forcado, conciliado, parcial })
-    return { p, i, situacao, coberto: cobertura.coberto }
+    return { p, i, situacao, coberto: cobertura.coberto, pixDaMaquininha: cobertura.pixDaMaquininha }
   }).filter(l => !somenteConciliaveis || l.situacao !== 'livre')
   const ordem: Record<Situacao, number> = { pendente: 0, parcial: 1, carregando: 2, forcado: 3, conciliado: 4, livre: 5 }
   itens.sort((x, y) => ordem[x.situacao] - ordem[y.situacao] || x.i - y.i)
@@ -292,13 +328,16 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
       )}
 
       <ul className="space-y-2">
-        {itens.map(({ p, i, situacao, coberto }) => {
+        {itens.map(({ p, i, situacao, coberto, pixDaMaquininha }) => {
           const resolvivel = RESOLVIVEL.has(situacao)
           const mostraBusca = buscandoIdx === i && podeGerir && p.tipo !== 'financiamento'
           const aberto = resolvivel && (buscandoIdx === i || forcandoIdx === i)
           const detalhe = [p.operadora, p.parcelas ? `${p.parcelas}x` : '', p.autorizacao ? `#${p.autorizacao}` : ''].filter(Boolean).join(' · ')
+          const estorno = situacao === 'pendente' && estornados[i]
           const complemento =
-            situacao === 'forcado' && p.conciliadoManual
+            estorno ? 'Estornado no Mercado Pago'
+            : situacao === 'conciliado' && pixDaMaquininha ? `PIX na maquininha ${nomeOperadora(pixDaMaquininha)}`
+            : situacao === 'forcado' && p.conciliadoManual
               ? `${p.conciliadoManual.porNome} · ${new Date(p.conciliadoManual.em).toLocaleDateString('pt-BR')} · ${p.conciliadoManual.motivo}`
               : situacao === 'parcial'
                 ? `Entrou ${fmt(coberto)} · faltam ${fmt(p.valor - coberto)}`
@@ -314,7 +353,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{TIPO_LABEL[p.tipo] ?? p.tipo}</p>
-                  <p className="truncate text-xs text-muted-foreground">
+                  {/* O aviso do estorno quebra linha em vez de cortar: é a explicação do pendente. */}
+                  <p className={cn('text-xs text-muted-foreground', !estorno && 'truncate')}>
                     <span className={cn('font-medium', SITUACAO[situacao].cor)}>{SITUACAO[situacao].rotulo}</span>
                     {complemento ? ` · ${complemento}` : ''}
                   </p>
@@ -442,11 +482,17 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   )
 }
 
-function Sugestao({ titulo, detalhes, valor, onVincular, rotulo, vinculando }: { titulo: string; detalhes: string[]; valor: string | number; onVincular: () => void; rotulo: string; vinculando: boolean }) {
+function Sugestao({ titulo, selo, detalhes, valor, onVincular, rotulo, vinculando }: { titulo: string; selo?: string; detalhes: string[]; valor: string | number; onVincular: () => void; rotulo: string; vinculando: boolean }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{titulo}</p>
+        {/* O selo desce para a linha de baixo quando não cabe ao lado do título (celular). */}
+        <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-medium">
+          <span className="truncate">{titulo}</span>
+          {selo && <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{selo}</span>}
+        </p>
+        {/* Celular: o valor vem aqui, acima dos detalhes (que cortam); a partir do sm, ao lado do Vincular. */}
+        <p className="text-sm font-semibold tabular-nums sm:hidden">{fmt(valor)}</p>
         {detalhes.filter(Boolean).map(l => <p key={l} className="truncate text-xs text-muted-foreground">{l}</p>)}
       </div>
       <span className="hidden text-sm tabular-nums sm:block">{fmt(valor)}</span>
@@ -490,8 +536,8 @@ function situacaoDe(s: { precisa: boolean; loading: boolean; forcado: boolean; c
 const MODO = {
   pix: {
     nome: 'PIX', procurar: 'Procurar outro PIX', nada: 'Nenhum PIX encontrado.',
-    placeholder: 'Pagador, descrição, data (AAAA-MM-DD) ou valor',
-    vazio: 'Nenhum PIX livre com esse valor por enquanto. Sincronize o Open Finance em /pix-mcp, ou procure por outro valor ou data:',
+    placeholder: 'Pagador, descrição, NSU, data (AAAA-MM-DD) ou valor',
+    vazio: 'Nenhum PIX livre com esse valor, nem na maquininha nem no extrato do banco. Importe da maquininha em /conciliacao ou sincronize o Open Finance em /pix-mcp, ou procure por outro valor ou data:',
   },
   cartao: {
     nome: 'Transações', procurar: 'Procurar outra transação', nada: 'Nenhuma transação encontrada.',
