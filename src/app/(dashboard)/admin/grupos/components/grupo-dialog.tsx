@@ -226,7 +226,9 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                 Integrações (opcional){' '}
                 {mcpaiRemover || mpRemover
                   ? <span className="ml-1 text-xs font-normal text-destructive">
-                      {[mcpaiRemover && 'chave do Open Finance', mpRemover && 'credencial do Mercado Pago'].filter(Boolean).join(' e ')} será removida
+                      {mcpaiRemover && mpRemover
+                        ? 'chave do Open Finance e credencial do Mercado Pago serão removidas'
+                        : `${mcpaiRemover ? 'chave do Open Finance' : 'credencial do Mercado Pago'} será removida`}
                     </span>
                   : <span className="ml-1 text-xs font-normal text-muted-foreground">{integracaoConfigurada ? 'configurada' : modo === 'editar' ? 'Bling, Open Finance, Mercado Pago' : 'Bling, Open Finance'}</span>}
               </summary>

@@ -1,7 +1,7 @@
 // Teste de banco: credencial do Mercado Pago no Editar Grupo (#51, PR5) e recusas que voltam como valor
 // (#404). Fronteira simulada: sessão, next/cache e a rede do Mercado Pago (fetch do /users/me); grupo,
-// credencial cifrada e transação rodam no Postgres descartável. A conta já ligada é barrada pela consulta
-// antes do insert; a corrida que cai no índice único de user_id não é reproduzida aqui.
+// credencial cifrada e transação rodam no Postgres descartável. Conta já ligada a outro grupo: mesma frase e
+// nada grava (barrada pela consulta antes do insert; a corrida que cai no índice único não é reproduzida aqui).
 import { after, before, beforeEach, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
