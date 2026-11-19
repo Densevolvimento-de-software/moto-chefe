@@ -176,9 +176,8 @@ test('tipo de linha forjado é recusado nas duas buscas', async () => {
 })
 
 // #51 (PR6c): o painel da venda diz "Estornado no Mercado Pago" com as linhas estornadas ligadas à venda.
-test('estornos do alvo: só as linhas estornadas ligadas à venda; Conta B não lê', async () => {
+test('estornos do alvo: só as linhas estornadas ligadas à venda (a outra Conta: teste seguinte)', async () => {
   const a = await semearConta()
-  const b = await semearConta()
   const venda = await vendaPeca(a, [{ tipo: 'pix', valor: 456.78 }, { tipo: 'pix', valor: 123.45 }])
   const estornada = await linha(a, 'pix', 456.78)
   const conciliada = await linha(a, 'pix', 123.45)

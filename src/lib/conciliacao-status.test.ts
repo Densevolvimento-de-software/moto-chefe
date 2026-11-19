@@ -285,7 +285,7 @@ test('linha de crédito não cobre pagamento Pix', () => {
   assert.deepEqual(matchPagamentos(pgtos, concs, []), [{ conciliado: false, coberto: 0 }])
 })
 
-// #51 (PR6c): pagamento que voltou a pendente porque a linha da maquininha foi estornada diz isso, com o dia.
+// #51 (PR6c): pagamento que voltou a pendente porque a linha da maquininha foi estornada diz isso (sem o dia: o importador não grava quando estornou).
 test('estornosDosPagamentos: pendente com estorno do mesmo meio e valor é marcado; conciliado e outro meio não', () => {
   const pgtos: PgtoOS[] = [
     { tipo: 'pix', valor: 450 },

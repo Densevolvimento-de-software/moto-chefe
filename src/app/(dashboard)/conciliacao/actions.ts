@@ -24,6 +24,7 @@ import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
 import { grupos } from '@/lib/db/schema'
 import { revalidatePath } from 'next/cache'
 import { lojasDoEscopo, type EscopoDoUsuario } from '@/lib/conta'
+import { colunasDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/alvo-conciliado'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 // Linha comum aos leitores de relatório, o que a gravação precisa de cada transação.
@@ -416,8 +417,7 @@ export async function buscarConciliacoesPorValor(valor: number, linha: LinhaProc
 // As telas de vendas, peças e OS mostram o mesmo painel de pagamentos, então
 // carregam os lançamentos pelas mesmas funções — ver src/components/pagamentos-conciliacao.tsx.
 
-export type AlvoTipo = 'moto' | 'peca' | 'os'
-export type AlvoConciliacao = { tipo: AlvoTipo; id: string }
+export type { AlvoTipo, AlvoConciliacao }
 
 // O mesmo status de conciliação aparece em várias telas; todas revalidam juntas
 // para nunca divergirem (uma dizendo "pendente" e a outra "conciliada").
@@ -458,12 +458,9 @@ async function alvoVisivel(alvo: AlvoConciliacao): Promise<boolean> {
   return podeGerirConciliacao(usuario.papel) ? podeAbrirRegistroDaLoja(usuario, lojaId) : lojaId === usuario.lojaId
 }
 
-const colunaCartaoDoAlvo = (alvo: AlvoConciliacao) =>
-  alvo.tipo === 'peca' ? conciliacoesCartao.pecaVendaId : alvo.tipo === 'os' ? conciliacoesCartao.osId : conciliacoesCartao.vendaId
-
 export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
   if (!(await alvoVisivel(alvo))) return []
-  const coluna = colunaCartaoDoAlvo(alvo)
+  const coluna = colunasDoAlvo(alvo).cartao
 
   return db
     .select({
@@ -482,7 +479,7 @@ export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
 /** Linhas da maquininha ligadas ao alvo e estornadas no Mercado Pago (#51): o painel diz que o pagamento voltou. */
 export async function buscarEstornosDoAlvo(alvo: AlvoConciliacao) {
   if (!(await alvoVisivel(alvo))) return []
-  const coluna = colunaCartaoDoAlvo(alvo)
+  const coluna = colunasDoAlvo(alvo).cartao
   return db
     .select({
       id:            conciliacoesCartao.id,
@@ -500,9 +497,7 @@ export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
   // integração. Venda de antes de julho/2026, cujo pagamento só existia lá,
   // aparece aqui sem PIX — o dado está em
   // backups/pix_recebimentos_validapix_20260915.json.
-  const coluna = alvo.tipo === 'peca' ? pixRecebimentosMcp.pecaVendaId
-    : alvo.tipo === 'os'              ? pixRecebimentosMcp.osId
-    :                                   pixRecebimentosMcp.vendaId
+  const coluna = colunasDoAlvo(alvo).pix
 
   return db
     .select({
