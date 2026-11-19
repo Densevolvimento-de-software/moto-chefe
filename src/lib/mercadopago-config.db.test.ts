@@ -59,3 +59,20 @@ test('contas diferentes em grupos diferentes gravam', async () => {
     assert.equal(rows[0].n, 2)
   })
 })
+
+// 0197: a falha da última rodada é hora e frase juntas; uma sem a outra a faixa não sabe mostrar.
+test('falha da última rodada só grava com hora e frase juntas', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await grupo(tx)
+    await gravar(tx, a, `mp-${randomUUID()}`)
+    const falha = (em: string | null, erro: string | null) =>
+      tx.transaction(async sp => {
+        await sp.execute(sql`update mercadopago_config set ultima_falha_em = ${em}::timestamptz, ultima_falha_erro = ${erro} where grupo_id = ${a}`)
+      })
+    const recusa = (e: unknown) => (e as { cause?: { code?: string } }).cause?.code === '23514' || (e as { code?: string }).code === '23514'
+    await assert.rejects(falha('2026-11-18T12:00:00Z', null), recusa)
+    await assert.rejects(falha(null, 'O Mercado Pago recusou a credencial deste grupo (HTTP 401).'), recusa)
+    await falha('2026-11-18T12:00:00Z', 'O Mercado Pago recusou a credencial deste grupo (HTTP 401).')
+    await falha(null, null)
+  })
+})
