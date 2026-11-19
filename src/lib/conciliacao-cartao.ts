@@ -83,3 +83,8 @@ export function rotuloDaLinha(tipo: string): string {
   if (tipo === 'debito') return 'Débito'
   return tipo === LINHA_PIX ? 'PIX' : 'Crédito'
 }
+
+// Venda devolvida ao cliente (estorno do Mercado Pago, #51). Mora aqui (sem banco) para a tela e o servidor
+// decidirem pela mesma regra: cartao-status.ts monta o SQL a partir desta constante.
+export const CARTAO_ESTORNADO = 'estornado'
+export const linhaEstornada = (status: string) => status === CARTAO_ESTORNADO
