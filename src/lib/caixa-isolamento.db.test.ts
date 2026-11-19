@@ -234,14 +234,15 @@ test('tudo é conferido antes de subir: formato, tamanho, categoria, valor, saí
   const base = { lojaId: a.base.lojaId, tipo: 'saida' as const, categoria: saida, valor: '10.00', data: '2026-11-10' }
   const arquivo = (conteudo: BlobPart, tipo: string) => { const fd = new FormData(); fd.append('file', new File([conteudo], 'x', { type: tipo })); return fd }
   subidos.length = 0
-  const casos: [string, Promise<unknown>][] = [
-    ['formato', caixa.criarLancamentoAction(base, arquivo('texto', 'text/plain'))],
-    ['tamanho', caixa.criarLancamentoAction(base, arquivo(new Uint8Array(11 * 1024 * 1024), 'application/pdf'))],
-    ['categoria', caixa.criarLancamentoAction({ ...base, categoria: 'não existe' }, comprovante())],
-    ['valor', caixa.criarLancamentoAction({ ...base, valor: '0' }, comprovante())],
-    ['saída sem arquivo', caixa.criarLancamentoAction(base)],
+  // Uma de cada vez: disparadas juntas, uma recusa chegaria antes de ser aguardada.
+  const casos: [string, () => Promise<unknown>][] = [
+    ['formato', () => caixa.criarLancamentoAction(base, arquivo('texto', 'text/plain'))],
+    ['tamanho', () => caixa.criarLancamentoAction(base, arquivo(new Uint8Array(11 * 1024 * 1024), 'application/pdf'))],
+    ['categoria', () => caixa.criarLancamentoAction({ ...base, categoria: 'não existe' }, comprovante())],
+    ['valor', () => caixa.criarLancamentoAction({ ...base, valor: '0' }, comprovante())],
+    ['saída sem arquivo', () => caixa.criarLancamentoAction(base)],
   ]
-  for (const [rotulo, p] of casos) assert.equal(await recusou(p), true, rotulo)
+  for (const [rotulo, agir] of casos) assert.equal(await recusou(agir()), true, rotulo)
   await assert.rejects(caixa.criarLancamentoAction({ ...base, lojaId: randomUUID() }, comprovante()), /Sem permissão para esta loja/)
   assert.deepEqual(subidos, [])
 })
