@@ -8,6 +8,7 @@ import { pixRecebimentosMcp } from './db/schema'
 import { ehTransferenciaInterna } from './pix-internos'
 import { RecusaUsuario } from './resultado-action'
 import { ehUuid } from './uuid'
+import { PIX_SOLTO } from './pix-solto'
 
 const PIX_NAO_ENCONTRADO = 'PIX não encontrado no grupo ativo'
 // Decisão do Luis (18/11/2026): trocar o vínculo é desvincular e vincular de novo.
@@ -20,12 +21,6 @@ export type VinculoPix =
   | { tipo: 'os'; osId: string }
   | { tipo: 'pedido'; pedidoId: string }
   | { tipo: 'peca'; pecaVendaId: string }
-
-/** PIX sem alvo: o vínculo e o que ele gravou (valor do PIX, custo e taxa, #90). Todo lugar que solta usa este. */
-export const PIX_SOLTO = {
-  tipoCorrespondencia: null, vendaId: null, osId: null, pedidoId: null, pecaVendaId: null, lancadoPorId: null, lancadoEm: null,
-  valorBruto: null, custoPix: null, custoPixTaxa: null,
-} as const
 
 const doGrupo = (pixId: string, grupoId: string) => and(eq(pixRecebimentosMcp.id, pixId), eq(pixRecebimentosMcp.grupoId, grupoId))
 

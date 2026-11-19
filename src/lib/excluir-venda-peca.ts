@@ -9,7 +9,7 @@ import { aprovacoesVenda, conciliacoesCartao, lancamentosCaixa, pixRecebimentosM
 import { RecusaUsuario } from '@/lib/resultado-action'
 import { vendaPecaEditavel, type UsuarioDaVenda } from '@/lib/venda-peca-editavel'
 import { moverSaldo } from '@/lib/estoque-pecas-loja'
-import { PIX_SOLTO } from '@/lib/pix-vinculo'
+import { PIX_SOLTO } from '@/lib/pix-solto'
 
 type Tx = Parameters<Parameters<typeof db['transaction']>[0]>[0]
 

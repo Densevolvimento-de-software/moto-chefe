@@ -5,7 +5,7 @@
 import { eq } from 'drizzle-orm'
 import type { db } from '@/lib/db'
 import { conciliacoesCartao, demandas, documentosAssinatura, lancamentosCaixa, pixRecebimentosMcp, vendas } from '@/lib/db/schema'
-import { PIX_SOLTO } from '@/lib/pix-vinculo'
+import { PIX_SOLTO } from '@/lib/pix-solto'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
