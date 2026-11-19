@@ -24,8 +24,15 @@ type Props = {
   valorRef: number
   vendaVinculada?: { id: string; numero: number; clienteNome: string; valor: string } | null
   tipoVinculado?: 'moto' | 'peca' | 'os'
-  /** 'toque': 44 px, na lista do celular; 'largo': 44 px na largura toda, na folha; padrão: pequeno, na tabela. */
-  tamanho?: 'toque' | 'largo'
+  tamanho?: Tamanho
+}
+
+/** 'toque': 44 px, na lista do celular; 'largo': 44 px na largura toda, na folha; sem tamanho: pequeno, na tabela. */
+type Tamanho = 'toque' | 'largo'
+const CLASSE_DO_VINCULAR: Record<Tamanho | 'tabela', string> = {
+  tabela: 'h-7 text-xs px-2 text-muted-foreground',
+  toque: 'h-11 px-3',
+  largo: 'h-11 w-full',
 }
 
 /** "PA" (venda de peça) ou "OS" antes do número; venda de moto não tem. */
@@ -45,8 +52,8 @@ export function RotuloDoAlvo({ numero, clienteNome, tipo }: { numero: number; cl
   )
 }
 
-/** Tira o vínculo da linha. `cheio`: botão largo da folha do celular; sem ele, só o ícone da tabela. */
-export function BotaoDesvincular({ conciliacaoId, cheio = false }: { conciliacaoId: string; cheio?: boolean }) {
+/** Tira o vínculo da linha. 'largo': botão da folha do celular; sem tamanho, só o ícone da tabela. */
+export function BotaoDesvincular({ conciliacaoId, tamanho }: { conciliacaoId: string; tamanho?: 'largo' }) {
   const [pending, startTransition] = useTransition()
 
   function desvincular() {
@@ -60,9 +67,9 @@ export function BotaoDesvincular({ conciliacaoId, cheio = false }: { conciliacao
     })
   }
 
-  const tamanho = cheio ? 16 : 12
-  const icone = pending ? <Loader2 size={tamanho} className="animate-spin" /> : <Link2Off size={tamanho} />
-  if (cheio) {
+  const px = tamanho ? 16 : 12
+  const icone = pending ? <Loader2 size={px} className="animate-spin" /> : <Link2Off size={px} />
+  if (tamanho) {
     return (
       <Button variant="outline" onClick={desvincular} disabled={pending} className="h-11 w-full text-destructive">
         {icone} Desvincular da venda
@@ -197,7 +204,7 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
       <Button
         variant={tamanho ? 'outline' : 'ghost'}
         size="sm"
-        className={tamanho === 'largo' ? 'h-11 w-full' : tamanho === 'toque' ? 'h-11 px-3' : 'h-7 text-xs px-2 text-muted-foreground'}
+        className={CLASSE_DO_VINCULAR[tamanho ?? 'tabela']}
         onClick={abrirModal}
       >
         <Link2 size={tamanho ? 16 : 12} className="mr-1" /> Vincular

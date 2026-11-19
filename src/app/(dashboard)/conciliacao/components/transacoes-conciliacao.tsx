@@ -159,7 +159,7 @@ function ListaDoCelular({ linhas, podeVincular }: Props) {
 function AcaoDaFolha({ l, podeVincular }: { l: LinhaNaTela; podeVincular: boolean }) {
   if (l.estornada) return <p className="text-sm text-muted-foreground">{NAO_SE_VINCULA_PORQUE}</p>
   if (!podeVincular) return null
-  return l.alvo ? <BotaoDesvincular conciliacaoId={l.id} cheio /> : botaoVincular(l, 'largo')
+  return l.alvo ? <BotaoDesvincular conciliacaoId={l.id} tamanho="largo" /> : botaoVincular(l, 'largo')
 }
 
 function FolhaDaLinha({ l, podeVincular }: { l: LinhaNaTela; podeVincular: boolean }) {
