@@ -1,7 +1,7 @@
 // Custo do PIX (#89): o banco credita o valor do PIX menos a porcentagem do grupo.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { creditoDoPix, custoDoPixForcado, esperadoComTaxa, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa, lerValorRecebido } from './custo-pix'
+import { avisoDeCustoAlto, creditoDoPix, custoDoPixForcado, esperadoComTaxa, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa, lerValorRecebido, percentualDoPix } from './custo-pix'
 
 test('crédito de R$ 9.980,00 com 0,20%: o PIX foi de R$ 10.000,00 e custou R$ 20,00', () => {
   assert.deepEqual(custoDoPixRecebido(9980, 0.002), { bruto: 10000, custo: 20 })
@@ -97,4 +97,17 @@ test('esperadoComTaxa: o crédito esperado com custo; sem custo, nenhum', () => 
   assert.equal(esperadoComTaxa(10000, 0.002), 9980)
   assert.equal(esperadoComTaxa(600, 0.002), 598.8)
   assert.equal(esperadoComTaxa(10000, 0), null)
+})
+
+// #92, decisão do Luis registrada na #92: custo da forçada acima de 1% do pagamento avisa (não bloqueia).
+test('avisoDeCustoAlto: acima de 1% avisa com o custo e o do grupo; até 1% não avisa', () => {
+  assert.equal(avisoDeCustoAlto(custoDoPixForcado(10000, 5990), 0.002),
+    'Custo de 40,10% bem acima do custo do PIX do grupo (0,20%). Confira o valor que entrou.')
+  assert.equal(avisoDeCustoAlto(custoDoPixForcado(10000, 9900), 0.002), null, 'exatamente 1%')
+  assert.equal(avisoDeCustoAlto(custoDoPixForcado(10000, 9899), 0), 'Custo de 1,01% bem acima do custo do PIX do grupo (0,00%). Confira o valor que entrou.')
+  assert.equal(avisoDeCustoAlto(custoDoPixForcado(10000, 9980), 0.002), null)
+})
+
+test('percentualDoPix: duas a quatro casas, vírgula', () => {
+  assert.deepEqual([0.002, 0.002998, 0.401].map(percentualDoPix), ['0,20%', '0,2998%', '40,10%'])
 })

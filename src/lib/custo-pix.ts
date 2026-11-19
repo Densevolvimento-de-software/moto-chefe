@@ -79,3 +79,16 @@ export function custoDoPixForcado(base: number, recebido: number): CustoDoPix {
   const custoPix = Math.max(0, centavos(base - recebido))
   return { valorBruto: base, custoPix, custoPixTaxa: base > 0 ? seisCasas(custoPix / base) : 0 }
 }
+
+/** Custo do PIX em porcentagem, como a tela mostra: "0,20%", "0,2998%". */
+export const percentualDoPix = (taxa: number) =>
+  `${(taxa * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}%`
+
+// Acima disso o custo da forçada costuma ser erro de digitação no valor que entrou (decisão do Luis registrada na #92).
+const CUSTO_ALTO_NA_FORCADA = 0.01
+
+/** Aviso (não bloqueia) quando o custo da forçada de PIX passa de 1% do que o pagamento esperava. */
+export function avisoDeCustoAlto(custo: CustoDoPix, taxaDoGrupo: number): string | null {
+  if (custo.custoPixTaxa <= CUSTO_ALTO_NA_FORCADA) return null
+  return `Custo de ${percentualDoPix(custo.custoPixTaxa)} bem acima do custo do PIX do grupo (${percentualDoPix(taxaDoGrupo)}). Confira o valor que entrou.`
+}

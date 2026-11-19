@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { ChevronDown, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PAGAMENTO_PIX, baseDaForcada, estornosDosPagamentos, matchPagamentos, pixDaForcada, precisaConciliar, type EstornoDoAlvo, type PgtoOS } from '@/lib/conciliacao-status'
-import { esperadoComTaxa, type CustoDoPix } from '@/lib/custo-pix'
+import { avisoDeCustoAlto, esperadoComTaxa, percentualDoPix, type CustoDoPix } from '@/lib/custo-pix'
 import { formatarNumeroBR, parseNumeroBR } from '@/lib/numero-br'
 import { nomeOperadora } from '@/lib/operadoras'
 import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
@@ -415,7 +415,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                 <div className="space-y-3 border-t border-border p-3">
                   {forcandoIdx === i ? (
                     <FormularioDoForcado
-                      p={p} i={i} coberto={coberto} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
+                      p={p} i={i} coberto={coberto} taxaDoGrupo={contextoPix?.taxa ?? 0} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
                       salvando={salvando} onCancelar={() => setForcandoIdx(null)} onConfirmar={forcar}
                     />
                   ) : (
@@ -504,8 +504,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
 }
 
 // O formulário do Forçar: motivo para todos; para PIX, também o valor que entrou e a conta do custo (#92).
-function FormularioDoForcado({ p, i, coberto, motivo, onMotivo, recebido, onRecebido, salvando, onCancelar, onConfirmar }: {
-  p: PgtoOS; i: number; coberto: number
+function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, motivo, onMotivo, recebido, onRecebido, salvando, onCancelar, onConfirmar }: {
+  p: PgtoOS; i: number; coberto: number; taxaDoGrupo: number
   motivo: string; onMotivo: (v: string) => void
   recebido: string; onRecebido: (v: string) => void
   salvando: boolean; onCancelar: () => void; onConfirmar: () => void
@@ -513,6 +513,7 @@ function FormularioDoForcado({ p, i, coberto, motivo, onMotivo, recebido, onRece
   const ehPix = PAGAMENTO_PIX.has(p.tipo)
   const pixForcado = ehPix ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto }) : null
   const podeConfirmar = motivo.trim().length >= 3 && typeof pixForcado !== 'string'
+  const avisoCusto = pixForcado && typeof pixForcado !== 'string' ? avisoDeCustoAlto(pixForcado, taxaDoGrupo) : null
   return (
     <div className="space-y-2 rounded-lg bg-warning/10 p-3">
       <p className="text-sm font-medium text-warning">Marcar como recebido sem extrato</p>
@@ -547,6 +548,7 @@ function FormularioDoForcado({ p, i, coberto, motivo, onMotivo, recebido, onRece
               {pixForcado.valorRecebido > pixForcado.valorBruto && (
                 <p className="text-xs text-warning">Entrou mais que o pagamento: fica sem custo do PIX.</p>
               )}
+              {avisoCusto && <p className="text-xs text-warning">{avisoCusto}</p>}
             </>
           )}
         </div>
@@ -580,12 +582,11 @@ function FormularioDoForcado({ p, i, coberto, motivo, onMotivo, recebido, onRece
 
 // Valor do PIX, custo com a taxa e o que entrou: no PIX conciliado (o que o vínculo gravou) e no forçar de PIX.
 function ContaDoPixComCusto({ valorBruto, custoPix, custoPixTaxa, entrou, className }: CustoDoPix & { entrou: number; className?: string }) {
-  const taxa = (custoPixTaxa * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
   return (
     <div className={cn('overflow-hidden rounded-lg border border-border bg-card', className)}>
       <ContaDoPix linhas={[
         { rotulo: 'Valor do PIX', valor: valorBruto },
-        { rotulo: `Custo (${taxa}%)`, valor: custoPix, custo: true },
+        { rotulo: `Custo (${percentualDoPix(custoPixTaxa)})`, valor: custoPix, custo: true },
         { rotulo: 'Entrou', valor: entrou },
       ]} />
     </div>

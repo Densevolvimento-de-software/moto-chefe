@@ -296,6 +296,15 @@ test('forçar PIX: entrou mais que o pagamento, custo 0 e aviso', async () => {
   assert.ok(tela().includes('Entrou mais que o pagamento: fica sem custo do PIX.'), tela())
 })
 
+// Decisão do Luis registrada na #92: custo acima de 1% avisa, sem bloquear.
+test('forçar PIX: custo acima de 1% avisa e ainda deixa confirmar', async () => {
+  const t = await abrirForcarPix([{ tipo: 'pix', valor: 10000 }])
+  await digitarRecebido(t, '5.990,00')
+  assert.ok(tela().includes('Custo de 40,10% bem acima do custo do PIX do grupo (0,20%). Confira o valor que entrou.'), tela())
+  await t.escreverMotivo('PIX caiu na conta pessoal')
+  assert.equal(botao('Marcar como recebido')?.disabled, false)
+})
+
 test('forçar PIX parcial: parte do que falta, e o campo vem com o esperado dessa parte', async () => {
   await abrirForcarPix([{ tipo: 'pix', valor: 1000 }], [pixRec({ valor: '399.20', valorBruto: '400.00', custoPix: '0.80' })])
   assert.equal(campoRecebido()?.value, '598,80')
