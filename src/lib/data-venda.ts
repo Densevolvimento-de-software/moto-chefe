@@ -142,3 +142,8 @@ export function dataEHoraBrt(iso: string): string {
 export function dataPuraBr(texto: string): string {
   return texto.split('-').reverse().join('/')
 }
+
+/** Data pura do banco sem o ano: 'AAAA-MM-DD' → "09/10". Só reordena o texto, como `dataPuraBr`. */
+export function diaMesBr(texto: string): string {
+  return `${texto.slice(8, 10)}/${texto.slice(5, 7)}`
+}

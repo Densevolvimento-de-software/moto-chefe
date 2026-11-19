@@ -2,7 +2,7 @@
 import { getUsuarioLogado } from '@/lib/auth'
 import { podeAgirNaLoja } from '@/lib/acesso-registro'
 import { db } from '@/lib/db'
-import { pecasCatalogo, pecasEstoqueLoja, vendasPecas, vendasPecasItens, lojas, usuarios, aprovacoesVenda, conciliacoesCartao, pixRecebimentosMcp } from '@/lib/db/schema'
+import { pecasCatalogo, pecasEstoqueLoja, vendasPecas, vendasPecasItens, lojas, usuarios, aprovacoesVenda } from '@/lib/db/schema'
 import { eq, and, gte, lte, desc, inArray, sql } from 'drizzle-orm'
 import { inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
 import { validarDocumento, isTipoPessoa } from '@/lib/documento'
@@ -18,6 +18,7 @@ import { excluirVendaPecaTx } from '@/lib/excluir-venda-peca'
 import { alterarPeca, inserirPeca, listarPecas, type QuemVePecas } from '@/lib/pecas-da-conta'
 import { definirSaldo } from '@/lib/estoque-pecas-loja'
 import { aplicarVendaPeca, type DadosVendaPeca, type ItemVendaPecaInput, type PagamentoVendaPecaInput } from '@/lib/venda-peca'
+import { alvoConciliado } from '@/lib/alvo-conciliado'
 
 
 async function verificarAcesso() {
@@ -242,11 +243,7 @@ async function vendaEditavel(vendaId: string) {
 }
 
 async function avisosDaVenda(venda: { id: string; dataVenda: Date }) {
-  const [cartao, pix] = await Promise.all([
-    db.select({ id: conciliacoesCartao.id }).from(conciliacoesCartao).where(eq(conciliacoesCartao.pecaVendaId, venda.id)).limit(1),
-    db.select({ id: pixRecebimentosMcp.id }).from(pixRecebimentosMcp).where(eq(pixRecebimentosMcp.pecaVendaId, venda.id)).limit(1),
-  ])
-  return avisosDaEdicao({ conciliada: cartao.length + pix.length > 0, dataVenda: venda.dataVenda })
+  return avisosDaEdicao({ conciliada: await alvoConciliado(db, { tipo: 'peca', id: venda.id }), dataVenda: venda.dataVenda })
 }
 
 /**

@@ -140,3 +140,105 @@ test('OS com cliente de outra Conta: as buscas do vincular mostram "Cliente não
   assert.deepEqual(porNumero.filter(v => v.id === os).map(v => v.clienteNome), ['Cliente não identificado'])
   assert.deepEqual((await actions.buscarVendaManual(nomeB)).map(v => v.id), [])
 })
+
+// #51 (PR6c): o painel da venda procura a linha que cobre o pagamento: pagamento PIX acha a linha pix da maquininha.
+test('buscas do painel para pagamento PIX oferecem só a linha pix pendente da Conta', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const cartao = await linha(a, 'credito', 626.17)
+  const pix = await linha(a, 'pix', 626.17)
+  const pixDeB = await linha(b, 'pix', 626.17)
+  entrarComo(a)
+  assert.deepEqual((await actions.buscarConciliacoesPorValor(626.17, 'pix')).map(l => l.id), [pix])
+  assert.deepEqual((await actions.buscarConciliacoesLivres('626,17', 'pix')).map(l => l.id), [pix])
+  // `cartao` (outra linha) e `pixDeB` (outra Conta) ficam de fora: as listas acima são exatas.
+  void cartao; void pixDeB
+})
+
+// D8: a busca por valor olhava só `venda_id IS NULL`: linha já ligada a uma OS aparecia e vincular roubava o vínculo.
+test('linha já ligada a uma OS não aparece na busca por valor', async () => {
+  const a = await semearConta()
+  const os = await semearOs(db, { lojaId: a.lojaId, usuarioId: a.usuarioId, em: '2026-11-05 12:00:00-03' }, [{ tipo: 'cartao_credito', valor: 636.29 }])
+  const ligada = await linha(a, 'credito', 636.29)
+  const livre = await linha(a, 'credito', 636.29)
+  await linhas(sql`update conciliacoes_cartao set os_id = ${os}, conciliado = true where id = ${ligada}`)
+  entrarComo(a)
+  assert.deepEqual((await actions.buscarConciliacoesPorValor(636.29)).map(l => l.id), [livre])
+})
+
+// O tipo da linha vem do navegador: só 'cartao' ou 'pix'; outro valor é recusado (pedido forjado, #891).
+test('tipo de linha forjado é recusado nas duas buscas', async () => {
+  const a = await semearConta()
+  await linha(a, 'credito', 646.31)
+  entrarComo(a)
+  await assert.rejects(actions.buscarConciliacoesPorValor(646.31, 'todas' as never), /Linha inválida/)
+  await assert.rejects(actions.buscarConciliacoesLivres('646,31', 'todas' as never), /Linha inválida/)
+})
+
+// #51 (PR6c): o painel da venda diz "Estornado no Mercado Pago" com as linhas estornadas ligadas à venda.
+test('estornos do alvo: só as linhas estornadas ligadas à venda (a outra Conta: teste seguinte)', async () => {
+  const a = await semearConta()
+  const venda = await vendaPeca(a, [{ tipo: 'pix', valor: 456.78 }, { tipo: 'pix', valor: 123.45 }])
+  const estornada = await linha(a, 'pix', 456.78)
+  const conciliada = await linha(a, 'pix', 123.45)
+  await linhas(sql`update conciliacoes_cartao set peca_venda_id = ${venda}, status = 'estornado', conciliado = false where id = ${estornada}`)
+  await linhas(sql`update conciliacoes_cartao set peca_venda_id = ${venda}, conciliado = true where id = ${conciliada}`)
+  entrarComo(a)
+  const alvo = { tipo: 'peca' as const, id: venda }
+  assert.deepEqual((await actions.buscarEstornosDoAlvo(alvo)).map(e => [e.id, e.tipo, Number(e.valorBruto)]), [[estornada, 'pix', 456.78]])
+  assert.deepEqual((await actions.buscarConciliacoesDoAlvo(alvo)).map(c => c.id), [conciliada])
+})
+
+// Isolamento: registro de outra Conta e id inexistente recebem a mesma resposta (lista vazia), nas três leituras do alvo.
+test('alvo de outra Conta e alvo inexistente: as três leituras do painel devolvem vazio, sem revelar que existe', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const venda = await vendaPeca(a, [{ tipo: 'pix', valor: 467.89 }])
+  const estornada = await linha(a, 'pix', 467.89)
+  await linhas(sql`update conciliacoes_cartao set peca_venda_id = ${venda}, status = 'estornado', conciliado = false where id = ${estornada}`)
+  const daA = { tipo: 'peca' as const, id: venda }
+  const inexistente = { tipo: 'peca' as const, id: randomUUID() }
+  entrarComo(b)
+  for (const alvo of [daA, inexistente]) {
+    assert.deepEqual(await actions.buscarEstornosDoAlvo(alvo), [])
+    assert.deepEqual(await actions.buscarConciliacoesDoAlvo(alvo), [])
+    assert.deepEqual(await actions.buscarPixDoAlvo(alvo), [])
+  }
+})
+
+// A busca livre só com dígitos podia ser valor ou NSU (o do Mercado Pago é só dígitos): procura nos dois.
+test('busca livre só com dígitos acha a linha pelo final do NSU, além do valor', async () => {
+  const a = await semearConta()
+  const [l] = await linhas(sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, nsu, valor_bruto, tipo)
+    values (${a.grupoId}, 'mercadopago', '2026-11-05', ${'77' + randomUUID().replace(/\D/g, '').slice(0, 6) + '04821'}, 10, 'pix') returning id, nsu`)
+  entrarComo(a)
+  const final = String(l.nsu).slice(-8)
+  assert.deepEqual((await actions.buscarConciliacoesLivres(final, 'pix')).map(x => x.id), [l.id])
+})
+
+test('linha pix já ligada a uma venda ou estornada não aparece na busca por valor do PIX', async () => {
+  const a = await semearConta()
+  const venda = await vendaPeca(a, [{ tipo: 'pix', valor: 658.42 }])
+  const livre = await linha(a, 'pix', 658.42)
+  const ligada = await linha(a, 'pix', 658.42)
+  const estornada = await linha(a, 'pix', 658.42)
+  await linhas(sql`update conciliacoes_cartao set peca_venda_id = ${venda}, conciliado = true where id = ${ligada}`)
+  await linhas(sql`update conciliacoes_cartao set status = 'estornado' where id = ${estornada}`)
+  entrarComo(a)
+  assert.deepEqual((await actions.buscarConciliacoesPorValor(658.42, 'pix')).map(l => l.id), [livre])
+})
+
+// Vincular um PIX do banco a uma venda: venda de outra Conta e venda inexistente recebem a mesma frase, e nada grava.
+test('vincular PIX a venda de outra Conta ou inexistente: mesma frase e o PIX segue livre', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const vendaDeB = await vendaPeca(b, [{ tipo: 'pix', valor: 669.53 }])
+  const [pix] = await linhas(sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor)
+    values (${a.grupoId}, 'conta-sintetica', 'banco', ${randomUUID()}, now(), 669.53) returning id`)
+  entrarComo(a)
+  for (const id of [vendaDeB, randomUUID()]) {
+    await assert.rejects(actions.vincularPixAlvoAction(pix.id, { tipo: 'peca', id }), (e: Error) => e.message === 'Venda de peça não encontrada')
+  }
+  const [depois] = await linhas(sql`select peca_venda_id from pix_recebimentos_mcp where id = ${pix.id}`)
+  assert.equal(depois.peca_venda_id, null)
+})
