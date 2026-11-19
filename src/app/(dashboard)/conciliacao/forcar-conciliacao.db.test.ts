@@ -11,6 +11,7 @@ import { ALVO_TIPOS } from '@/lib/conciliacao-alvo'
 import type { AlvoConciliacao } from './actions'
 import type { PgtoOS } from '@/lib/conciliacao-status'
 import { sessaoDe, type Sessao } from '@/test/sessao'
+import { ate, sessaoQueSegura } from '@/test/corrida'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -209,6 +210,7 @@ test('admin_socio da mesma Conta com outro grupo ativo recebe a frase do inexist
 
 // ─── Forçar PIX com o valor que entrou na conta (#92) ──────────────────────────────────────────────
 
+const FORCADO_CARTAO = (u: Sessao) => ({ motivo: 'Operadora não mandou o relatório', porId: u.id, porNome: u.nome ?? '', em: '2026-11-19T12:00:00.000Z' })
 const marcaDe = async (tipo: AlvoConciliacao['tipo'], id: string, idx = 0) => (await pagamentosDe(tipo, id))[idx].conciliadoManual
 
 test('forçar PIX grava na marca o que entrou, o valor do PIX e o custo, nos 3 alvos; desfazer tira tudo', async () => {
@@ -279,41 +281,86 @@ test('forçar cartão e financiamento ignora o valor que entrou: a marca é só 
   }
 })
 
-// Conferir e soltar ao mesmo tempo (bot do #188): cada pedido veria o PIX do outro e a forçada ficaria sem o dinheiro.
-const ligarNaVenda = async (a: Awaited<ReturnType<typeof contaComAlvos>>, valor: number) => {
+// Corridas no mesmo alvo (#188): conferir e soltar, forçar e desfazer, cada um esperando a trava do alvo do outro.
+// Uma sessão à parte segura uma linha e o teste confere quem espera por quem, sem depender do tempo.
+const COMPLETA = { ok: false, erro: 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.' }
+const OK = { ok: true, dados: undefined }
+const COLUNA_PIX: Record<AlvoConciliacao['tipo'], [string, string]> = { moto: ['venda', 'venda_id'], os: ['os', 'os_id'], peca: ['peca', 'peca_venda_id'] }
+const ligar = async (a: Awaited<ReturnType<typeof contaComAlvos>>, tipo: AlvoConciliacao['tipo'], valor: number) => {
   const pix = await semearPixRecebido(db, a.grupoId, { valor })
-  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'venda', venda_id = ${a.alvos.moto}, valor_bruto = ${valor} where id = ${pix}`)
+  const [corresp, coluna] = COLUNA_PIX[tipo]
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = ${corresp}, ${sql.raw(coluna)} = ${a.alvos[tipo]}, valor_bruto = ${valor} where id = ${pix}`)
   return pix
 }
-const ligados = async (vendaId: string) =>
-  ((await execRows(sql`select count(*)::int as n from pix_recebimentos_mcp where venda_id = ${vendaId}`)) as { n: number }[])[0].n
+const ligadosAo = async (tipo: AlvoConciliacao['tipo'], id: string) =>
+  ((await execRows(sql`select count(*)::int as n from pix_recebimentos_mcp where ${sql.raw(COLUNA_PIX[tipo][1])} = ${id}`)) as { n: number }[])[0].n
+const comPagamentos = (tipo: AlvoConciliacao['tipo'], id: string, pgtos: PgtoOS[]) =>
+  db.execute(sql`update ${sql.raw(TABELA[tipo])} set pagamentos = ${JSON.stringify(pgtos)}::jsonb where id = ${id}`)
+const marcaParcial = (base: number) => ({ motivo: 'Resto caiu na conta pessoal', porId: usuario.id, porNome: usuario.nome ?? '',
+  em: '2026-11-19T12:00:00.000Z', pix: { valorRecebido: base, valorBruto: base, custoPix: 0, custoPixTaxa: 0 } })
+/** Pid da sessão que espera por uma das dadas (e não é nenhuma das já conhecidas). */
+const novoEsperando = async (s: Awaited<ReturnType<typeof sessaoQueSegura>>, por: number[], conhecidos: number[] = []) => {
+  let pid = 0
+  await ate(async () => { pid = (await s.esperandoPor(por)).find(p => !conhecidos.includes(p)) ?? 0; return pid > 0 }, `alguém esperando ${por.join(',')}`)
+  return pid
+}
 
-test('dois desvincular ao mesmo tempo, cada PIX sozinho bastaria para a forçada parcial: só um solta', async () => {
-  const a = await contaComAlvos()
-  usuario = sessao(a, 'aux_adm')
-  const [p1, p2] = [await ligarNaVenda(a, 400), await ligarNaVenda(a, 400)]
-  // Forçada parcial de 600 (os dois PIX cobrem 800: sobra um de 400 para completar).
-  const marca = { motivo: 'Resto caiu na conta pessoal', porId: usuario.id, porNome: usuario.nome, em: '2026-11-19T12:00:00.000Z',
-    pix: { valorRecebido: 600, valorBruto: 600, custoPix: 0, custoPixTaxa: 0 } }
-  await db.execute(sql`update vendas set pagamentos = ${JSON.stringify([{ tipo: 'pix', valor: 1000, conciliadoManual: marca }])}::jsonb where id = ${a.alvos.moto}`)
-  const rs = await Promise.all([actions.desvincularPixAlvoAction(p1), actions.desvincularPixAlvoAction(p2)])
-  assert.deepEqual(rs.map(r => r.ok).sort(), [false, true])
-  assert.equal(await ligados(a.alvos.moto), 1)
-})
-
-test('forçar e desvincular ao mesmo tempo: se o PIX soltou, a forçada não conta com ele', async () => {
-  for (let i = 0; i < 3; i++) {
+for (const tipo of ALVO_TIPOS) {
+  test(`${tipo}: dois desvincular, cada PIX bastaria para a forçada parcial: o 2º espera a trava do alvo e recusa`, async () => {
     const a = await contaComAlvos()
     usuario = sessao(a, 'aux_adm')
-    const pix = await ligarNaVenda(a, 400)
-    await Promise.all([
-      actions.forcarConciliacaoAction({ tipo: 'moto', id: a.alvos.moto }, 0, 'Resto caiu na conta pessoal', 598.8),
-      actions.desvincularPixAlvoAction(pix),
-    ])
-    const base = (await marcaDe('moto', a.alvos.moto))?.pix?.valorBruto
-    assert.ok(!((await ligados(a.alvos.moto)) === 0 && base === 600), `rodada ${i}: PIX solto e a marca contando com ele`)
-  }
-})
+    const [p1, p2] = [await ligar(a, tipo, 400), await ligar(a, tipo, 400)]
+    await comPagamentos(tipo, a.alvos[tipo], [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaParcial(600) }])
+    const s = await sessaoQueSegura(url!)
+    try {
+      // Segura o PIX 1: o 1º desvincular trava o alvo, confere e para ao soltar o PIX, com a trava na mão.
+      await s.travar('select id from pix_recebimentos_mcp where id = $1 for update', [p1])
+      const r1 = actions.desvincularPixAlvoAction(p1)
+      const d1 = await novoEsperando(s, [s.pid])
+      const r2 = actions.desvincularPixAlvoAction(p2)
+      await novoEsperando(s, [d1])
+      await s.soltar()
+      assert.deepEqual(await Promise.all([r1, r2]), [OK, COMPLETA])
+    } finally { await s.fim() }
+    assert.equal(await ligadosAo(tipo, a.alvos[tipo]), 1)
+  })
+
+  test(`${tipo}: forçar durante o desvincular espera a trava do alvo e não conta com o PIX que soltou`, async () => {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    const pix = await ligar(a, tipo, 400)
+    const s = await sessaoQueSegura(url!)
+    try {
+      await s.travar('select id from pix_recebimentos_mcp where id = $1 for update', [pix])
+      const solta = actions.desvincularPixAlvoAction(pix)
+      const d = await novoEsperando(s, [s.pid])
+      const forca = actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, 'Resto caiu na conta pessoal', 598.8)
+      await novoEsperando(s, [d])
+      await s.soltar()
+      assert.deepEqual(await Promise.all([solta, forca]), [OK, OK])
+    } finally { await s.fim() }
+    assert.equal(await ligadosAo(tipo, a.alvos[tipo]), 0)
+    assert.equal((await marcaDe(tipo, a.alvos[tipo]))?.pix?.valorBruto, 1000)
+  })
+
+  test(`${tipo}: desfazer durante o forçar de outra linha espera a vez e não apaga a marca nova`, async () => {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    await comPagamentos(tipo, a.alvos[tipo], [{ tipo: 'pix', valor: 1000 }, { tipo: 'cartao_credito', valor: 500, conciliadoManual: FORCADO_CARTAO(usuario) }])
+    const s = await sessaoQueSegura(url!)
+    try {
+      await s.travar(`select id from ${TABELA[tipo]} where id = $1 for update`, [a.alvos[tipo]])
+      const forca = actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, 'PIX caiu na conta pessoal', 1000)
+      const f = await novoEsperando(s, [s.pid])
+      const desfaz = actions.desfazerConciliacaoForcadaAction({ tipo, id: a.alvos[tipo] }, 1)
+      await novoEsperando(s, [s.pid, f], [f])
+      await s.soltar()
+      assert.deepEqual(await Promise.all([forca, desfaz]), [OK, OK])
+    } finally { await s.fim() }
+    const pgtos = await pagamentosDe(tipo, a.alvos[tipo])
+    assert.deepEqual(pgtos.map(p => Boolean(p.conciliadoManual)), [true, false])
+  })
+}
 
 test('PIX vinculado que completa uma forçada parcial não se desvincula: pede para desfazer a forçada antes', async () => {
   const a = await contaComAlvos()

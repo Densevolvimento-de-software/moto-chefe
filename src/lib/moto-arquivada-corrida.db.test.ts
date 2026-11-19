@@ -9,6 +9,7 @@
 import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import pg from 'pg'
+import { ate } from '@/test/corrida'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
 
@@ -102,11 +103,6 @@ const venda = (motoId: string, tipo = 'pix') => ({ motoId, ...cliente, valorTota
 // Sessões esperando lock por causa de uma das sessões dadas.
 const esperandoPor = async (pids: number[]) => (await linhas(sql`select pid from pg_stat_activity
   where pg_blocking_pids(pid) && ${sql.param(pids)}::int[]`)).map(r => Number(r.pid))
-
-async function ate(condicao: () => Promise<boolean>, oQue: string) {
-  for (let i = 0; i < 400; i++) { if (await condicao()) return; await new Promise(r => setImmediate(r)) }
-  throw new Error('não chegou: ' + oQue)
-}
 
 /** Roda a corrida e devolve o que o gravador respondeu, se o arquivar passou e as pendências que sobraram. */
 async function corrida(motoId: string, gravar: () => Promise<unknown>, pendencia: ReturnType<typeof sql>) {
