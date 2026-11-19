@@ -481,7 +481,6 @@ export async function buscarEstornosDoAlvo(alvo: AlvoConciliacao) {
       id:            conciliacoesCartao.id,
       valorBruto:    conciliacoesCartao.valorBruto,
       tipo:          conciliacoesCartao.tipo,
-      dataTransacao: conciliacoesCartao.dataTransacao,
     })
     .from(conciliacoesCartao)
     .where(and(eq(coluna, alvo.id), eq(conciliacoesCartao.status, CARTAO_ESTORNADO)))

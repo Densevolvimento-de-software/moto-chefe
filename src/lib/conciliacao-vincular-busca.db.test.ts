@@ -186,7 +186,7 @@ test('estornos do alvo: só as linhas estornadas ligadas à venda; Conta B não 
   await linhas(sql`update conciliacoes_cartao set peca_venda_id = ${venda}, conciliado = true where id = ${conciliada}`)
   entrarComo(a)
   const alvo = { tipo: 'peca' as const, id: venda }
-  assert.deepEqual((await actions.buscarEstornosDoAlvo(alvo)).map(e => [e.id, e.tipo, Number(e.valorBruto), e.dataTransacao]), [[estornada, 'pix', 456.78, '2026-11-05']])
+  assert.deepEqual((await actions.buscarEstornosDoAlvo(alvo)).map(e => [e.id, e.tipo, Number(e.valorBruto)]), [[estornada, 'pix', 456.78]])
   assert.deepEqual((await actions.buscarConciliacoesDoAlvo(alvo)).map(c => c.id), [conciliada])
 })
 

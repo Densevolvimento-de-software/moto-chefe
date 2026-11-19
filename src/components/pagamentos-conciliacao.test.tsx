@@ -180,11 +180,12 @@ test('cartão pendente procura só a linha de cartão, sem o PIX do banco', asyn
 })
 
 // #51 (PR6c): pagamento que voltou a pendente pelo estorno diz isso, em vez de só "Pendente".
-test('pagamento pendente com estorno da maquininha mostra "Estornado no Mercado Pago" com o dia', async () => {
+test('pagamento pendente com estorno da maquininha mostra "Estornado no Mercado Pago"', async () => {
   await montar('aux_adm', [{ tipo: 'pix', valor: 450 }, { tipo: 'pix', valor: 90 }], [
-    { id: 'e1', valorBruto: '450.00', tipo: 'pix', dataTransacao: '2026-11-05' },
+    { id: 'e1', valorBruto: '450.00', tipo: 'pix' },
   ])
   const textos = linhas().map(b => (b.textContent ?? '').replace(/\s+/g, ' '))
-  assert.ok(textos.some(t => t.includes('Estornado no Mercado Pago em 05/11/2026') && t.includes('450,00')), textos.join(' | '))
+  // Sem dia: o importador não grava quando estornou, e a data da linha é a da venda.
+  assert.ok(textos.some(t => t.includes('Estornado no Mercado Pago') && !t.includes('05/11') && t.includes('450,00')), textos.join(' | '))
   assert.ok(!textos.some(t => t.includes('Estornado') && t.includes('90,00')), textos.join(' | '))
 })

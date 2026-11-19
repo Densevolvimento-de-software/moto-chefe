@@ -333,9 +333,9 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
           const mostraBusca = buscandoIdx === i && podeGerir && p.tipo !== 'financiamento'
           const aberto = resolvivel && (buscandoIdx === i || forcandoIdx === i)
           const detalhe = [p.operadora, p.parcelas ? `${p.parcelas}x` : '', p.autorizacao ? `#${p.autorizacao}` : ''].filter(Boolean).join(' · ')
-          const estorno = situacao === 'pendente' ? estornados[i] : null
+          const estorno = situacao === 'pendente' && estornados[i]
           const complemento =
-            estorno ? `Estornado no Mercado Pago em ${dataPuraBr(estorno)}`
+            estorno ? 'Estornado no Mercado Pago'
             : situacao === 'forcado' && p.conciliadoManual
               ? `${p.conciliadoManual.porNome} · ${new Date(p.conciliadoManual.em).toLocaleDateString('pt-BR')} · ${p.conciliadoManual.motivo}`
               : situacao === 'parcial'

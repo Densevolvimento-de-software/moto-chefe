@@ -286,7 +286,7 @@ test('linha de crédito não cobre pagamento Pix', () => {
 })
 
 // #51 (PR6c): pagamento que voltou a pendente porque a linha da maquininha foi estornada diz isso, com o dia.
-test('estornosDosPagamentos: pendente com estorno do mesmo meio e valor ganha o dia; conciliado e outro meio não', () => {
+test('estornosDosPagamentos: pendente com estorno do mesmo meio e valor é marcado; conciliado e outro meio não', () => {
   const pgtos: PgtoOS[] = [
     { tipo: 'pix', valor: 450 },
     { tipo: 'cartao_credito', valor: 450 },
@@ -295,10 +295,10 @@ test('estornosDosPagamentos: pendente com estorno do mesmo meio e valor ganha o 
   ]
   const cobertura = [{ conciliado: false, coberto: 0 }, { conciliado: false, coberto: 0 }, { conciliado: true, coberto: 300 }, { conciliado: false, coberto: 0 }]
   const estornos = [
-    { id: 'e1', valorBruto: '450.00', tipo: 'pix', dataTransacao: '2026-11-05' },
-    { id: 'e2', valorBruto: '300.00', tipo: 'pix', dataTransacao: '2026-11-06' },
+    { id: 'e1', valorBruto: '450.00', tipo: 'pix' },
+    { id: 'e2', valorBruto: '300.00', tipo: 'pix' },
   ]
   // O 1º PIX de 450 usa o estorno e1; o cartão de 450 não casa com linha pix; o PIX de 300 está conciliado;
   // o 2º PIX de 450 não tem outro estorno.
-  assert.deepEqual(estornosDosPagamentos(pgtos, cobertura, estornos), ['2026-11-05', null, null, null])
+  assert.deepEqual(estornosDosPagamentos(pgtos, cobertura, estornos), [true, false, false, false])
 })

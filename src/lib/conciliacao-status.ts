@@ -241,19 +241,19 @@ export function pagamentosEfetivosOS(
 }
 
 /** Linha da maquininha ligada ao alvo e estornada no Mercado Pago. */
-export type EstornoDoAlvo = { id: string; valorBruto: string | number; tipo: string; dataTransacao: string }
+export type EstornoDoAlvo = { id: string; valorBruto: string | number; tipo: string }
 
-// A linha pix da maquininha cobre pagamento PIX; as outras, pagamento de cartão (como em `matchPagamentos`).
 const estornoCobre = (p: PgtoOS, e: EstornoDoAlvo) =>
-  (e.tipo === LINHA_PIX ? PAGAMENTO_PIX.has(p.tipo) : TIPOS_CARTAO.has(p.tipo)) && Math.abs(Number(e.valorBruto) - p.valor) <= 0.05
+  tiposDoPagamentoDaLinha(e.tipo).has(p.tipo) && Math.abs(Number(e.valorBruto) - p.valor) <= 0.05
 
 /**
- * Para cada pagamento, o dia do estorno no Mercado Pago que o deixou pendente (ou null): pagamento ainda não conciliado
- * com um estorno ligado ao alvo do mesmo meio e valor. Cada estorno explica um pagamento só.
+ * Para cada pagamento, se um estorno no Mercado Pago o deixou pendente: pagamento ainda não conciliado com um estorno
+ * ligado ao alvo do mesmo meio e valor. Cada estorno explica um pagamento só. Sem o dia: o importador não grava quando
+ * estornou, e a data da linha é a da venda.
  */
-export function estornosDosPagamentos(pgtos: PgtoOS[], cobertura: CoberturaPgto[], estornos: EstornoDoAlvo[]): (string | null)[] {
-  return pgtos.reduce<{ dias: (string | null)[]; usados: ReadonlySet<string> }>((acc, p, i) => {
+export function estornosDosPagamentos(pgtos: PgtoOS[], cobertura: CoberturaPgto[], estornos: EstornoDoAlvo[]): boolean[] {
+  return pgtos.reduce<{ marcados: boolean[]; usados: ReadonlySet<string> }>((acc, p, i) => {
     const e = cobertura[i]?.conciliado ? undefined : estornos.find(x => !acc.usados.has(x.id) && estornoCobre(p, x))
-    return { dias: [...acc.dias, e?.dataTransacao ?? null], usados: e ? new Set([...acc.usados, e.id]) : acc.usados }
-  }, { dias: [], usados: new Set() }).dias
+    return { marcados: [...acc.marcados, Boolean(e)], usados: e ? new Set([...acc.usados, e.id]) : acc.usados }
+  }, { marcados: [], usados: new Set() }).marcados
 }
