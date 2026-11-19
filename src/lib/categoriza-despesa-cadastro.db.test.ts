@@ -22,12 +22,18 @@ const mocks = [
   mock.module('next/headers', { namedExports: { headers: async () => new Headers(), cookies: async () => ({ get: () => undefined }) } }),
   mock.module('next/navigation', { namedExports: { redirect: (d: string) => { throw new Error(`redirect ${d}`) }, notFound: () => { throw new Error('notFound') } } }),
   mock.module('next/cache', { namedExports: { revalidatePath: () => {} } }),
-  mock.module('@/lib/supabase/admin', { namedExports: { clienteSupabaseAdmin: () => ({ auth: { admin: {} } }) } }),
+  mock.module('@/lib/supabase/admin', { namedExports: { clienteSupabaseAdmin: () => ({ auth: { admin: {
+    createUser: async () => ({ data: { user: { id: randomUUID() } }, error: null }),
+    deleteUser: async () => ({ error: null }),
+  } } }) } }),
 ]
 
 type Db = typeof import('@/lib/db')
 let db: Db['db']
 let editarUsuarioAction: typeof import('@/app/(dashboard)/admin/usuarios/actions')['editarUsuarioAction']
+let criarUsuarioAction: typeof import('@/app/(dashboard)/admin/usuarios/actions')['criarUsuarioAction']
+let despesasActions: typeof import('@/app/(dashboard)/despesas/actions')
+let admin: typeof import('@/lib/categorias-admin')
 let base: Base
 let geralId = ''
 let socioId = ''
@@ -50,7 +56,9 @@ async function pedidoDeEdicao(id: string, categorizaDespesaBanco: boolean, nome 
 
 before(async () => {
   ;({ db } = await import('@/lib/db'))
-  ;({ editarUsuarioAction } = await import('@/app/(dashboard)/admin/usuarios/actions'))
+  ;({ editarUsuarioAction, criarUsuarioAction } = await import('@/app/(dashboard)/admin/usuarios/actions'))
+  despesasActions = await import('@/app/(dashboard)/despesas/actions')
+  admin = await import('@/lib/categorias-admin')
   const [r] = await linhas(sql`select to_regclass('auth.users') is null as falta`)
   criouAuthUsers = r.falta === true
   if (criouAuthUsers) await db.execute(sql.raw(`create schema if not exists auth;
@@ -84,4 +92,33 @@ test('sócio não liga nem desliga a marca por pedido forjado; editar outro camp
   assert.deepEqual(await linhas(sql`select nome, categoriza_despesa_banco as m from usuarios where id = ${marcado}`), [{ nome: 'Nome novo', m: true }])
   assert.deepEqual(await editarUsuarioAction(desmarcado, await pedidoDeEdicao(desmarcado, true)), { ok: true })
   assert.equal(await marca(desmarcado), false)
+})
+
+test('sócio cria usuário com a marca forjada no pedido: nasce sem a marca', async () => {
+  idDaSessao = socioId
+  const email = `novo-${randomUUID()}@teste.invalid`
+  const r = await criarUsuarioAction({ ...(await pedidoDeEdicao(socioId, true)), email, senha: 'senha-forte-123' })
+  assert.equal(r.ok, true)
+  assert.deepEqual(await linhas(sql`select categoriza_despesa_banco as m from usuarios where email = ${email}`), [{ m: false }])
+})
+
+// Saída do extrato do grupo, pendente, para lançar com uma categoria do grupo.
+async function saidaPendente() {
+  const categoria = `CAT149 ${randomUUID()}`
+  await admin.criarCategoriaDespesa(db, base.grupoId, { nome: categoria, contaComoDespesa: true })
+  const [o] = await linhas(sql`insert into despesas_open_finance (grupo_id, conta_id, banco, transacao_id, data, valor)
+    values (${base.grupoId}, 'c', 'Banco', ${randomUUID()}, '2026-11-10T12:00:00Z'::timestamptz, '30.00') returning id`)
+  return { id: o.id as string, categoria }
+}
+
+test('com a sessão de verdade: sócio com a marca lança a saída do banco; sem a marca, não', async () => {
+  const marcado = await semearUsuario(db, base, { papel: 'admin_socio', rotulo: `marcado-${randomUUID()}`, semLoja: true, comGrupo: true, comConta: true })
+  await linhas(sql`update usuarios set categoriza_despesa_banco = true where id = ${marcado}`)
+  const s1 = await saidaPendente()
+  idDaSessao = marcado
+  assert.deepEqual(await despesasActions.lancarDespesaOpenFinanceAction(s1.id, s1.categoria, null), { ok: true, dados: undefined })
+  const s2 = await saidaPendente()
+  idDaSessao = socioId
+  await assert.rejects(despesasActions.lancarDespesaOpenFinanceAction(s2.id, s2.categoria, null), /Sem permissão para categorizar/)
+  assert.deepEqual(await linhas(sql`select despesa_id from despesas_open_finance where id = ${s2.id}`), [{ despesa_id: null }])
 })
