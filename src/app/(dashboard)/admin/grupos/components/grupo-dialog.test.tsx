@@ -6,6 +6,9 @@ import assert from 'node:assert/strict'
 import type { ResultadoAction } from '@/lib/resultado-action'
 import { montarDom } from '@/test/montar-dom'
 import { montarDialogo, textoDaTela } from '@/test/dialogo-em-tela'
+import type { GrupoDialog as Dialogo } from './grupo-dialog'
+
+type Props = Parameters<typeof Dialogo>[0]
 
 const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
@@ -37,10 +40,10 @@ const GRUPO = {
   mpConectado: true, mpFinal: '482',
 }
 
-async function montar(props: Record<string, unknown>) {
+async function montar(props: Omit<Props, 'open' | 'onOpenChange'>) {
   const { GrupoDialog } = await import('./grupo-dialog')
-  const onOpenChange = mock.fn()
-  const t = await montarDialogo(GrupoDialog, { open: true, onOpenChange, ...props } as Parameters<typeof GrupoDialog>[0])
+  const onOpenChange = mock.fn((_v: boolean) => {})
+  const t = await montarDialogo(GrupoDialog, { open: true, onOpenChange, ...props })
   montados.push(t.desmontar)
   return { ...t, onOpenChange }
 }
