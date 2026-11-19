@@ -273,14 +273,14 @@ async function criarVendaTx(
     grupoLiberado: string | null
   }
 ): Promise<{ vendaId: string }> {
-  const { moto, vendedorId, efetivadoPor, dataVendaFinal, origem, grupoLiberado } = params
+  const { moto, data, vendedorId, efetivadoPor, dataVendaFinal, origem, grupoLiberado } = params
   // Aqui, e não só na action: a aprovação guardada chega direto com o que a tela mandou.
-  const data = { ...params.data, pagamentos: pagamentosParaGravar(params.data.pagamentos, CAMPOS_PAGAMENTO_VENDA, []) }
+  const pagamentos = pagamentosParaGravar(data.pagamentos, CAMPOS_PAGAMENTO_VENDA, [])
   // A aprovação grava bem depois do pedido: o status se confere de novo na linha travada.
   const naoVende = motivoParaNaoVender((await travarMotoNaoArquivada(tx, moto.id)).status)
   if (naoVende) throw new RecusaUsuario(naoVende)
   // Aqui, e não só na action: a aprovação guardada chega direto (#460).
-  await conferirMaquininhas(tx, moto.lojaId, data.pagamentos)
+  await conferirMaquininhas(tx, moto.lojaId, pagamentos)
   const valorNum = parseFloat(data.valorTotal)
 
   // Verificar reserva ativa para linkar
@@ -381,8 +381,8 @@ async function criarVendaTx(
     clienteCidade: data.clienteCidade,
     clienteEstado: data.clienteEstado,
     valor: data.valorTotal,
-    formaPagamento: data.pagamentos[0].tipo,
-    pagamentos: data.pagamentos,
+    formaPagamento: pagamentos[0].tipo,
+    pagamentos,
     reservaId: reservaAtiva?.id ?? null,
     dataVenda: dataVendaFinal,
     origemId: origem.origemId,
@@ -420,7 +420,7 @@ async function criarVendaTx(
     cartao_debito: 'Cartão de Débito', financiamento: 'Financiamento',
     link_pagamento: 'Link de Pagamento', transferencia: 'Transferência',
   }
-  const descPagamentos = data.pagamentos
+  const descPagamentos = pagamentos
     .map(p => `${tipoLabel[p.tipo] ?? p.tipo}: R$ ${p.valor.toFixed(2)}`)
     .join(' + ')
   await tx.insert(historicoEstoque).values({
@@ -434,7 +434,7 @@ async function criarVendaTx(
   })
 
   // Registrar pagamentos em dinheiro no caixa automaticamente
-  const pagamentosDinheiro = data.pagamentos.filter(p => p.tipo === 'dinheiro')
+  const pagamentosDinheiro = pagamentos.filter(p => p.tipo === 'dinheiro')
   for (const pgto of pagamentosDinheiro) {
     await tx.insert(lancamentosCaixa).values({
       lojaId: moto.lojaId,
