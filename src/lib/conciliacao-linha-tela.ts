@@ -1,6 +1,7 @@
 // Linha da /conciliacao como a tela mostra (#51, PR6b): a tabela do desktop e a lista do celular leem o mesmo objeto,
 // montado no servidor (serializável para o componente cliente).
 import type { ResumoDoAlvo, ResumosDoAlvoCartao } from '@/lib/rotulos-alvo'
+import type { conciliacoesCartao } from '@/lib/db/schema'
 import { linhaEstornada, rotuloCurtoDaLinha } from '@/lib/conciliacao-cartao'
 import { nomeOperadora } from '@/lib/operadoras'
 
@@ -9,13 +10,11 @@ export type LinhaNaTela = {
   id: string; data: string; operadora: string; rotulo: string; credito: boolean; bandeira: string; portador: string
   valor: number; liquido: number | null; nsu: string | null; estornada: boolean; alvo: AlvoDaLinha | null
 }
-export type LinhaDoBanco = {
-  id: string; operadora: string; dataTransacao: string; tipo: string; parcelas: number; valorBruto: string
-  valorLiquido: string | null; nsu: string | null; status: string; vendaId: string | null; pecaVendaId: string | null
-  osId: string | null; rawData: unknown
-}
+export type LinhaDoBanco = Pick<typeof conciliacoesCartao.$inferSelect,
+  'id' | 'operadora' | 'dataTransacao' | 'tipo' | 'parcelas' | 'valorBruto' | 'valorLiquido' | 'nsu' | 'status' | 'vendaId'
+  | 'pecaVendaId' | 'osId' | 'rawData'>
 
-// Id sem resumo (alvo apagado ou de outra Conta: o resumo só lê a Conta) fica sem alvo.
+// Id sem resumo (alvo de outro grupo: o resumo só lê o grupo da linha) fica sem alvo.
 function alvoDaLinha(t: LinhaDoBanco, alvos: ResumosDoAlvoCartao): AlvoDaLinha | null {
   const achado =
     t.vendaId ? { resumo: alvos.vendas.get(t.vendaId), tipo: 'moto' as const }

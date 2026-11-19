@@ -21,11 +21,11 @@ test('pendente: nome da operadora, rótulo, bandeira, portador, valores em núme
   })
 })
 
-test('alvo vem da venda, da venda de peça ou da OS, com o tipo; id sem resumo (outra Conta) fica sem alvo', () => {
+test('alvo vem da venda, da venda de peça ou da OS, com o tipo; id sem resumo (alvo de outro grupo) fica sem alvo', () => {
   assert.deepEqual(linhaNaTela({ ...BASE, vendaId: 'v1' }, ALVOS).alvo, { ...ALVOS.vendas.get('v1'), tipo: 'moto' })
   assert.deepEqual(linhaNaTela({ ...BASE, pecaVendaId: 'p1' }, ALVOS).alvo, { ...ALVOS.pecas.get('p1'), tipo: 'peca' })
   assert.deepEqual(linhaNaTela({ ...BASE, osId: 'o1' }, ALVOS).alvo, { ...ALVOS.os.get('o1'), tipo: 'os' })
-  assert.equal(linhaNaTela({ ...BASE, vendaId: 'de-outra-conta' }, ALVOS).alvo, null)
+  assert.equal(linhaNaTela({ ...BASE, vendaId: 'de-outro-grupo' }, ALVOS).alvo, null)
 })
 
 test('estornada pelo status; sem líquido, sem raw e débito', () => {
