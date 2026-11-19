@@ -2,6 +2,7 @@
 // conciliacoes_cartao do grupo, casadas com a venda das lojas dele; o estorno marca a linha que já existe.
 // A credencial é do grupo (mercadopago_config) e toda leitura e gravação leva o grupo_id.
 import { and, asc, eq, isNull, lt, or, sql } from 'drizzle-orm'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { db } from '@/lib/db'
 import { conciliacoesCartao, grupos, mercadopagoConfig } from '@/lib/db/schema'
 import { CARTAO_ESTORNADO, cartaoNaoEstornado } from '@/lib/cartao-status'
@@ -20,6 +21,9 @@ const contarDesfechos = (desfechos: readonly Contagem[]): ResultadoImportacaoMp 
 
 const contarMotivos = (motivos: readonly string[]): Record<string, number> =>
   motivos.reduce<Record<string, number>>((m, x) => ({ ...m, [x]: (m[x] ?? 0) + 1 }), {})
+
+// A hora gravada na coluna é anterior ao `inicio` desta rodada (ou não há nenhuma): esta é mais nova e pode gravar.
+const maisNovaQue = (coluna: AnyPgColumn, inicio: Date) => or(isNull(coluna), lt(coluna, inicio))
 
 const OPERADORA = 'mercadopago'
 const JANELA_MS = 7 * 24 * 60 * 60 * 1000
@@ -59,10 +63,18 @@ export async function importarMercadoPagoDoGrupo(
       Promise.resolve([]),
     )
     const resumo: ResumoDaImportacao = { contagens: contarDesfechos(desfechos), naoTratados }
-    // Junto com as linhas: a faixa nunca mostra um resumo de linhas que não entraram. A rodada boa limpa a falha.
+    // Junto com as linhas: a faixa nunca mostra um resumo de linhas que não entraram. Régua: a hora de início de cada
+    // rodada (`fim` da janela é o início desta). Rodada que começou antes da última boa não volta hora nem resumo, e
+    // só apaga a falha que começou antes dela.
+    const falhaMaisVelha = sql`${mercadopagoConfig.ultimaFalhaEm} < ${fim.toISOString()}::timestamptz`
     await tx.update(mercadopagoConfig)
-      .set({ ultimaImportacaoEm: fim, ultimoResumo: resumo, ultimaFalhaEm: null, ultimaFalhaErro: null })
-      .where(eq(mercadopagoConfig.grupoId, grupoId))
+      .set({
+        ultimaImportacaoEm: fim,
+        ultimoResumo: resumo,
+        ultimaFalhaEm: sql`case when ${falhaMaisVelha} then null else ${mercadopagoConfig.ultimaFalhaEm} end`,
+        ultimaFalhaErro: sql`case when ${falhaMaisVelha} then null else ${mercadopagoConfig.ultimaFalhaErro} end`,
+      })
+      .where(and(eq(mercadopagoConfig.grupoId, grupoId), maisNovaQue(mercadopagoConfig.ultimaImportacaoEm, fim)))
     return resumo.contagens
   })
 
@@ -132,7 +144,8 @@ async function marcarEstorno(tx: Tx, grupoId: string, nsu: string): Promise<Cont
 export async function registrarFalhaMp(grupoId: string, erro: string, inicio: Date): Promise<void> {
   await db.update(mercadopagoConfig).set({ ultimaFalhaEm: inicio, ultimaFalhaErro: erro }).where(and(
     eq(mercadopagoConfig.grupoId, grupoId),
-    or(isNull(mercadopagoConfig.ultimaImportacaoEm), lt(mercadopagoConfig.ultimaImportacaoEm, inicio)),
+    maisNovaQue(mercadopagoConfig.ultimaImportacaoEm, inicio),
+    maisNovaQue(mercadopagoConfig.ultimaFalhaEm, inicio),
   ))
 }
 

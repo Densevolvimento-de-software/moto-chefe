@@ -257,7 +257,8 @@ test('grupos da rodada: só os que têm credencial e estão ativos', async () =>
 test('importação boa guarda hora, contagens e não tratados com motivo, valor e dia, e limpa a falha', async t => {
   const a = await semearConta('A')
   const b = await semearConta('B')
-  await db.execute(sql`update mercadopago_config set ultima_falha_em = now(), ultima_falha_erro = 'falhou antes' where grupo_id in (${a.grupoId}, ${b.grupoId})`)
+  // Falha de uma rodada que começou antes desta importação: a importação boa apaga.
+  await db.execute(sql`update mercadopago_config set ultima_falha_em = '2026-11-11T12:00:00Z', ultima_falha_erro = 'falhou antes' where grupo_id in (${a.grupoId}, ${b.grupoId})`)
   const log = t.mock.method(console, 'info', () => {})
   const r = await importar(a, [
     pg(debito, { id: novoId(), payment_type_id: 'prepaid_card', transaction_amount: 89.9 }),
@@ -354,4 +355,28 @@ test('erro dentro da transação: nenhuma linha, resumo de antes intacto e a fal
   const [depois] = await execRows(sql`select ultima_importacao_em, ultimo_resumo, ultima_falha_erro from mercadopago_config where grupo_id = ${a.grupoId}`)
   assert.deepEqual([depois.ultima_importacao_em, depois.ultimo_resumo], [antes.ultima_importacao_em, antes.ultimo_resumo])
   assert.equal(depois.ultima_falha_erro, 'Não deu para importar. Tente de novo em alguns minutos.')
+})
+
+// Mesma régua da falha (hora de início de cada rodada): o que começou antes não cobre o que começou depois.
+test('importação boa mais velha não volta a hora e o resumo nem apaga falha mais nova; falha mais velha não cobre a nova', async () => {
+  const a = await semearConta('A')
+  const em = (min: number) => new Date(Date.UTC(2026, 10, 12, 11, min))
+  const estado = async () => (await execRows(sql`select ultima_importacao_em as hora, ultimo_resumo->'contagens'->>'pendentes' as pendentes,
+    ultima_falha_erro as falha from mercadopago_config where grupo_id = ${a.grupoId}`))[0]
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: em(10), buscar: buscarFixo([pg(credito3x, { id: novoId() })]) })
+  // Rodada que começou às 11:05 e terminou bem depois: não volta a hora nem o resumo.
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: em(5), buscar: buscarFixo([]) })
+  let e = await estado()
+  assert.deepEqual([new Date(String(e.hora)).toISOString(), e.pendentes], [em(10).toISOString(), '1'])
+
+  await mod.registrarFalhaMp(a.grupoId, 'falha das 11:20', em(20))
+  await mod.registrarFalhaMp(a.grupoId, 'falha das 11:15', em(15))
+  assert.equal((await estado()).falha, 'falha das 11:20')
+  // Importação boa que começou às 11:12 não apaga a falha das 11:20.
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: em(12), buscar: buscarFixo([]) })
+  e = await estado()
+  assert.equal(e.falha, 'falha das 11:20')
+  // A que começou às 11:30 apaga.
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: em(30), buscar: buscarFixo([]) })
+  assert.equal((await estado()).falha, null)
 })
