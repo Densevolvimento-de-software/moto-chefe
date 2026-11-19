@@ -46,14 +46,20 @@ export function algumValorMudou(gravados: ReadonlyMap<string, number>, novos: re
   return novos.some(n => !gravados.has(n.chave) || Math.abs(gravados.get(n.chave)! - n.valor) >= 0.005)
 }
 
+// Pelo nº de NF (#191) quem decide é o papel, não a nota: cancelar a nota não é o caminho do aux_adm.
+const fraseDoPapel = (numero: string | null) => `Esta venda tem NF registrada (nº ${numero}). Cliente e valores só mudam com os administradores. Dá para corrigir o pagamento.`
+const fraseDaNota = (numero: string | null) =>
+  `${numero ? `A nota fiscal nº ${numero}` : 'A nota fiscal do pedido'} está valendo. Itens, valores e cliente estão nela e não mudam. Para mudar, cancele a nota antes.`
+
 /** A recusa quando a NF trava e o cliente ou um valor mudou; null se pode gravar. */
 export function recusaDaEdicaoNaNota(trava: TravaDoPedido | null, clienteOuValorMudou: boolean): string | null {
   if (!trava || !clienteOuValorMudou) return null
-  // Pelo nº de NF (#191) quem decide é o papel, não a nota: cancelar a nota não é o caminho do aux_adm.
-  if (trava.por === 'papel') return `Esta venda tem NF registrada (nº ${trava.numero}). Cliente e valores só mudam com os administradores. Dá para corrigir o pagamento.`
-  const nota = trava.numero ? `A nota fiscal nº ${trava.numero}` : 'A nota fiscal do pedido'
-  return `${nota} está valendo. Itens, valores e cliente estão nela e não mudam. Para mudar, cancele a nota antes.`
+  return trava.por === 'papel' ? fraseDoPapel(trava.numero) : fraseDaNota(trava.numero)
 }
+
+/** O aviso do Editar pedido efetivado (25d) quando a NF trava: a mesma frase da recusa, e o que ainda dá para mudar. */
+export const avisoDaTrava = (trava: TravaDoPedido): string =>
+  (trava.por === 'papel' ? fraseDoPapel(trava.numero) : `${fraseDaNota(trava.numero)} Dá para corrigir o pagamento.`)
 
 /** O comprador do formulário refeito campo a campo (#891): só os campos dele, e só os que vieram (ausente não muda nada). */
 export function compradorDoFormulario(x: Record<string, unknown>): CompradorVenda {

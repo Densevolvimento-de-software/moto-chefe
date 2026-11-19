@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { acessoriosDoFormulario, algumValorMudou, clienteMudou, compradorDoFormulario, editaPeloPedido, nfQueTravaOPedido, recusaDaEdicaoNaNota } from './pedido-efetivado-regras'
+import { acessoriosDoFormulario, algumValorMudou, avisoDaTrava, clienteMudou, compradorDoFormulario, editaPeloPedido, nfQueTravaOPedido, recusaDaEdicaoNaNota } from './pedido-efetivado-regras'
 
 const AGORA = new Date('2026-11-18T15:00:00Z')
 const autorizada = { ambiente: 'Producao', status: 'Autorizada', dataAutorizacao: '2026-11-18T12:00:00Z', numero: '27' }
@@ -70,4 +70,11 @@ test('edita pelo pedido (P6): pedido com 2+ vendas ou com brinde/acessório; ven
   assert.equal(editaPeloPedido({ vendas: 1, pecas: 0 }), false)
   assert.equal(editaPeloPedido({ vendas: 2, pecas: 0 }), true)
   assert.equal(editaPeloPedido({ vendas: 1, pecas: 1 }), true)
+})
+
+test('aviso da trava na tela (25d): com NF diz que o pagamento se corrige; pelo nº de NF do aux_adm, a frase do papel', () => {
+  assert.equal(avisoDaTrava({ numero: '27', por: 'nota' }),
+    'A nota fiscal nº 27 está valendo. Itens, valores e cliente estão nela e não mudam. Para mudar, cancele a nota antes. Dá para corrigir o pagamento.')
+  assert.equal(avisoDaTrava({ numero: '4321', por: 'papel' }),
+    'Esta venda tem NF registrada (nº 4321). Cliente e valores só mudam com os administradores. Dá para corrigir o pagamento.')
 })

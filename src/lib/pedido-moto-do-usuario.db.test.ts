@@ -89,9 +89,11 @@ test('itens do pedido (#774, #25): a própria Conta e o admin_geral leem com o d
     const [peca] = await linhas(tx, sql`insert into pecas_catalogo (conta_id, nome, valor) values (${a.contaId}, 'Antena PV404', '40.00') returning id`)
     await linhas(tx, sql`insert into pedidos_venda_itens (pedido_venda_id, tipo, peca_id, quantidade, valor_unitario) values (${a.pedidoId}, 'brinde', ${peca.id}, 2, 0) returning id`)
     const [loja] = await linhas(tx, sql`select id, nome from lojas where id = ${a.aux.lojaId}`)
+    const [pedido] = await linhas(tx, sql`select numero from pedidos_venda where id = ${a.pedidoId}`)
     const daLoja = { marca: 'M', modelo: 'PV404 A', lojaId: loja.id, lojaNome: loja.nome }
     const esperado = {
       lojaId: loja.id,
+      numero: pedido.numero,
       motos: [
         { id: a.motoId, chassi: 'PV404-A', cor: 'CINZA', ...daLoja, valor: '15000.00' },
         { id: moto2.id, chassi: 'PV404-A2', cor: 'AZUL', ...daLoja, valor: '' },

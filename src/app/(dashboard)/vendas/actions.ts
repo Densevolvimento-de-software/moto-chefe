@@ -1599,7 +1599,7 @@ export async function pedidoEfetivadoAction(vendaId: string) {
     const { minimo, taxas } = await precosDasMotos(itens.motos.map(m => m.id), itens.lojaId)
     return {
       ...itens, motos: itens.motos.map(m => ({ ...m, minimo: minimo(m.id) })), taxas,
-      frete, notaQueTrava: trava, pagamentos: projetarPagamentos(v.pagamentos ?? []),
+      frete, entrega: v.entrega, notaQueTrava: trava, pagamentos: projetarPagamentos(v.pagamentos ?? []),
       comprador: Object.fromEntries(CAMPOS_DO_COMPRADOR.map(k => [k, v[k]])) as Record<(typeof CAMPOS_DO_COMPRADOR)[number], string | null>,
       dataVenda: hojeBrt(v.dataVenda), vendedorId: v.vendedorId, origemId: v.origemId, origemDetalhe: v.origemDetalhe,
     }

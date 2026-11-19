@@ -1,5 +1,6 @@
 'use client'
 import { useMaquininhas } from '@/components/use-maquininhas'
+import { pgtosDoPagamento, type Pgto } from '@/app/(dashboard)/estoque/components/pagamentos-fields'
 import { opcoesComGravada, textoSemOperadora } from '@/lib/maquininhas-opcoes'
 
 import { useRef, useState, useTransition } from 'react'
@@ -29,27 +30,7 @@ function celularInicial(salvo: string | null) {
   return s.replace(/\D/g, '').length === 11 ? mascaraCelular(s) : s
 }
 
-type Pgto = {
-  id:          string
-  tipo:        string
-  valor:       string
-  operadora?:  string
-  parcelas?:   string
-  autorizacao?:string
-}
-
 function gerarId() { return Math.random().toString(36).slice(2) }
-
-function pgtoFromSchema(p: { tipo: string; valor: number; operadora?: string; parcelas?: number; autorizacao?: string }): Pgto {
-  return {
-    id:          gerarId(),
-    tipo:        p.tipo,
-    valor:       p.valor.toFixed(2),
-    operadora:   p.operadora,
-    parcelas:    p.parcelas ? String(p.parcelas) : undefined,
-    autorizacao: p.autorizacao,
-  }
-}
 
 // O CurrencyInput guarda o valor como decimal com ponto ("8990.00"), não no formato pt-BR.
 function lerValor(v: string): number {
@@ -90,7 +71,7 @@ export function EditarVendaDialog({ venda: v, papel, vendedores, origens, gatilh
   const pgtosSrc = (v.pagamentos as { tipo: string; valor: number; operadora?: string; parcelas?: number; autorizacao?: string }[] | null) ?? []
   const maquininhas = useMaquininhas(open ? { loja: v.lojaId } : null)
   const opcoesMaquininha = opcoesComGravada(maquininhas, pgtosSrc.map(p => p.operadora))
-  const [pgtos, setPgtos] = useState<Pgto[]>(pgtosSrc.length ? pgtosSrc.map(pgtoFromSchema) : [
+  const [pgtos, setPgtos] = useState<Pgto[]>(pgtosSrc.length ? pgtosDoPagamento(pgtosSrc) : [
     { id: gerarId(), tipo: v.formaPagamento ?? '', valor: Number(v.valor).toFixed(2) }
   ])
 
