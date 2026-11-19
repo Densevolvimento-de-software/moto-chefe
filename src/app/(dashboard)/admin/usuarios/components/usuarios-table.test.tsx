@@ -334,9 +334,11 @@ test('sócio vê a caixa Categoriza saídas do banco travada (#149)', async () =
   assert.equal(caixaDe('Categoriza saídas do banco')?.disabled, true)
 })
 
-test('a caixa Categoriza saídas do banco não aparece para quem não é sócio (#149)', async () => {
-  await montar('admin_geral', [{ ...base, id: 'u9', nome: 'Aux Da Loja', papel: 'aux_adm', cargoId: null }])
-  await abrirFicha('Aux Da Loja')
+test('a caixa Categoriza saídas do banco não aparece para quem não é sócio, mesmo com a aba Aprovação (#149)', async () => {
+  await montar('admin_geral', [{ ...base, id: 'u9', nome: 'Outro Admin Geral', papel: 'admin_geral', cargoId: null }])
+  await abrirFicha('Outro Admin Geral')
+  await clicar(abaAprovacao())
+  assert.ok(caixaDe('Aprova transferência bancária'), 'a aba Aprovação abriu')
   assert.ok(!caixaDe('Categoriza saídas do banco'))
 })
 

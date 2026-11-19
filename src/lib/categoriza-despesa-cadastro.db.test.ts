@@ -122,3 +122,16 @@ test('com a sessão de verdade: sócio com a marca lança a saída do banco; sem
   await assert.rejects(despesasActions.lancarDespesaOpenFinanceAction(s2.id, s2.categoria, null), /Sem permissão para categorizar/)
   assert.deepEqual(await linhas(sql`select despesa_id from despesas_open_finance where id = ${s2.id}`), [{ despesa_id: null }])
 })
+
+test('com a sessão de verdade: sem a marca, editar e cancelar a categorização também recusam e nada muda', async () => {
+  const marcado = await semearUsuario(db, base, { papel: 'admin_socio', rotulo: `marcado2-${randomUUID()}`, semLoja: true, comGrupo: true, comConta: true })
+  await linhas(sql`update usuarios set categoriza_despesa_banco = true where id = ${marcado}`)
+  const s = await saidaPendente()
+  idDaSessao = marcado
+  assert.deepEqual(await despesasActions.lancarDespesaOpenFinanceAction(s.id, s.categoria, null), { ok: true, dados: undefined })
+  const antes = await linhas(sql`select categoria, despesa_id from despesas_open_finance where id = ${s.id}`)
+  idDaSessao = socioId
+  await assert.rejects(despesasActions.editarCategorizacaoOpenFinanceAction(s.id, s.categoria, null), /Sem permissão para categorizar/)
+  await assert.rejects(despesasActions.cancelarCategorizacaoOpenFinanceAction(s.id), /Sem permissão para categorizar/)
+  assert.deepEqual(await linhas(sql`select categoria, despesa_id from despesas_open_finance where id = ${s.id}`), antes)
+})
