@@ -3,11 +3,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { ChevronDown, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { matchPagamentos, precisaConciliar, type PgtoOS } from '@/lib/conciliacao-status'
+import { estornosDosPagamentos, matchPagamentos, precisaConciliar, type EstornoDoAlvo, type PgtoOS } from '@/lib/conciliacao-status'
 import { nomeOperadora } from '@/lib/operadoras'
 import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import {
   buscarConciliacoesDoAlvo,
+  buscarEstornosDoAlvo,
   buscarPixDoAlvo,
   buscarConciliacoesPorValor,
   buscarConciliacoesLivres,
@@ -42,6 +43,7 @@ const fmt = (v: string | number) => Number(v).toLocaleString('pt-BR', { style: '
 export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
   const [concs, setConcs]     = useState<Conc[]>([])
   const [pixRecs, setPixRecs] = useState<PixRec[]>([])
+  const [estornos, setEstornos] = useState<EstornoDoAlvo[]>([])
   const [loading, setLoading] = useState(false)
 
   const { tipo, id } = alvo
@@ -49,12 +51,14 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
   const recarregar = useCallback(async () => {
     setLoading(true)
     try {
-      const [c, px] = await Promise.all([
+      const [c, px, est] = await Promise.all([
         buscarConciliacoesDoAlvo({ tipo, id }),
         buscarPixDoAlvo({ tipo, id }),
+        buscarEstornosDoAlvo({ tipo, id }),
       ])
       setConcs(c)
       setPixRecs(px)
+      setEstornos(est)
     } finally {
       setLoading(false)
     }
@@ -64,7 +68,7 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
     if (ativo) recarregar()
   }, [ativo, recarregar])
 
-  return { concs, pixRecs, loading, recarregar }
+  return { concs, pixRecs, estornos, loading, recarregar }
 }
 
 type Props = {
@@ -102,6 +106,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const [salvando, setSalvando]       = useState(false)
 
   const conciliados = matchPagamentos(pagamentos, concs, pixRecs)
+  // Pagamento que voltou a pendente porque a linha da maquininha foi estornada no Mercado Pago (#51).
+  const estornados = estornosDosPagamentos(pagamentos, conciliados, dados.estornos)
 
   function limparBusca() {
     setCandidatos([])
@@ -327,8 +333,10 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
           const mostraBusca = buscandoIdx === i && podeGerir && p.tipo !== 'financiamento'
           const aberto = resolvivel && (buscandoIdx === i || forcandoIdx === i)
           const detalhe = [p.operadora, p.parcelas ? `${p.parcelas}x` : '', p.autorizacao ? `#${p.autorizacao}` : ''].filter(Boolean).join(' · ')
+          const estorno = situacao === 'pendente' ? estornados[i] : null
           const complemento =
-            situacao === 'forcado' && p.conciliadoManual
+            estorno ? `Estornado no Mercado Pago em ${dataPuraBr(estorno)}`
+            : situacao === 'forcado' && p.conciliadoManual
               ? `${p.conciliadoManual.porNome} · ${new Date(p.conciliadoManual.em).toLocaleDateString('pt-BR')} · ${p.conciliadoManual.motivo}`
               : situacao === 'parcial'
                 ? `Entrou ${fmt(coberto)} · faltam ${fmt(p.valor - coberto)}`

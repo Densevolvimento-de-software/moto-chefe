@@ -6,7 +6,7 @@ import { montarDom } from '@/test/montar-dom'
 import { digitarTexto } from '@/test/eventos-dom'
 import { botao, clicar, esperar, montarDialogo } from '@/test/dialogo-em-tela'
 import type { AlvoConciliacao } from '@/app/(dashboard)/conciliacao/actions'
-import type { PgtoOS } from '@/lib/conciliacao-status'
+import type { EstornoDoAlvo, PgtoOS } from '@/lib/conciliacao-status'
 import type { ResultadoAction } from '@/lib/resultado-action'
 
 const { desmontar: desmontarDom } = montarDom()
@@ -27,6 +27,7 @@ const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { named
   buscarConciliacoesPorValor: (...a: unknown[]) => buscarConciliacoesPorValor(...a),
   buscarConciliacoesDoAlvo: async () => [],
   buscarPixDoAlvo: async () => [],
+  buscarEstornosDoAlvo: async () => [],
   buscarConciliacoesLivres: async () => [],
   vincularVendaAction: (...a: unknown[]) => vincularVenda(...a),
   vincularPixAlvoAction: (...a: unknown[]) => vincularPix(...a),
@@ -61,9 +62,9 @@ const FALHA_INTERNA = new Error('connect ECONNREFUSED 10.0.0.1:5432')
 const linhas = () => [...document.querySelectorAll<HTMLButtonElement>('button[aria-expanded], li > button[disabled]')]
 const linha = (tipo: string) => linhas().find(b => (b.textContent ?? '').startsWith(tipo))
 
-async function montar(papel: string, pagamentos: PgtoOS[]) {
+async function montar(papel: string, pagamentos: PgtoOS[], estornos: EstornoDoAlvo[] = []) {
   const { PagamentosConciliacao } = await import('./pagamentos-conciliacao')
-  const dados = { concs: [], pixRecs: [], loading: false, recarregar: async () => {} }
+  const dados = { concs: [], pixRecs: [], estornos, loading: false, recarregar: async () => {} }
   const tela = await montarDialogo(PagamentosConciliacao, { alvo: ALVO, pagamentos, dados, papel })
   desmontagens.push(tela.desmontar)
   const tocar = (el: Element | undefined) => tela.act(async () => { clicar(el); await esperar(50) })
@@ -176,4 +177,14 @@ test('cartão pendente procura só a linha de cartão, sem o PIX do banco', asyn
   await t.tocar(linha('Cartão de Crédito'))
   assert.deepEqual(buscarConciliacoesPorValor.mock.calls.map(c => c.arguments), [[1200, 'cartao']])
   assert.equal(buscarPixLivres.mock.callCount(), 0)
+})
+
+// #51 (PR6c): pagamento que voltou a pendente pelo estorno diz isso, em vez de só "Pendente".
+test('pagamento pendente com estorno da maquininha mostra "Estornado no Mercado Pago" com o dia', async () => {
+  await montar('aux_adm', [{ tipo: 'pix', valor: 450 }, { tipo: 'pix', valor: 90 }], [
+    { id: 'e1', valorBruto: '450.00', tipo: 'pix', dataTransacao: '2026-11-05' },
+  ])
+  const textos = linhas().map(b => (b.textContent ?? '').replace(/\s+/g, ' '))
+  assert.ok(textos.some(t => t.includes('Estornado no Mercado Pago em 05/11/2026') && t.includes('450,00')), textos.join(' | '))
+  assert.ok(!textos.some(t => t.includes('Estornado') && t.includes('90,00')), textos.join(' | '))
 })
