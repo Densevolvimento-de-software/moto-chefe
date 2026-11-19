@@ -12,7 +12,7 @@ import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-periodo'
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
-import { alvoValido, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
+import { ALVO_TIPOS, alvoValido, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
 import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
@@ -310,7 +310,7 @@ async function importarRelatorio(formData: FormData) {
 // (vincular poria o valor devolvido de volta nas somas), e a frase não revela mais que "não achei".
 const CONCILIACAO_NAO_ENCONTRADA = 'Conciliação não encontrada'
 
-export async function vincularVendaAction(conciliacaoId: string, alvoId: string, tipo: 'moto' | 'peca' | 'os' = 'moto') {
+export async function vincularVendaAction(conciliacaoId: string, alvoId: string, tipo: AlvoTipo = 'moto') {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
@@ -450,8 +450,8 @@ async function lojaIdDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo?: string[]): Pro
 // Quem não abre o alvo recebe o mesmo que o alvo inexistente (lista vazia): a resposta não revela
 // que o registro existe. Alvo forjado (tipo fora da lista, id que não é uuid) também.
 async function abreOAlvo(alvo: AlvoConciliacao): Promise<boolean> {
-  if (!alvoValido(alvo)) return false
   const usuario = await getUsuarioLogado()
+  if (!alvoValido(alvo)) return false
   const lojaId  = await lojaIdDoAlvo(alvo)
   if (!lojaId) return false
   return podeGerirConciliacao(usuario.papel) ? podeAbrirRegistroDaLoja(usuario, lojaId) : lojaId === usuario.lojaId
@@ -618,7 +618,7 @@ export async function vincularPixAlvoAction(pixId: string, alvo: AlvoConciliacao
 async function vincularPixAlvo(pixId: string, alvo: AlvoConciliacao) {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
-  if (!alvoValido(alvo)) throw alvoNaoEncontrado('moto')
+  if (!alvoValido(alvo)) throw alvoNaoEncontrado(tipoDoAlvo(alvo))
   const grupo = await getGrupoAtivo(usuario)
 
   // O alvo só vale nas lojas do grupo do PIX (o ativo): nem outra Conta nem outro grupo da mesma Conta.
@@ -653,6 +653,12 @@ async function desvincularPixAlvo(pixId: string) {
 
 // Registro de outro grupo (ou de outra Conta) e id inexistente recebem a mesma frase: a
 // resposta não pode revelar que o registro existe.
+// Alvo forjado responde pela frase do tipo, se o tipo estiver na lista; senão, a da venda.
+const tipoDoAlvo = (alvo: unknown): AlvoTipo => {
+  const tipo = (alvo as { tipo?: unknown } | null)?.tipo
+  return (ALVO_TIPOS as readonly unknown[]).includes(tipo) ? tipo as AlvoTipo : 'moto'
+}
+
 function alvoNaoEncontrado(tipo: AlvoTipo) {
   return new RecusaUsuario(tipo === 'peca' ? 'Venda de peça não encontrada'
     : tipo === 'os'                         ? 'Ordem de serviço não encontrada'
@@ -696,7 +702,7 @@ async function pagamentosDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo: string[]): 
 async function alvoParaEdicao(alvo: AlvoConciliacao) {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
-  if (!alvoValido(alvo)) throw alvoNaoEncontrado('moto')
+  if (!alvoValido(alvo)) throw alvoNaoEncontrado(tipoDoAlvo(alvo))
 
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
   const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo)

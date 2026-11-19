@@ -114,6 +114,7 @@ test('mesma Conta, outro grupo: PIX do grupo ativo não se liga à venda do outr
   const pix = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
   assert.deepEqual(await actions.vincularPixAlvoAction(pix, { tipo: 'moto', id: vendaOutro }), { ok: false, erro: 'Venda não encontrada' })
   assert.deepEqual(await vinculoDe(pix), LIVRE)
+  assert.deepEqual(await execRows(sql`select id from pix_recebimentos_mcp where venda_id = ${vendaOutro}`), [], 'venda do outro grupo sem PIX')
 })
 
 // Decisão do Luis (18/11/2026): para trocar o vínculo, desvincula antes; o custo gravado não muda calado.
@@ -124,6 +125,15 @@ test('PIX já vinculado não se vincula por cima: pede para desvincular antes, e
       { ok: false, erro: 'Este PIX já está vinculado. Desvincule antes de vincular de novo.' }, tipo)
   }
   assert.deepEqual(await vinculoDe(pix), comoFicou)
+})
+
+test('PIX de transferência interna do próprio grupo não se vincula, e nada grava', async () => {
+  const a = await contaComAlvos()
+  usuario = await sessao(a, 'aux_adm')
+  const interno = await semearPixRecebido(db, a.grupoId, { valor: 1000, pagadorNome: 'MOTOCHEFE LTDA' })
+  assert.deepEqual(await actions.vincularPixAlvoAction(interno, { tipo: 'moto', id: a.alvos.moto }),
+    { ok: false, erro: 'Essa transferência é interna (maquininha/conta do próprio grupo) e não pode ser conciliada com uma venda' })
+  assert.deepEqual(await vinculoDe(interno), LIVRE)
 })
 
 test('vendedor e mecânico recebem Sem permissão no vincular e no desvincular, e nada grava', async () => {
@@ -154,13 +164,21 @@ test('alvo forjado (tipo fora da lista com id de venda real, ou id que não é u
   const { a, pix, comoFicou } = await vinculadoNaContaA()
   const livre = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
   const pagamentosAntes = (await execRows(sql`select pagamentos from vendas where id = ${a.alvos.moto}`))[0].pagamentos
-  for (const alvo of [{ tipo: 'xyz', id: a.alvos.moto }, { tipo: 'moto', id: 'venda-1' }] as unknown as AlvoConciliacao[]) {
+  // Tipo fora da lista responde como venda; tipo da lista com id inválido, pela frase do tipo.
+  const forjados: [unknown, string][] = [
+    [{ tipo: 'xyz', id: a.alvos.moto }, 'Venda não encontrada'],
+    [{ tipo: 'moto', id: 'venda-1' }, 'Venda não encontrada'],
+    [{ tipo: 'os', id: 'os-1' }, 'Ordem de serviço não encontrada'],
+  ]
+  for (const [forjado, frase] of forjados) {
+    const alvo = forjado as AlvoConciliacao
     const rotulo = JSON.stringify(alvo)
+    const recusa = { ok: false, erro: frase }
     assert.deepEqual(await actions.buscarPixDoAlvo(alvo), [], `busca PIX ${rotulo}`)
     assert.deepEqual(await actions.buscarConciliacoesDoAlvo(alvo), [], `busca cartão ${rotulo}`)
-    assert.deepEqual(await actions.vincularPixAlvoAction(livre, alvo), { ok: false, erro: 'Venda não encontrada' }, `vincula ${rotulo}`)
-    assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 'PIX caiu na conta pessoal'), { ok: false, erro: 'Venda não encontrada' }, `força ${rotulo}`)
-    assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, 0), { ok: false, erro: 'Venda não encontrada' }, `desfaz ${rotulo}`)
+    assert.deepEqual(await actions.vincularPixAlvoAction(livre, alvo), recusa, `vincula ${rotulo}`)
+    assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 'PIX caiu na conta pessoal'), recusa, `força ${rotulo}`)
+    assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, 0), recusa, `desfaz ${rotulo}`)
   }
   assert.deepEqual(await vinculoDe(livre), LIVRE)
   assert.deepEqual(await vinculoDe(pix), comoFicou)
