@@ -406,10 +406,12 @@ export const mercadopagoConfig = pgTable('mercadopago_config', {
   publicKey:     text('public_key'),
   atualizadoPor: uuid('atualizado_por').references(() => usuarios.id, { onDelete: 'set null' }),
   atualizadoEm:  timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
-  // Faixa da /conciliacao (0197): a última rodada que importou e a falha depois dela (nula se deu certo).
+  // Faixa da /conciliacao (0197): a última rodada que terminou sem erro, mesmo sem pagamento novo, e a
+  // última que falhou (nulas quando a mais recente deu certo; o erro é só a frase conhecida).
   ultimaImportacaoEm: timestamp('ultima_importacao_em', { withTimezone: true }),
   ultimoResumo:       jsonb('ultimo_resumo'),
-  ultimaFalha:        jsonb('ultima_falha'),
+  ultimaFalhaEm:      timestamp('ultima_falha_em', { withTimezone: true }),
+  ultimaFalhaErro:    text('ultima_falha_erro'),
 })
 
 export const notagatewayConfig = pgTable('notagateway_config', {
