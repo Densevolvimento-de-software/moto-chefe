@@ -1,6 +1,6 @@
 // Cliente da API do Mercado Pago por token de grupo, para a conciliação da maquininha Point.
 // O token vem do cadastro do grupo; nunca vai para mensagem de erro nem log.
-import { chamarComToken, ErroMercadoPago } from './cliente'
+import { chamarComToken, credencialRecusada, ErroMercadoPago } from './cliente'
 import type { Pagamento } from './webhook'
 
 // Mesmo recurso /v1/payments da mensalidade (webhook.ts), com os campos que a maquininha lê.
@@ -27,7 +27,7 @@ async function chamarGrupo<T>(token: string, caminho: string): Promise<T> {
   try {
     return await chamarComToken<T>(token, caminho, { method: 'GET' })
   } catch (e) {
-    if (e instanceof ErroMercadoPago && (e.status === 401 || e.status === 403)) {
+    if (credencialRecusada(e)) {
       throw new ErroMercadoPago(
         `O Mercado Pago recusou a credencial deste grupo (HTTP ${e.status}). Peça ao administrador para cadastrá-la de novo em Grupos.`,
         e.status,

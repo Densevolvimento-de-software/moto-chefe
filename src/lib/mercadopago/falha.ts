@@ -1,7 +1,7 @@
 // Frase da falha da importação do Mercado Pago para quem gere a conciliação (#51): pela classe do erro, em linguagem
 // simples e dizendo o que fazer. O detalhe técnico (status, caminho) fica só no log (o cron responde só os nomes).
 import { RecusaUsuario } from '@/lib/resultado-action'
-import { ErroMercadoPago } from './cliente'
+import { credencialRecusada, ErroMercadoPago } from './cliente'
 import { FRASES_MP } from './frases'
 
 export const FALHA_INTERNA = 'Não deu para importar. Tente de novo em alguns minutos.'
@@ -12,7 +12,7 @@ const ehDeRede = (e: Error) =>
 
 export function fraseDaFalhaNaTela(e: unknown): string {
   // Credencial recusada já diz quem resolve e onde (point.ts); grupo sem credencial é frase do sistema.
-  if (e instanceof ErroMercadoPago && (e.status === 401 || e.status === 403)) return e.message
+  if (credencialRecusada(e)) return e.message
   if (e instanceof RecusaUsuario) return e.message
   if (e instanceof ErroMercadoPago) return FRASES_MP.indisponivel
   if (e instanceof Error && ehDeRede(e)) return FRASES_MP.indisponivel
