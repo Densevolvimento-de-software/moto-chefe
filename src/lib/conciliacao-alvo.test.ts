@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { alvoValido } from './conciliacao-alvo'
+import { alvoValido, tipoDoAlvo } from './conciliacao-alvo'
 
 const ID = '2c9d47e2-c479-42bf-9372-f7a34308299f'
 
@@ -18,4 +18,10 @@ test('tipo fora da lista, id que não é uuid ou alvo que não é objeto são in
     null,
     'moto',
   ]) assert.equal(alvoValido(alvo), false, JSON.stringify(alvo))
+})
+
+test('tipoDoAlvo: tipo da lista vale, inclusive com id inválido; fora da lista ou sem tipo vira venda de moto', () => {
+  assert.equal(tipoDoAlvo({ tipo: 'os', id: 'os-1' }), 'os')
+  assert.equal(tipoDoAlvo({ tipo: 'peca', id: ID }), 'peca')
+  for (const alvo of [{ tipo: 'xyz', id: ID }, { id: ID }, null, 'os']) assert.equal(tipoDoAlvo(alvo), 'moto', JSON.stringify(alvo))
 })

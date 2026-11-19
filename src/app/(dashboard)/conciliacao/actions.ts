@@ -12,7 +12,7 @@ import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-periodo'
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
-import { ALVO_TIPOS, alvoValido, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
+import { alvoValido, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
 import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
@@ -653,12 +653,6 @@ async function desvincularPixAlvo(pixId: string) {
 
 // Registro de outro grupo (ou de outra Conta) e id inexistente recebem a mesma frase: a
 // resposta não pode revelar que o registro existe.
-// Alvo forjado responde pela frase do tipo, se o tipo estiver na lista; senão, a da venda.
-const tipoDoAlvo = (alvo: unknown): AlvoTipo => {
-  const tipo = (alvo as { tipo?: unknown } | null)?.tipo
-  return (ALVO_TIPOS as readonly unknown[]).includes(tipo) ? tipo as AlvoTipo : 'moto'
-}
-
 function alvoNaoEncontrado(tipo: AlvoTipo) {
   return new RecusaUsuario(tipo === 'peca' ? 'Venda de peça não encontrada'
     : tipo === 'os'                         ? 'Ordem de serviço não encontrada'
