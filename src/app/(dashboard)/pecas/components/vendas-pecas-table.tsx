@@ -15,6 +15,7 @@ import { EditarClienteVendaPecaDialog } from './editar-cliente-venda-peca-dialog
 import { ExcluirVendaPecaButton } from './excluir-venda-peca-button'
 import { VendaPecaDialog } from './venda-peca-dialog'
 import { podeGerirPecas } from '../papeis'
+import { LinhaDeDetalhe } from '@/components/linha-de-detalhe'
 
 type VendaPeca = {
   id: string
@@ -155,15 +156,6 @@ export function VendasPecasTable({ vendas, papel, pecas }: Props) {
   )
 }
 
-function Linha({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
-  return (
-    <div className="flex justify-between gap-3 border-b border-border py-2 last:border-0">
-      <span className="text-muted-foreground">{rotulo}</span>
-      <span className="min-w-0 text-right break-words">{children}</span>
-    </div>
-  )
-}
-
 function DetalheVendaPeca({ v, status, papel, pecas }: { v: VendaPeca; status: StatusConc; papel: string; pecas: PecaCatalogo[] }) {
   // Apagar venda é o mesmo nível de quem define preço no catálogo — vendedor não mexe.
   const gestor = podeGerirPecas(papel)
@@ -174,23 +166,23 @@ function DetalheVendaPeca({ v, status, papel, pecas }: { v: VendaPeca; status: S
         <p className={cn('text-2xl font-bold tabular-nums', bonificada(v) && 'text-warning')}>{moeda(v.valorTotal)}</p>
       </div>
       <div>
-        <Linha rotulo="Itens">{v.itens ?? '—'}</Linha>
-        <Linha rotulo="Cliente">
+        <LinhaDeDetalhe rotulo="Itens">{v.itens ?? '—'}</LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Cliente">
           {v.clienteNome ?? '—'}
           {v.clienteDocumento && (
             <span className="block font-mono text-xs text-muted-foreground">
               {v.clienteTipoPessoa === 'juridica' ? 'CNPJ ' : 'CPF '}{formatarCpfCnpj(v.clienteDocumento)}
             </span>
           )}
-        </Linha>
-        <Linha rotulo="Vendedor">{v.vendedorNome}</Linha>
-        <Linha rotulo="Pagamento">{TIPO_LABEL[v.formaPagamento] ?? v.formaPagamento}</Linha>
-        <Linha rotulo="Conciliação">
+        </LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Vendedor">{v.vendedorNome}</LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Pagamento">{TIPO_LABEL[v.formaPagamento] ?? v.formaPagamento}</LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Conciliação">
           <span className="inline-flex items-center gap-1">
             <ConcBadge status={status} />
             <ConciliacaoPecaDialog vendaId={v.id} numero={v.numero} pagamentos={v.pagamentos} papel={papel} status={status} />
           </span>
-        </Linha>
+        </LinhaDeDetalhe>
       </div>
       <div className="flex flex-wrap gap-2">
         {/* Link, não botão: a página do recibo já dispara window.print() sozinha. */}
