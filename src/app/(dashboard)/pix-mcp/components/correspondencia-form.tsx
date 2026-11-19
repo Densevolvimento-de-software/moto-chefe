@@ -6,7 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Unlink } from 'lucide-react'
-import { lancarCorrespondenciaAction, removerCorrespondenciaAction } from '../actions'
+import { desfazerForcadaERemoverAction, lancarCorrespondenciaAction, removerCorrespondenciaAction } from '../actions'
+import { COMPLETA_FORCADA } from '@/lib/conciliacao-status'
 import type { VinculoPix } from '@/lib/pix-vinculo'
 
 type Correspondencia = {
@@ -39,6 +40,8 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
   const [pending, start] = useTransition()
   const [tipo, setTipo] = useState<VinculoPix['tipo']>('venda')
   const [numero, setNumero] = useState('')
+  // O PIX completa uma forçada parcial (#92): desvincular pede desfazer a forçada junto.
+  const [completaForcada, setCompletaForcada] = useState(false)
 
   if (correspondencia.tipo) {
     const label = labelPorTipo[correspondencia.tipo](correspondencia)
@@ -47,10 +50,24 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
       start(async () => {
         try {
           const r = await removerCorrespondenciaAction(id)
+          if (!r.ok && r.erro === COMPLETA_FORCADA) { setCompletaForcada(true); return }
           if (!r.ok) { toast.error(r.erro); return }
           toast.success('Correspondência desvinculada')
         } catch {
           // A recusa com frase já voltou em `r.erro`; aqui só cai falha interna, sem frase legível.
+          toast.error('Erro ao desvincular')
+        }
+      })
+    }
+
+    function desfazerEDesvincular() {
+      start(async () => {
+        try {
+          const r = await desfazerForcadaERemoverAction(id)
+          if (!r.ok) { toast.error(r.erro); return }
+          setCompletaForcada(false)
+          toast.success('Forçada desfeita e correspondência desvinculada')
+        } catch {
           toast.error('Erro ao desvincular')
         }
       })
@@ -61,26 +78,36 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
       : null
 
     return (
-      <div className="flex items-center gap-3">
-        <div>
-          <span className="text-xs font-medium text-primary-text border-l-2 border-primary pl-2">
-            {label}
-          </span>
-          {quemQuando && <p className="text-[11px] text-muted-foreground mt-0.5">{quemQuando}</p>}
+      <div>
+        <div className="flex items-center gap-3">
+          <div>
+            <span className="text-xs font-medium text-primary-text border-l-2 border-primary pl-2">
+              {label}
+            </span>
+            {quemQuando && <p className="text-[11px] text-muted-foreground mt-0.5">{quemQuando}</p>}
+          </div>
+          {/* Botão com texto, não um X: no painel já existe um X no canto que fecha o card, e os dois se confundiam. */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={remover}
+            disabled={pending}
+            aria-label={`Desvincular ${label}`}
+            className="ml-auto h-11 gap-1.5 border-destructive/30 text-base text-destructive hover:bg-destructive/10 hover:text-destructive md:h-8 md:text-xs"
+          >
+            <Unlink size={14} />
+            {pending ? 'Desvinculando…' : 'Desvincular'}
+          </Button>
         </div>
-        {/* Botão com texto, não um X: no painel já existe um X no canto que fecha o card, e os dois se confundiam. */}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={remover}
-          disabled={pending}
-          aria-label={`Desvincular ${label}`}
-          className="ml-auto h-11 gap-1.5 border-destructive/30 text-base text-destructive hover:bg-destructive/10 hover:text-destructive md:h-8 md:text-xs"
-        >
-          <Unlink size={14} />
-          {pending ? 'Desvinculando…' : 'Desvincular'}
-        </Button>
+        {completaForcada && (
+          <div role="alert" className="mt-2 space-y-2 border-l-2 border-warning pl-2 text-xs text-warning">
+            <p>{COMPLETA_FORCADA}</p>
+            <Button type="button" variant="outline" size="sm" onClick={desfazerEDesvincular} disabled={pending} className="h-11 text-base md:h-8 md:text-xs">
+              Desfazer a forçada e desvincular
+            </Button>
+          </div>
+        )}
       </div>
     )
   }

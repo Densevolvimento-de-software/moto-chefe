@@ -13,9 +13,11 @@ after(desmontarDom)
 
 const lancar = mock.fn(async (_id: string, _tipo: string, _numero: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const remover = mock.fn(async (_id: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
+const desfazerERemover = mock.fn(async (_id: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const actionsMock = mock.module('@/app/(dashboard)/pix-mcp/actions', { namedExports: {
   lancarCorrespondenciaAction: (i: string, t: string, n: string) => lancar(i, t, n),
   removerCorrespondenciaAction: (i: string) => remover(i),
+  desfazerForcadaERemoverAction: (i: string) => desfazerERemover(i),
 } })
 const erros: string[] = []
 const sucessos: string[] = []
@@ -27,7 +29,7 @@ after(() => { actionsMock.restore(); sonnerMock.restore() })
 
 const desmontagens: (() => Promise<void>)[] = []
 afterEach(async () => {
-  for (const f of [lancar, remover]) { f.mock.resetCalls(); f.mock.restore() }
+  for (const f of [lancar, remover, desfazerERemover]) { f.mock.resetCalls(); f.mock.restore() }
   erros.length = 0
   sucessos.length = 0
   for (const desmontar of desmontagens.splice(0)) await desmontar()
@@ -50,7 +52,7 @@ async function montar(correspondencia: Correspondencia) {
     document.querySelector('button[aria-label="Desvincular OS #42"]')!.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
     await esperar(80)
   })
-  return { salvar, desvincular }
+  return { salvar, desvincular, act: tela.act }
 }
 
 test('lançar envia o PIX, o tipo e o número; a recusa aparece com a frase da action', async () => {
@@ -83,4 +85,19 @@ test('desvincular envia o PIX; a recusa aparece com a frase e a falha interna co
   assert.deepEqual(remover.mock.calls.map(c => c.arguments), [['pix-1'], ['pix-1'], ['pix-1']])
   assert.deepEqual(erros, ['PIX não encontrado no grupo ativo', 'Erro ao desvincular'])
   assert.deepEqual(sucessos, ['Correspondência desvinculada'])
+})
+
+// #92: o PIX completa uma forçada parcial. Decisão do Luis (19/11/2026): aqui quem desvincula desfaz as duas.
+test('desvincular o PIX que completa uma forçada parcial oferece desfazer a forçada e desvincular de uma vez', async () => {
+  const { desvincular, act } = await montar(LIGADO)
+  const frase = 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.'
+  remover.mock.mockImplementation(async () => ({ ok: false, erro: frase }))
+  await desvincular()
+  assert.ok((document.body.textContent ?? '').includes(frase))
+  const botao = [...document.querySelectorAll('button')].find(b => (b.textContent ?? '').trim() === 'Desfazer a forçada e desvincular')
+  assert.ok(botao, 'botão de desfazer e desvincular')
+  await act(async () => { botao!.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); await esperar(80) })
+  assert.deepEqual(desfazerERemover.mock.calls.map(c => c.arguments), [['pix-1']])
+  assert.deepEqual(sucessos, ['Forçada desfeita e correspondência desvinculada'])
+  assert.deepEqual(erros, [])
 })
