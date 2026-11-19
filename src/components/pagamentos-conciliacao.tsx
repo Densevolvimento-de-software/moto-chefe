@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { ChevronDown, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { matchPagamentos, pixDaForcada, precisaConciliar, type PgtoOS } from '@/lib/conciliacao-status'
+import { PAGAMENTO_PIX, baseDaForcada, matchPagamentos, pixDaForcada, precisaConciliar, type PgtoOS } from '@/lib/conciliacao-status'
+import type { CustoDoPix } from '@/lib/custo-pix'
 import { esperadoComTaxa } from '@/lib/custo-pix'
 import { formatarNumeroBR, parseNumeroBR } from '@/lib/numero-br'
 import { nomeOperadora } from '@/lib/operadoras'
@@ -194,8 +195,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   function abrirForcar(i: number, p: PgtoOS, coberto: number) {
     setForcandoIdx(i)
     setMotivo('')
-    if (p.tipo !== 'pix') return
-    const base = p.valor - coberto
+    if (!PAGAMENTO_PIX.has(p.tipo)) return
+    const base = baseDaForcada(p.valor, coberto)
     setRecebido(formatarNumeroBR(esperadoComTaxa(base, contextoPix?.taxa ?? 0) ?? base))
   }
 
@@ -204,8 +205,9 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     const idx = forcandoIdx
     setSalvando(true)
     try {
-      const ehPix = pagamentos[idx]?.tipo === 'pix'
-      const r = await forcarConciliacaoAction(alvo, idx, motivo, ehPix ? parseNumeroBR(recebido) ?? Number.NaN : undefined)
+      // Valor que não se lê vai vazio: o servidor recusa com a frase.
+      const ehPix = PAGAMENTO_PIX.has(pagamentos[idx]?.tipo ?? '')
+      const r = await forcarConciliacaoAction(alvo, idx, motivo, ehPix ? parseNumeroBR(recebido) ?? undefined : undefined)
       if (!r.ok) { toast.error(r.erro); return }
       setForcandoIdx(null)
       setMotivo('')
@@ -237,7 +239,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     if (buscandoIdx === i || forcandoIdx === i) { setBuscandoIdx(null); setForcandoIdx(null); return }
     setForcandoIdx(null)
     // Financiamento não tem o que buscar: o banco deposita e nada no sistema registra.
-    if (podeGerir && p.tipo !== 'financiamento') abrirBusca(i, p.valor, p.tipo === 'pix')
+    if (podeGerir && p.tipo !== 'financiamento') abrirBusca(i, p.valor, PAGAMENTO_PIX.has(p.tipo))
     else setBuscandoIdx(i)
   }
 
@@ -369,73 +371,12 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
 
               {aberto && (
                 <div className="space-y-3 border-t border-border p-3">
-                  {forcandoIdx === i ? (() => {
-                    const pixForcado = p.tipo === 'pix' ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto }) : null
-                    const podeConfirmar = motivo.trim().length >= 3 && typeof pixForcado !== 'string'
-                    return (
-                    <div className="space-y-2 rounded-lg bg-warning/10 p-3">
-                      <p className="text-sm font-medium text-warning">Marcar como recebido sem extrato</p>
-                      <p className="text-xs text-warning">
-                        {p.tipo === 'financiamento'
-                          ? 'Use quando o banco já depositou o financiamento. '
-                          : 'Use quando o dinheiro entrou de verdade, mas o lançamento não existe aqui. '}
-                        Fica registrado com seu nome e o motivo, e pode ser desfeito.
-                      </p>
-                      {p.tipo === 'pix' && (
-                        <div className="space-y-2">
-                          <label htmlFor={`recebido-${i}`} className="block text-xs font-medium text-foreground">Valor que entrou na conta</label>
-                          <div className="flex h-11 items-center gap-2 rounded-md border border-input bg-card px-2 focus-within:ring-2 focus-within:ring-ring">
-                            <span className="text-sm text-muted-foreground">R$</span>
-                            <input
-                              id={`recebido-${i}`}
-                              type="text"
-                              inputMode="decimal"
-                              aria-label="Valor que entrou na conta"
-                              value={recebido}
-                              onChange={e => setRecebido(e.target.value)}
-                              disabled={salvando}
-                              autoFocus
-                              className="min-w-0 flex-1 bg-transparent text-sm tabular-nums outline-none"
-                            />
-                          </div>
-                          {typeof pixForcado === 'string' ? (
-                            <p role="alert" className="text-xs text-destructive">{pixForcado}</p>
-                          ) : pixForcado && (
-                            <>
-                              <ContaDoPixComCusto valorBruto={pixForcado.valorBruto} custoPix={pixForcado.custoPix} custoPixTaxa={pixForcado.custoPixTaxa} entrou={pixForcado.valorRecebido} />
-                              {pixForcado.valorRecebido > pixForcado.valorBruto && (
-                                <p className="text-xs text-warning">Entrou mais que o pagamento: fica sem custo do PIX.</p>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      )}
-                      <textarea
-                        value={motivo}
-                        onChange={e => setMotivo(e.target.value)}
-                        // Enter envia, como no diálogo antigo; Shift+Enter quebra linha.
-                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (podeConfirmar) forcar() } }}
-                        placeholder="Por que está marcando? Ex.: PIX caiu na conta pessoal"
-                        aria-label="Motivo"
-                        rows={2}
-                        disabled={salvando}
-                        autoFocus={p.tipo !== 'pix'}
-                        className="w-full rounded-md border border-input bg-card p-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      />
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setForcandoIdx(null)} disabled={salvando} className="h-11 flex-1 rounded-lg border border-input bg-card text-sm font-medium">Cancelar</button>
-                        <button
-                          type="button"
-                          onClick={forcar}
-                          disabled={salvando || !podeConfirmar}
-                          className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-40"
-                        >
-                          {salvando && <Loader2 className="size-4 animate-spin" />} Marcar como recebido
-                        </button>
-                      </div>
-                    </div>
-                    )
-                  })() : (
+                  {forcandoIdx === i ? (
+                    <FormularioDoForcado
+                      p={p} i={i} coberto={coberto} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
+                      salvando={salvando} onCancelar={() => setForcandoIdx(null)} onConfirmar={forcar}
+                    />
+                  ) : (
                     <>
                       {mostraBusca && pixForaDoGrupo ? (
                         <p className="text-sm text-muted-foreground">Este pagamento é de outro grupo. Troque o grupo ativo para procurar e vincular o PIX.</p>
@@ -501,7 +442,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                           <button
                             type="button"
                             onClick={() => abrirForcar(i, p, coberto)}
-                            disabled={p.tipo === 'pix' && contextoPix === null}
+                            disabled={PAGAMENTO_PIX.has(p.tipo) && contextoPix === null}
                             className="inline-flex h-11 shrink-0 items-center rounded-lg border border-warning/40 bg-warning/10 px-4 text-sm font-medium text-warning hover:bg-warning/20 disabled:opacity-50"
                           >
                             Forçar
@@ -520,10 +461,83 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   )
 }
 
-// Valor do PIX, custo com a taxa e o que entrou: no PIX conciliado (o que o vínculo gravou) e no forçar de PIX.
-function ContaDoPixComCusto({ valorBruto, custoPix, custoPixTaxa, entrou, className }: {
-  valorBruto: number; custoPix: number; custoPixTaxa: number; entrou: number; className?: string
+// O formulário do Forçar: motivo para todos; para PIX, também o valor que entrou e a conta do custo (#92).
+function FormularioDoForcado({ p, i, coberto, motivo, onMotivo, recebido, onRecebido, salvando, onCancelar, onConfirmar }: {
+  p: PgtoOS; i: number; coberto: number
+  motivo: string; onMotivo: (v: string) => void
+  recebido: string; onRecebido: (v: string) => void
+  salvando: boolean; onCancelar: () => void; onConfirmar: () => void
 }) {
+  const ehPix = PAGAMENTO_PIX.has(p.tipo)
+  const pixForcado = ehPix ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto }) : null
+  const podeConfirmar = motivo.trim().length >= 3 && typeof pixForcado !== 'string'
+  return (
+    <div className="space-y-2 rounded-lg bg-warning/10 p-3">
+      <p className="text-sm font-medium text-warning">Marcar como recebido sem extrato</p>
+      <p className="text-xs text-warning">
+        {p.tipo === 'financiamento'
+          ? 'Use quando o banco já depositou o financiamento. '
+          : 'Use quando o dinheiro entrou de verdade, mas o lançamento não existe aqui. '}
+        Fica registrado com seu nome e o motivo, e pode ser desfeito.
+      </p>
+      {ehPix && (
+        <div className="space-y-2">
+          <label htmlFor={`recebido-${i}`} className="block text-xs font-medium text-foreground">Valor que entrou na conta</label>
+          <div className="flex h-11 items-center gap-2 rounded-md border border-input bg-card px-2 focus-within:ring-2 focus-within:ring-ring">
+            <span className="text-sm text-muted-foreground">R$</span>
+            <input
+              id={`recebido-${i}`}
+              type="text"
+              inputMode="decimal"
+              aria-label="Valor que entrou na conta"
+              value={recebido}
+              onChange={e => onRecebido(e.target.value)}
+              disabled={salvando}
+              autoFocus
+              className="min-w-0 flex-1 bg-transparent text-sm tabular-nums outline-none"
+            />
+          </div>
+          {typeof pixForcado === 'string' ? (
+            <p role="alert" className="text-xs text-destructive">{pixForcado}</p>
+          ) : pixForcado && (
+            <>
+              <ContaDoPixComCusto {...pixForcado} entrou={pixForcado.valorRecebido} />
+              {pixForcado.valorRecebido > pixForcado.valorBruto && (
+                <p className="text-xs text-warning">Entrou mais que o pagamento: fica sem custo do PIX.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      <textarea
+        value={motivo}
+        onChange={e => onMotivo(e.target.value)}
+        // Enter envia, como no diálogo antigo; Shift+Enter quebra linha.
+        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (podeConfirmar) onConfirmar() } }}
+        placeholder="Por que está marcando? Ex.: PIX caiu na conta pessoal"
+        aria-label="Motivo"
+        rows={2}
+        disabled={salvando}
+        autoFocus={!ehPix}
+        className="w-full rounded-md border border-input bg-card p-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+      <div className="flex gap-2">
+        <button type="button" onClick={onCancelar} disabled={salvando} className="h-11 flex-1 rounded-lg border border-input bg-card text-sm font-medium">Cancelar</button>
+        <button
+          type="button"
+          onClick={onConfirmar}
+          disabled={salvando || !podeConfirmar}
+          className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-40"
+        >
+          {salvando && <Loader2 className="size-4 animate-spin" />} Marcar como recebido
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Valor do PIX, custo com a taxa e o que entrou: no PIX conciliado (o que o vínculo gravou) e no forçar de PIX.
+function ContaDoPixComCusto({ valorBruto, custoPix, custoPixTaxa, entrou, className }: CustoDoPix & { entrou: number; className?: string }) {
   const taxa = (custoPixTaxa * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
   return (
     <div className={cn('overflow-hidden rounded-lg border border-border bg-card', className)}>

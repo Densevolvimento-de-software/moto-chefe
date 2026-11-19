@@ -306,3 +306,18 @@ test('enquanto envia, o campo, o motivo e os botões ficam travados', async () =
     [true, true, true])
   await t.act(async () => { responder({ ok: true, dados: undefined }); await esperar(20) })
 })
+
+test('Enter no motivo só envia quando o valor que entrou se lê', async () => {
+  const t = await abrirForcarPix([{ tipo: 'pix', valor: 10000 }])
+  const enter = () => t.act(async () => {
+    document.querySelector('textarea[aria-label="Motivo"]')!.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await esperar(30)
+  })
+  await digitarRecebido(t, 'abc')
+  await t.escreverMotivo('PIX caiu na conta pessoal')
+  await enter()
+  assert.equal(forcar.mock.callCount(), 0)
+  await digitarRecebido(t, '9.980,00')
+  await enter()
+  assert.deepEqual(forcar.mock.calls.map(c => c.arguments[3]), [9980])
+})
