@@ -37,9 +37,15 @@ async function chamarGrupo<T>(token: string, caminho: string): Promise<T> {
   }
 }
 
-export async function consultarConta(token: string): Promise<{ id: string; nickname: string }> {
-  const r = await chamarGrupo<{ id: number | string; nickname: string }>(token, '/users/me')
-  return { id: String(r.id), nickname: r.nickname }
+export type ContaMp = { id: string; nickname: string; tags: string[]; documento: string | null }
+
+/**
+ * A conta dona do token. `tags` traz 'test_user' na conta de teste e `identification` o documento do titular
+ * (doc da API de usuários do Mercado Livre, a mesma do /users/me; não conferido numa conta real do MP).
+ */
+export async function consultarConta(token: string): Promise<ContaMp> {
+  const r = await chamarGrupo<{ id: number | string; nickname: string; tags?: string[]; identification?: { number?: string } }>(token, '/users/me')
+  return { id: String(r.id), nickname: r.nickname, tags: r.tags ?? [], documento: r.identification?.number ?? null }
 }
 
 /** Pagamentos alterados no período (por date_last_updated), paginados até o total. */
