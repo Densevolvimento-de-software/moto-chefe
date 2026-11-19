@@ -117,3 +117,32 @@ test('credencial gravada com aviso (CNPJ do titular diferente): salva e mostra o
   assert.deepEqual(toast.warning.mock.calls.map(c => c.arguments[0]), [aviso])
   assert.ok(fechou(t.onOpenChange))
 })
+
+// O diálogo de editar é o mesmo componente entre aberturas (key = id do grupo): o que ficou de uma abertura
+// não pode valer na seguinte.
+test('depois de salvar com Remover, ao reabrir o campo volta livre e o título não fala em remoção', async () => {
+  const t = await montar({ modo: 'editar', inicial: GRUPO })
+  await t.clique('Remover credencial')
+  await t.clique('Salvar')
+  await t.redesenhar({ modo: 'editar', inicial: GRUPO, open: false, onOpenChange: t.onOpenChange })
+  await t.redesenhar({ modo: 'editar', inicial: GRUPO, open: true, onOpenChange: t.onOpenChange })
+  assert.equal((document.getElementById('grupo-mp-token') as HTMLInputElement).disabled, false)
+  assert.doesNotMatch(textoDaTela(), /será removida/)
+})
+
+test('Cancelar depois de uma recusa: ao reabrir, sem a frase velha e o Salvar não reenvia o token abandonado', async () => {
+  api.editar.mock.mockImplementation(async () => ({ ok: false, erro: 'O Mercado Pago recusou esse token. Confira se é o Access Token de produção da conta da loja.' }))
+  const t = await montar({ modo: 'editar', inicial: GRUPO })
+  await t.preencher('grupo-mp-token', 'APP_USR-token-abandonado-0000000000000')
+  await t.preencher('grupo-mcpai', 'https://api.mcp.ai/abandonada')
+  await t.clique('Salvar')
+  assert.ok(document.querySelector('[role="alert"]'), 'a recusa devia aparecer')
+  await t.clique('Cancelar')
+  await t.redesenhar({ modo: 'editar', inicial: GRUPO, open: false, onOpenChange: t.onOpenChange })
+  await t.redesenhar({ modo: 'editar', inicial: GRUPO, open: true, onOpenChange: t.onOpenChange })
+  assert.equal(document.querySelector('[role="alert"]'), null)
+  api.editar.mock.mockImplementation(async () => ({ ok: true, dados: { aviso: null } }))
+  await t.clique('Salvar')
+  const [, dados] = api.editar.mock.calls.at(-1)!.arguments
+  assert.deepEqual([dados.mpToken, dados.mpRemover, dados.mcpaiEndpointUrl, dados.mcpaiRemover], ['', false, '', false])
+})

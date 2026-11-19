@@ -70,6 +70,17 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
   const [cidadeSede, setCidadeSede] = useState(inicial?.cidadeSede ?? '')
   const [comarcaForo, setComarcaForo] = useState(inicial?.comarcaForo ?? '')
 
+  // O diálogo de editar é o mesmo componente entre aberturas: ao fechar, o que era desta abertura (credencial
+  // colada, remoção marcada, recusa) não pode valer na próxima.
+  function mudarAberto(aberto: boolean) {
+    if (!aberto) {
+      setMcpaiEndpointUrl(''); setMcpaiRemover(false)
+      setMpToken(''); setMpRemover(false)
+      setErro(null)
+    }
+    onOpenChange?.(aberto)
+  }
+
   const contratoIncompleto = !razaoSocial.trim() || !enderecoSede.trim() || !cidadeSede.trim() || !comarcaForo.trim()
 
   async function handleSalvar() {
@@ -96,8 +107,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
       toast.success(modo === 'criar' ? 'Grupo criado!' : 'Grupo atualizado!')
       const aviso = r.dados && 'aviso' in r.dados ? r.dados.aviso : null
       if (aviso) toast.warning(aviso, { duration: 15000 })
-      setMpToken('')
-      onOpenChange?.(false)
+      mudarAberto(false)
       router.refresh()
     } catch {
       setErro('Não deu para salvar agora. Tente de novo.')
@@ -107,7 +117,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={mudarAberto}>
       {/* Corpo rola por dentro e o rodapé fica fixo: com os dados de contrato e as
           integrações, o formulário passa da altura de telas baixas (#313). */}
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-[calc(100%-1rem)] flex-col gap-0 p-0 sm:max-w-3xl">
@@ -227,6 +237,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs">Open Finance (mcp.ai): URL do endpoint</Label>
                   <Input
+                    id="grupo-mcpai"
                     type="password"
                     value={mcpaiEndpointUrl}
                     onChange={e => { setMcpaiEndpointUrl(e.target.value); setMcpaiRemover(false) }}
@@ -314,7 +325,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
           <p role="alert" className="border-t border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive sm:px-6">{erro}</p>
         )}
         <div className="flex justify-end gap-2 border-t bg-muted/40 px-4 py-3 sm:px-6">
-          <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => onOpenChange?.(false)}>Cancelar</Button>
+          <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => mudarAberto(false)}>Cancelar</Button>
           <Button className="flex-1 sm:flex-none" onClick={handleSalvar} disabled={loading}>
             {loading ? 'Salvando...' : modo === 'criar' ? 'Criar' : 'Salvar'}
           </Button>
