@@ -8,6 +8,7 @@ import { valorLiquidoExpr } from './valor-liquido'
 import { motoNoShowroom } from './showroom'
 import { inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
+import { pixCobertoSql } from '@/lib/queries/pix-coberto'
 
 type Filtros = {
   dataInicio: string
@@ -470,7 +471,7 @@ export async function getPendenciasConciliacaoLoja(lojaId: string, desde: Date) 
           AND conciliado = true
         ), 0)`,
         // Fonte única de PIX desde 15/09/2026, quando o ValidaPix saiu.
-        pixConciliadoValor: sql<number>`COALESCE((SELECT SUM(valor::numeric) FROM pix_recebimentos_mcp WHERE venda_id = ${sql.raw('"vendas"."id"')}), 0)`,
+        pixConciliadoValor: sql<number>`COALESCE((SELECT SUM(${pixCobertoSql()}) FROM pix_recebimentos_mcp WHERE venda_id = ${sql.raw('"vendas"."id"')}), 0)`,
       })
       .from(vendas)
       .where(and(eq(vendas.lojaId, lojaId), gte(vendas.dataVenda, desde))),
@@ -486,7 +487,7 @@ export async function getPendenciasConciliacaoLoja(lojaId: string, desde: Date) 
           AND conciliado = true
         ), 0)`,
         pixConciliadoValor: sql<number>`COALESCE((
-          SELECT SUM(valor::numeric)
+          SELECT SUM(${pixCobertoSql()})
           FROM pix_recebimentos_mcp
           WHERE os_id = ${sql.raw('"ordens_servico"."id"')}
         ), 0)`,
@@ -504,7 +505,7 @@ export async function getPendenciasConciliacaoLoja(lojaId: string, desde: Date) 
           AND conciliado = true
         ), 0)`,
         pixConciliadoValor: sql<number>`COALESCE((
-          SELECT SUM(valor::numeric)
+          SELECT SUM(${pixCobertoSql()})
           FROM pix_recebimentos_mcp
           WHERE peca_venda_id = ${sql.raw('"vendas_pecas"."id"')}
         ), 0)`,

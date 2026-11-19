@@ -1,11 +1,14 @@
 // Ligar e soltar um PIX recebido do seu alvo (venda, OS, pedido ou venda de peça). As duas telas que
 // fazem isso, a conciliação da venda e a /pix-mcp, gravam por aqui: o PIX só no grupo dado, nunca por cima.
 import { and, eq, isNull } from 'drizzle-orm'
+import { custoDoPixVinculado } from './custo-pix'
+import { custoPixTaxaDoGrupo } from './custo-pix-grupo'
 import { db } from './db'
 import { pixRecebimentosMcp } from './db/schema'
 import { ehTransferenciaInterna } from './pix-internos'
 import { RecusaUsuario } from './resultado-action'
 import { ehUuid } from './uuid'
+import { PIX_SOLTO } from './pix-solto'
 
 const PIX_NAO_ENCONTRADO = 'PIX não encontrado no grupo ativo'
 // Decisão do Luis (18/11/2026): trocar o vínculo é desvincular e vincular de novo.
@@ -23,13 +26,15 @@ const doGrupo = (pixId: string, grupoId: string) => and(eq(pixRecebimentosMcp.id
 
 export async function vincularPix(pixId: string, grupoId: string, vinculo: VinculoPix, porId: string): Promise<void> {
   const [pix] = ehUuid(pixId)
-    ? await db.select({ pagadorNome: pixRecebimentosMcp.pagadorNome, tipo: pixRecebimentosMcp.tipoCorrespondencia })
+    ? await db.select({ pagadorNome: pixRecebimentosMcp.pagadorNome, tipo: pixRecebimentosMcp.tipoCorrespondencia, valor: pixRecebimentosMcp.valor, tipoOperacao: pixRecebimentosMcp.tipoOperacao })
       .from(pixRecebimentosMcp).where(doGrupo(pixId, grupoId)).limit(1)
     : []
   if (!pix) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
   if (pix.tipo) throw new RecusaUsuario(PIX_JA_VINCULADO)
   if (ehTransferenciaInterna(pix.pagadorNome)) throw new RecusaUsuario(PIX_INTERNO)
 
+  // A taxa é a do grupo do PIX agora; o que se grava não muda se ela mudar depois.
+  const custo = custoDoPixVinculado(pix.tipoOperacao, Number(pix.valor), await custoPixTaxaDoGrupo(grupoId))
   const ligados = await db.update(pixRecebimentosMcp)
     .set({
       tipoCorrespondencia: vinculo.tipo,
@@ -39,6 +44,9 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
       pecaVendaId:  vinculo.tipo === 'peca'   ? vinculo.pecaVendaId : null,
       lancadoPorId: porId,
       lancadoEm:    new Date(),
+      valorBruto:   String(custo.valorBruto),
+      custoPix:     String(custo.custoPix),
+      custoPixTaxa: String(custo.custoPixTaxa),
     })
     .where(and(doGrupo(pixId, grupoId), isNull(pixRecebimentosMcp.tipoCorrespondencia)))
     .returning({ id: pixRecebimentosMcp.id })
@@ -49,7 +57,7 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
 export async function desvincularPix(pixId: string, grupoId: string): Promise<void> {
   const soltos = ehUuid(pixId)
     ? await db.update(pixRecebimentosMcp)
-      .set({ tipoCorrespondencia: null, vendaId: null, osId: null, pedidoId: null, pecaVendaId: null, lancadoPorId: null, lancadoEm: null })
+      .set(PIX_SOLTO)
       .where(doGrupo(pixId, grupoId))
       .returning({ id: pixRecebimentosMcp.id })
     : []

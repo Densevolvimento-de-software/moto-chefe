@@ -283,3 +283,23 @@ test('linha de crédito não cobre pagamento Pix', () => {
   const concs = [{ id: 'c1', autorizacao: null, valorBruto: 300, tipo: 'credito' }]
   assert.deepEqual(matchPagamentos(pgtos, concs, []), [{ conciliado: false, coberto: 0 }])
 })
+
+// ── Custo do PIX (#90): o PIX cobre pelo valor do PIX, não pelo que o banco creditou ──
+
+test('PIX creditado sem o custo cobre o pagamento pelo valor do PIX gravado na conciliação', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000 }]
+  const r = matchPagamentos(pgtos, [], [{ id: 'p1', valor: '9980.00', valorBruto: '10000.00' }])
+  assert.deepEqual(r, [{ conciliado: true, coberto: 10000 }])
+})
+
+test('rateio pelo valor do PIX: dois PIX creditados sem o custo fecham o pagamento', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000 }]
+  const r = matchPagamentos(pgtos, [], [{ id: 'p1', valor: 4990, valorBruto: 5000 }, { id: 'p2', valor: 4990, valorBruto: 5000 }])
+  assert.deepEqual(r, [{ conciliado: true, coberto: 10000 }])
+})
+
+test('PIX vinculado antes do custo (sem valor do PIX gravado) segue cobrindo pelo crédito', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000 }]
+  assert.deepEqual(matchPagamentos(pgtos, [], [{ id: 'p1', valor: 10000, valorBruto: null }]), [{ conciliado: true, coberto: 10000 }])
+  assert.deepEqual(matchPagamentos(pgtos, [], [{ id: 'p1', valor: 9980, valorBruto: null }]), [{ conciliado: false, coberto: 9980 }])
+})

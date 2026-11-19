@@ -4,6 +4,7 @@ import { ordensServico, osItens, motos, lojas, grupos, usuarios, modelos, client
 import { eq, desc, and, or, ilike, inArray, sql, gte, lte } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
+import { pixCobertoSql } from '@/lib/queries/pix-coberto'
 
 export type OSComDetalhes  = Awaited<ReturnType<typeof listarTodasOS>>[0]
 export type OSDetalhe      = Awaited<ReturnType<typeof buscarOS>>
@@ -35,7 +36,7 @@ function buildSelect(mecanico: ReturnType<typeof alias<typeof usuarios, 'mecanic
       AND conciliado = true
     ), 0)`,
     pixConciliadoValor:  sql<number>`COALESCE((
-      SELECT SUM(valor::numeric)
+      SELECT SUM(${pixCobertoSql()})
       FROM pix_recebimentos_mcp
       WHERE os_id = ${ordensServico.id}
     ), 0)`,

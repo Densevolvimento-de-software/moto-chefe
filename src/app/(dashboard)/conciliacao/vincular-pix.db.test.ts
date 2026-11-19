@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearGrupo, semearLoja, semearUsuario, type Base } from '@/test/semear-conta'
-import { semearContaComAlvos, semearPixRecebido, semearVendaMoto } from '@/test/semear-alvos-conciliacao'
+import { semearContaComAlvos, semearCustoPixDoGrupo, semearPixRecebido, semearVendaMoto } from '@/test/semear-alvos-conciliacao'
 import { ALVO_TIPOS, type AlvoConciliacao } from '@/lib/conciliacao-alvo'
 
 const url = process.env.TEST_DATABASE_URL
@@ -211,4 +211,104 @@ test('alvo forjado (tipo fora da lista com id de venda real, ou id que não é u
   assert.deepEqual(await vinculoDe(livre), LIVRE)
   assert.deepEqual(await vinculoDe(pix), comoFicou)
   assert.deepEqual((await execRows(sql`select pagamentos from vendas where id = ${a.alvos.moto}`))[0].pagamentos, pagamentosAntes)
+})
+
+// ─── Custo do PIX (#90): o que o vínculo grava e a busca pelo esperado ──────────────────────────────
+
+const custoDoGrupo = (grupoId: string, taxa: number) => semearCustoPixDoGrupo(db, grupoId, taxa)
+const custoDe = async (pixId: string) => (await execRows(sql`select valor_bruto, custo_pix, custo_pix_taxa from pix_recebimentos_mcp where id = ${pixId}`))[0]
+const SEM_CUSTO = { valor_bruto: null, custo_pix: null, custo_pix_taxa: null }
+const COM_CUSTO = { valor_bruto: '10000.00', custo_pix: '20.00', custo_pix_taxa: '0.002000' }
+
+test('vincular grava o valor do PIX, o custo e a taxa do grupo nos 3 alvos, e a busca do alvo devolve os três', async () => {
+  const a = await contaComAlvos()
+  await custoDoGrupo(a.grupoId, 0.002)
+  usuario = await sessao(a, 'aux_adm')
+  for (const tipo of TIPOS) {
+    const pix = await semearPixRecebido(db, a.grupoId, { valor: 9980 })
+    assert.equal((await actions.vincularPixAlvoAction(pix, { tipo, id: a.alvos[tipo] })).ok, true, tipo)
+    assert.deepEqual(await custoDe(pix), COM_CUSTO, tipo)
+    const [doAlvo] = await actions.buscarPixDoAlvo({ tipo, id: a.alvos[tipo] })
+    assert.deepEqual([doAlvo.valor, doAlvo.valorBruto, doAlvo.custoPix, doAlvo.custoPixTaxa], ['9980.00', '10000.00', '20.00', '0.002000'], tipo)
+  }
+})
+
+test('mudar a taxa depois não muda o gravado; desvincular limpa; vincular de novo grava a taxa atual', async () => {
+  const a = await contaComAlvos()
+  await custoDoGrupo(a.grupoId, 0.002)
+  usuario = await sessao(a, 'aux_adm')
+  const pix = await semearPixRecebido(db, a.grupoId, { valor: 9980 })
+  const alvo = { tipo: 'os' as const, id: a.alvos.os }
+  assert.equal((await actions.vincularPixAlvoAction(pix, alvo)).ok, true)
+  await custoDoGrupo(a.grupoId, 0.005)
+  assert.deepEqual(await custoDe(pix), COM_CUSTO)
+  assert.equal((await actions.desvincularPixAlvoAction(pix)).ok, true)
+  assert.deepEqual(await custoDe(pix), SEM_CUSTO)
+  assert.equal((await actions.vincularPixAlvoAction(pix, alvo)).ok, true)
+  assert.deepEqual(await custoDe(pix), { valor_bruto: '10030.15', custo_pix: '50.15', custo_pix_taxa: '0.005000' })
+})
+
+test('TED, linha antiga sem tipo e grupo sem custo gravam o crédito inteiro, custo 0 e taxa 0', async () => {
+  const a = await contaComAlvos()
+  await custoDoGrupo(a.grupoId, 0.002)
+  usuario = await sessao(a, 'aux_adm')
+  const inteiro = { valor_bruto: '9980.00', custo_pix: '0.00', custo_pix_taxa: '0.000000' }
+  for (const tipoOperacao of ['TED', null]) {
+    const pix = await semearPixRecebido(db, a.grupoId, { valor: 9980, tipoOperacao })
+    assert.equal((await actions.vincularPixAlvoAction(pix, { tipo: 'peca', id: a.alvos.peca })).ok, true)
+    assert.deepEqual(await custoDe(pix), inteiro, String(tipoOperacao))
+    assert.equal((await actions.desvincularPixAlvoAction(pix)).ok, true)
+  }
+  const semCusto = await contaComAlvos()
+  usuario = await sessao(semCusto, 'aux_adm')
+  const pix = await semearPixRecebido(db, semCusto.grupoId, { valor: 9980 })
+  assert.equal((await actions.vincularPixAlvoAction(pix, { tipo: 'moto', id: semCusto.alvos.moto })).ok, true)
+  assert.deepEqual(await custoDe(pix), inteiro)
+})
+
+test('PIX vinculado antes do custo (sem valor do PIX gravado): desvincular deixa limpo e vincular grava', async () => {
+  const a = await contaComAlvos()
+  await custoDoGrupo(a.grupoId, 0.002)
+  usuario = await sessao(a, 'aux_adm')
+  const pix = await semearPixRecebido(db, a.grupoId, { valor: 9980 })
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'venda', venda_id = ${a.alvos.moto} where id = ${pix}`)
+  assert.equal((await actions.desvincularPixAlvoAction(pix)).ok, true)
+  assert.deepEqual(await custoDe(pix), SEM_CUSTO)
+  assert.equal((await actions.vincularPixAlvoAction(pix, { tipo: 'moto', id: a.alvos.moto })).ok, true)
+  assert.deepEqual(await custoDe(pix), COM_CUSTO)
+})
+
+test('pedido forjado: valor do PIX, custo e grupo vindos da tela são ignorados; grava o calculado no servidor', async () => {
+  const a = await contaComAlvos()
+  const b = await contaComAlvos()
+  await custoDoGrupo(a.grupoId, 0.002)
+  usuario = await sessao(a, 'aux_adm')
+  const pix = await semearPixRecebido(db, a.grupoId, { valor: 9980 })
+  const forjado = { tipo: 'moto', id: a.alvos.moto, valorBruto: 1, custoPix: 9979, custoPixTaxa: 0.9, grupoId: b.grupoId } as unknown as AlvoConciliacao
+  assert.equal((await actions.vincularPixAlvoAction(pix, forjado)).ok, true)
+  assert.deepEqual(await custoDe(pix), COM_CUSTO)
+  assert.deepEqual(await execRows(sql`select id from pix_recebimentos_mcp where grupo_id = ${b.grupoId}`), [])
+})
+
+test('busca de PIX livre: o PIX pelo esperado sem o custo, a TED pelo valor cheio; grupo sem custo e busca digitada como hoje', async () => {
+  const a = await contaComAlvos()
+  await custoDoGrupo(a.grupoId, 0.002)
+  usuario = await sessao(a, 'aux_adm')
+  const pixLiquido = await semearPixRecebido(db, a.grupoId, { valor: 9980 })
+  const pixCheio = await semearPixRecebido(db, a.grupoId, { valor: 10000 })
+  const tedCheia = await semearPixRecebido(db, a.grupoId, { valor: 10000, tipoOperacao: 'TED' })
+  const tedLiquida = await semearPixRecebido(db, a.grupoId, { valor: 9980, tipoOperacao: 'TED' })
+  // Linha antiga, sem tipo: entra inteira, como a TED.
+  const semTipoCheia = await semearPixRecebido(db, a.grupoId, { valor: 10000, tipoOperacao: null, pagadorNome: 'Pagador antigo' })
+  const semTipoLiquida = await semearPixRecebido(db, a.grupoId, { valor: 9980, tipoOperacao: null })
+  const ids = (l: { id: string }[]) => l.map(p => p.id).sort()
+  assert.deepEqual(ids(await actions.buscarPixLivres(10000)), [pixLiquido, tedCheia, semTipoCheia].sort(), '0,20%: PIX pelo esperado, TED e sem tipo pelo cheio')
+  assert.deepEqual(ids(await actions.buscarPixLivres(0, '9980')), [pixLiquido, tedLiquida, semTipoLiquida].sort(), 'valor digitado: como hoje')
+  assert.deepEqual(ids(await actions.buscarPixLivres(0, 'Pagador antigo')), [semTipoCheia], 'texto digitado: como hoje')
+
+  const semCusto = await contaComAlvos()
+  usuario = await sessao(semCusto, 'aux_adm')
+  await semearPixRecebido(db, semCusto.grupoId, { valor: 9980 })
+  const cheio = await semearPixRecebido(db, semCusto.grupoId, { valor: 10000 })
+  assert.deepEqual(ids(await actions.buscarPixLivres(10000)), [cheio], 'grupo sem custo: como hoje')
 })

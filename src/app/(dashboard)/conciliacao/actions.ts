@@ -14,6 +14,8 @@ import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-per
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { alvoValido, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
+import { creditoDoPix, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
+import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
 import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
 import { casarPorAutorizacao, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
@@ -496,6 +498,10 @@ export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
       valor:         pixRecebimentosMcp.valor,
       pagadorNome:   pixRecebimentosMcp.pagadorNome,
       observacao:    pixRecebimentosMcp.descricao,
+      // Gravados no vínculo (#90): o PIX cobre o pagamento pelo valor do PIX, não pelo crédito.
+      valorBruto:    pixRecebimentosMcp.valorBruto,
+      custoPix:      pixRecebimentosMcp.custoPix,
+      custoPixTaxa:  pixRecebimentosMcp.custoPixTaxa,
     })
     .from(pixRecebimentosMcp)
     .where(eq(coluna, alvo.id))
@@ -562,8 +568,9 @@ export type PixLivre = {
 
 /**
  * PIX livres pra conciliar com o alvo. Sem `query`, procura por valor aproximado
- * (o mesmo ±5 do cartão); com `query`, casa por pagador, descrição, data
- * (AAAA-MM-DD) ou valor.
+ * (o mesmo ±5 do cartão): a linha PIX pelo esperado sem o custo do PIX do grupo (o banco
+ * credita sem ele, #90) e a TED ou linha sem tipo pelo valor cheio. Com `query`, casa por
+ * pagador, descrição, data (AAAA-MM-DD) ou valor digitado, como o crédito aparece no extrato.
  */
 export async function buscarPixLivres(valor: number, query?: string): Promise<PixLivre[]> {
   const usuario = await getUsuarioLogado()
@@ -573,7 +580,9 @@ export async function buscarPixLivres(valor: number, query?: string): Promise<Pi
   const q = (query ?? '').trim()
   let filtro
   if (!q) {
-    filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric - ${valor}) <= 5`
+    const esperado = creditoDoPix(valor, await custoPixTaxaDoGrupo(grupo.id)).entra
+    filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric
+      - CASE WHEN ${pixRecebimentosMcp.tipoOperacao} = ${OPERACAO_COM_CUSTO} THEN ${esperado}::numeric ELSE ${valor}::numeric END) <= 5`
   } else {
     const valorBusca = parseFloat(q.replace(/\./g, '').replace(',', '.'))
     if (/^\d{4}-\d{2}-\d{2}$/.test(q)) {

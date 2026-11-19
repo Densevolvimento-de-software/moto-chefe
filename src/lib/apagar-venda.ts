@@ -5,6 +5,7 @@
 import { eq } from 'drizzle-orm'
 import type { db } from '@/lib/db'
 import { conciliacoesCartao, demandas, documentosAssinatura, lancamentosCaixa, pixRecebimentosMcp, vendas } from '@/lib/db/schema'
+import { PIX_SOLTO } from '@/lib/pix-solto'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -37,11 +38,9 @@ export async function apagarVendaTx(tx: Tx, vendaId: string): Promise<VendaApaga
     .returning({ valor: conciliacoesCartao.valorBruto })
 
   const pix = await tx.update(pixRecebimentosMcp)
-    .set({
-      vendaId: null, tipoCorrespondencia: null, osId: null,
-      pedidoId: null, pecaVendaId: null, lancadoPorId: null, lancadoEm: null,
-    })
+    .set(PIX_SOLTO)
     .where(eq(pixRecebimentosMcp.vendaId, vendaId))
+    // O crédito, não o valor do PIX: a frase ao usuário fala do dinheiro que volta sem dono ao extrato.
     .returning({ valor: pixRecebimentosMcp.valor })
 
   const dems = await tx.update(demandas)
