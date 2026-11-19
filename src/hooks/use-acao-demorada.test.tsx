@@ -8,7 +8,11 @@ const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
 
 const fetchOriginal = globalThis.fetch
-afterEach(() => { globalThis.fetch = fetchOriginal })
+const montados: (() => Promise<void>)[] = []
+afterEach(async () => {
+  globalThis.fetch = fetchOriginal
+  for (const d of montados.splice(0)) await d()
+})
 
 type Corpo = { ok: boolean; total?: number }
 
@@ -21,7 +25,8 @@ async function montarHook() {
   const container = document.createElement('div')
   const root = createRoot(container)
   await act(async () => { root.render(createElement(Sonda)) })
-  return { act, visto, desmontar: () => act(async () => root.unmount()) }
+  montados.push(() => act(async () => root.unmount()))
+  return { act, visto }
 }
 
 test('manda POST com o corpo em JSON e devolve o corpo da resposta; pendente só enquanto espera', async () => {
@@ -36,7 +41,6 @@ test('manda POST com o corpo em JSON e devolve o corpo da resposta; pendente só
   assert.deepEqual(resultado, { ok: true, dados: { ok: true, total: 3 } })
   assert.equal(h.visto.atual!.pendente, false)
   assert.deepEqual([pedidos[0].url, pedidos[0].init.method, pedidos[0].init.body], ['/api/alguma-rota', 'POST', '{"forcar":true}'])
-  await h.desmontar()
 })
 
 test('recusa da rota ({ error }) e falha de rede voltam como frase, sem lançar', async () => {
@@ -49,5 +53,4 @@ test('recusa da rota ({ error }) e falha de rede voltam como frase, sem lançar'
   await h.act(async () => { r = await h.visto.atual!.disparar({}) })
   assert.deepEqual(r, { ok: false, erro: 'falha ao falar com o servidor' })
   assert.equal(h.visto.atual!.pendente, false)
-  await h.desmontar()
 })
