@@ -526,11 +526,14 @@ export async function buscarConciliacoesLivres(query: string, linha: LinhaProcur
   const isData  = /^\d{4}-\d{2}-\d{2}$/.test(q)
   const isValor = !isData && Number.isFinite(valor) && valor > 0
 
+  const porTexto = sql`(${conciliacoesCartao.autorizacao} ILIKE ${'%' + q + '%'} OR ${conciliacoesCartao.nsu} ILIKE ${'%' + q + '%'})`
+  const porValor = sql`ABS(${conciliacoesCartao.valorBruto}::numeric - ${valor}) <= 5`
+  // Só dígitos pode ser valor ou NSU/autorização (o NSU do Mercado Pago é só dígitos): procura nos dois.
   const filtro = isData
     ? eq(conciliacoesCartao.dataTransacao, q)
     : isValor
-      ? sql`ABS(${conciliacoesCartao.valorBruto}::numeric - ${valor}) <= 5`
-      : sql`(${conciliacoesCartao.autorizacao} ILIKE ${'%' + q + '%'} OR ${conciliacoesCartao.nsu} ILIKE ${'%' + q + '%'})`
+      ? (/^\d+$/.test(q) ? or(porValor, porTexto) : porValor)
+      : porTexto
 
   return db
     .select({

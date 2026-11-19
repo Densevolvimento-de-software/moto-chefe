@@ -206,3 +206,13 @@ test('alvo de outra Conta e alvo inexistente: as três leituras do painel devolv
     assert.deepEqual(await actions.buscarPixDoAlvo(alvo), [])
   }
 })
+
+// A busca livre só com dígitos podia ser valor ou NSU (o do Mercado Pago é só dígitos): procura nos dois.
+test('busca livre só com dígitos acha a linha pelo final do NSU, além do valor', async () => {
+  const a = await semearConta()
+  const [l] = await linhas(sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, nsu, valor_bruto, tipo)
+    values (${a.grupoId}, 'mercadopago', '2026-11-05', ${'77' + randomUUID().replace(/\D/g, '').slice(0, 6) + '04821'}, 10, 'pix') returning id, nsu`)
+  entrarComo(a)
+  const final = String(l.nsu).slice(-8)
+  assert.deepEqual((await actions.buscarConciliacoesLivres(final, 'pix')).map(x => x.id), [l.id])
+})
