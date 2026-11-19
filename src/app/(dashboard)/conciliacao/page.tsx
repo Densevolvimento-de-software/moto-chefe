@@ -14,6 +14,7 @@ import { UploadRelatorio } from './components/upload-relatorio'
 import { VincularVendaButton } from './components/vincular-venda-button'
 import { dataPuraBr } from '@/lib/data-venda'
 import { rotuloCurtoDaLinha } from '@/lib/conciliacao-cartao'
+import type { AlvoTipo } from '@/lib/conciliacao-alvo'
 
 const fmt = (v: string | number) =>
   parseFloat(String(v)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -170,7 +171,7 @@ export default async function ConciliacaoPage({
                     : t.osId
                       ? (osMap.get(t.osId) ?? null)
                       : null
-                const tipoVinculado: 'moto' | 'peca' | 'os' | undefined =
+                const tipoVinculado: AlvoTipo | undefined =
                   t.vendaId ? 'moto' : t.pecaVendaId ? 'peca' : t.osId ? 'os' : undefined
 
                 return (

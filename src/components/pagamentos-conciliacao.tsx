@@ -159,16 +159,18 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     }
   }
 
-  async function vincularPix(pixId: string) {
+  async function vincularPixSugerido(pixId: string) {
     setVinculando(true)
     try {
-      await vincularPixAlvoAction(pixId, alvo)
+      const r = await vincularPixAlvoAction(pixId, alvo)
+      if (!r.ok) { toast.error(r.erro); return }
       await recarregar()
       setBuscandoIdx(null)
       limparBusca()
       toast.success('PIX conciliado')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao vincular')
+    } catch {
+      // A recusa com frase já voltou em `r.erro`; aqui só cai falha interna, sem frase legível.
+      toast.error('Erro ao vincular')
     } finally {
       setVinculando(false)
     }
@@ -241,7 +243,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
         titulo={quem}
         detalhes={[[p.descricao, quando, fmt(p.valor)].filter(Boolean).join(' · ')]}
         valor={p.valor}
-        onVincular={() => vincularPix(p.id)}
+        onVincular={() => vincularPixSugerido(p.id)}
         vinculando={vinculando}
         rotulo={`Vincular PIX de ${quem}, ${quando}, ${fmt(p.valor)}`}
       />

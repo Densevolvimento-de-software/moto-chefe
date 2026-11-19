@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Link2, Link2Off, Loader2, CheckCircle2, Search } from 'lucide-react'
 import { buscarVendasParaVincular, buscarVendaManual, vincularVendaAction, desvincularVendaAction } from '../actions'
 import { dataPuraBr } from '@/lib/data-venda'
+import type { AlvoTipo } from '@/lib/conciliacao-alvo'
 
 type Venda = Awaited<ReturnType<typeof buscarVendasParaVincular>>[number]
 type PgtoItem = { tipo: string; valor: number | string; operadora?: string; parcelas?: number; autorizacao?: string }
@@ -21,7 +22,7 @@ type Props = {
   dataRef: string
   valorRef: number
   vendaVinculada?: { id: string; numero: number; clienteNome: string; valor: string } | null
-  tipoVinculado?: 'moto' | 'peca' | 'os'
+  tipoVinculado?: AlvoTipo
 }
 
 export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVinculada, tipoVinculado }: Props) {
@@ -62,7 +63,7 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
     }
   }
 
-  function vincular(alvoId: string, tipo: 'moto' | 'peca' | 'os') {
+  function vincular(alvoId: string, tipo: AlvoTipo) {
     startTransition(async () => {
       try {
         await vincularVendaAction(conciliacaoId, alvoId, tipo)

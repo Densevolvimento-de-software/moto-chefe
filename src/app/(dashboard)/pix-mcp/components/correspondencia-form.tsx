@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Unlink } from 'lucide-react'
 import { lancarCorrespondenciaAction, removerCorrespondenciaAction } from '../actions'
+import type { VinculoPix } from '@/lib/pix-vinculo'
 
 type Correspondencia = {
-  tipo: 'venda' | 'os' | 'pedido' | 'peca' | null
+  tipo: VinculoPix['tipo'] | null
   vendaNf: string | null
   osNumero: number | null
   pedidoNumero: number | null
@@ -36,7 +37,7 @@ export type { Correspondencia }
 
 export function CorrespondenciaForm({ id, correspondencia }: Props) {
   const [pending, start] = useTransition()
-  const [tipo, setTipo] = useState<'venda' | 'os' | 'pedido' | 'peca'>('venda')
+  const [tipo, setTipo] = useState<VinculoPix['tipo']>('venda')
   const [numero, setNumero] = useState('')
 
   if (correspondencia.tipo) {
@@ -45,10 +46,12 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
     function remover() {
       start(async () => {
         try {
-          await removerCorrespondenciaAction(id)
+          const r = await removerCorrespondenciaAction(id)
+          if (!r.ok) { toast.error(r.erro); return }
           toast.success('Correspondência desvinculada')
-        } catch (e: any) {
-          toast.error(e.message ?? 'Erro ao desvincular')
+        } catch {
+          // A recusa com frase já voltou em `r.erro`; aqui só cai falha interna, sem frase legível.
+          toast.error('Erro ao desvincular')
         }
       })
     }
@@ -86,18 +89,19 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
     if (!numero.trim()) return
     start(async () => {
       try {
-        await lancarCorrespondenciaAction(id, tipo, numero.trim())
+        const r = await lancarCorrespondenciaAction(id, tipo, numero.trim())
+        if (!r.ok) { toast.error(r.erro); return }
         toast.success('Correspondência lançada')
         setNumero('')
-      } catch (e: any) {
-        toast.error(e.message ?? 'Erro ao lançar correspondência')
+      } catch {
+        toast.error('Erro ao lançar correspondência')
       }
     })
   }
 
   return (
     <div className="flex items-center gap-1.5">
-      <Select value={tipo} onValueChange={v => setTipo(v as 'venda' | 'os' | 'pedido' | 'peca')}>
+      <Select value={tipo} onValueChange={v => setTipo(v as VinculoPix['tipo'])}>
         <SelectTrigger className="h-11 w-24 text-base md:h-8 md:w-20 md:text-xs">
           <span>{{ venda: 'NF', os: 'OS', pedido: 'Pedido', peca: 'PA' }[tipo]}</span>
         </SelectTrigger>

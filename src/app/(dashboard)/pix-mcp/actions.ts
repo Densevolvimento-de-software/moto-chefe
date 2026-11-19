@@ -1,96 +1,72 @@
 'use server'
 
 import { db } from '@/lib/db'
-import { pixRecebimentosMcp, vendas, ordensServico, pedidosVenda, vendasPecas } from '@/lib/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { tipoCorrespondenciaPixEnum, vendas, ordensServico, pedidosVenda, vendasPecas } from '@/lib/db/schema'
+import { eq, and, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { getUsuarioLogado } from '@/lib/auth'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
-import { ehTransferenciaInterna } from '@/lib/pix-internos'
+import { acao, RecusaUsuario } from '@/lib/resultado-action'
+import { desvincularPix, vincularPix, type VinculoPix } from '@/lib/pix-vinculo'
 
 const PAPEIS_PERMITIDOS = ['admin_geral', 'admin_socio', 'aux_adm', 'vendedor']
+type Tipo = typeof tipoCorrespondenciaPixEnum.enumValues[number]
 
-export async function lancarCorrespondenciaAction(
-  id: string,
-  tipo: 'venda' | 'os' | 'pedido' | 'peca',
-  numero: string,
-) {
+// Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
+export async function lancarCorrespondenciaAction(id: string, tipo: Tipo, numero: string) {
+  return acao(() => lancarCorrespondencia(id, tipo, numero))
+}
+async function lancarCorrespondencia(id: string, tipo: Tipo, numero: string) {
   const usuario = await getUsuarioLogado()
-  if (!PAPEIS_PERMITIDOS.includes(usuario.papel)) throw new Error('Sem permissão')
+  if (!PAPEIS_PERMITIDOS.includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  // O tipo vem do navegador: fora do enum não pode cair num ramo por exclusão.
+  if (!(tipoCorrespondenciaPixEnum.enumValues as readonly unknown[]).includes(tipo)) throw new RecusaUsuario('Tipo inválido')
   const grupo = await getGrupoAtivo(usuario)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
-  const [linha] = await db.select({ pagadorNome: pixRecebimentosMcp.pagadorNome }).from(pixRecebimentosMcp).where(eq(pixRecebimentosMcp.id, id)).limit(1)
-  if (linha && ehTransferenciaInterna(linha.pagadorNome)) {
-    throw new Error('Essa transferência é interna (maquininha/conta do próprio grupo) e não pode ser conciliada com uma venda')
-  }
-
-  let vendaId: string | null = null
-  let osId: string | null = null
-  let pedidoId: string | null = null
-  let pecaVendaId: string | null = null
-
-  if (tipo === 'venda') {
-    const [venda] = await db.select({ id: vendas.id, lojaId: vendas.lojaId }).from(vendas).where(eq(vendas.notaFiscalSaida, numero)).limit(1)
-    if (!venda || !lojaIdsGrupo.includes(venda.lojaId)) throw new Error(`NF ${numero} não encontrada no grupo ${grupo.nome}`)
-    vendaId = venda.id
-  } else if (tipo === 'os') {
-    const numeroInt = parseInt(numero, 10)
-    if (!numeroInt || numeroInt <= 0) throw new Error('Número inválido')
-    const [os] = await db.select({ id: ordensServico.id, lojaId: ordensServico.lojaId }).from(ordensServico).where(eq(ordensServico.numero, numeroInt)).limit(1)
-    if (!os || !lojaIdsGrupo.includes(os.lojaId)) throw new Error(`OS #${numeroInt} não encontrada no grupo ${grupo.nome}`)
-    osId = os.id
-  } else if (tipo === 'pedido') {
-    const numeroInt = parseInt(numero, 10)
-    if (!numeroInt || numeroInt <= 0) throw new Error('Número inválido')
-    const [pedido] = await db.select({ id: pedidosVenda.id, lojaId: pedidosVenda.lojaId }).from(pedidosVenda).where(eq(pedidosVenda.numero, numeroInt)).limit(1)
-    if (!pedido || !lojaIdsGrupo.includes(pedido.lojaId)) throw new Error(`Pedido #${numeroInt} não encontrado no grupo ${grupo.nome}`)
-    pedidoId = pedido.id
-  } else {
-    const numeroInt = parseInt(numero, 10)
-    if (!numeroInt || numeroInt <= 0) throw new Error('Número inválido')
-    const [peca] = await db.select({ id: vendasPecas.id, lojaId: vendasPecas.lojaId }).from(vendasPecas).where(eq(vendasPecas.numero, numeroInt)).limit(1)
-    if (!peca || !lojaIdsGrupo.includes(peca.lojaId)) throw new Error(`Venda PA #${numeroInt} não encontrada no grupo ${grupo.nome}`)
-    pecaVendaId = peca.id
-  }
-
-  const atualizadas = await db.update(pixRecebimentosMcp)
-    .set({
-      tipoCorrespondencia: tipo,
-      vendaId,
-      osId,
-      pedidoId,
-      pecaVendaId,
-      lancadoPorId: usuario.id,
-      lancadoEm: new Date(),
-    })
-    .where(and(eq(pixRecebimentosMcp.id, id), eq(pixRecebimentosMcp.grupoId, grupo.id)))
-    .returning({ id: pixRecebimentosMcp.id })
-
-  if (atualizadas.length === 0) throw new Error('PIX não encontrado no grupo ativo')
+  const vinculo = await vinculoPeloNumero(tipo, String(numero), lojaIdsGrupo, grupo.nome)
+  await vincularPix(id, grupo.id, vinculo, usuario.id)
 
   revalidatePath('/pix-mcp')
 }
 
+// O número só é procurado nas lojas do grupo ativo: NF e OS se repetem entre Contas.
+async function vinculoPeloNumero(tipo: Tipo, numero: string, lojaIdsGrupo: string[], nomeGrupo: string): Promise<VinculoPix> {
+  if (tipo === 'venda') {
+    const [venda] = await db.select({ id: vendas.id }).from(vendas)
+      .where(and(eq(vendas.notaFiscalSaida, numero), inArray(vendas.lojaId, lojaIdsGrupo))).limit(1)
+    if (!venda) throw new RecusaUsuario(`NF ${numero} não encontrada no grupo ${nomeGrupo}`)
+    return { tipo, vendaId: venda.id }
+  }
+
+  const numeroInt = parseInt(numero, 10)
+  if (!numeroInt || numeroInt <= 0) throw new RecusaUsuario('Número inválido')
+
+  if (tipo === 'os') {
+    const [os] = await db.select({ id: ordensServico.id }).from(ordensServico)
+      .where(and(eq(ordensServico.numero, numeroInt), inArray(ordensServico.lojaId, lojaIdsGrupo))).limit(1)
+    if (!os) throw new RecusaUsuario(`OS #${numeroInt} não encontrada no grupo ${nomeGrupo}`)
+    return { tipo, osId: os.id }
+  }
+  if (tipo === 'pedido') {
+    const [pedido] = await db.select({ id: pedidosVenda.id }).from(pedidosVenda)
+      .where(and(eq(pedidosVenda.numero, numeroInt), inArray(pedidosVenda.lojaId, lojaIdsGrupo))).limit(1)
+    if (!pedido) throw new RecusaUsuario(`Pedido #${numeroInt} não encontrado no grupo ${nomeGrupo}`)
+    return { tipo, pedidoId: pedido.id }
+  }
+  const [peca] = await db.select({ id: vendasPecas.id }).from(vendasPecas)
+    .where(and(eq(vendasPecas.numero, numeroInt), inArray(vendasPecas.lojaId, lojaIdsGrupo))).limit(1)
+  if (!peca) throw new RecusaUsuario(`Venda PA #${numeroInt} não encontrada no grupo ${nomeGrupo}`)
+  return { tipo, pecaVendaId: peca.id }
+}
+
 export async function removerCorrespondenciaAction(id: string) {
+  return acao(() => removerCorrespondencia(id))
+}
+async function removerCorrespondencia(id: string) {
   const usuario = await getUsuarioLogado()
-  if (!PAPEIS_PERMITIDOS.includes(usuario.papel)) throw new Error('Sem permissão')
+  if (!PAPEIS_PERMITIDOS.includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
-
-  const atualizadas = await db.update(pixRecebimentosMcp)
-    .set({
-      tipoCorrespondencia: null,
-      vendaId: null,
-      osId: null,
-      pedidoId: null,
-      pecaVendaId: null,
-      lancadoPorId: null,
-      lancadoEm: null,
-    })
-    .where(and(eq(pixRecebimentosMcp.id, id), eq(pixRecebimentosMcp.grupoId, grupo.id)))
-    .returning({ id: pixRecebimentosMcp.id })
-
-  if (atualizadas.length === 0) throw new Error('PIX não encontrado no grupo ativo')
-
+  await desvincularPix(id, grupo.id)
   revalidatePath('/pix-mcp')
 }
