@@ -65,7 +65,7 @@ export type AutorDoForcado = Pick<ConciliadoManual, 'porId' | 'porNome' | 'em'>
  * lançamentos já cobrem (a forçada parte do que falta, decisão do Luis registrada na #92). A action lê a cobertura
  * no banco; a tela usa a do painel.
  */
-export type RecebimentoDaForcada = { valorRecebido: unknown; coberto: number }
+export type RecebimentoDaForcada = { valorRecebido: unknown; coberto: number; baseVista?: unknown }
 
 /** Recusa de desvincular o PIX que completa uma forçada parcial; quem gere desfaz a forçada pelo painel da venda. */
 export const COMPLETA_FORCADA = 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.'
@@ -73,6 +73,9 @@ export const COMPLETA_FORCADA = 'Este PIX completa um pagamento marcado como rec
 export const COMPLETA_FORCADA_PEDIR_A_GESTOR = 'Este PIX completa um pagamento marcado como recebido. Peça a quem gere a conciliação para desfazer a forçada.'
 
 export const PAGAMENTO_JA_FORCADO = 'Este pagamento já foi marcado como recebido. Desfaça antes de marcar de novo.'
+// A base que a tela mostrou não é a de agora: um PIX vinculou ou soltou entre abrir e confirmar (decisão do Luis registrada na #92).
+export const LANCAMENTOS_MUDARAM = 'Os lançamentos deste pagamento mudaram. Confira e marque de novo.'
+const mesmaBase = (base: number, vista: unknown) => typeof vista === 'number' && Math.abs(base - vista) < 0.005
 
 /** Os pagamentos com o da posição `idx` marcado como recebido na mão, ou a frase da recusa. */
 export function comForcado(
@@ -88,6 +91,7 @@ export function comForcado(
   const autoria = { motivo: texto, porId: autor.porId, porNome: autor.porNome, em: autor.em }
   const pix = PAGAMENTO_PIX.has(alvo.tipo) ? pixDaForcada(alvo.valor, recebimento) : undefined
   if (typeof pix === 'string') return { ok: false, erro: pix }
+  if (pix && !mesmaBase(pix.valorBruto, recebimento?.baseVista)) return { ok: false, erro: LANCAMENTOS_MUDARAM }
   const marca: ConciliadoManual = pix ? { ...autoria, pix } : autoria
   return { ok: true, dados: pgtos.map((p, i) => i === idx ? { ...p, conciliadoManual: marca } : p) }
 }

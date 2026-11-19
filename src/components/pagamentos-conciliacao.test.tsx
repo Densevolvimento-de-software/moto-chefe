@@ -12,7 +12,7 @@ import type { ResultadoAction } from '@/lib/resultado-action'
 const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
 
-const forcar = mock.fn(async (_alvo: AlvoConciliacao, _idx: number, _motivo: string, _valorRecebido?: number): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
+const forcar = mock.fn(async (_alvo: AlvoConciliacao, _idx: number, _motivo: string, _valorRecebido?: number, _baseVista?: number): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const desfazer = mock.fn(async (_alvo: AlvoConciliacao, _idx: number): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 type Actions = typeof import('@/app/(dashboard)/conciliacao/actions')
 type ParaOAlvo = Awaited<ReturnType<Actions['buscarPixParaOAlvo']>>
@@ -24,7 +24,7 @@ const buscarConciliacoesPorValor = mock.fn(async (..._a: unknown[]): Promise<unk
 const buscarConciliacoesLivres = mock.fn(async (..._a: unknown[]): Promise<unknown[]> => [])
 const vincularCartao = mock.fn(async (_id: string, _alvo: AlvoConciliacao): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { namedExports: {
-  forcarConciliacaoAction: (a: AlvoConciliacao, i: number, m: string, v?: number) => forcar(a, i, m, v),
+  forcarConciliacaoAction: (a: AlvoConciliacao, i: number, m: string, v?: number, base?: number) => forcar(a, i, m, v, base),
   desfazerConciliacaoForcadaAction: (a: AlvoConciliacao, i: number) => desfazer(a, i),
   buscarPixLivres: (q: string) => buscarPixLivres(q),
   buscarConciliacoesPorValor: (...a: unknown[]) => buscarConciliacoesPorValor(...a),
@@ -93,7 +93,7 @@ test('aux_adm abre o PIX pendente, força com o motivo e o Desfazer do aviso env
   await clique('Marcar como recebido')
 
   // Grupo sem custo do PIX: o valor que entrou vem preenchido com o do pagamento.
-  assert.deepEqual(forcar.mock.calls.map(c => c.arguments), [[ALVO, 1, 'PIX na conta pessoal', 1000]])
+  assert.deepEqual(forcar.mock.calls.map(c => c.arguments), [[ALVO, 1, 'PIX na conta pessoal', 1000, 1000]])
   assert.equal(sucessos[0]?.mensagem, 'Pagamento marcado como recebido')
   await act(async () => { sucessos[0].opcoes!.action!.onClick(); await esperar(50) })
   assert.deepEqual(desfazer.mock.calls.map(c => c.arguments), [[ALVO, 1]])
@@ -268,7 +268,7 @@ test('forçar PIX: o valor que entrou vem preenchido com o esperado e as três c
   assert.deepEqual(contaDoPix(), [['Valor do PIX', 'R$ 10.000,00'], ['Custo (0,20%)', 'R$ 20,00'], ['Entrou', 'R$ 9.980,00']])
   await t.escreverMotivo('PIX caiu na conta pessoal')
   await t.clique('Marcar como recebido')
-  assert.deepEqual(forcar.mock.calls.map(c => c.arguments), [[ALVO, 0, 'PIX caiu na conta pessoal', 9980]])
+  assert.deepEqual(forcar.mock.calls.map(c => c.arguments), [[ALVO, 0, 'PIX caiu na conta pessoal', 9980, 10000]])
 })
 
 test('forçar PIX: valor editado recalcula as colunas e é o que se envia', async () => {
@@ -305,10 +305,13 @@ test('forçar PIX: custo acima de 1% avisa e ainda deixa confirmar', async () =>
   assert.equal(botao('Marcar como recebido')?.disabled, false)
 })
 
-test('forçar PIX parcial: parte do que falta, e o campo vem com o esperado dessa parte', async () => {
-  await abrirForcarPix([{ tipo: 'pix', valor: 1000 }], [pixRec({ valor: '399.20', valorBruto: '400.00', custoPix: '0.80' })])
+test('forçar PIX parcial: parte do que falta, o campo vem com o esperado dessa parte, e a base mostrada vai junto', async () => {
+  const t = await abrirForcarPix([{ tipo: 'pix', valor: 1000 }], [pixRec({ valor: '399.20', valorBruto: '400.00', custoPix: '0.80' })])
   assert.equal(campoRecebido()?.value, '598,80')
   assert.deepEqual(contaDoPix(), [['Valor do PIX', 'R$ 600,00'], ['Custo (0,20%)', 'R$ 1,20'], ['Entrou', 'R$ 598,80']])
+  await t.escreverMotivo('Resto caiu na conta pessoal')
+  await t.clique('Marcar como recebido')
+  assert.deepEqual(forcar.mock.calls.map(c => c.arguments.slice(3)), [[598.8, 600]])
 })
 
 test('forçar cartão: sem o campo do valor que entrou, e nada de valor na action', async () => {
@@ -318,7 +321,7 @@ test('forçar cartão: sem o campo do valor que entrou, e nada de valor na actio
   assert.equal(campoRecebido()?.outerHTML ?? null, null)
   await t.escreverMotivo('Operadora não mandou o relatório')
   await t.clique('Marcar como recebido')
-  assert.deepEqual(forcar.mock.calls.map(c => c.arguments), [[ALVO, 0, 'Operadora não mandou o relatório', undefined]])
+  assert.deepEqual(forcar.mock.calls.map(c => c.arguments), [[ALVO, 0, 'Operadora não mandou o relatório', undefined, undefined]])
 })
 
 test('forçar PIX fica desabilitado até a busca do PIX trazer o esperado', async () => {

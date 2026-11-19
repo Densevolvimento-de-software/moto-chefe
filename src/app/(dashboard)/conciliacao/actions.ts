@@ -640,13 +640,16 @@ const ouRecusa = (r: ResultadoAction<PgtoOS[]>) => {
 }
 
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
-/** `valorRecebido`: na forçada de PIX, o que entrou na conta (#92); é o único valor em reais que vem da tela. */
-export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string, valorRecebido?: number) {
+/**
+ * `valorRecebido`: na forçada de PIX, o que entrou na conta (#92). `baseVista`: a base que a tela mostrou, só para
+ * conferir; a que vale é a do servidor, e se as duas diferem os lançamentos mudaram e a forçada é recusada.
+ */
+export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string, valorRecebido?: number, baseVista?: number) {
   return acao(() => editarPagamentos(alvo, async (pgtos, usuario, tx) => {
     // Quanto os lançamentos do alvo já cobrem do pagamento, pela mesma conta do painel: o PIX parcial força o que falta.
     const coberto = matchPagamentos(pgtos, await cartoesDoAlvo(alvo, tx), await pixDoAlvo(alvo, tx))[idx]?.coberto ?? 0
     const autor = { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }
-    return ouRecusa(comForcado(pgtos, idx, motivo, autor, { valorRecebido, coberto }))
+    return ouRecusa(comForcado(pgtos, idx, motivo, autor, { valorRecebido, coberto, baseVista }))
   }))
 }
 

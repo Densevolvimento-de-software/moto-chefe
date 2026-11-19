@@ -217,14 +217,15 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     setRecebido(formatarNumeroBR(esperadoComTaxa(base, contextoPix?.taxa ?? 0) ?? base))
   }
 
-  async function forcar() {
+  // `baseVista`: a base que o formulário mostrou; o servidor recusa se os lançamentos mudaram desde então.
+  async function forcar(baseVista?: number) {
     if (forcandoIdx === null) return
     const idx = forcandoIdx
     setSalvando(true)
     try {
       // Valor que não se lê vai vazio: o servidor recusa com a frase.
       const ehPix = PAGAMENTO_PIX.has(pagamentos[idx]?.tipo ?? '')
-      const r = await forcarConciliacaoAction(alvo, idx, motivo, ehPix ? parseNumeroBR(recebido) ?? undefined : undefined)
+      const r = await forcarConciliacaoAction(alvo, idx, motivo, ehPix ? parseNumeroBR(recebido) ?? undefined : undefined, ehPix ? baseVista : undefined)
       if (!r.ok) { toast.error(r.erro); return }
       setForcandoIdx(null)
       setMotivo('')
@@ -508,12 +509,13 @@ function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, motivo, onMotivo, rec
   p: PgtoOS; i: number; coberto: number; taxaDoGrupo: number
   motivo: string; onMotivo: (v: string) => void
   recebido: string; onRecebido: (v: string) => void
-  salvando: boolean; onCancelar: () => void; onConfirmar: () => void
+  salvando: boolean; onCancelar: () => void; onConfirmar: (baseVista?: number) => void
 }) {
   const ehPix = PAGAMENTO_PIX.has(p.tipo)
   const pixForcado = ehPix ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto }) : null
   const podeConfirmar = motivo.trim().length >= 3 && typeof pixForcado !== 'string'
   const avisoCusto = pixForcado && typeof pixForcado !== 'string' ? avisoDeCustoAlto(pixForcado, taxaDoGrupo) : null
+  const confirmar = () => onConfirmar(pixForcado && typeof pixForcado !== 'string' ? pixForcado.valorBruto : undefined)
   return (
     <div className="space-y-2 rounded-lg bg-warning/10 p-3">
       <p className="text-sm font-medium text-warning">Marcar como recebido sem extrato</p>
@@ -557,7 +559,7 @@ function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, motivo, onMotivo, rec
         value={motivo}
         onChange={e => onMotivo(e.target.value)}
         // Enter envia, como no diálogo antigo; Shift+Enter quebra linha.
-        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (podeConfirmar) onConfirmar() } }}
+        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (podeConfirmar) confirmar() } }}
         placeholder="Por que está marcando? Ex.: PIX caiu na conta pessoal"
         aria-label="Motivo"
         rows={2}
@@ -569,7 +571,7 @@ function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, motivo, onMotivo, rec
         <button type="button" onClick={onCancelar} disabled={salvando} className="h-11 flex-1 rounded-lg border border-input bg-card text-sm font-medium">Cancelar</button>
         <button
           type="button"
-          onClick={onConfirmar}
+          onClick={confirmar}
           disabled={salvando || !podeConfirmar}
           className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-40"
         >
