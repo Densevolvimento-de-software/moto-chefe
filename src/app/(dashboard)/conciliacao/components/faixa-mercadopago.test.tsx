@@ -42,7 +42,7 @@ test('mostra a hora, os 4 números, o não tratado com o Forçar e as 7 contagen
   const texto = textoDaTela()
   assert.match(texto, /Importado em 19\/11 às 09:02/)
   // Rótulo antes do número no DOM (a ordem visual inverte com CSS).
-  for (const pedaco of ['vendas novas8 já ligadas, 4 para vincular12', 'já estavam aqui3', 'não tratada1', 'estornadas1']) assert.ok(texto.includes(pedaco), pedaco)
+  for (const pedaco of ['vendas novas8 já ligadas, 4 para vincular12', 'já estavam aqui3', 'não tratada1', 'estornada1']) assert.ok(texto.includes(pedaco), pedaco)
   assert.match(texto, /Cartão pré-pago de R\$\s89,90 em 05\/11\/2026: o MOVA não importa esse meio; concilie a venda com "Forçar"\./)
   assert.match(texto, /Fora da maquininha/)
 })

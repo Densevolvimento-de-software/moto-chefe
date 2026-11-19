@@ -25,7 +25,7 @@ export function FaixaMercadoPago({ estado, podeImportar }: Props) {
   const [erro, setErro] = useState<string | null>(null)
 
   async function importar() {
-    // Clique duplo enquanto importa não dispara outro pedido (o botão também fica travado).
+    // O botão fica travado enquanto importa (teste de tela); isto é só a segunda trava.
     if (pendente) return
     setErro(null)
     const r = await disparar({})
@@ -44,7 +44,7 @@ export function FaixaMercadoPago({ estado, podeImportar }: Props) {
         <div className="min-w-0 flex-1">
           <p className="font-semibold">Mercado Pago</p>
           <p className="text-xs text-muted-foreground">
-            {pendente ? 'Importando do Mercado Pago. Pode levar até 1 minuto.' : rotuloDaUltima(estado.ultimaImportacaoEm)}
+            {pendente ? 'Importando do Mercado Pago. Pode levar alguns minutos.' : rotuloDaUltima(estado.ultimaImportacaoEm)}
           </p>
         </div>
         {podeImportar && (

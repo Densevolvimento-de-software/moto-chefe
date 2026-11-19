@@ -11,7 +11,7 @@ test('os 4 números da faixa: novas (já ligadas + para vincular), já estavam, 
     { rotulo: 'vendas novas', valor: 12, nota: '8 já ligadas, 4 para vincular', alerta: false },
     { rotulo: 'já estavam aqui', valor: 3, nota: null, alerta: false },
     { rotulo: 'não tratada', valor: 1, nota: null, alerta: true },
-    { rotulo: 'estornadas', valor: 1, nota: null, alerta: false },
+    { rotulo: 'estornada', valor: 1, nota: null, alerta: false },
   ])
   const zero = numerosDaFaixa({ conciliadas: 0, pendentes: 1, duplicadas: 0, estornos: 0, estornosSemLinha: 0, naoTratados: 0, ignorados: 0 })
   assert.deepEqual(zero.map(n => [n.rotulo, n.valor, n.alerta]), [['venda nova', 1, false], ['já estavam aqui', 0, false], ['não tratadas', 0, false], ['estornadas', 0, false]])
@@ -43,4 +43,17 @@ test('hora da última importação e frase da falha, no horário de Brasília', 
   assert.equal(rotuloDaUltima('2026-11-19T12:02:00.000Z'), 'Importado em 19/11 às 09:02. Roda sozinho uma vez por dia.')
   assert.equal(fraseDaFalha('2026-11-19T12:02:00.000Z', 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.'),
     'A importação de 19/11 às 09:02 falhou: O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.')
+})
+
+test('com 1, a faixa fala no singular, também na nota', () => {
+  const um = numerosDaFaixa({ conciliadas: 1, pendentes: 0, duplicadas: 1, estornos: 1, estornosSemLinha: 0, naoTratados: 1, ignorados: 0 })
+  assert.deepEqual(um.map(n => [n.rotulo, n.nota]), [
+    ['venda nova', '1 já ligada, 0 para vincular'], ['já estava aqui', null], ['não tratada', null], ['estornada', null],
+  ])
+})
+
+// O id cru do meio (account_money) fica no log; a tela diz o que é.
+test('meio de pagamento que o MOVA não conhece aparece como "Outro meio de pagamento"', () => {
+  assert.match(fraseDoNaoTratado({ motivo: 'meio account_money', valor: 50, data: '2026-11-10', entraDepois: false }),
+    /^Outro meio de pagamento de R\$\s50,00 em 10\/11\/2026: o MOVA não importa esse meio/)
 })

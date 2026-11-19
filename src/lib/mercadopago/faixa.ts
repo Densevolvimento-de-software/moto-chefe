@@ -3,20 +3,22 @@
 import { CONTAGENS, type Contagem, type NaoTratadoMp, type ResultadoImportacaoMp } from './contagens'
 import { dataPuraBr, diaEHoraBrt } from '@/lib/data-venda'
 import { brl } from '@/lib/dashboard-painel'
+import { comMaiuscula, palavraPara } from '@/lib/texto'
 
 export type NumeroDaFaixa = { rotulo: string; valor: number; nota: string | null; alerta: boolean }
 export type LinhaDosDetalhes = { rotulo: string; explica: string; valor: number; alerta: boolean }
-
-const palavra = (n: number, um: string, varios: string) => (n === 1 ? um : varios)
 
 /** Os 4 números: vendas novas, já estavam aqui, não tratadas e estornadas (a falha vai como frase, decisão do Luis). */
 export function numerosDaFaixa(c: ResultadoImportacaoMp): NumeroDaFaixa[] {
   const novas = c.conciliadas + c.pendentes
   return [
-    { rotulo: palavra(novas, 'venda nova', 'vendas novas'), valor: novas, nota: novas > 0 ? `${c.conciliadas} já ligadas, ${c.pendentes} para vincular` : null, alerta: false },
-    { rotulo: 'já estavam aqui', valor: c.duplicadas, nota: null, alerta: false },
-    { rotulo: palavra(c.naoTratados, 'não tratada', 'não tratadas'), valor: c.naoTratados, nota: null, alerta: c.naoTratados > 0 },
-    { rotulo: 'estornadas', valor: c.estornos, nota: null, alerta: false },
+    {
+      rotulo: palavraPara(novas, 'venda nova', 'vendas novas'), valor: novas, alerta: false,
+      nota: novas > 0 ? `${c.conciliadas} ${palavraPara(c.conciliadas, 'já ligada', 'já ligadas')}, ${c.pendentes} para vincular` : null,
+    },
+    { rotulo: palavraPara(c.duplicadas, 'já estava aqui', 'já estavam aqui'), valor: c.duplicadas, nota: null, alerta: false },
+    { rotulo: palavraPara(c.naoTratados, 'não tratada', 'não tratadas'), valor: c.naoTratados, nota: null, alerta: c.naoTratados > 0 },
+    { rotulo: palavraPara(c.estornos, 'estornada', 'estornadas'), valor: c.estornos, nota: null, alerta: false },
   ]
 }
 
@@ -35,14 +37,16 @@ const TEXTO_DA_CONTAGEM: Record<Contagem, { rotulo: string; explica: string }> =
 export const detalhesDaFaixa = (c: ResultadoImportacaoMp): LinhaDosDetalhes[] =>
   CONTAGENS.map(k => ({ ...TEXTO_DA_CONTAGEM[k], valor: c[k], alerta: k === 'naoTratados' && c[k] > 0 }))
 
-const comMaiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+// "meio account_money" (id do Mercado Pago, que vai para o log) vira texto de tela.
+const motivoNaTela = (motivo: string) => (motivo.startsWith('meio ') ? 'outro meio de pagamento' : motivo)
 
 /** Uma linha por não tratado: meio fora pede o Forçar; sem líquido entra sozinho numa rodada seguinte (D10). */
 export function fraseDoNaoTratado(n: NaoTratadoMp): string {
   const quanto = `${brl(n.valor)} em ${dataPuraBr(n.data)}`
+  const motivo = comMaiuscula(motivoNaTela(n.motivo))
   return n.entraDepois
-    ? `${comMaiuscula(n.motivo)}, ${quanto}: entra sozinha quando o Mercado Pago mandar o valor líquido.`
-    : `${comMaiuscula(n.motivo)} de ${quanto}: o MOVA não importa esse meio; concilie a venda com "Forçar".`
+    ? `${motivo}, ${quanto}: entra sozinha quando o Mercado Pago mandar o valor líquido.`
+    : `${motivo} de ${quanto}: o MOVA não importa esse meio; concilie a venda com "Forçar".`
 }
 
 export const rotuloDaUltima = (iso: string | null): string =>
