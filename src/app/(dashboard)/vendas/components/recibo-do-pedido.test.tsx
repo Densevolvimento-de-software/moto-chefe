@@ -68,3 +68,29 @@ test('moto sem valor já abre o campo ("A definir"); "Alterar" abre o da outra; 
   await digitar(c.querySelector<HTMLInputElement>('[aria-label="Valor da MC PITICA"]')!, '510000')
   assert.deepEqual(valores.at(-1), ['m2', '5100.00'])
 })
+
+// Estados do Editar pedido efetivado (25d): com NF, sem "Alterar" para quem não muda valor, valor do acessório editável.
+test('travado (NF valendo): moto e acessório mostram "Na nota" e nada se altera; o brinde só o valor', async () => {
+  const c = await mostrar({ travado: true, onValorDaPeca: () => {} })
+  const [jet, pitica, capacete, bau] = [...c.querySelectorAll('li')].map(li => li.textContent ?? '')
+  for (const linha of [jet, pitica, capacete]) assert.match(linha, /Na nota/)
+  assert.doesNotMatch(bau, /Na nota/)
+  assert.deepEqual(botoes(c).map(b => b.textContent), ['Mudar a entrega'])
+  assert.equal(c.querySelectorAll('input').length, 0)
+})
+
+test('quem não altera valor (aux_adm): os valores aparecem sem "Alterar"', async () => {
+  const c = await mostrar({ podeAlterarValor: false, onValorDaPeca: () => {} })
+  assert.match(c.textContent ?? '', /R\$\s*9\.490,00.*R\$\s*5\.200,00.*R\$\s*290,00/)
+  assert.deepEqual(botoes(c).map(b => b.textContent), ['Mudar a entrega'])
+})
+
+test('com onValorDaPeca, o acessório tem "Alterar" do valor de cada unidade; o brinde não; digitar avisa qual peça mudou', async () => {
+  const pecas: [string, string][] = []
+  const c = await mostrar({ onValorDaPeca: (id, v) => { pecas.push([id, v]) } })
+  assert.ok(c.querySelector('[aria-label="Alterar valor do Capacete fechado"]'))
+  assert.ok(!c.querySelector('[aria-label="Alterar valor do Baú traseiro"]'))
+  await clicar(c.querySelector('[aria-label="Alterar valor do Capacete fechado"]'))
+  await digitar(c.querySelector<HTMLInputElement>('[aria-label="Valor de cada Capacete fechado"]')!, '12000')
+  assert.deepEqual(pecas.at(-1), ['c1', '120.00'])
+})
