@@ -136,7 +136,7 @@ test('guarda: quem lançou aparece se é da Conta (só loja, só Conta) ou admin
   })
 })
 
-test('quem lançou: usuário de outra Conta não aparece, nem marcando o grupo em grupos_acesso; igual a inexistente', async () => {
+test('quem lançou: usuário de outra Conta não aparece, igual a inexistente', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A')
     const b = await semearConta(tx, 'B')
