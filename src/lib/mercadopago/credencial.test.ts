@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { conferirCredencialMp, credencialMpParaTela, FRASES_MP, type DependenciasCredencialMp } from './credencial'
+import { conferirCredencialMp, credencialMpParaTela, type DependenciasCredencialMp } from './credencial'
+import { ehRecusaDoMp, FRASES_MP } from './frases'
 import { ErroMercadoPago } from './cliente'
 import type { ContaMp } from './point'
 
@@ -127,4 +128,9 @@ test('nenhum console nem resposta recebe o token ou pedaço dele, com o erro tra
   assert.equal(saidas[3].mock.callCount(), 8, 'os 8 erros deviam ter sido logados')
   const tudo = `${escrito}\n${JSON.stringify(respostas)}`
   for (let i = 0; i + 8 <= TOKEN.length; i++) assert.equal(tudo.includes(TOKEN.slice(i, i + 8)), false, `pedaço ${i} do token no log ou na resposta`)
+})
+
+test('ehRecusaDoMp reconhece toda recusa do Mercado Pago e não o aviso de CNPJ nem frase de outro campo', () => {
+  for (const [chave, frase] of Object.entries(FRASES_MP)) assert.equal(ehRecusaDoMp(frase), chave !== 'outroCnpj', chave)
+  assert.equal(ehRecusaDoMp('Nome obrigatório'), false)
 })

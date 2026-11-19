@@ -6,12 +6,11 @@ import { mercadopagoConfig } from '@/lib/db/schema'
 import { cifrar } from '@/lib/cripto'
 import { ehChaveDuplicada } from '@/lib/erro-pg'
 import { somenteDigitos } from '@/lib/grupo-cnpj'
+import { normalizarToken } from '@/lib/token-colado'
 import { RecusaUsuario } from '@/lib/resultado-action'
 import { ErroMercadoPago } from './cliente'
 import { consultarConta, type ContaMp } from './point'
 import { FRASES_MP } from './frases'
-
-export { FRASES_MP }
 
 export type PedidoCredencialMp = { mpToken?: unknown; mpRemover?: unknown }
 export type DependenciasCredencialMp = {
@@ -25,11 +24,9 @@ export type PlanoCredencialMp =
   | { acao: 'gravar'; token: string; userId: string; aviso: string | null }
 
 
-// Access Token do MP: um bloco só de caracteres visíveis. Espaço ou quebra de linha da cópia saem antes de qualquer
-// uso (decisão do Luis, #126): no meio do header, o fetch lança TypeError com o token inteiro na mensagem. O que
+// Access Token do MP: um bloco só de caracteres visíveis, depois de normalizado (decisão do Luis, #126). O que
 // ainda ficar fora do formato não chega ao Mercado Pago.
 const FORMATO_TOKEN = /^[\x21-\x7e]{20,300}$/
-export const normalizarToken = (colado: unknown) => (typeof colado === 'string' ? colado.replace(/\s+/g, '') : '')
 
 // Só o status ou o nome do erro: a mensagem pode trazer o token.
 const pistaDoErro = (e: unknown) =>
@@ -78,7 +75,7 @@ export const credencialMpParaTela = (userId: string | null) =>
 export const DEPENDENCIAS_CREDENCIAL_MP: DependenciasCredencialMp = {
   consultarConta,
   contaDaMensalidade: async () => {
-    const token = process.env.MP_ACCESS_TOKEN
+    const token = normalizarToken(process.env.MP_ACCESS_TOKEN)
     return token ? (await consultarConta(token)).id : null
   },
   producao: process.env.VERCEL_ENV === 'production',

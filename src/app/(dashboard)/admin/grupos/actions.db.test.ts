@@ -12,6 +12,8 @@ const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
 process.env.DATABASE_URL = url
 process.env.CERT_MASTER_KEY ??= 'c'.repeat(64)
+// A conta da mensalidade vem do shell se estiver exportada; os cenários aqui não dependem dela.
+delete process.env.MP_ACCESS_TOKEN
 
 let sessao: Record<string, unknown> = {}
 const mocks = [
@@ -35,11 +37,11 @@ before(() => {
 let db: typeof import('@/lib/db')['db']
 let execRows: typeof import('@/lib/db')['execRows']
 let acoes: typeof import('./actions')
-let FRASES_MP: typeof import('@/lib/mercadopago/credencial')['FRASES_MP']
+let FRASES_MP: typeof import('@/lib/mercadopago/frases')['FRASES_MP']
 before(async () => {
   ;({ db, execRows } = await import('@/lib/db'))
   acoes = await import('./actions')
-  ;({ FRASES_MP } = await import('@/lib/mercadopago/credencial'))
+  ;({ FRASES_MP } = await import('@/lib/mercadopago/frases'))
 })
 after(async () => {
   globalThis.fetch = fetchOriginal
@@ -157,9 +159,11 @@ test('recusas de criar e editar voltam como valor: nome vazio, Conta inexistente
   assert.deepEqual(await valor(acoes.criarGrupoAction({ nome: ' ', cnpj: '1', ativo: true })), { ok: false, erro: 'Nome obrigatório' })
   assert.deepEqual(await valor(acoes.criarGrupoAction({ nome: 'X', cnpj: '1', ativo: true, contaId: randomUUID() })), { ok: false, erro: 'Conta não encontrada' })
   assert.deepEqual(await valor(acoes.editarGrupoAction(a.grupoId, { nome: 'X', cnpj: '', ativo: true })), { ok: false, erro: 'CNPJ obrigatório' })
+  chamadasMp = 0
   for (const id of [randomUUID(), 'nao-e-uuid']) {
     assert.deepEqual(await valor(acoes.editarGrupoAction(id, { nome: 'X', cnpj: '1', ativo: true, mpToken: tokenDeConta().token })), { ok: false, erro: 'Grupo não encontrado' })
   }
+  assert.equal(chamadasMp, 0)
   assert.deepEqual(await valor(acoes.editarGrupoAction(a.grupoId, { nome: 'X', cnpj: '1', ativo: true, mcpaiEndpointUrl: 'http://x' })),
     { ok: false, erro: 'A chave do mcp.ai precisa ser a URL do endpoint, começando com https://' })
 })
