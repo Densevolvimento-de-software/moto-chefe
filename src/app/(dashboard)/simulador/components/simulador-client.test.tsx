@@ -6,29 +6,20 @@ import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
 import { clicar } from '@/test/eventos-dom'
+import { capturarImpressao } from '@/test/impressao-em-tela'
 
 const { dom, desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
 
-mock.module('../actions', { namedExports: { simularFreteAction: async () => ({ ok: false, erro: 'sem frete' }) } })
-
-const blobs = new Map<string, Blob>()
-Object.assign(dom.window.URL, {
-  createObjectURL: (b: Blob) => { blobs.set('blob:teste', b); return 'blob:teste' },
-  revokeObjectURL: () => {},
-})
-dom.window.open = (() => null) as typeof dom.window.open
-const globaisAntes = { URL: globalThis.URL, Blob: globalThis.Blob }
-Object.assign(globalThis, { URL: dom.window.URL, Blob: dom.window.Blob })
-after(() => { Object.assign(globalThis, globaisAntes) })
+const acoesMock = mock.module('../actions', { namedExports: { simularFreteAction: async () => ({ ok: false, erro: 'sem frete' }) } })
+after(() => acoesMock.restore())
+const impressao = capturarImpressao(dom)
 
 const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
-  blobs.clear()
   for (const desmontar of montados.splice(0)) await desmontar()
 })
 
-const esperar = (ms: number) => new Promise(r => setTimeout(r, ms))
 const texto = (el: Element | null = document.body) => (el?.textContent ?? '').replace(/\s+/g, ' ')
 const botao = (t: string) => [...document.querySelectorAll('button')].find(b => (b.textContent ?? '').trim() === t)
 const RODAPE = 'Só para a loja, fora do orçamento do cliente'
@@ -83,10 +74,10 @@ test('o custo do PIX não muda os preços do cliente: 21x, 12x, valor promociona
 })
 
 test('o orçamento impresso não leva o rodapé nem o custo do PIX', async () => {
-  const t = await montar(0.002)
+  await montar(0.002)
   await clicar(botao('Imprimir / Salvar PDF'))
-  await t.act(() => esperar(10))
-  const html = (await blobs.get('blob:teste')!.text()).replace(/\s+/g, ' ')
+  assert.deepEqual(impressao.janelas, ['aberta'])
+  const html = await impressao.papel()
   assert.match(html, /Scooter 3000/)
   assert.doesNotMatch(html, /Só para a loja|Custo do PIX|Entra na conta/)
 })
