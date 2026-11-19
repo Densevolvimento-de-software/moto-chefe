@@ -10,13 +10,13 @@ import { semearVendaPeca } from '@/test/semear-alvos-conciliacao'
 import { montarRelatorioCielo, vendaCielo, type LinhaCielo } from '@/test/relatorio-cielo-sintetico'
 import { montarRelatorioRede, parcelaRede, vendaParceladaRede, type LinhaRede } from '@/test/relatorio-rede-sintetico'
 import { montarRelatorioRendimento, operacaoRendimento, type LinhaRendimento } from '@/test/relatorio-rendimento-sintetico'
+import { sessaoDe, type Sessao } from '@/test/sessao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
 process.env.DATABASE_URL = url
 
 type Db = typeof import('@/lib/db')
-type Sessao = { id: string; papel: string; lojaId: string | null; contaId: string | null; gruposAcesso: string[]; gruposAprovacao: string[] }
 let db: Db['db']
 let actions: typeof import('./actions')
 let usuario: Sessao
@@ -50,7 +50,7 @@ async function contaComCielo() {
   return base
 }
 const socio = (b: { contaId: string; lojaId: string }, extra: Partial<Sessao> = {}): Sessao =>
-  ({ id: randomUUID(), papel: 'admin_socio', lojaId: b.lojaId, contaId: b.contaId, gruposAcesso: [], gruposAprovacao: [], ...extra })
+  sessaoDe(b, 'admin_socio', randomUUID(), extra)
 
 async function importar(linhasDoRelatorio: LinhaCielo[], opcoes: { comCabecalho?: boolean } = {}) {
   const texto = montarRelatorioCielo({ linhas: linhasDoRelatorio, ...opcoes })

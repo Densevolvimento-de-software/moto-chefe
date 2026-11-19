@@ -8,12 +8,12 @@ import { sql } from 'drizzle-orm'
 import { semearContaBase, semearGrupo, semearUsuario } from '@/test/semear-conta'
 import { semearContaComAlvos, semearOs, semearVendaMoto, semearVendaPeca } from '@/test/semear-alvos-conciliacao'
 import { ALVO_TIPOS, type AlvoTipo } from '@/lib/conciliacao-alvo'
+import { sessaoDe, type Sessao } from '@/test/sessao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
 process.env.DATABASE_URL = url
 
-type Sessao = { id: string; papel: string; lojaId: string | null; contaId: string | null; gruposAcesso: string[]; gruposAprovacao: string[] }
 let db: typeof import('@/lib/db')['db']
 let actions: typeof import('@/app/(dashboard)/conciliacao/actions')
 let contarPendenciasCartao: typeof import('@/lib/queries/conciliacao-pendentes')['contarPendenciasCartao']
@@ -58,7 +58,7 @@ async function semear() {
   const [venda] = await linhas(sql`insert into vendas (pedido_venda_id, moto_id, loja_id, vendedor_id, efetivado_por, cliente_nome, cliente_cpf, valor, forma_pagamento, pagamentos, data_venda)
     values (${pedido.id}, ${moto.id}, ${base.lojaId}, ${usuarioId}, ${usuarioId}, 'Cliente sintético', '52998224725', 1000, 'cartao_credito',
       '[{"tipo":"cartao_credito","valor":1000,"parcelas":1}]'::jsonb, '2026-11-05 12:00:00-03'::timestamptz) returning id`)
-  usuario = { id: usuarioId, papel: 'aux_adm', lojaId: base.lojaId, contaId: base.contaId, gruposAcesso: [], gruposAprovacao: [] }
+  usuario = sessaoDe(base, 'aux_adm', usuarioId)
   return { base, vendaId: venda.id as string }
 }
 
@@ -195,7 +195,7 @@ const PAGAMENTOS = [{ tipo: 'cartao_credito', valor: 1000, parcelas: 1 }]
 
 async function contaComLinha() {
   const a = await semearContaComAlvos(db, 'CART129', PAGAMENTOS)
-  usuario = { id: a.balcao.usuarioId, papel: 'aux_adm', lojaId: a.lojaId, contaId: a.contaId, gruposAcesso: [], gruposAprovacao: [] }
+  usuario = sessaoDe(a, 'aux_adm', a.balcao.usuarioId)
   return { a, linha: await cartao(a.grupoId, 1000, 'aprovado', null) }
 }
 
