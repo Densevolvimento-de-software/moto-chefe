@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Plus, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { criarGrupoAction, editarGrupoAction } from '../actions'
-import { ehRecusaDoMp } from '@/lib/mercadopago/frases'
+import { AVISO_OUTRO_CNPJ, ehRecusaDoMp } from '@/lib/mercadopago/frases'
 
 type Grupo = {
   id: string
@@ -25,6 +25,8 @@ type Grupo = {
   // Do Mercado Pago, só se há credencial e os 3 últimos dígitos da conta: o token não sai do servidor.
   mpConectado: boolean
   mpFinal: string | null
+  /** O titular da conta é de outro CNPJ (comparado no servidor; o documento não vem para cá). */
+  mpOutroCnpj: boolean
   razaoSocial: string | null
   enderecoSede: string | null
   cidadeSede: string | null
@@ -306,6 +308,9 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                       </div>
                     ) : (
                       <p className="text-[11px] text-warning">Sem credencial, a importação do Mercado Pago fica desligada neste grupo.</p>
+                    )}
+                    {inicial?.mpConectado && inicial.mpOutroCnpj && (
+                      <p id="grupo-mp-outro-cnpj" className="text-[11px] text-warning">{AVISO_OUTRO_CNPJ}</p>
                     )}
                     {mpRemover && (
                       <p className="text-[11px] text-destructive">

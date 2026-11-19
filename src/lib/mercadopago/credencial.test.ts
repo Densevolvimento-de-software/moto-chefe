@@ -16,7 +16,7 @@ const recusa = (erro: string) => ({ ok: false, erro })
 test('token novo conferido vira plano de gravar, com a conta do /users/me', async () => {
   let consultado = ''
   const r = await conferirCredencialMp({ mpToken: `  ${TOKEN}  ` }, CNPJ, deps({ consultarConta: async t => { consultado = t; return conta() } }))
-  assert.deepEqual(r, { ok: true, plano: { acao: 'gravar', token: TOKEN, userId: '4820482', aviso: null } })
+  assert.deepEqual(r, { ok: true, plano: { acao: 'gravar', token: TOKEN, userId: '4820482', titularDocumento: '11222333000181', aviso: null } })
   assert.equal(consultado, TOKEN)
 })
 
@@ -38,7 +38,7 @@ test('token colado com quebra de linha, tab ou espaço no meio: normalizado ante
   for (const colado of [`${TOKEN.slice(0, 20)}\n${TOKEN.slice(20)}`, `${TOKEN.slice(0, 20)}\r\n ${TOKEN.slice(20)}`, `\t${TOKEN.slice(0, 30)} ${TOKEN.slice(30)}\n`]) {
     let consultado = ''
     const r = await conferirCredencialMp({ mpToken: colado }, CNPJ, deps({ consultarConta: async t => { consultado = t; return conta() } }))
-    assert.deepEqual(r, { ok: true, plano: { acao: 'gravar', token: TOKEN, userId: '4820482', aviso: null } })
+    assert.deepEqual(r, { ok: true, plano: { acao: 'gravar', token: TOKEN, userId: '4820482', titularDocumento: '11222333000181', aviso: null } })
     assert.equal(consultado, TOKEN)
   }
 })
@@ -101,15 +101,24 @@ test('falha ao consultar a conta da mensalidade: indisponível, não aceita o to
 
 // Decisão do Luis (#51): CNPJ do titular diferente do grupo = só aviso.
 test('titular com outro CNPJ grava com aviso; sem documento, sem aviso', async () => {
-  const outro = await conferirCredencialMp({ mpToken: TOKEN }, CNPJ, deps({ consultarConta: async () => conta({ documento: '99888777000100' }) }))
-  assert.deepEqual(outro, { ok: true, plano: { acao: 'gravar', token: TOKEN, userId: '4820482', aviso: FRASES_MP.outroCnpj } })
+  // O documento do titular vai para o plano só com dígitos (0198), para a lista comparar depois.
+  const outro = await conferirCredencialMp({ mpToken: TOKEN }, CNPJ, deps({ consultarConta: async () => conta({ documento: '99.888.777/0001-00' }) }))
+  assert.deepEqual(outro, { ok: true, plano: { acao: 'gravar', token: TOKEN, userId: '4820482', titularDocumento: '99888777000100', aviso: FRASES_MP.outroCnpj } })
   const semDoc = await conferirCredencialMp({ mpToken: TOKEN }, CNPJ, deps({ consultarConta: async () => conta({ documento: null }) }))
-  assert.equal(semDoc.ok && semDoc.plano.acao === 'gravar' && semDoc.plano.aviso, null)
+  assert.deepEqual(semDoc.ok && semDoc.plano.acao === 'gravar' && [semDoc.plano.titularDocumento, semDoc.plano.aviso], [null, null])
 })
 
-test('a tela leva só se há credencial e os 3 últimos dígitos da conta', () => {
-  assert.deepEqual(credencialMpParaTela('123454820482'), { mpConectado: true, mpFinal: '482' })
-  assert.deepEqual(credencialMpParaTela(null), { mpConectado: false, mpFinal: null })
+test('a tela leva só se há credencial, os 3 últimos dígitos da conta e o aviso, nunca o documento', () => {
+  assert.deepEqual(credencialMpParaTela('123454820482', '11222333000181', CNPJ), { mpConectado: true, mpFinal: '482', mpOutroCnpj: false })
+  assert.deepEqual(credencialMpParaTela(null, null, CNPJ), { mpConectado: false, mpFinal: null, mpOutroCnpj: false })
+})
+
+// Decisão do Luis (#51): o aviso fica no diálogo, comparado na hora com o CNPJ do grupo; só o booleano vai à tela.
+test('aviso de CNPJ: titular de outro CNPJ = true; sem documento ou mesmo CNPJ (com ou sem máscara) = false', () => {
+  assert.equal(credencialMpParaTela('4820482', '99888777000100', CNPJ).mpOutroCnpj, true)
+  assert.equal(credencialMpParaTela('4820482', '11222333000181', '11222333000181').mpOutroCnpj, false)
+  assert.equal(credencialMpParaTela('4820482', null, CNPJ).mpOutroCnpj, false)
+  assert.equal(JSON.stringify(credencialMpParaTela('4820482', '99888777000100', CNPJ)).includes('99888777000100'), false)
 })
 
 // #126: nem o log nem a resposta levam o token ou pedaço dele (8 caracteres seguidos), nos erros do /users/me e da

@@ -33,17 +33,19 @@ async function assertAdmin() {
  */
 export async function listarGruposAction() {
   await assertAdmin()
-  // Da credencial do Mercado Pago, só a conta (para o final dela); o token nunca entra no select.
-  const linhas = await db.select({ g: grupos, contaNome: contas.nome, mpUserId: mercadopagoConfig.userId }).from(grupos)
+  // Da credencial do Mercado Pago, só a conta e o documento do titular, para o resumo; o token nunca entra no select.
+  const linhas = await db.select({
+    g: grupos, contaNome: contas.nome, mpUserId: mercadopagoConfig.userId, mpTitular: mercadopagoConfig.titularDocumento,
+  }).from(grupos)
     .innerJoin(contas, eq(contas.id, grupos.contaId))
     .leftJoin(mercadopagoConfig, eq(mercadopagoConfig.grupoId, grupos.id))
     .orderBy(grupos.nome)
-  return linhas.map(({ g: { mcpaiEndpointUrl, ...g }, contaNome, mpUserId }) => ({
+  return linhas.map(({ g: { mcpaiEndpointUrl, ...g }, contaNome, mpUserId, mpTitular }) => ({
     ...g,
     contaNome,
     mcpaiConfigurado: !!mcpaiEndpointUrl,
     mcpaiResumo: mcpaiEndpointUrl ? resumoDaChave(mcpaiEndpointUrl) : null,
-    ...credencialMpParaTela(mpUserId),
+    ...credencialMpParaTela(mpUserId, mpTitular, g.cnpj),
   }))
 }
 

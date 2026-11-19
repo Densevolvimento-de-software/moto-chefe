@@ -21,7 +21,7 @@ export type DependenciasCredencialMp = {
 export type PlanoCredencialMp =
   | { acao: 'manter' }
   | { acao: 'remover' }
-  | { acao: 'gravar'; token: string; userId: string; aviso: string | null }
+  | { acao: 'gravar'; token: string; userId: string; titularDocumento: string | null; aviso: string | null }
 
 
 // Access Token do MP: um bloco só de caracteres visíveis, depois de normalizado (decisão do Luis, #126). O que
@@ -64,13 +64,24 @@ export async function conferirCredencialMp(
   }
   if (mensalidade === conta.id) return { ok: false, erro: FRASES_MP.mensalidade }
 
-  const outroCnpj = conta.documento !== null && somenteDigitos(conta.documento) !== somenteDigitos(cnpjDoGrupo)
-  return { ok: true, plano: { acao: 'gravar', token, userId: conta.id, aviso: outroCnpj ? FRASES_MP.outroCnpj : null } }
+  const titularDocumento = conta.documento === null ? null : somenteDigitos(conta.documento)
+  const aviso = titularDeOutroCnpj(titularDocumento, cnpjDoGrupo) ? FRASES_MP.outroCnpj : null
+  return { ok: true, plano: { acao: 'gravar', token, userId: conta.id, titularDocumento, aviso } }
 }
 
-/** O que a lista de grupos leva da credencial: se há e o final do id da conta, nunca o token nem o id inteiro. */
-export const credencialMpParaTela = (userId: string | null) =>
-  ({ mpConectado: userId !== null, mpFinal: userId === null ? null : userId.slice(-3) })
+// Sem documento do Mercado Pago, não há o que comparar: sem aviso.
+const titularDeOutroCnpj = (titularDocumento: string | null, cnpjDoGrupo: string) =>
+  titularDocumento !== null && somenteDigitos(titularDocumento) !== somenteDigitos(cnpjDoGrupo)
+
+/**
+ * O que a lista de grupos leva da credencial: se há, o final do id da conta e se o titular é de outro CNPJ (comparado
+ * na hora, então acompanha a edição do CNPJ do grupo). Nunca o token, o id inteiro nem o documento do titular.
+ */
+export const credencialMpParaTela = (userId: string | null, titularDocumento: string | null, cnpjDoGrupo: string) => ({
+  mpConectado: userId !== null,
+  mpFinal: userId === null ? null : userId.slice(-3),
+  mpOutroCnpj: userId !== null && titularDeOutroCnpj(titularDocumento, cnpjDoGrupo),
+})
 
 export const DEPENDENCIAS_CREDENCIAL_MP: DependenciasCredencialMp = {
   consultarConta,
@@ -103,12 +114,13 @@ export async function aplicarCredencialMp(tx: Tx, grupoId: string, usuarioId: st
   if (outro) throw new RecusaUsuario(FRASES_MP.jaLigada)
   try {
     await tx.insert(mercadopagoConfig)
-      .values({ grupoId, token: cifrar(plano.token), userId: plano.userId, atualizadoPor: usuarioId })
+      .values({ grupoId, token: cifrar(plano.token), userId: plano.userId, titularDocumento: plano.titularDocumento, atualizadoPor: usuarioId })
       .onConflictDoUpdate({
         target: mercadopagoConfig.grupoId,
         set: {
           token: sql`excluded.token`,
           userId: sql`excluded.user_id`,
+          titularDocumento: sql`excluded.titular_documento`,
           atualizadoPor: sql`excluded.atualizado_por`,
           atualizadoEm: sql`now()`,
           ultimaFalhaEm: null,

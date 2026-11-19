@@ -13,3 +13,6 @@ export const FRASES_MP = {
 // Tudo menos o aviso (outroCnpj), que acompanha a credencial gravada.
 const RECUSAS_MP: readonly string[] = Object.entries(FRASES_MP).filter(([chave]) => chave !== 'outroCnpj').map(([, frase]) => frase)
 export const ehRecusaDoMp = (erro: string) => RECUSAS_MP.includes(erro)
+
+/** Aviso guardado no Editar Grupo (decisão do Luis, #51): fica à vista enquanto o titular for de outro CNPJ. */
+export const AVISO_OUTRO_CNPJ = 'Confira: a conta do Mercado Pago está em outro CNPJ, não no deste grupo.'

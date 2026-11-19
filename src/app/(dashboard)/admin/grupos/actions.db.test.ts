@@ -22,7 +22,7 @@ const mocks = [
 ]
 
 // /users/me: cada token responde a sua conta; token desconhecido = 401.
-const contasNoMp = new Map<string, { id: number; nickname: string; tags: string[] }>()
+const contasNoMp = new Map<string, { id: number; nickname: string; tags: string[]; identification?: { type: string; number: string } }>()
 let chamadasMp = 0
 const fetchOriginal = globalThis.fetch
 before(() => {
@@ -51,10 +51,13 @@ after(async () => {
 beforeEach(() => { chamadasMp = 0 })
 
 /** Token novo no MP, de uma conta nova (id único: os arquivos do test:db rodam em paralelo). */
-function tokenDeConta(o: { tags?: string[] } = {}) {
+function tokenDeConta(o: { tags?: string[]; documento?: string } = {}) {
   const token = `APP_USR-${randomUUID()}-${randomUUID()}`
   const id = Math.floor(Math.random() * 1e12) + 1e11
-  contasNoMp.set(token, { id, nickname: 'LOJA FICTICIA', tags: o.tags ?? ['normal'] })
+  contasNoMp.set(token, {
+    id, nickname: 'LOJA FICTICIA', tags: o.tags ?? ['normal'],
+    ...(o.documento ? { identification: { type: 'CNPJ', number: o.documento } } : {}),
+  })
   return { token, userId: String(id) }
 }
 
@@ -73,7 +76,7 @@ const editar = async (grupoId: string, extra: Record<string, unknown>) => {
   return acoes.editarGrupoAction(grupoId, { nome: g.nome, cnpj: g.cnpj, ativo: true, ...extra })
 }
 const config = async (grupoId: string) => (await execRows(sql`select token, user_id, atualizado_por, ultima_importacao_em,
-  ultimo_resumo, ultima_falha_em, ultima_falha_erro from mercadopago_config where grupo_id = ${grupoId}`))[0]
+  ultimo_resumo, ultima_falha_em, ultima_falha_erro, titular_documento from mercadopago_config where grupo_id = ${grupoId}`))[0]
 
 test('admin_geral grava o token cifrado e a conta do /users/me; a lista leva só "conectado" e o final', async () => {
   const a = await conta('A')
@@ -201,4 +204,32 @@ test('token novo apaga a falha da última rodada; outra conta apaga também o re
   await editar(a.grupoId, { mpToken: outra.token })
   c = await config(a.grupoId)
   assert.deepEqual([c.user_id, c.ultima_importacao_em, c.ultimo_resumo, c.ultima_falha_em, c.ultima_falha_erro], [outra.userId, null, null, null, null])
+})
+
+// Decisão do Luis (#51): o aviso de CNPJ fica guardado e aparece no diálogo; a lista compara na hora e manda só o booleano.
+test('titular de outro CNPJ: grava só os dígitos, a lista avisa sem mandar o documento e acompanha a edição do CNPJ', async () => {
+  const a = await conta('A')
+  comoAdmin(a)
+  const outro = '99.888.777/0001-00'
+  const { token } = tokenDeConta({ documento: outro })
+  const r = await editar(a.grupoId, { mpToken: token })
+  assert.equal(r.ok && r.dados.aviso, FRASES_MP.outroCnpj)
+  assert.equal((await config(a.grupoId)).titular_documento, '99888777000100')
+
+  const linha = async () => (await acoes.listarGruposAction()).find(g => g.id === a.grupoId)!
+  assert.equal((await linha()).mpOutroCnpj, true)
+  assert.equal(JSON.stringify(await linha()).includes('99888777000100'), false)
+  assert.equal(JSON.stringify(await linha()).includes(outro), false)
+
+  // O grupo passa a ter o CNPJ do titular: o aviso some sem gravar a credencial de novo.
+  await editar(a.grupoId, { cnpj: outro })
+  assert.equal((await linha()).mpOutroCnpj, false)
+})
+
+test('Mercado Pago sem o documento do titular: grava nulo e não avisa', async () => {
+  const a = await conta('A')
+  comoAdmin(a)
+  await editar(a.grupoId, { mpToken: tokenDeConta().token })
+  assert.equal((await config(a.grupoId)).titular_documento, null)
+  assert.equal((await acoes.listarGruposAction()).find(g => g.id === a.grupoId)!.mpOutroCnpj, false)
 })

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import type { ResultadoAction } from '@/lib/resultado-action'
 import { montarDom } from '@/test/montar-dom'
 import { apertarEscape, montarDialogo, textoDaTela } from '@/test/dialogo-em-tela'
-import { FRASES_MP } from '@/lib/mercadopago/frases'
+import { AVISO_OUTRO_CNPJ, FRASES_MP } from '@/lib/mercadopago/frases'
 import type { GrupoDialog as Dialogo } from './grupo-dialog'
 
 type Props = Parameters<typeof Dialogo>[0]
@@ -41,7 +41,7 @@ afterEach(async () => {
 const GRUPO = {
   id: 'g-1', nome: 'Grupo Exemplo', cnpj: '11.222.333/0001-81', ativo: true, blingClientId: null, blingClientSecret: null,
   mcpaiConfigurado: false, mcpaiResumo: null, razaoSocial: null, enderecoSede: null, cidadeSede: null, comarcaForo: null,
-  mpConectado: true, mpFinal: '482',
+  mpConectado: true, mpFinal: '482', mpOutroCnpj: false,
 }
 
 async function montar(props: Omit<Props, 'open' | 'onOpenChange'>) {
@@ -191,4 +191,15 @@ test('enquanto salva, Cancelar fica desabilitado e Esc não fecha; fecha quando 
   assert.equal(fechou(t.onOpenChange), false)
   await t.act(async () => { responder({ ok: true, dados: { aviso: null } }) })
   assert.ok(fechou(t.onOpenChange))
+})
+
+// Decisão do Luis (#51): o aviso de CNPJ diferente fica no diálogo, junto do "Configurada", não só num toast.
+test('titular de outro CNPJ: o aviso aparece junto do "Configurada" ao abrir o Editar', async () => {
+  await montar({ modo: 'editar', inicial: { ...GRUPO, mpOutroCnpj: true } })
+  assert.equal(document.getElementById('grupo-mp-outro-cnpj')?.textContent ?? null, AVISO_OUTRO_CNPJ)
+})
+
+test('titular do mesmo CNPJ ou sem credencial: sem aviso', async () => {
+  await montar({ modo: 'editar', inicial: GRUPO })
+  assert.equal(document.getElementById('grupo-mp-outro-cnpj')?.textContent ?? null, null)
 })
