@@ -71,3 +71,26 @@ export async function buscarPagamentosAlterados(
   }
   return todos
 }
+
+const maisNovo = (a: PagamentoMp, b: PagamentoMp) =>
+  Date.parse(b.date_last_updated) > Date.parse(a.date_last_updated) ? b : a
+
+/** Uma entrada por id, na ordem em que o id apareceu primeiro; o mesmo id fica com o date_last_updated mais novo. */
+export function juntarPorId(listas: PagamentoMp[][]): PagamentoMp[] {
+  const porId = new Map<number, PagamentoMp>()
+  for (const p of listas.flat()) {
+    const antes = porId.get(p.id)
+    porId.set(p.id, antes ? maisNovo(antes, p) : p)
+  }
+  return [...porId.values()]
+}
+
+/**
+ * A busca da rodada: a mesma consulta 2 vezes, juntada por id. Na conta real a busca devolveu ora 9, ora 17
+ * pagamentos (os cartões sumiam e voltavam); causa não achada na doc do MP, registrada na #51 (decisão B do Luis).
+ */
+export async function buscarPagamentosDaRodada(token: string, p: { inicio: Date; fim: Date }): Promise<PagamentoMp[]> {
+  const primeira = await buscarPagamentosAlterados(token, p)
+  const segunda = await buscarPagamentosAlterados(token, p)
+  return juntarPorId([primeira, segunda])
+}

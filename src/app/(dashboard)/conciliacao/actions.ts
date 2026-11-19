@@ -14,7 +14,7 @@ import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-per
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
-import { casarPorAutorizacao, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
+import { casarPorAutorizacao, linhaDaTransacao, semAlvos, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
 import { detectarFormato } from '@/lib/conciliacao-formato'
 import type { TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
 import { lerRelatorioCielo } from '@/lib/conciliacao-cielo'
@@ -276,27 +276,22 @@ async function importarRelatorio(formData: FormData) {
     }
 
     // Tenta auto-conciliar pela autorização registrada na venda (moto, peça ou OS), restrito ao grupo ativo
-    const { vendaId, pecaVendaId, osId } = r.autorizacao
-      ? await casarPorAutorizacao(db, lojaIdsGrupo, r.autorizacao)
-      : { vendaId: null, pecaVendaId: null, osId: null }
+    const alvos = r.autorizacao ? await casarPorAutorizacao(db, lojaIdsGrupo, r.autorizacao) : semAlvos()
+    const transacao = {
+      nsu:           r.nsu ?? undefined,
+      autorizacao:   r.autorizacao ?? undefined,
+      dataTransacao: r.dataTransacao,
+      valorBruto:    r.valorBruto,
+      valorLiquido:  r.valorLiquido,
+      parcelas:      r.parcelas,
+      tipo:          r.tipo,
+      status:        'aprovado',
+      rawData:       { bandeira: r.bandeira, portador: r.portador, serial: r.terminal ?? null },
+    }
+    const linha = linhaDaTransacao(grupo.id, operadora, transacao, alvos, new Date())
+    await db.insert(conciliacoesCartao).values(linha)
 
-    const matched = vendaId ?? pecaVendaId ?? osId
-    await db.insert(conciliacoesCartao).values({
-      grupoId:        grupo.id,
-      operadora,
-      dataTransacao:  r.dataTransacao,
-      nsu:            r.nsu,
-      autorizacao:    r.autorizacao,
-      valorBruto:     String(r.valorBruto),
-      valorLiquido:   r.valorLiquido != null ? String(r.valorLiquido) : null,
-      parcelas:       r.parcelas,
-      tipo:           r.tipo,
-      status:         'aprovado',
-      rawData:        { bandeira: r.bandeira, portador: r.portador, serial: r.terminal ?? null },
-      ...(matched ? { vendaId, pecaVendaId, osId, conciliado: true, conciliadoEm: new Date() } : {}),
-    })
-
-    if (matched) conciliadas++
+    if (linha.conciliado) conciliadas++
     else importadas++
   }
 
