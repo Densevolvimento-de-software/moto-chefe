@@ -157,7 +157,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   async function vincular(conciliacaoId: string) {
     setVinculando(true)
     try {
-      await vincularVendaAction(conciliacaoId, alvo.id, alvo.tipo)
+      await vincularVendaAction(conciliacaoId, alvo)
       await recarregar()
       setBuscandoIdx(null)
       limparBusca()

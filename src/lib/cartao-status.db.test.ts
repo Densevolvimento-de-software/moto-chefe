@@ -87,16 +87,16 @@ test('vincular cartão estornado é recusado com a frase de "não encontrada" e 
   const estornado = await cartao(base.grupoId, 1000, 'estornado', vendaId)
   const antes = await linhaDe(estornado)
 
-  await assert.rejects(actions.vincularVendaAction(estornado, vendaId, 'moto'), { message: 'Conciliação não encontrada' })
+  await assert.rejects(actions.vincularVendaAction(estornado, { tipo: 'moto', id: vendaId }), { message: 'Conciliação não encontrada' })
   assert.deepEqual(await linhaDe(estornado), antes)
   assert.equal(antes.conciliado, false)
 
   // Mesma frase de um id que não existe: a recusa não revela que a linha existe.
-  await assert.rejects(actions.vincularVendaAction(randomUUID(), vendaId, 'moto'), { message: 'Conciliação não encontrada' })
+  await assert.rejects(actions.vincularVendaAction(randomUUID(), { tipo: 'moto', id: vendaId }), { message: 'Conciliação não encontrada' })
 
   // O aprovado continua vinculando.
   const aprovado = await cartao(base.grupoId, 1000, 'aprovado', null)
-  await actions.vincularVendaAction(aprovado, vendaId, 'moto')
+  await actions.vincularVendaAction(aprovado, { tipo: 'moto', id: vendaId })
   const depois = await linhaDe(aprovado)
   assert.equal(depois.conciliado, true)
   assert.equal(depois.venda_id, vendaId)
@@ -112,9 +112,9 @@ test('vincular a venda, peça ou OS de outra Conta é recusado e a linha não mu
   const linhaA = await cartao(base.grupoId, 1000, 'aprovado', null)
   const antes = await linhaDe(linhaA)
 
-  await assert.rejects(actions.vincularVendaAction(linhaA, b.vendaId, 'moto'), { message: 'Venda não pertence ao grupo ativo' })
-  await assert.rejects(actions.vincularVendaAction(linhaA, pecaB.id, 'peca'), { message: 'Venda de peça não pertence ao grupo ativo' })
-  await assert.rejects(actions.vincularVendaAction(linhaA, osB.id, 'os'), { message: 'Ordem de serviço não pertence ao grupo ativo' })
+  await assert.rejects(actions.vincularVendaAction(linhaA, { tipo: 'moto', id: b.vendaId }), { message: 'Venda não pertence ao grupo ativo' })
+  await assert.rejects(actions.vincularVendaAction(linhaA, { tipo: 'peca', id: pecaB.id }), { message: 'Venda de peça não pertence ao grupo ativo' })
+  await assert.rejects(actions.vincularVendaAction(linhaA, { tipo: 'os', id: osB.id }), { message: 'Ordem de serviço não pertence ao grupo ativo' })
   assert.deepEqual(await linhaDe(linhaA), antes)
 })
 
@@ -124,7 +124,7 @@ test('vincular a linha de outra Conta recebe "Conciliação não encontrada" e a
   const antes = await linhaDe(linhaB)
   const { vendaId } = await semear() // a sessão passa a ser a da Conta A
 
-  await assert.rejects(actions.vincularVendaAction(linhaB, vendaId, 'moto'), { message: 'Conciliação não encontrada' })
+  await assert.rejects(actions.vincularVendaAction(linhaB, { tipo: 'moto', id: vendaId }), { message: 'Conciliação não encontrada' })
   assert.deepEqual(await linhaDe(linhaB), antes)
 })
 

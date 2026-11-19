@@ -312,7 +312,8 @@ async function importarRelatorio(formData: FormData) {
 // (vincular poria o valor devolvido de volta nas somas), e a frase não revela mais que "não achei".
 const CONCILIACAO_NAO_ENCONTRADA = 'Conciliação não encontrada'
 
-export async function vincularVendaAction(conciliacaoId: string, alvoId: string, tipo: AlvoTipo = 'moto') {
+export async function vincularVendaAction(conciliacaoId: string, alvo: AlvoConciliacao) {
+  const { id: alvoId, tipo } = alvo
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)

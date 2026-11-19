@@ -66,7 +66,7 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
   function vincular(alvoId: string, tipo: AlvoTipo) {
     startTransition(async () => {
       try {
-        await vincularVendaAction(conciliacaoId, alvoId, tipo)
+        await vincularVendaAction(conciliacaoId, { tipo, id: alvoId })
         toast.success('Venda vinculada')
         setOpen(false)
       } catch {
