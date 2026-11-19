@@ -5,6 +5,7 @@ import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
 import { clicar, digitar } from '@/test/eventos-dom'
+import { capturarImpressao } from '@/test/impressao-em-tela'
 
 const { dom, desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
@@ -13,23 +14,11 @@ const FRETE = { ok: true as const, distanciaKmIda: 42.1, kmIdaEVolta: 84.2, cust
 const simularFrete = mock.fn(async (_loja: string, _cep: string) => FRETE)
 mock.module('../actions', { namedExports: { simularFreteAction: (l: string, c: string) => simularFrete(l, c) } })
 
-// Janela de impressão: guarda o blob que iria para o papel e quantas vezes a janela abriu.
-const impressos: string[] = []
-const blobs = new Map<string, Blob>()
-Object.assign(dom.window.URL, {
-  createObjectURL: (b: Blob) => { blobs.set('blob:teste', b); return 'blob:teste' },
-  revokeObjectURL: () => {},
-})
-dom.window.open = (() => { impressos.push('aberta'); return null }) as typeof dom.window.open
-const globaisAntes = { URL: globalThis.URL, Blob: globalThis.Blob }
-Object.assign(globalThis, { URL: dom.window.URL, Blob: dom.window.Blob })
-after(() => { Object.assign(globalThis, globaisAntes) })
+const impressao = capturarImpressao(dom)
 
 const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
   simularFrete.mock.resetCalls()
-  impressos.length = 0
-  blobs.clear()
   for (const desmontar of montados.splice(0)) await desmontar()
 })
 
@@ -94,8 +83,8 @@ test('imprimir abre a janela com o papel do modelo, os dois valores e o frete', 
   await t.calcularFrete()
   await clicar(botao('Imprimir / Salvar PDF'))
   await t.act(() => esperar(10))
-  assert.deepEqual(impressos, ['aberta'])
-  const html = (await blobs.get('blob:teste')!.text()).replace(/ /g, ' ')
+  assert.deepEqual(impressao.janelas, ['aberta'])
+  const html = await impressao.papel()
   assert.match(html, /Scooter 3000/)
   assert.match(html, /12x de R\$ 1\.300,00/)
   assert.match(html, /84,2 km ida e volta/)
