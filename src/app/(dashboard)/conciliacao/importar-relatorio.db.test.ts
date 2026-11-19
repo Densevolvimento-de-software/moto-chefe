@@ -97,7 +97,7 @@ test('admin_rede (persona real) importa no grupo liberado; em grupo não liberad
   const casa = await contaComCielo()
   const liberado = await contaComCielo()
   const naoLiberado = await contaComCielo()
-  const rede = { id: randomUUID(), papel: 'admin_rede', lojaId: casa.lojaId, contaId: casa.contaId, gruposAcesso: [] as string[], gruposAprovacao: [] as string[] }
+  const rede = sessaoDe(casa, 'admin_rede', randomUUID())
   const vivos = [{ grupoId: liberado.grupoId, contaId: liberado.contaId }]
   const cod = codigos()
 

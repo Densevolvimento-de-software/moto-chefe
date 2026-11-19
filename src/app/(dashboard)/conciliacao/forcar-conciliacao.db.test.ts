@@ -159,7 +159,7 @@ test('admin_rede (persona real) força no grupo liberado; em grupo não liberado
   const casa = await contaComAlvos()
   const liberado = await contaComAlvos()
   const { a: naoLiberado, comoFicou } = await forcadoNaContaA()
-  const rede = { id: randomUUID(), nome: 'admin_rede de teste', papel: 'admin_rede', lojaId: casa.lojaId, contaId: casa.contaId, gruposAcesso: [] as string[], gruposAprovacao: [] as string[] }
+  const rede = sessaoDe(casa, 'admin_rede', randomUUID())
   const vivos = [{ grupoId: liberado.grupoId, contaId: liberado.contaId }]
 
   grupoAtivoNoCookie = liberado.grupoId
