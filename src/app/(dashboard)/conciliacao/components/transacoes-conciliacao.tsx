@@ -153,7 +153,8 @@ const Dado = ({ rotulo, children }: { rotulo: string; children: ReactNode }) => 
 function FolhaDaLinha({ l }: { l: LinhaNaTela }) {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      {/* pr-10: o X de fechar da gaveta fica no canto de cima, à direita. */}
+      <div className="flex items-center justify-between gap-3 pr-10">
         <SheetTitle className="text-lg"><Valor valor={l.valor} riscado={l.estornada} /></SheetTitle>
         <span className="flex items-center gap-1.5">
           <SeloDoTipo l={l} />
@@ -162,7 +163,9 @@ function FolhaDaLinha({ l }: { l: LinhaNaTela }) {
       </div>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
         <Dado rotulo="Data">{dataPuraBr(l.data)}</Dado>
-        <Dado rotulo="Operadora">{[l.operadora, l.bandeira].filter(Boolean).join(', ')}</Dado>
+        <Dado rotulo="Operadora">
+          {l.operadora}{l.bandeira && <>, <span className="capitalize">{l.bandeira}</span></>}
+        </Dado>
         {l.liquido !== null && <Dado rotulo="Líquido"><Valor valor={l.liquido} riscado={l.estornada} /></Dado>}
         {l.nsu && <Dado rotulo="NSU">{l.nsu}</Dado>}
         {l.portador && <Dado rotulo="Portador">{l.portador}</Dado>}
