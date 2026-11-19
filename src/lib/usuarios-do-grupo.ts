@@ -18,8 +18,8 @@ export const usuarioDoGrupo = (grupoId: string) => and(
   sql`${usuarios.contaId} = (select conta_id from grupos where id = ${grupoId}::uuid)`,
 )
 
-// Usuário que um registro da Conta pode ligar (vendedor, mecânico): o da Conta, ou só o do grupo
-// liberado na persona do admin_rede (#517), a mesma função da lista da tela.
+// Usuário que um registro da Conta pode ligar (vendedor, mecânico): o da Conta, ou, na persona do
+// admin_rede (#517), só o do grupo liberado, pela mesma função da lista da tela.
 export const usuarioDoEscopo = ({ contaId, grupoLiberado }: { contaId: string; grupoLiberado: string | null }): SQL =>
   grupoLiberado ? usuarioDoGrupo(grupoLiberado)! : usuarioOuLojaDaConta(contaId)
 
