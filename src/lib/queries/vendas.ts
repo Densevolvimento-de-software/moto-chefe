@@ -3,6 +3,7 @@ import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
 import { pedidosVenda, vendas, motos, lojas, grupos, usuarios, modelos, origensVenda } from '@/lib/db/schema'
 import { eq, and, ilike, inArray, desc, sql, gte, lte } from 'drizzle-orm'
 import { inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
+import { pixCobertoSql } from '@/lib/queries/pix-coberto'
 
 export type PedidoComDetalhes = Awaited<ReturnType<typeof listarPedidosPorLoja>>[0]
 export type VendaComDetalhes  = Awaited<ReturnType<typeof listarVendas>>[0]
@@ -54,7 +55,7 @@ export async function listarVendas(filtros?: {
       // Fonte única de PIX desde 15/09/2026 (o ValidaPix saiu). Venda anterior a
       // julho/2026, cujo pagamento só existia na tabela antiga, aparece com PIX
       // zerado — histórico em backups/pix_recebimentos_validapix_20260915.json.
-      pixConciliadoValor: sql<number>`COALESCE((SELECT SUM(valor::numeric) FROM pix_recebimentos_mcp WHERE venda_id = ${vendas.id}), 0)`,
+      pixConciliadoValor: sql<number>`COALESCE((SELECT SUM(${pixCobertoSql()}) FROM pix_recebimentos_mcp WHERE venda_id = ${vendas.id}), 0)`,
       // Status de assinatura por tipo, para os ícones da lista. O ORDER BY
       // prioriza o assinado: se houve um cancelado antes e o seguinte foi
       // assinado, o que vale é o assinado.

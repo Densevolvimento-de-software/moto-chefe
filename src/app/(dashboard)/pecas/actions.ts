@@ -18,6 +18,7 @@ import { excluirVendaPecaTx } from '@/lib/excluir-venda-peca'
 import { alterarPeca, inserirPeca, listarPecas, type QuemVePecas } from '@/lib/pecas-da-conta'
 import { definirSaldo } from '@/lib/estoque-pecas-loja'
 import { aplicarVendaPeca, type DadosVendaPeca, type ItemVendaPecaInput, type PagamentoVendaPecaInput } from '@/lib/venda-peca'
+import { pixCobertoSql } from '@/lib/queries/pix-coberto'
 
 
 async function verificarAcesso() {
@@ -456,7 +457,7 @@ export async function listarVendasPecasAction(filtros: FiltrosVendasPecas = {}) 
         AND conciliado = true
       ), 0)`,
       pixConciliadoValor: sql<number>`COALESCE((
-        SELECT SUM(valor::numeric)
+        SELECT SUM(${pixCobertoSql()})
         FROM pix_recebimentos_mcp
         WHERE peca_venda_id = ${vendasPecas.id}
       ), 0)`,
