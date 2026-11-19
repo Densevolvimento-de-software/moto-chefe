@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { alvoValido, colunasDoAlvo, tipoDoAlvo } from './conciliacao-alvo'
+import { ALVO_TIPOS, alvoDasColunas, alvoValido, colunasDoAlvo, semAlvos, tipoDoAlvo } from './conciliacao-alvo'
 
 const ID = '2c9d47e2-c479-42bf-9372-f7a34308299f'
 
@@ -30,4 +30,12 @@ test('colunasDoAlvo: só a coluna do tipo leva o id; as outras ficam nulas', () 
   assert.deepEqual(colunasDoAlvo({ tipo: 'moto', id: ID }), { vendaId: ID, pecaVendaId: null, osId: null })
   assert.deepEqual(colunasDoAlvo({ tipo: 'peca', id: ID }), { vendaId: null, pecaVendaId: ID, osId: null })
   assert.deepEqual(colunasDoAlvo({ tipo: 'os', id: ID }), { vendaId: null, pecaVendaId: null, osId: ID })
+})
+
+test('alvoDasColunas: o inverso de colunasDoAlvo; sem coluna preenchida, null', () => {
+  for (const tipo of ALVO_TIPOS) {
+    const alvo = { tipo, id: ID }
+    assert.deepEqual(alvoDasColunas(colunasDoAlvo(alvo)), alvo)
+  }
+  assert.equal(alvoDasColunas(semAlvos()), null)
 })

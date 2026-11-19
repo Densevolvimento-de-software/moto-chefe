@@ -7,7 +7,7 @@ import { db } from './db'
 import { pixRecebimentosMcp } from './db/schema'
 import { COMPLETA_FORCADA, pixCompletaForcadaParcial } from './conciliacao-status'
 import { cartoesDoAlvo, pagamentosDoAlvo, pixDoAlvo } from './alvo-da-conciliacao'
-import type { AlvoConciliacao } from './conciliacao-alvo'
+import { alvoDasColunas, type Alvos } from './conciliacao-alvo'
 import { lojasDoGrupo } from './conta'
 import { ehTransferenciaInterna } from './pix-internos'
 import { RecusaUsuario } from './resultado-action'
@@ -58,14 +58,11 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
   if (ligados.length === 0) throw new RecusaUsuario(PIX_JA_VINCULADO)
 }
 
-type Vinculo = { vendaId: string | null; osId: string | null; pecaVendaId: string | null }
-const alvoDoVinculo = (v: Vinculo): AlvoConciliacao | null =>
-  v.vendaId ? { tipo: 'moto', id: v.vendaId } : v.osId ? { tipo: 'os', id: v.osId } : v.pecaVendaId ? { tipo: 'peca', id: v.pecaVendaId } : null
 
 // O alvo do PIX com os pagamentos lidos só nas lojas do grupo do PIX (pedido não tem forçada). Cartões e PIX
 // do alvo só depois: eles leem pelo id.
-async function alvoComPagamentos(v: Vinculo, grupoId: string) {
-  const alvo = alvoDoVinculo(v)
+async function alvoComPagamentos(v: Alvos, grupoId: string) {
+  const alvo = alvoDasColunas(v)
   if (!alvo) return null
   const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
   const pgtos = await pagamentosDoAlvo(alvo, lojaIds)
@@ -73,7 +70,7 @@ async function alvoComPagamentos(v: Vinculo, grupoId: string) {
   return { pgtos, cartoes: await cartoesDoAlvo(alvo), pix: await pixDoAlvo(alvo) }
 }
 
-async function vinculoDoPix(pixId: string, grupoId: string): Promise<Vinculo | null> {
+async function vinculoDoPix(pixId: string, grupoId: string): Promise<Alvos | null> {
   const [v] = ehUuid(pixId)
     ? await db.select({ vendaId: pixRecebimentosMcp.vendaId, osId: pixRecebimentosMcp.osId, pecaVendaId: pixRecebimentosMcp.pecaVendaId })
       .from(pixRecebimentosMcp).where(doGrupo(pixId, grupoId)).limit(1)
@@ -82,7 +79,7 @@ async function vinculoDoPix(pixId: string, grupoId: string): Promise<Vinculo | n
 }
 
 /** Sem este PIX a forçada parcial do alvo fica sem o resto que a completava? */
-async function completaForcada(pixId: string, grupoId: string, v: Vinculo): Promise<boolean> {
+async function completaForcada(pixId: string, grupoId: string, v: Alvos): Promise<boolean> {
   const alvo = await alvoComPagamentos(v, grupoId)
   return alvo ? pixCompletaForcadaParcial(alvo.pgtos, alvo.cartoes, alvo.pix, pixId) : false
 }
