@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearLoja, semearUsuario, type Base } from '@/test/semear-conta'
 import { semearVendaMoto } from '@/test/semear-alvos-conciliacao'
+import { semearLancamentoCaixa } from '@/test/semear-despesas'
 import { semearModelo } from '@/test/semear-conta'
 
 const url = process.env.TEST_DATABASE_URL
@@ -19,6 +20,8 @@ process.env.DATABASE_URL = url
 let idDaSessao = ''
 let grupoNoCookie: string | null = null
 const linksPedidos: string[] = []
+const subidos: string[] = []
+const apagados: string[] = []
 const mocks = [
   mock.module('@/lib/supabase/server', { namedExports: { createClient: async () => ({ auth: {
     getClaims: async () => ({ data: { claims: { sub: idDaSessao, app_metadata: {} } } }),
@@ -29,6 +32,8 @@ const mocks = [
   mock.module('next/cache', { namedExports: { revalidatePath: () => {} } }),
   mock.module('@/lib/supabase/admin', { namedExports: { clienteSupabaseAdmin: () => ({ storage: { from: () => ({
     createSignedUrl: async (caminho: string) => { linksPedidos.push(caminho); return { data: { signedUrl: `https://teste.invalid/${caminho}` }, error: null } },
+    upload: async (caminho: string) => { subidos.push(caminho); return { error: null } },
+    remove: async (caminhos: string[]) => { apagados.push(...caminhos); return { error: null } },
   }) } }) } }),
 ]
 
@@ -50,12 +55,10 @@ async function semearConta(nome: string): Promise<Conta> {
   return { base, socio, aux, categoria }
 }
 
-// Saída de caixa pendente com comprovante, gravada direto no banco (fora da action).
+// Saída de caixa pendente com comprovante no formato antigo (sem o grupo), gravada direto no banco.
 async function saidaPendente(c: Conta) {
   const caminho = `caixa/${randomUUID()}.pdf`
-  const [l] = await linhas(sql`insert into lancamentos_caixa (loja_id, usuario_id, tipo, categoria, valor, data, comprovante_url)
-    values (${c.base.lojaId}, ${c.aux}, 'saida', 'Outros', '10.00', '2026-11-10', ${caminho}) returning id`)
-  return { id: l.id as string, caminho }
+  return { id: await semearLancamentoCaixa(db, { lojaId: c.base.lojaId, usuarioId: c.aux, comprovanteUrl: caminho, data: '2026-11-10' }), caminho }
 }
 const estado = async (id: string) =>
   (await linhas(sql`select status_aprovacao as s, aprovado_por_id as por from lancamentos_caixa where id = ${id}`))[0] ?? null
@@ -157,4 +160,43 @@ test('guarda: aux_adm de outra loja do mesmo grupo não abre o comprovante', asy
   const s = await saidaPendente(a)
   idDaSessao = auxDaOutra
   await assert.rejects(caixa.getComprovanteUrlAction(s.caminho), /Comprovante não encontrado/)
+})
+
+const comprovante = () => {
+  const fd = new FormData()
+  fd.append('file', new File(['%PDF-1.4 teste'], 'recibo.pdf', { type: 'application/pdf' }))
+  return fd
+}
+
+test('saída com comprovante: o arquivo sobe para a pasta do grupo da loja e a linha guarda esse caminho', async () => {
+  const a = await semearConta('A')
+  await admin.criarCategoriaCaixa(db, a.base.grupoId, { nome: `${a.categoria} saida`, tipo: 'saida' })
+  idDaSessao = a.aux
+  subidos.length = 0
+  const dados = { lojaId: a.base.lojaId, tipo: 'saida' as const, categoria: `${a.categoria} saida`, valor: '10.00', data: '2026-11-10' }
+  assert.deepEqual(await caixa.criarLancamentoAction(dados, comprovante()), { ok: true, dados: undefined })
+  assert.equal(subidos.length, 1)
+  assert.ok(subidos[0].startsWith(`caixa/${a.base.grupoId}/`), 'caminho com o grupo da loja')
+  assert.deepEqual(await linhas(sql`select comprovante_url as c from lancamentos_caixa where categoria = ${`${a.categoria} saida`}`), [{ c: subidos[0] }])
+})
+
+test('loja de outra Conta: recusa antes de subir o arquivo', async () => {
+  const a = await semearConta('A')
+  const b = await semearConta('B')
+  idDaSessao = b.socio
+  subidos.length = 0
+  const dados = { lojaId: a.base.lojaId, tipo: 'saida' as const, categoria: a.categoria, valor: '10.00', data: '2026-11-10' }
+  await assert.rejects(caixa.criarLancamentoAction(dados, comprovante()), /Sem permissão para esta loja/)
+  assert.deepEqual(subidos, [])
+})
+
+test('se a linha não grava, o arquivo que subiu é apagado', async () => {
+  const a = await semearConta('A')
+  await admin.criarCategoriaCaixa(db, a.base.grupoId, { nome: `${a.categoria} saida`, tipo: 'saida' })
+  idDaSessao = a.aux
+  subidos.length = 0
+  apagados.length = 0
+  const dados = { lojaId: a.base.lojaId, tipo: 'saida' as const, categoria: `${a.categoria} saida`, valor: '10.00', data: 'não é data' }
+  await assert.rejects(caixa.criarLancamentoAction(dados, comprovante()))
+  assert.deepEqual(apagados, subidos)
 })

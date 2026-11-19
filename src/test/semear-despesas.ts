@@ -39,9 +39,10 @@ export type LancamentoCaixaSemente = {
   categoria?: string
   data?: string
   aprovadoPorId?: string | null
+  comprovanteUrl?: string | null
 }
 
 export const semearLancamentoCaixa = (tx: Executor, c: LancamentoCaixaSemente) =>
-  idDoInsert(tx, sql`insert into lancamentos_caixa (loja_id, usuario_id, tipo, categoria, valor, data, aprovado_por_id)
+  idDoInsert(tx, sql`insert into lancamentos_caixa (loja_id, usuario_id, tipo, categoria, valor, data, aprovado_por_id, comprovante_url)
     values (${c.lojaId}, ${c.usuarioId}, ${c.tipo ?? 'saida'}, ${c.categoria ?? 'Outros'}, '10.00', ${c.data ?? '2026-09-10'},
-      ${c.aprovadoPorId ?? null}) returning id`)
+      ${c.aprovadoPorId ?? null}, ${c.comprovanteUrl ?? null}) returning id`)

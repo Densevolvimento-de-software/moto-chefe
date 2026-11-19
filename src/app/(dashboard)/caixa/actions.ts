@@ -9,6 +9,8 @@ import { lancamentoCaixaDoUsuario } from '@/lib/lancamento-caixa-do-usuario'
 import { eq, and } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
+import { getGrupoIdDaLoja } from '@/lib/grupo'
+import { caminhoDoComprovanteCaixa, lojaEfetivaDoLancamento, recusaDoComprovante } from '@/lib/comprovante-caixa'
 
 // Outra Conta, loja que ele não opera e id inexistente recebem a mesma frase (#153).
 const NAO_ENCONTRADO = 'Lançamento não encontrado'
@@ -20,91 +22,68 @@ type LancamentoInput = {
   descricao?: string
   valor: string
   data: string
-  comprovanteUrl?: string
 }
 
 // Recusa de categoria (#834) volta como { ok: false, erro }: lançada, a mensagem some no build de
 // produção (#404). Os outros erros seguem lançados, como antes.
 export async function criarLancamentoAction(dados: LancamentoInput, comprovante?: FormData) {
-  return acao(async () => {
-    const comprovanteUrl = comprovante ? await uploadComprovanteAction(comprovante) : dados.comprovanteUrl
-    return criarLancamento({ ...dados, comprovanteUrl })
-  })
+  return acao(() => criarLancamento(dados, comprovante?.get('file')))
 }
 
-async function criarLancamento(dados: LancamentoInput) {
+// Tudo conferido antes de subir o arquivo; o caminho sai do grupo da loja, nunca do navegador (#153).
+async function criarLancamento(dados: LancamentoInput, arquivo: FormDataEntryValue | null | undefined) {
   const usuario = await getUsuarioLogado()
   if (!['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)) {
     throw new Error('Sem permissão')
   }
 
-  const isAdmin = ['admin_geral', 'admin_socio'].includes(usuario.papel)
-  const lojaIdFinal = isAdmin ? dados.lojaId : usuario.lojaId
-  if (!lojaIdFinal) throw new Error('Loja inválida')
-  if (!isAdmin && dados.lojaId && dados.lojaId !== usuario.lojaId) {
-    throw new Error('Sem permissão para esta loja')
-  }
-  if (!(await podeAgirNaLoja(usuario, lojaIdFinal))) throw new Error('Sem permissão para esta loja')
-  await conferirCategoriaCaixaDaLoja(db, lojaIdFinal, dados.categoria, dados.tipo)
+  const loja = lojaEfetivaDoLancamento(usuario, dados.lojaId)
+  if ('erro' in loja) throw new Error(loja.erro)
+  if (!(await podeAgirNaLoja(usuario, loja.lojaId))) throw new Error('Sem permissão para esta loja')
+  await conferirCategoriaCaixaDaLoja(db, loja.lojaId, dados.categoria, dados.tipo)
 
   const valorNum = parseFloat(dados.valor)
   if (isNaN(valorNum) || valorNum <= 0) {
     throw new Error('Valor inválido')
   }
 
-  if (dados.tipo === 'saida' && !dados.comprovanteUrl) {
+  const file = arquivo instanceof File ? arquivo : null
+  if (dados.tipo === 'saida' && !file) {
     throw new Error('Comprovante obrigatório para saídas')
   }
+  const recusa = file ? recusaDoComprovante(file) : null
+  if (recusa) throw new Error(recusa)
 
-  await db.insert(lancamentosCaixa).values({
-    lojaId: lojaIdFinal,
-    usuarioId: usuario.id,
-    tipo: dados.tipo,
-    categoria: dados.categoria,
-    descricao: dados.descricao || null,
-    valor: dados.valor,
-    data: dados.data,
-    // Lançamento à mão não se liga a venda: só o servidor faz esse vínculo (#153).
-    comprovanteUrl: dados.comprovanteUrl || null,
-  })
+  const comprovanteUrl = file
+    ? caminhoDoComprovanteCaixa(await getGrupoIdDaLoja(loja.lojaId), file.type, `${Date.now()}-${crypto.randomUUID()}`)
+    : null
+  // Só com arquivo: lançamento sem comprovante não fala com o Storage.
+  const storage = file ? clienteSupabaseAdmin().storage.from('comprovantes') : null
+  if (storage && file && comprovanteUrl) {
+    const { error } = await storage.upload(comprovanteUrl, file, { contentType: file.type })
+    if (error) throw new Error(`Erro no upload: ${error.message}`)
+  }
+
+  try {
+    await db.insert(lancamentosCaixa).values({
+      lojaId: loja.lojaId,
+      usuarioId: usuario.id,
+      tipo: dados.tipo,
+      categoria: dados.categoria,
+      descricao: dados.descricao || null,
+      valor: dados.valor,
+      data: dados.data,
+      // Lançamento à mão não se liga a venda: só o servidor faz esse vínculo (#153).
+      comprovanteUrl,
+    })
+  } catch (e) {
+    // Sem a linha, o arquivo ficaria órfão no bucket.
+    if (storage && comprovanteUrl) await storage.remove([comprovanteUrl]).catch(() => {})
+    throw e
+  }
 
   revalidatePath('/caixa')
   revalidatePath('/financeiro')
-}
-
-export async function uploadComprovanteAction(formData: FormData): Promise<string> {
-  const usuario = await getUsuarioLogado()
-  if (!['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)) {
-    throw new Error('Sem permissão')
-  }
-
-  const file = formData.get('file') as File
-  if (!file || file.size === 0) throw new Error('Arquivo não enviado')
-
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
-  if (!allowedTypes.includes(file.type)) {
-    throw new Error('Formato não suportado. Envie JPG, PNG, WebP ou PDF.')
-  }
-
-  if (file.size > 10 * 1024 * 1024) {
-    throw new Error('Arquivo muito grande. Máximo: 10MB.')
-  }
-
-  const extMap: Record<string, string> = {
-    'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf',
-  }
-  const ext = extMap[file.type] ?? 'bin'
-  const fileName = `${Date.now()}-${crypto.randomUUID()}.${ext}`
-  const filePath = `caixa/${fileName}`
-
-  const supabaseAdmin = clienteSupabaseAdmin()
-  const { error } = await supabaseAdmin.storage
-    .from('comprovantes')
-    .upload(filePath, file, { contentType: file.type })
-
-  if (error) throw new Error(`Erro no upload: ${error.message}`)
-
-  return filePath
 }
 
 export async function getComprovanteUrlAction(filePath: string): Promise<string> {
