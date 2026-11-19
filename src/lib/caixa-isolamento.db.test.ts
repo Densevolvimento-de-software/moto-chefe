@@ -5,7 +5,7 @@ import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearUsuario, type Base } from '@/test/semear-conta'
+import { semearContaBase, semearLoja, semearUsuario, type Base } from '@/test/semear-conta'
 import { semearVendaMoto } from '@/test/semear-alvos-conciliacao'
 import { semearModelo } from '@/test/semear-conta'
 
@@ -17,12 +17,14 @@ if (!['localhost', '127.0.0.1'].includes(new URL(url).hostname)) {
 process.env.DATABASE_URL = url
 
 let idDaSessao = ''
+let grupoNoCookie: string | null = null
 const linksPedidos: string[] = []
 const mocks = [
   mock.module('@/lib/supabase/server', { namedExports: { createClient: async () => ({ auth: {
     getClaims: async () => ({ data: { claims: { sub: idDaSessao, app_metadata: {} } } }),
   } }) } }),
-  mock.module('next/headers', { namedExports: { headers: async () => new Headers(), cookies: async () => ({ get: () => undefined }) } }),
+  mock.module('next/headers', { namedExports: { headers: async () => new Headers(),
+    cookies: async () => ({ get: (n: string) => (n === 'grupoAtivo' && grupoNoCookie ? { value: grupoNoCookie } : undefined) }) } }),
   mock.module('next/navigation', { namedExports: { redirect: (d: string) => { throw new Error(`redirect ${d}`) }, notFound: () => { throw new Error('notFound') } } }),
   mock.module('next/cache', { namedExports: { revalidatePath: () => {} } }),
   mock.module('@/lib/supabase/admin', { namedExports: { clienteSupabaseAdmin: () => ({ storage: { from: () => ({
@@ -92,7 +94,7 @@ test('guarda: aprovar, reprovar e excluir lançamento de outra Conta ou inexiste
   assert.deepEqual(await estado(s.id), { s: 'pendente', por: null })
 })
 
-test('guarda: o sócio da própria Conta aprova, reprova e exclui; o aux_adm de outra loja não', async () => {
+test('guarda: o sócio da própria Conta aprova, reprova e exclui', async () => {
   const a = await semearConta('A')
   const s = await saidaPendente(a)
   idDaSessao = a.socio
@@ -117,4 +119,42 @@ test('guarda: link do comprovante de outra Conta ou inexistente: "Comprovante n�
   assert.deepEqual(linksPedidos, [])
   idDaSessao = a.aux
   assert.equal(await caixa.getComprovanteUrlAction(s.caminho), `https://teste.invalid/${s.caminho}`)
+})
+
+test('guarda: admin_geral aprova lançamento de qualquer Conta', async () => {
+  const a = await semearConta('A')
+  const geral = await semearUsuario(db, a.base, { papel: 'admin_geral', rotulo: `geral-${randomUUID()}`, semLoja: true })
+  const s = await saidaPendente(a)
+  idDaSessao = geral
+  await caixa.aprovarLancamentoAction(s.id)
+  assert.deepEqual(await estado(s.id), { s: 'aprovado', por: geral })
+})
+
+test('guarda: admin_rede na persona do grupo liberado age nele; noutro grupo da Conta dona, "não encontrado"', async () => {
+  const a = await semearConta('A')
+  const a2 = await semearConta('A2')
+  await linhas(sql`update grupos set conta_id = ${a.base.contaId} where id = ${a2.base.grupoId}`)
+  const b = await semearConta('B')
+  const geral = await semearUsuario(db, a.base, { papel: 'admin_geral', rotulo: `geral-${randomUUID()}`, semLoja: true })
+  const rede = await semearUsuario(db, b.base, { papel: 'admin_rede', rotulo: `rede-${randomUUID()}`, comConta: true })
+  await linhas(sql`insert into grupos_liberados (usuario_id, grupo_id, liberado_por) values (${rede}, ${a.base.grupoId}, ${geral})`)
+  const doLiberado = await saidaPendente(a)
+  const doIrmao = await saidaPendente({ ...a2, base: { ...a2.base, contaId: a.base.contaId } })
+  idDaSessao = rede
+  grupoNoCookie = a.base.grupoId
+  try {
+    await caixa.aprovarLancamentoAction(doLiberado.id)
+    assert.deepEqual(await estado(doLiberado.id), { s: 'aprovado', por: rede })
+    await assert.rejects(caixa.aprovarLancamentoAction(doIrmao.id), /Lançamento não encontrado/)
+    assert.deepEqual(await estado(doIrmao.id), { s: 'pendente', por: null })
+  } finally { grupoNoCookie = null }
+})
+
+test('guarda: aux_adm de outra loja do mesmo grupo não abre o comprovante', async () => {
+  const a = await semearConta('A')
+  const outraLoja = await semearLoja(db, a.base.grupoId, `CX153 outra ${randomUUID()}`)
+  const auxDaOutra = await semearUsuario(db, { ...a.base, lojaId: outraLoja }, { papel: 'aux_adm', rotulo: `aux2-${randomUUID()}`, comConta: true })
+  const s = await saidaPendente(a)
+  idDaSessao = auxDaOutra
+  await assert.rejects(caixa.getComprovanteUrlAction(s.caminho), /Comprovante não encontrado/)
 })
