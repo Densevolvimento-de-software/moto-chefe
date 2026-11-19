@@ -352,7 +352,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{TIPO_LABEL[p.tipo] ?? p.tipo}</p>
-                  <p className="truncate text-xs text-muted-foreground">
+                  {/* O aviso do estorno quebra linha em vez de cortar: é a explicação do pendente. */}
+                  <p className={cn('text-xs text-muted-foreground', !estorno && 'truncate')}>
                     <span className={cn('font-medium', SITUACAO[situacao].cor)}>{SITUACAO[situacao].rotulo}</span>
                     {complemento ? ` · ${complemento}` : ''}
                   </p>
@@ -484,7 +485,8 @@ function Sugestao({ titulo, selo, detalhes, valor, onVincular, rotulo, vinculand
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
       <div className="min-w-0 flex-1">
-        <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+        {/* O selo desce para a linha de baixo quando não cabe ao lado do título (celular). */}
+        <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-medium">
           <span className="truncate">{titulo}</span>
           {selo && <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{selo}</span>}
         </p>
