@@ -113,22 +113,13 @@ export function temPapel(
   return usuario.papel === papel || (usuario.papeisExtras ?? []).includes(papel)
 }
 
-// ─── Exceção pontual: categorizar saída do banco (/despesas) ──────────────────
-// Decisão do Cesar (12/08/2026): lançar, editar e cancelar a categorização das
-// saídas do Open Finance é só dele e do Mateus. Os demais sócios (Luiz Paulo,
-// Marina) continuam vendo a aba inteira — só não mexem. João Brito liberado em
-// 06/10/2026, também a pedido do Cesar.
-//
-// É nominal porque o Mateus é admin_socio igual aos outros: não existe papel que
-// separe os dois grupos.
-const EMAILS_CATEGORIZA_DESPESA_BANCO = [
-  'mateus@motochefesuldeminas.com.br',
-  'joao.brito@motochefesuldeminas.com.br',
-]
-
-export function podeCategorizarDespesaBanco(usuario: { papel: string; email: string }) {
+// ─── Categorizar saída do banco (/despesas) ───────────────────────────────────
+// Todo sócio vê a aba inteira; lançar, editar e cancelar a categorização é do admin_geral e de quem
+// tem a marca do cadastro (categoriza_despesa_banco), que só o admin_geral liga em /admin/usuarios (#149).
+// A marca só vale para quem é sócio: outro papel marcado continua sem categorizar.
+export function podeCategorizarDespesaBanco(usuario: { papel: string; categorizaDespesaBanco?: boolean | null }) {
   if (usuario.papel === 'admin_geral') return true
-  return EMAILS_CATEGORIZA_DESPESA_BANCO.includes(usuario.email)
+  return usuario.papel === 'admin_socio' && usuario.categorizaDespesaBanco === true
 }
 
 export function canEditLoja(usuarioLojaId: string | null, targetLojaId: string, papel: string) {

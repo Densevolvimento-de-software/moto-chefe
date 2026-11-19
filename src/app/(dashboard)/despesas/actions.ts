@@ -30,7 +30,7 @@ function assertAdmin(papel: string) {
 
 // A aba "Importar do Banco" é mais restrita que o resto da tela: todo sócio vê,
 // mas só quem passa por aqui categoriza. Ver podeCategorizarDespesaBanco.
-function assertPodeCategorizar(usuario: { papel: string; email: string }) {
+function assertPodeCategorizar(usuario: { papel: string; categorizaDespesaBanco?: boolean | null }) {
   assertAdmin(usuario.papel)
   if (!podeCategorizarDespesaBanco(usuario)) {
     throw new Error('Sem permissão para categorizar saídas do banco')
