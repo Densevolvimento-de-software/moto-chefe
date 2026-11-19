@@ -7,6 +7,8 @@ import { revalidatePath } from 'next/cache'
 import { getUsuarioLogado } from '@/lib/auth'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
+import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
+import { COMPLETA_FORCADA, COMPLETA_FORCADA_PECA_A_GESTOR } from '@/lib/conciliacao-status'
 import { desvincularPix, vincularPix, type VinculoPix } from '@/lib/pix-vinculo'
 
 const PAPEIS_PERMITIDOS = ['admin_geral', 'admin_socio', 'aux_adm', 'vendedor']
@@ -67,6 +69,6 @@ async function removerCorrespondencia(id: string) {
   const usuario = await getUsuarioLogado()
   if (!PAPEIS_PERMITIDOS.includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
-  await desvincularPix(id, grupo.id)
+  await desvincularPix(id, grupo.id, podeGerirConciliacao(usuario.papel) ? COMPLETA_FORCADA : COMPLETA_FORCADA_PECA_A_GESTOR)
   revalidatePath('/pix-mcp')
 }

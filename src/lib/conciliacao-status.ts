@@ -1,5 +1,7 @@
 import type { ResultadoAction } from '@/lib/resultado-action'
 import { LINHA_PIX } from './conciliacao-cartao'
+import { VALOR_RECEBIDO_INVALIDO, custoDoPixForcado, lerValorRecebido, type CustoDoPix } from './custo-pix'
+import { centavos } from './centavos'
 export type StatusConc = 'na' | 'pendente' | 'parcial' | 'conciliada'
 
 export const TIPOS_CARTAO = new Set(['cartao_credito', 'cartao_debito', 'link_pagamento'])
@@ -9,7 +11,10 @@ export const PAGAMENTO_PIX: ReadonlySet<string> = new Set(['pix'])
 // lançamento correspondente no sistema (relatório da operadora não importado, PIX
 // fora do Open Finance, transferência avulsa). Fica gravada no próprio item do array
 // `pagamentos` — ver docs/superpowers/specs/2026-07-31-forcar-conciliacao-design.md.
-export type ConciliadoManual = { motivo: string; porId: string; porNome: string; em: string }
+// `pix`: na forçada de um pagamento PIX feita depois da #92, o que entrou na conta e o custo, calculados por
+// comForcado. Cartão, financiamento e as forçadas de PIX anteriores não têm.
+export type PixDaForcada = { valorRecebido: number } & CustoDoPix
+export type ConciliadoManual = { motivo: string; porId: string; porNome: string; em: string; pix?: PixDaForcada }
 
 export type PgtoOS = {
   tipo: string
@@ -45,16 +50,50 @@ export function precisaConciliar(tipo: string): boolean {
 const pagamentoNo = (pgtos: readonly PgtoOS[], idx: number) => Number.isInteger(idx) ? pgtos[idx] : undefined
 
 /** Quem força e quando: sai do servidor, nunca do navegador. */
-export type AutorDoForcado = Omit<ConciliadoManual, 'motivo'>
+export type AutorDoForcado = Pick<ConciliadoManual, 'porId' | 'porNome' | 'em'>
+
+/**
+ * Na forçada de PIX (#92): o que entrou na conta (vem da tela, ainda sem conferir) e quanto do pagamento os
+ * lançamentos já cobrem (a forçada parte do que falta, decisão do Luis registrada na #92). A action lê a cobertura
+ * no banco; a tela usa a do painel.
+ */
+export type RecebimentoDaForcada = { valorRecebido: unknown; coberto: number }
+
+/** Recusa de desvincular o PIX que completa uma forçada parcial (a tela da /pix-mcp oferece desfazer as duas). */
+export const COMPLETA_FORCADA = 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.'
+// Para quem não gere a conciliação (não pode desfazer a forçada).
+export const COMPLETA_FORCADA_PECA_A_GESTOR = 'Este PIX completa um pagamento marcado como recebido. Peça a quem gere a conciliação para desfazer a forçada.'
+
+export const PAGAMENTO_JA_FORCADO = 'Este pagamento já foi marcado como recebido. Desfaça antes de marcar de novo.'
 
 /** Os pagamentos com o da posição `idx` marcado como recebido na mão, ou a frase da recusa. */
-export function comForcado(pgtos: readonly PgtoOS[], idx: number, motivo: unknown, autor: AutorDoForcado): ResultadoAction<PgtoOS[]> {
+export function comForcado(
+  pgtos: readonly PgtoOS[], idx: number, motivo: unknown, autor: AutorDoForcado, recebimento?: RecebimentoDaForcada,
+): ResultadoAction<PgtoOS[]> {
   const texto = typeof motivo === 'string' ? motivo.trim() : ''
   if (texto.length < 3) return { ok: false, erro: 'Informe o motivo da conciliação forçada' }
   const alvo = pagamentoNo(pgtos, idx)
   if (!alvo) return { ok: false, erro: 'Pagamento não encontrado' }
   if (!precisaConciliar(alvo.tipo)) return { ok: false, erro: 'Esse pagamento não precisa de conciliação' }
-  return { ok: true, dados: pgtos.map((p, i) => i === idx ? { ...p, conciliadoManual: { motivo: texto, ...autor } } : p) }
+  // Como no vínculo do PIX (#90): o que a marca gravou não muda calado.
+  if (alvo.conciliadoManual) return { ok: false, erro: PAGAMENTO_JA_FORCADO }
+  const autoria = { motivo: texto, porId: autor.porId, porNome: autor.porNome, em: autor.em }
+  const pix = PAGAMENTO_PIX.has(alvo.tipo) ? pixDaForcada(alvo.valor, recebimento) : undefined
+  if (typeof pix === 'string') return { ok: false, erro: pix }
+  const marca: ConciliadoManual = pix ? { ...autoria, pix } : autoria
+  return { ok: true, dados: pgtos.map((p, i) => i === idx ? { ...p, conciliadoManual: marca } : p) }
+}
+
+/** De quanto parte a forçada de PIX: o que os lançamentos ainda não cobrem do pagamento. Tela e servidor. */
+export const baseDaForcada = (valorDoPagamento: number, coberto: number) => centavos(valorDoPagamento - coberto)
+
+/** A parte pix da marca, ou a frase da recusa. A tela usa a mesma conta para mostrar as colunas. */
+export function pixDaForcada(valorDoPagamento: number, recebimento?: RecebimentoDaForcada): PixDaForcada | string {
+  const valorRecebido = lerValorRecebido(recebimento?.valorRecebido)
+  if (valorRecebido === null) return VALOR_RECEBIDO_INVALIDO
+  const base = baseDaForcada(valorDoPagamento, recebimento?.coberto ?? 0)
+  if (base <= 0) return 'Esse pagamento já está conciliado'
+  return { valorRecebido, ...custoDoPixForcado(base, valorRecebido) }
 }
 
 /** Os pagamentos sem a marcação de forçado na posição `idx`, ou a frase da recusa. */
@@ -77,7 +116,8 @@ export function valorConciliadoManual(pagamentos: unknown): number {
   const pgtos = (pagamentos ?? []) as PgtoItem[]
   return pgtos
     .filter(p => p.conciliadoManual && precisaConciliar(p.tipo))
-    .reduce((a, p) => a + (Number(p.valor) || 0), 0)
+    // Forçada parcial de PIX (#92): a marca vale o que faltava; o resto da linha já conta como PIX vinculado.
+    .reduce((a, p) => a + (Number(p.conciliadoManual?.pix?.valorBruto ?? p.valor) || 0), 0)
 }
 
 type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number; tipo?: string }
@@ -102,6 +142,18 @@ export type CoberturaPgto = { conciliado: boolean; coberto: number; pixId?: stri
 // detalhes toda verde enquanto o badge da listagem — que sempre comparou valores —
 // dizia "Parcial". Quem manda é o valor; ver calcStatusMultiPagamento.
 export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[]): CoberturaPgto[] {
+  return cobrir(pgtos, linhasDoAlvo, pixDoBanco).resultado
+}
+
+// O que falta numa linha PIX forçada só em parte (#92): o valor menos o que a marca cobriu; 0 nas outras.
+function restoDaForcadaParcial(p: PgtoOS): number {
+  const base = PAGAMENTO_PIX.has(p.tipo) ? p.conciliadoManual?.pix?.valorBruto : undefined
+  const resto = base === undefined ? 0 : p.valor - base
+  return resto > 0.05 ? resto : 0
+}
+
+// `faltaNasForcadas`: quanto do resto das forçadas parciais de PIX (#92) os PIX vinculados não cobrem.
+function cobrir(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[]): { resultado: CoberturaPgto[]; faltaNasForcadas: number } {
   // A linha 'pix' da conciliação de cartão é o Pix da maquininha Mercado Pago (#51): é dinheiro de
   // Pix e cobre o pagamento Pix, como o recebimento do banco.
   const concs = linhasDoAlvo.filter(c => c.tipo !== LINHA_PIX)
@@ -152,6 +204,9 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
   // pintava a linha errada na venda com PIX de 4.490 + 5.000 + 1.000 (NF 2284), onde os
   // recebimentos conciliados eram justamente os de 5.000 e 1.000.
   const pixUsados = new Set<string>()
+  // Forçada parcial de PIX (#92): a marca cobre só o que faltava (pix.valorBruto); o resto da linha sai dos
+  // PIX vinculados que sobram depois das outras linhas casarem pelo valor (reserva antes do rateio).
+  const reservaPix = pgtos.reduce((a, p) => a + restoDaForcadaParcial(p), 0)
   pgtos.forEach((p, i) => {
     if (!PAGAMENTO_PIX.has(p.tipo) || resultado[i].conciliado) return
     const m = pixRecs.find(r => !pixUsados.has(r.id) && Math.abs(valorQueCobre(r) - p.valor) <= 0.05)
@@ -163,7 +218,8 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
 
   // O que sobrou rateia entre as linhas PIX ainda descobertas, na ordem. Dois PIX
   // lançados e um só recebimento fecham um, não os dois.
-  let poolPix = pixRecs.filter(r => !pixUsados.has(r.id)).reduce((a, r) => a + (valorQueCobre(r) || 0), 0)
+  const sobra = pixRecs.filter(r => !pixUsados.has(r.id)).reduce((a, r) => a + (valorQueCobre(r) || 0), 0)
+  let poolPix = Math.max(0, sobra - reservaPix)
   pgtos.forEach((p, i) => {
     if (!PAGAMENTO_PIX.has(p.tipo) || resultado[i].conciliado || poolPix <= 0) return
     const falta = p.valor - resultado[i].coberto
@@ -178,7 +234,7 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
     r.conciliado = precisaConciliar(pgtos[i].tipo) && r.coberto >= pgtos[i].valor - 0.05
   })
 
-  return resultado
+  return { resultado, faltaNasForcadas: Math.max(0, reservaPix - sobra) }
 }
 
 // Vendas, peças e OS: pagamento pode ter múltiplos itens (carrinho com pix + cartão +
@@ -240,4 +296,14 @@ export function pagamentosEfetivosOS(
   if (!formaPagamento) return []
   const tipo = LABEL_PARA_TIPO_OS[formaPagamento] ?? formaPagamento.toLowerCase()
   return [{ tipo, valor: Number(valorTotal) || 0 }]
+}
+
+/**
+ * Sem este PIX, a forçada parcial de PIX do alvo (#92) fica sem o resto que a completava? Quem desvincula
+ * recusa só nesse caso; PIX que cobre outra linha ou que sobra solta.
+ */
+export function pixCompletaForcadaParcial(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[], pixId: string): boolean {
+  const com = cobrir(pgtos, linhasDoAlvo, pixDoBanco).faltaNasForcadas
+  const sem = cobrir(pgtos, linhasDoAlvo, pixDoBanco.filter(r => r.id !== pixId)).faltaNasForcadas
+  return sem - com > 0.05
 }

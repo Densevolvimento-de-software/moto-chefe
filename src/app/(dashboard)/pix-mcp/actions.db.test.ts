@@ -197,3 +197,49 @@ test('TED lançada pela /pix-mcp grava o crédito inteiro, custo 0 e taxa 0', as
   assert.equal((await actions.lancarCorrespondenciaAction(ted, 'pedido', a.numeros.pedido)).ok, true)
   assert.deepEqual(await custoDe(ted), { valor_bruto: '9980.00', custo_pix: '0.00', custo_pix_taxa: '0.000000' })
 })
+
+// ─── Forçada parcial de PIX (#92): desvincular o PIX que a completa ────────────────────────────────
+
+// Venda com pagamentos PIX de 1.000 e de 300; o de 1.000 forçado em parte (base 600) e completado por um PIX
+// de 400 vinculado; um PIX de 300 cobre a outra linha.
+async function vendaComForcadaParcial(a: Awaited<ReturnType<typeof contaComNumeros>>) {
+  const marca = { motivo: 'Resto caiu na conta pessoal', porId: 'u1', porNome: 'Gestor', em: '2026-11-19T12:00:00.000Z',
+    pix: { valorRecebido: 598.8, valorBruto: 600, custoPix: 1.2, custoPixTaxa: 0.002 } }
+  await db.execute(sql`update vendas set pagamentos = ${JSON.stringify([{ tipo: 'pix', valor: 1000, conciliadoManual: marca }, { tipo: 'pix', valor: 300 }])}::jsonb
+    where id = ${a.ids.venda}`)
+  const completa = await semearPixRecebido(db, a.grupoId, { valor: 399.2 })
+  const outra = await semearPixRecebido(db, a.grupoId, { valor: 300 })
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'venda', venda_id = ${a.ids.venda}, valor_bruto = 400, custo_pix = 0.8, custo_pix_taxa = 0.002 where id = ${completa}`)
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'venda', venda_id = ${a.ids.venda} where id = ${outra}`)
+  return { completa, outra }
+}
+const forcadasDe = async (vendaId: string) =>
+  (await um<{ n: number }>(sql`select count(*)::int as n from jsonb_array_elements((select pagamentos from vendas where id = ${vendaId})) p where p ? 'conciliadoManual'`)).n
+
+test('remover o PIX que completa a forçada parcial é recusado (o vendedor é mandado a quem gere); o PIX que cobre outra linha remove', async () => {
+  const a = await contaComNumeros()
+  const { completa, outra } = await vendaComForcadaParcial(a)
+  // Quem não gere a conciliação não pode desfazer: a frase manda pedir a quem gere.
+  usuario = await sessao(a, 'vendedor')
+  assert.deepEqual(await actions.removerCorrespondenciaAction(completa),
+    { ok: false, erro: 'Este PIX completa um pagamento marcado como recebido. Peça a quem gere a conciliação para desfazer a forçada.' })
+  usuario = await sessao(a, 'aux_adm')
+  assert.deepEqual(await actions.removerCorrespondenciaAction(completa),
+    { ok: false, erro: 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.' })
+  assert.equal((await vinculoDe(completa)).venda_id, a.ids.venda)
+  assert.deepEqual(await actions.removerCorrespondenciaAction(outra), { ok: true, dados: undefined })
+  assert.deepEqual(await vinculoDe(outra), LIVRE)
+})
+
+test('a trava lê os pagamentos só nas lojas do grupo do PIX: alvo de outro grupo não é lido nem alterado', async () => {
+  const a = await contaComNumeros()
+  const b = await contaComNumeros()
+  const { completa: daB } = await vendaComForcadaParcial(b)
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = null, venda_id = null where id = ${daB}`)
+  // PIX do grupo A apontando, por dado torto, para a venda da Conta B: é o único que completaria a forçada dela.
+  const pix = await semearPixRecebido(db, a.grupoId, { valor: 399.2 })
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'venda', venda_id = ${b.ids.venda}, valor_bruto = 400 where id = ${pix}`)
+  usuario = await sessao(a, 'aux_adm')
+  assert.deepEqual(await actions.removerCorrespondenciaAction(pix), { ok: true, dados: undefined })
+  assert.equal(await forcadasDe(b.ids.venda), 1, 'a marca da Conta B fica')
+})
