@@ -360,6 +360,41 @@ for (const tipo of ALVO_TIPOS) {
     const pgtos = await pagamentosDe(tipo, a.alvos[tipo])
     assert.deepEqual(pgtos.map(p => Boolean(p.conciliadoManual)), [true, false])
   })
+
+  test(`${tipo}: forçar durante o desfazer de outra linha espera a vez e grava em cima do desfeito`, async () => {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    await comPagamentos(tipo, a.alvos[tipo], [{ tipo: 'pix', valor: 1000 }, { tipo: 'cartao_credito', valor: 500, conciliadoManual: FORCADO_CARTAO(usuario) }])
+    const s = await sessaoQueSegura(url!)
+    try {
+      await s.travar(`select id from ${TABELA[tipo]} where id = $1 for update`, [a.alvos[tipo]])
+      const desfaz = actions.desfazerConciliacaoForcadaAction({ tipo, id: a.alvos[tipo] }, 1)
+      const d = await novoEsperando(s, [s.pid])
+      const forca = actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, 'PIX caiu na conta pessoal', 1000)
+      await novoEsperando(s, [s.pid, d], [d])
+      await s.soltar()
+      assert.deepEqual(await Promise.all([desfaz, forca]), [OK, OK])
+    } finally { await s.fim() }
+    const pgtos = await pagamentosDe(tipo, a.alvos[tipo])
+    assert.deepEqual(pgtos.map(p => Boolean(p.conciliadoManual)), [true, false])
+  })
+
+  test(`${tipo}: dois forçar na mesma linha: o 2º espera e recusa porque já foi marcado`, async () => {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    const s = await sessaoQueSegura(url!)
+    try {
+      await s.travar(`select id from ${TABELA[tipo]} where id = $1 for update`, [a.alvos[tipo]])
+      const f1 = actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, 'PIX caiu na conta pessoal', 1000)
+      const p1 = await novoEsperando(s, [s.pid])
+      const f2 = actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, 'PIX caiu na conta pessoal', 990)
+      await novoEsperando(s, [s.pid, p1], [p1])
+      await s.soltar()
+      assert.deepEqual(await Promise.all([f1, f2]),
+        [OK, { ok: false, erro: 'Este pagamento já foi marcado como recebido. Desfaça antes de marcar de novo.' }])
+    } finally { await s.fim() }
+    assert.equal((await marcaDe(tipo, a.alvos[tipo]))?.pix?.valorRecebido, 1000)
+  })
 }
 
 test('PIX vinculado que completa uma forçada parcial não se desvincula: pede para desfazer a forçada antes', async () => {
