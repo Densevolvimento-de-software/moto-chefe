@@ -10,6 +10,7 @@ import { FileCheck, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { criarLancamentoAction } from '../../actions'
+import { recusaDoComprovante } from '@/lib/comprovante-caixa'
 import Link from 'next/link'
 
 type Loja = { id: string; nome: string }
@@ -41,15 +42,9 @@ export function NovoLancamentoForm({
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
-    if (!allowedTypes.includes(file.type)) {
-      toast.error('Formato não suportado. Envie JPG, PNG, WebP ou PDF.')
-      return
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Arquivo muito grande. Máximo: 10MB.')
-      return
-    }
+    // Mesma regra que o servidor confere antes de subir (#153).
+    const recusa = recusaDoComprovante(file)
+    if (recusa) { toast.error(recusa); return }
     setArquivo(file)
     e.target.value = ''
   }

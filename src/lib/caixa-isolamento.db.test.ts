@@ -197,6 +197,51 @@ test('se a linha não grava, o arquivo que subiu é apagado', async () => {
   subidos.length = 0
   apagados.length = 0
   const dados = { lojaId: a.base.lojaId, tipo: 'saida' as const, categoria: `${a.categoria} saida`, valor: '10.00', data: 'não é data' }
-  await assert.rejects(caixa.criarLancamentoAction(dados, comprovante()))
+  await assert.rejects(caixa.criarLancamentoAction(dados, comprovante()), /date|data/i)
+  assert.equal(subidos.length, 1, 'o arquivo chegou a subir')
   assert.deepEqual(apagados, subidos)
+})
+
+test('o mesmo caminho antigo em linhas de duas Contas: cada dono abre o dele (a Conta entra na consulta)', async () => {
+  const b = await semearConta('B')
+  const a = await semearConta('A')
+  const caminho = `caixa/${randomUUID()}.pdf`
+  await semearLancamentoCaixa(db, { lojaId: b.base.lojaId, usuarioId: b.aux, comprovanteUrl: caminho })
+  await semearLancamentoCaixa(db, { lojaId: a.base.lojaId, usuarioId: a.aux, comprovanteUrl: caminho })
+  idDaSessao = a.socio
+  assert.equal(await caixa.getComprovanteUrlAction(caminho), `https://teste.invalid/${caminho}`)
+})
+
+test('usuário sem Conta não abre comprovante nem aprova: "não encontrado"', async () => {
+  const a = await semearConta('A')
+  const semConta = await semearUsuario(db, a.base, { papel: 'admin_socio', rotulo: `semconta-${randomUUID()}` })
+  const s = await saidaPendente(a)
+  idDaSessao = semConta
+  await assert.rejects(caixa.getComprovanteUrlAction(s.caminho), /Comprovante não encontrado/)
+  await assert.rejects(caixa.aprovarLancamentoAction(s.id), /Lançamento não encontrado/)
+})
+
+// Recusa como valor ({ ok: false }) ou lançada: as duas contam, desde que nada suba.
+const recusou = async (p: Promise<unknown>) => {
+  try { const r = await p as { ok?: boolean }; return r?.ok === false } catch { return true }
+}
+
+test('tudo é conferido antes de subir: formato, tamanho, categoria, valor, saída sem arquivo e loja inexistente', async () => {
+  const a = await semearConta('A')
+  const saida = `${a.categoria} saida`
+  await admin.criarCategoriaCaixa(db, a.base.grupoId, { nome: saida, tipo: 'saida' })
+  idDaSessao = a.socio
+  const base = { lojaId: a.base.lojaId, tipo: 'saida' as const, categoria: saida, valor: '10.00', data: '2026-11-10' }
+  const arquivo = (conteudo: BlobPart, tipo: string) => { const fd = new FormData(); fd.append('file', new File([conteudo], 'x', { type: tipo })); return fd }
+  subidos.length = 0
+  const casos: [string, Promise<unknown>][] = [
+    ['formato', caixa.criarLancamentoAction(base, arquivo('texto', 'text/plain'))],
+    ['tamanho', caixa.criarLancamentoAction(base, arquivo(new Uint8Array(11 * 1024 * 1024), 'application/pdf'))],
+    ['categoria', caixa.criarLancamentoAction({ ...base, categoria: 'não existe' }, comprovante())],
+    ['valor', caixa.criarLancamentoAction({ ...base, valor: '0' }, comprovante())],
+    ['saída sem arquivo', caixa.criarLancamentoAction(base)],
+  ]
+  for (const [rotulo, p] of casos) assert.equal(await recusou(p), true, rotulo)
+  await assert.rejects(caixa.criarLancamentoAction({ ...base, lojaId: randomUUID() }, comprovante()), /Sem permissão para esta loja/)
+  assert.deepEqual(subidos, [])
 })
