@@ -831,7 +831,8 @@ export async function buscarVendasParaVincular(conciliacaoId: string) {
         pagamentos:     ordensServico.pagamentos,
       })
       .from(ordensServico)
-      .leftJoin(clientes, eq(ordensServico.clienteId, clientes.id))
+      // Cliente de outra Conta ligado à OS não empresta o nome, nem para a busca (#128).
+      .leftJoin(clientes, and(eq(ordensServico.clienteId, clientes.id), eq(clientes.contaId, grupo.contaId)))
       .where(
         and(
           inArray(ordensServico.lojaId, lojaIdsGrupo),
@@ -853,6 +854,7 @@ export async function buscarVendaManual(query: string) {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
+  const { contaId } = await getGrupoAtivo(usuario)
 
   const q = query.trim()
   if (q.length < 2) return []
@@ -912,7 +914,7 @@ export async function buscarVendaManual(query: string) {
         pagamentos:     ordensServico.pagamentos,
       })
       .from(ordensServico)
-      .leftJoin(clientes, eq(ordensServico.clienteId, clientes.id))
+      .leftJoin(clientes, and(eq(ordensServico.clienteId, clientes.id), eq(clientes.contaId, contaId)))
       .where(
         and(
           inArray(ordensServico.lojaId, lojaIdsGrupo),
