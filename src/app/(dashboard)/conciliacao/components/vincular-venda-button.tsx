@@ -226,10 +226,10 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              Vincular a uma venda
+            <div className="flex flex-wrap items-center gap-2">
+              <DialogTitle>Vincular a uma venda</DialogTitle>
               {linhaPix && <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">PIX na maquininha</span>}
-            </DialogTitle>
+            </div>
             <p className="text-sm text-muted-foreground">
               Recebimento de{' '}
               <span className="font-semibold">{valorRef.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>

@@ -134,7 +134,7 @@ test('Vincular de dentro da folha: o diálogo abre com a folha ainda aberta e es
   await abrirFolha(t, 'R$ 3.550,00')
   const vincularNaFolha = [...folha()!.querySelectorAll('button')].find(b => texto(b) === 'Vincular')
   await t.act(async () => { clicar(vincularNaFolha); await esperar(50) })
-  assert.equal(texto(document.querySelector('[data-slot="dialog-title"]')), 'Vincular a uma vendaPIX na maquininha')
+  assert.equal(texto(document.querySelector('[data-slot="dialog-title"]')), 'Vincular a uma venda')
   assert.ok(folha(), 'a folha continua aberta embaixo')
   const sugerida = [...document.querySelectorAll('[data-slot="dialog-content"] button')].find(b => texto(b).includes('Venda #32001'))
   await t.act(async () => { clicar(sugerida); await esperar(50) })

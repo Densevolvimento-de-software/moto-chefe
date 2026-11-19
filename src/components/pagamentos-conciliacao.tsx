@@ -535,7 +535,7 @@ const MODO = {
   pix: {
     nome: 'PIX', procurar: 'Procurar outro PIX', nada: 'Nenhum PIX encontrado.',
     placeholder: 'Pagador, descrição, NSU, data (AAAA-MM-DD) ou valor',
-    vazio: 'Nenhum PIX livre com esse valor, nem na maquininha nem no extrato do banco. Importe do Mercado Pago em /conciliacao ou sincronize o Open Finance em /pix-mcp, ou procure por outro valor ou data:',
+    vazio: 'Nenhum PIX livre com esse valor, nem na maquininha nem no extrato do banco. Importe da maquininha em /conciliacao ou sincronize o Open Finance em /pix-mcp, ou procure por outro valor ou data:',
   },
   cartao: {
     nome: 'Transações', procurar: 'Procurar outra transação', nada: 'Nenhuma transação encontrada.',

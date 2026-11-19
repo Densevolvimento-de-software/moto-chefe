@@ -31,7 +31,7 @@ export function OSConciliacaoPanel({ osId, pagamentos, papel }: Props) {
 
         {!dados.loading && pixPendente && (
           <p className="text-xs text-muted-foreground">
-            PIX pendente: toque no pagamento acima para procurar o PIX na maquininha Mercado Pago ou no extrato do banco.
+            PIX pendente: toque no pagamento acima para procurar o PIX na maquininha ou no extrato do banco.
           </p>
         )}
       </CardContent>
