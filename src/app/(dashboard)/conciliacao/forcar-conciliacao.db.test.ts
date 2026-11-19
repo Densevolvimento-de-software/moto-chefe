@@ -261,6 +261,15 @@ test('PIX parcial (um PIX vinculado cobre parte): a marca guarda só o que falta
   assert.deepEqual((await marcaDe('moto', a.alvos.moto))?.pix, { valorRecebido: 598.8, valorBruto: 600, custoPix: 1.2, custoPixTaxa: 0.002 })
 })
 
+test('PIX parcial pela maquininha (linha pix do Mercado Pago vinculada): a marca guarda só o que faltava', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  await db.execute(sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, valor_bruto, tipo, venda_id, conciliado)
+    values (${a.grupoId}, 'mercadopago', '2026-11-19', 400, 'pix', ${a.alvos.moto}, true)`)
+  assert.equal((await actions.forcarConciliacaoAction({ tipo: 'moto', id: a.alvos.moto }, 0, 'Resto caiu na conta pessoal', 598.8)).ok, true)
+  assert.deepEqual((await marcaDe('moto', a.alvos.moto))?.pix, { valorRecebido: 598.8, valorBruto: 600, custoPix: 1.2, custoPixTaxa: 0.002 })
+})
+
 test('forçar cartão e financiamento ignora o valor que entrou: a marca é só motivo e autor', async () => {
   const a = await semearContaComAlvos(db, 'FC79', [{ tipo: 'cartao_credito', valor: 500 }, { tipo: 'financiamento', valor: 8000 }])
   usuario = sessao(a, 'aux_adm')
