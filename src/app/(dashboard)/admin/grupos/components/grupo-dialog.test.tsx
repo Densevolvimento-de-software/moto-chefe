@@ -90,7 +90,7 @@ test('grupo sem credencial: diz que a importação fica desligada', async () => 
 
 // #404: lançada, a frase virava "Minified React error #441" em produção.
 test('recusa do servidor no Editar aparece no diálogo, que continua aberto', async () => {
-  const frase = 'Esta credencial é de uma conta de teste do Mercado Pago. Aqui só entra a credencial da conta real da loja.'
+  const frase = FRASES_MP.teste
   api.editar.mock.mockImplementation(async () => ({ ok: false, erro: frase }))
   const t = await montar({ modo: 'editar', inicial: GRUPO })
   await t.preencher('grupo-mp-token', 'APP_USR-conta-de-teste-ficticia-000000000')
@@ -117,7 +117,7 @@ test('recusa do servidor no Novo Grupo também aparece, e o Novo Grupo não tem 
 })
 
 test('credencial gravada com aviso (CNPJ do titular diferente): salva e mostra o aviso', async () => {
-  const aviso = 'Credencial salva, mas confira: a conta do Mercado Pago é de outro CNPJ, diferente do CNPJ deste grupo.'
+  const aviso = FRASES_MP.outroCnpj
   api.editar.mock.mockImplementation(async () => ({ ok: true, dados: { aviso } }))
   const t = await montar({ modo: 'editar', inicial: GRUPO })
   await t.preencher('grupo-mp-token', 'APP_USR-outro-cnpj-ficticio-0000000000')
@@ -139,7 +139,7 @@ test('depois de salvar com Remover, ao reabrir o campo volta livre e o título n
 })
 
 test('Cancelar depois de uma recusa: ao reabrir, sem a frase velha e o Salvar não reenvia o token abandonado', async () => {
-  api.editar.mock.mockImplementation(async () => ({ ok: false, erro: 'O Mercado Pago recusou esse token. Confira se é o Access Token de produção da conta da loja.' }))
+  api.editar.mock.mockImplementation(async () => ({ ok: false, erro: FRASES_MP.recusado }))
   const t = await montar({ modo: 'editar', inicial: GRUPO })
   await t.preencher('grupo-mp-token', 'APP_USR-token-abandonado-0000000000000')
   await t.preencher('grupo-mcpai', 'https://api.mcp.ai/abandonada')
@@ -164,4 +164,17 @@ test('recusa do Mercado Pago com Integrações recolhida: a seção abre e a fra
   await t.clique('Salvar')
   assert.equal(document.querySelector('details')?.open, true)
   assert.equal(document.getElementById('grupo-mp-token-erro')?.textContent ?? null, FRASES_MP.recusado)
+})
+
+test('Esc depois de uma recusa também esquece a frase e o token colado', async () => {
+  api.editar.mock.mockImplementation(async () => ({ ok: false, erro: FRASES_MP.recusado }))
+  const t = await montar({ modo: 'editar', inicial: GRUPO })
+  await t.preencher('grupo-mp-token', 'APP_USR-token-do-esc-0000000000000000')
+  await t.clique('Salvar')
+  await t.act(async () => { apertarEscape() })
+  assert.ok(fechou(t.onOpenChange))
+  await t.redesenhar({ modo: 'editar', inicial: GRUPO, open: false, onOpenChange: t.onOpenChange })
+  await t.redesenhar({ modo: 'editar', inicial: GRUPO, open: true, onOpenChange: t.onOpenChange })
+  assert.equal(document.querySelector('[role="alert"]')?.textContent ?? null, null)
+  assert.equal((document.getElementById('grupo-mp-token') as HTMLInputElement).value, '')
 })

@@ -120,8 +120,9 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
     }
   }
 
+  // Enquanto salva, Esc e clique fora não fecham: a resposta que chegasse depois voltaria na próxima abertura.
   return (
-    <Dialog open={open} onOpenChange={mudarAberto}>
+    <Dialog open={open} onOpenChange={aberto => { if (aberto || !loading) mudarAberto(aberto) }}>
       {/* Corpo rola por dentro e o rodapé fica fixo: com os dados de contrato e as
           integrações, o formulário passa da altura de telas baixas (#313). */}
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-[calc(100%-1rem)] flex-col gap-0 p-0 sm:max-w-3xl">
@@ -227,7 +228,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                   ? <span className="ml-1 text-xs font-normal text-destructive">
                       {[mcpaiRemover && 'chave do Open Finance', mpRemover && 'credencial do Mercado Pago'].filter(Boolean).join(' e ')} será removida
                     </span>
-                  : <span className="ml-1 text-xs font-normal text-muted-foreground">{integracaoConfigurada ? 'configurada' : 'Bling, Open Finance, Mercado Pago'}</span>}
+                  : <span className="ml-1 text-xs font-normal text-muted-foreground">{integracaoConfigurada ? 'configurada' : modo === 'editar' ? 'Bling, Open Finance, Mercado Pago' : 'Bling, Open Finance'}</span>}
               </summary>
               <div className="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -333,7 +334,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
           <p role="alert" className="border-t border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive sm:px-6">{erro}</p>
         )}
         <div className="flex justify-end gap-2 border-t bg-muted/40 px-4 py-3 sm:px-6">
-          <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => mudarAberto(false)}>Cancelar</Button>
+          <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => mudarAberto(false)} disabled={loading}>Cancelar</Button>
           <Button className="flex-1 sm:flex-none" onClick={handleSalvar} disabled={loading}>
             {loading ? 'Salvando...' : modo === 'criar' ? 'Criar' : 'Salvar'}
           </Button>
