@@ -269,8 +269,8 @@ test('importação boa guarda hora, contagens e não tratados com motivo, valor 
   assert.deepEqual(c.resumo, {
     contagens: r,
     naoTratados: [
-      { motivo: 'cartão pré-pago', valor: 89.9, data: '2026-11-10', entraDepois: false },
-      { motivo: 'sem valor líquido', valor: 80, data: '2026-11-10', entraDepois: true },
+      { motivo: 'pre_pago', valor: 89.9, data: '2026-11-10' },
+      { motivo: 'sem_liquido', valor: 80, data: '2026-11-10' },
     ],
   })
   assert.deepEqual([c.ultima_falha_em, c.ultima_falha_erro], [null, null])

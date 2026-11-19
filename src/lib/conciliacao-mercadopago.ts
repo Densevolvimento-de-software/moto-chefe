@@ -1,5 +1,5 @@
 import type { PagamentoMp } from './mercadopago/point'
-import type { NaoTratadoMp } from './mercadopago/contagens'
+import type { MotivoNaoTratado, NaoTratadoMp } from './mercadopago/contagens'
 import { dataBrt, LINHA_PIX, type TransacaoCartao } from './conciliacao-cartao'
 import { ehEstornoMp } from './mercadopago/status'
 
@@ -8,7 +8,8 @@ export type Classificacao =
   | { tipo: 'transacao'; transacao: TransacaoCartao }
   | { tipo: 'estorno'; chave: string }
   // Na resposta do cron e no log entram só as contagens; o detalhe vai para a faixa da conciliação.
-  | { tipo: 'nao_tratado'; naoTratado: NaoTratadoMp }
+  // `paraOLog`: o meio cru (account_money) só no log; a tela usa o motivo fechado.
+  | { tipo: 'nao_tratado'; naoTratado: NaoTratadoMp; paraOLog: string }
   | { tipo: 'ignorar'; motivo: string }
 
 /**
@@ -33,19 +34,19 @@ export function classificarPagamento(p: PagamentoMp): Classificacao {
   if (p.status !== 'approved') return { tipo: 'ignorar', motivo: `status ${p.status}` }
   if (!p.date_approved) return { tipo: 'ignorar', motivo: 'aprovado sem data de aprovação' }
 
-  const naoTratado = (motivo: string, entraDepois: boolean): Classificacao =>
-    ({ tipo: 'nao_tratado', naoTratado: { motivo, valor: p.transaction_amount, data: dataBrt(p.date_approved!), entraDepois } })
+  const naoTratado = (motivo: MotivoNaoTratado, paraOLog: string): Classificacao =>
+    ({ tipo: 'nao_tratado', naoTratado: { motivo, valor: p.transaction_amount, data: dataBrt(p.date_approved!) }, paraOLog })
   const tipo = tipoDaLinha(p)
   // Venda aprovada que não vira linha conta no resumo da importação: nada some calado (decisão do Luis, #51).
   if (!tipo) {
-    return naoTratado(p.payment_type_id === 'prepaid_card' ? 'cartão pré-pago' : `meio ${p.payment_type_id}`, false)
+    return p.payment_type_id === 'prepaid_card' ? naoTratado('pre_pago', 'cartão pré-pago') : naoTratado('outro_meio', `meio ${p.payment_type_id}`)
   }
   // Linha conciliada sem líquido conta o bruto inteiro como taxa (src/lib/queries/valor-liquido.ts; condição do
   // PR4 na #51), e líquido 0 dá o mesmo (decisão do Luis). O pagamento não vira linha e entra só na contagem de
   // não tratados; se o Mercado Pago trouxer o líquido numa rodada seguinte dentro da janela de 7 dias, a linha
   // nasce nessa rodada.
   const valorLiquido = p.transaction_details?.net_received_amount
-  if (!valorLiquido) return naoTratado('sem valor líquido', true)
+  if (!valorLiquido) return naoTratado('sem_liquido', 'sem valor líquido')
 
   return {
     tipo: 'transacao',

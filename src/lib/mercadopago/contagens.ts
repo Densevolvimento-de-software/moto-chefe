@@ -5,10 +5,13 @@ export type Contagem = (typeof CONTAGENS)[number]
 export type ResultadoImportacaoMp = Record<Contagem, number>
 
 /**
- * Pagamento aprovado da maquininha que não virou linha. `valor` e `data` (dia de Brasília) só para a faixa;
- * `entraDepois`: vira linha sozinho numa rodada seguinte (sem líquido), em vez de pedir o Forçar (meio fora).
+ * Por que um pagamento aprovado da maquininha não virou linha. `sem_liquido` vira linha sozinho numa rodada seguinte
+ * (se o Mercado Pago mandar o líquido); `pre_pago` e `outro_meio` pedem o Forçar.
  */
-export type NaoTratadoMp = { motivo: string; valor: number; data: string; entraDepois: boolean }
+export type MotivoNaoTratado = 'pre_pago' | 'outro_meio' | 'sem_liquido'
+
+/** Pagamento aprovado da maquininha que não virou linha; `valor` e `data` (dia de Brasília) para a faixa. */
+export type NaoTratadoMp = { motivo: MotivoNaoTratado; valor: number; data: string }
 
 /** O que a importação boa grava em `ultimo_resumo` (0197) e a faixa lê. */
 export type ResumoDaImportacao = { contagens: ResultadoImportacaoMp; naoTratados: NaoTratadoMp[] }

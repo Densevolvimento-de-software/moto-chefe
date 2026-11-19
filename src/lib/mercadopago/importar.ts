@@ -67,7 +67,7 @@ export async function importarMercadoPagoDoGrupo(
   })
 
   // Só motivos e contagens: nada do pagamento nem do token vai para o log.
-  const motivos = [...classificacoes.flatMap(c => (c.tipo === 'ignorar' ? [c.motivo] : [])), ...naoTratados.map(n => n.motivo)]
+  const motivos = classificacoes.flatMap(c => (c.tipo === 'ignorar' ? [c.motivo] : c.tipo === 'nao_tratado' ? [c.paraOLog] : []))
   if (motivos.length > 0) console.info('[mercadopago-importar]', JSON.stringify(contarMotivos(motivos)))
   return contagens
 }

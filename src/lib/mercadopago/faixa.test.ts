@@ -31,9 +31,9 @@ test('"Ver detalhes" leva as 7 contagens da importação, na ordem da tela', () 
 
 // D10: meio fora pede o Forçar; sem líquido entra sozinho numa rodada seguinte.
 test('frase do não tratado: meio fora pede o Forçar; sem líquido diz que entra sozinho', () => {
-  const meio = fraseDoNaoTratado({ motivo: 'cartão pré-pago', valor: 89.9, data: '2026-11-05', entraDepois: false })
+  const meio = fraseDoNaoTratado({ motivo: 'pre_pago', valor: 89.9, data: '2026-11-05' })
   assert.match(meio, /^Cartão pré-pago de R\$\s89,90 em 05\/11\/2026: o MOVA não importa esse meio; concilie a venda com "Forçar"\.$/)
-  const semLiquido = fraseDoNaoTratado({ motivo: 'sem valor líquido', valor: 80, data: '2026-11-10', entraDepois: true })
+  const semLiquido = fraseDoNaoTratado({ motivo: 'sem_liquido', valor: 80, data: '2026-11-10' })
   assert.match(semLiquido, /^Sem valor líquido, R\$\s80,00 em 10\/11\/2026: entra sozinha quando o Mercado Pago mandar o valor líquido\.$/)
   assert.doesNotMatch(semLiquido, /Forçar/)
 })
@@ -54,6 +54,6 @@ test('com 1, a faixa fala no singular, também na nota', () => {
 
 // O id cru do meio (account_money) fica no log; a tela diz o que é.
 test('meio de pagamento que o MOVA não conhece aparece como "Outro meio de pagamento"', () => {
-  assert.match(fraseDoNaoTratado({ motivo: 'meio account_money', valor: 50, data: '2026-11-10', entraDepois: false }),
+  assert.match(fraseDoNaoTratado({ motivo: 'outro_meio', valor: 50, data: '2026-11-10' }),
     /^Outro meio de pagamento de R\$\s50,00 em 10\/11\/2026: o MOVA não importa esse meio/)
 })

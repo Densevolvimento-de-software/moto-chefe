@@ -25,7 +25,7 @@ const ESTADO: EstadoDaFaixaMp = {
   ultimaImportacaoEm: '2026-11-19T12:02:00.000Z',
   resumo: {
     contagens: { conciliadas: 8, pendentes: 4, duplicadas: 3, estornos: 1, estornosSemLinha: 0, naoTratados: 1, ignorados: 5 },
-    naoTratados: [{ motivo: 'cartão pré-pago', valor: 89.9, data: '2026-11-05', entraDepois: false }],
+    naoTratados: [{ motivo: 'pre_pago', valor: 89.9, data: '2026-11-05' }],
   },
   falha: null,
 }

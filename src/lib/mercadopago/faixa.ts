@@ -1,6 +1,6 @@
 // Faixa do Mercado Pago na /conciliacao (#51, V2 escolhida pelo Luis): o que ela mostra a partir do resumo da
 // última importação. Puro, sem banco: roda no componente de cliente.
-import { CONTAGENS, type Contagem, type NaoTratadoMp, type ResultadoImportacaoMp } from './contagens'
+import { CONTAGENS, type Contagem, type MotivoNaoTratado, type NaoTratadoMp, type ResultadoImportacaoMp } from './contagens'
 import { dataPuraBr, diaEHoraBrt } from '@/lib/data-venda'
 import { brl } from '@/lib/dashboard-painel'
 import { comMaiuscula, palavraPara } from '@/lib/texto'
@@ -37,14 +37,17 @@ const TEXTO_DA_CONTAGEM: Record<Contagem, { rotulo: string; explica: string }> =
 export const detalhesDaFaixa = (c: ResultadoImportacaoMp): LinhaDosDetalhes[] =>
   CONTAGENS.map(k => ({ ...TEXTO_DA_CONTAGEM[k], valor: c[k], alerta: k === 'naoTratados' && c[k] > 0 }))
 
-// "meio account_money" (id do Mercado Pago, que vai para o log) vira texto de tela.
-const motivoNaTela = (motivo: string) => (motivo.startsWith('meio ') ? 'outro meio de pagamento' : motivo)
+const TEXTO_DO_MOTIVO: Record<MotivoNaoTratado, string> = {
+  pre_pago: 'cartão pré-pago',
+  outro_meio: 'outro meio de pagamento',
+  sem_liquido: 'sem valor líquido',
+}
 
 /** Uma linha por não tratado: meio fora pede o Forçar; sem líquido entra sozinho numa rodada seguinte (D10). */
 export function fraseDoNaoTratado(n: NaoTratadoMp): string {
   const quanto = `${brl(n.valor)} em ${dataPuraBr(n.data)}`
-  const motivo = comMaiuscula(motivoNaTela(n.motivo))
-  return n.entraDepois
+  const motivo = comMaiuscula(TEXTO_DO_MOTIVO[n.motivo])
+  return n.motivo === 'sem_liquido'
     ? `${motivo}, ${quanto}: entra sozinha quando o Mercado Pago mandar o valor líquido.`
     : `${motivo} de ${quanto}: o MOVA não importa esse meio; concilie a venda com "Forçar".`
 }
