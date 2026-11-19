@@ -1,9 +1,9 @@
 'use client'
-import { comMaiuscula } from '@/lib/texto'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { FileText, ExternalLink } from 'lucide-react'
 import { fmtTamanho } from '@/lib/holerites-tela'
+import { comMaiuscula } from '@/lib/texto'
 import type { MeuHoleriteRow } from '../../folha-pagamento/holerites-actions'
 import { getMeuHoleriteUrlAction } from '../../folha-pagamento/holerites-actions'
 

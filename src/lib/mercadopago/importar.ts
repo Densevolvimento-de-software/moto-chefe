@@ -15,7 +15,6 @@ import { classificarPagamento, type Classificacao } from '@/lib/conciliacao-merc
 import { buscarPagamentosDaRodada } from './point'
 import { CONTAGENS, type Contagem, type ResultadoImportacaoMp, type ResumoDaImportacao } from './contagens'
 
-
 const contarDesfechos = (desfechos: readonly Contagem[]): ResultadoImportacaoMp =>
   Object.fromEntries(CONTAGENS.map(k => [k, desfechos.filter(d => d === k).length])) as ResultadoImportacaoMp
 
@@ -48,10 +47,11 @@ export async function importarMercadoPagoDoGrupo(
   if (!config) throw new RecusaUsuario('Este grupo não tem credencial do Mercado Pago.')
   const token = decifrar(config.token).toString('utf8')
 
-  const fim = opts.agora ?? new Date()
-  const inicio = new Date(fim.getTime() - JANELA_MS)
+  // Hora de início da rodada: fim da janela de busca e régua da faixa (ver registrarFalhaMp).
+  const agora = opts.agora ?? new Date()
+  const inicioDaJanela = new Date(agora.getTime() - JANELA_MS)
   // Tudo da API antes de gravar: erro (401, rede) propaga e nada do grupo é gravado.
-  const pagamentos = await (opts.buscar ?? buscarPagamentosDaRodada)(token, { inicio, fim })
+  const pagamentos = await (opts.buscar ?? buscarPagamentosDaRodada)(token, { inicio: inicioDaJanela, fim: agora })
   const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
 
   const classificacoes = pagamentos.map(classificarPagamento)
@@ -59,22 +59,22 @@ export async function importarMercadoPagoDoGrupo(
   const contagens = await db.transaction(async tx => {
     // Um pagamento por vez, na ordem: a transação usa uma conexão só, que não roda consultas em paralelo.
     const desfechos = await classificacoes.reduce<Promise<Contagem[]>>(
-      async (anteriores, c) => [...await anteriores, await desfechoDoPagamento(tx, grupoId, lojaIds, c, fim)],
+      async (anteriores, c) => [...await anteriores, await desfechoDoPagamento(tx, grupoId, lojaIds, c, agora)],
       Promise.resolve([]),
     )
     const resumo: ResumoDaImportacao = { contagens: contarDesfechos(desfechos), naoTratados }
     // Junto com as linhas: a faixa nunca mostra um resumo de linhas que não entraram. Régua: a hora de início de cada
-    // rodada (`fim` da janela é o início desta). Rodada que começou antes da última boa não volta hora nem resumo, e
+    // rodada (`agora`). Rodada que começou antes da última boa não volta hora nem resumo, e
     // só apaga a falha que começou antes dela.
-    const falhaMaisVelha = sql`${mercadopagoConfig.ultimaFalhaEm} < ${fim.toISOString()}::timestamptz`
+    const falhaMaisVelha = sql`${mercadopagoConfig.ultimaFalhaEm} < ${agora.toISOString()}::timestamptz`
     await tx.update(mercadopagoConfig)
       .set({
-        ultimaImportacaoEm: fim,
+        ultimaImportacaoEm: agora,
         ultimoResumo: resumo,
         ultimaFalhaEm: sql`case when ${falhaMaisVelha} then null else ${mercadopagoConfig.ultimaFalhaEm} end`,
         ultimaFalhaErro: sql`case when ${falhaMaisVelha} then null else ${mercadopagoConfig.ultimaFalhaErro} end`,
       })
-      .where(and(eq(mercadopagoConfig.grupoId, grupoId), maisNovaQue(mercadopagoConfig.ultimaImportacaoEm, fim)))
+      .where(and(eq(mercadopagoConfig.grupoId, grupoId), maisNovaQue(mercadopagoConfig.ultimaImportacaoEm, agora)))
     return resumo.contagens
   })
 

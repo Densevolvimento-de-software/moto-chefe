@@ -19,9 +19,9 @@ export function semZerosAEsquerda(texto: string | null | undefined): string {
   return aparado.replace(/^0+/, '') || '0'
 }
 
-/** Quantidade com a palavra certa: "1 moto", "2 motos", "0 motos". */
 /** A palavra no singular com 1, no plural com outro número (sem o número). */
 export const palavraPara = (n: number, um: string, varios: string) => (n === 1 ? um : varios)
+/** Quantidade com a palavra certa: "1 moto", "2 motos", "0 motos". */
 export const plural = (n: number, um: string, varios: string) => `${n} ${palavraPara(n, um, varios)}`
 
 /** "março de 2026" → "Março de 2026". */

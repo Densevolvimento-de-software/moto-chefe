@@ -10,7 +10,7 @@ import type { EstadoDaFaixaMp } from '@/lib/mercadopago/importar'
 
 type Props = {
   estado: EstadoDaFaixaMp
-  /** Quem gere a conciliação (admin_geral, admin_socio, aux_adm) vê o "Importar agora". */
+  /** Quem gere a conciliação (`podeGerirConciliacao`) vê o "Importar agora". */
   podeImportar: boolean
 }
 
