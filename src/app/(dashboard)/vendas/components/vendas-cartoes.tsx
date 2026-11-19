@@ -8,6 +8,7 @@ import type { VendaComDetalhes } from '@/lib/queries/vendas'
 import type { StatusConc } from '@/lib/conciliacao-status'
 import type { DescontoDaVenda } from '@/lib/queries/descontos'
 import type { NfDaVenda } from './nf-saida-venda-dialog'
+import { LinhaDeDetalhe } from '@/components/linha-de-detalhe'
 
 export type ItemVenda = { venda: VendaComDetalhes; status: StatusConc }
 type Estado = 'ok' | 'andamento' | 'nada'
@@ -107,15 +108,6 @@ export function EtapasMini({ v, status, podeConciliacao }: { v: VendaComDetalhes
   )
 }
 
-function Linha({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
-  return (
-    <div className="flex justify-between gap-3 border-b border-border py-2 last:border-0">
-      <span className="text-muted-foreground">{rotulo}</span>
-      <span className="min-w-0 text-right break-words">{children}</span>
-    </div>
-  )
-}
-
 type PainelProps = {
   item: ItemVenda
   /** Ações da venda, já no layout do painel. */
@@ -148,16 +140,16 @@ export function PainelVenda({ item, acoes, onAbrirNf, podeConciliacao, desconto:
       </div>
       <Etapas itens={etapas(v, status, podeConciliacao)} />
       <div className="text-sm">
-        <Linha rotulo="Cliente">{v.clienteNome}</Linha>
-        <Linha rotulo="Vendedor">{v.vendedorNome} · {v.lojaNome}</Linha>
-        <Linha rotulo="Chassi"><span className="font-mono text-xs">{v.chassi}</span></Linha>
-        {d && <Linha rotulo="Desconto"><span className="tabular-nums text-destructive" title={d.motivo}>{moeda(d.margem)}{d.estimado ? '*' : ''}</span></Linha>}
-        <Linha rotulo="Contrato">
+        <LinhaDeDetalhe rotulo="Cliente">{v.clienteNome}</LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Vendedor">{v.vendedorNome} · {v.lojaNome}</LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Chassi"><span className="font-mono text-xs">{v.chassi}</span></LinhaDeDetalhe>
+        {d && <LinhaDeDetalhe rotulo="Desconto"><span className="tabular-nums text-destructive" title={d.motivo}>{moeda(d.margem)}{d.estimado ? '*' : ''}</span></LinhaDeDetalhe>}
+        <LinhaDeDetalhe rotulo="Contrato">
           {textoAssinatura(v.contratoStatus)}
           {v.contratoStatus !== 'assinado' && v.nfLiberadaEm ? ' · NF liberada por exceção' : ''}
-        </Linha>
-        <Linha rotulo="Checklist">{textoAssinatura(v.checklistStatus)}</Linha>
-        <Linha rotulo="NF saída">
+        </LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Checklist">{textoAssinatura(v.checklistStatus)}</LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="NF saída">
           {v.notaFiscalSaida && onAbrirNf ? (
             <button
               type="button"
@@ -167,8 +159,8 @@ export function PainelVenda({ item, acoes, onAbrirNf, podeConciliacao, desconto:
               {v.notaFiscalSaida}
             </button>
           ) : (v.notaFiscalSaida ?? 'Sem NF')}
-        </Linha>
-        {podeConciliacao && <Linha rotulo="Conciliação">{CONC[status].texto}</Linha>}
+        </LinhaDeDetalhe>
+        {podeConciliacao && <LinhaDeDetalhe rotulo="Conciliação">{CONC[status].texto}</LinhaDeDetalhe>}
       </div>
       <div className="border-t border-border pt-4">{acoes}</div>
     </div>

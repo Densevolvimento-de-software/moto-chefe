@@ -18,6 +18,7 @@ import { GavetaDeBaixo } from '@/components/gaveta-de-baixo'
 import { Trash2 } from 'lucide-react'
 import { excluirClienteAction } from '../actions'
 import { HistoricoCliente } from './historico-cliente'
+import { LinhaDeDetalhe } from '@/components/linha-de-detalhe'
 
 type Cliente = {
   id: string
@@ -75,15 +76,6 @@ function TipoTag({ c }: { c: Cliente }) {
     <Badge variant="secondary" className="shrink-0">
       {c.tipoPessoa === 'juridica' ? 'PJ' : sexo === '—' ? 'PF' : `PF · ${sexo}`}
     </Badge>
-  )
-}
-
-function Linha({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
-  return (
-    <div className="flex justify-between gap-3 border-b border-border py-2 last:border-0">
-      <span className="text-muted-foreground">{rotulo}</span>
-      <span className="min-w-0 text-right break-words">{children}</span>
-    </div>
   )
 }
 
@@ -155,11 +147,11 @@ export function ClientesTable({ clientes, isAdmin }: Props) {
               <TipoTag c={aberto} />
             </div>
             <div className="text-sm">
-              <Linha rotulo={aberto.tipoPessoa === 'juridica' ? 'CNPJ' : 'CPF'}>
+              <LinhaDeDetalhe rotulo={aberto.tipoPessoa === 'juridica' ? 'CNPJ' : 'CPF'}>
                 <span className="font-mono text-xs">{formatarCpfCnpj(aberto.cpfCnpj)}</span>
-              </Linha>
-              <Linha rotulo="Celular">{aberto.celular ?? '—'}</Linha>
-              <Linha rotulo="E-mail">{aberto.email ?? '—'}</Linha>
+              </LinhaDeDetalhe>
+              <LinhaDeDetalhe rotulo="Celular">{aberto.celular ?? '—'}</LinhaDeDetalhe>
+              <LinhaDeDetalhe rotulo="E-mail">{aberto.email ?? '—'}</LinhaDeDetalhe>
             </div>
             <section>
               <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Endereço</h3>

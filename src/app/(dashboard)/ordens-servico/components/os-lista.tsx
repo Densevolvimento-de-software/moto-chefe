@@ -14,6 +14,7 @@ import { calcStatusMultiPagamento, pagamentosEfetivosOS, type StatusConc } from 
 import type { OSComDetalhes } from '@/lib/queries/ordens-servico'
 import { cn } from '@/lib/utils'
 import { rotuloStatusOS, tomStatusOS } from '../status-os'
+import { LinhaDeDetalhe } from '@/components/linha-de-detalhe'
 
 const moeda = (v: string | null) =>
   v && parseFloat(v) > 0 ? parseFloat(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'
@@ -161,15 +162,6 @@ export function OSLista({ lista }: { lista: OSComDetalhes[] }) {
   )
 }
 
-function Linha({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
-  return (
-    <div className="flex justify-between gap-3 border-b border-border py-2 last:border-0">
-      <span className="text-muted-foreground">{rotulo}</span>
-      <span className="min-w-0 text-right break-words">{children}</span>
-    </div>
-  )
-}
-
 function ResumoOS({ os }: { os: OSComDetalhes }) {
   const conc = concDe(os)
   return (
@@ -184,13 +176,13 @@ function ResumoOS({ os }: { os: OSComDetalhes }) {
         </div>
       </div>
       <div>
-        <Linha rotulo="Cliente"><span className="inline-flex items-center gap-1"><User className="size-3.5 text-muted-foreground" />{clienteDe(os) ?? '—'}</span></Linha>
-        <Linha rotulo="Mecânico"><span className="inline-flex items-center gap-1"><Wrench className="size-3.5 text-muted-foreground" />{os.mecanicoNome ?? '—'}</span></Linha>
+        <LinhaDeDetalhe rotulo="Cliente"><span className="inline-flex items-center gap-1"><User className="size-3.5 text-muted-foreground" />{clienteDe(os) ?? '—'}</span></LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Mecânico"><span className="inline-flex items-center gap-1"><Wrench className="size-3.5 text-muted-foreground" />{os.mecanicoNome ?? '—'}</span></LinhaDeDetalhe>
         {os.dataPrevisao && (
-          <Linha rotulo="Previsão"><Previsao os={os} /></Linha>
+          <LinhaDeDetalhe rotulo="Previsão"><Previsao os={os} /></LinhaDeDetalhe>
         )}
-        {os.servicosResumo && <Linha rotulo="Serviços">{os.servicosResumo}</Linha>}
-        <Linha rotulo="Valor"><span className="font-semibold tabular-nums">{moeda(os.valorTotal)}</span></Linha>
+        {os.servicosResumo && <LinhaDeDetalhe rotulo="Serviços">{os.servicosResumo}</LinhaDeDetalhe>}
+        <LinhaDeDetalhe rotulo="Valor"><span className="font-semibold tabular-nums">{moeda(os.valorTotal)}</span></LinhaDeDetalhe>
       </div>
       <Link href={`/ordens-servico/${os.id}`} className={cn(buttonVariants(), 'h-10 w-full gap-1.5')}>
         Abrir OS <ArrowRight className="size-4" />
