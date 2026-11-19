@@ -129,7 +129,7 @@ test('aux_adm importa o relatório no grupo dele; com o cookie de um grupo de ou
 
 test('quem não gere a conciliação continua sem permissão e nada grava (sem vermelho: já valia)', async () => {
   const b = await contaComCielo()
-  for (const papel of ['vendedor', 'mecanico', 'motorista', 'cargo']) {
+  for (const papel of ['vendedor', 'mecanico', 'motorista', 'cargo', 'fabrica']) {
     usuario = socio(b, { papel })
     const r = await importar([vendaCielo({ 'Código da venda': codigos()(1) })])
     assert.deepEqual(r, { ok: false, erro: 'Sem permissão' }, papel)
