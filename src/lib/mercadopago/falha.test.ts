@@ -22,6 +22,8 @@ test('Mercado Pago fora (5xx, 429), tempo esgotado ou rede: "não respondeu agor
   ]) assert.equal(fraseDaFalhaNaTela(e), FRASES_MP.indisponivel)
 })
 
-test('qualquer outro erro (banco, inesperado): frase fixa de tentar de novo', () => {
-  for (const e of [new Error('numeric field overflow'), 'texto solto', null]) assert.equal(fraseDaFalhaNaTela(e), FALHA_INTERNA)
+test('qualquer outro erro (banco, inesperado, TypeError que não é de rede): frase fixa de tentar de novo', () => {
+  for (const e of [new Error('numeric field overflow'), new TypeError("Cannot read properties of undefined (reading 'id')"), 'texto solto', null]) {
+    assert.equal(fraseDaFalhaNaTela(e), FALHA_INTERNA)
+  }
 })

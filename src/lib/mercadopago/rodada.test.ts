@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { resumoDaRodada, rodarTodosOsGrupos, type ResultadoDoGrupo } from './rodada'
 import { ErroMercadoPago } from './cliente'
 import { RecusaUsuario } from '@/lib/resultado-action'
-import { FRASES_MP } from './frases'
+import { FALHA_INTERNA } from './falha'
 import type { ResultadoImportacaoMp } from './contagens'
 
 const resultado = (o: Partial<ResultadoImportacaoMp> = {}): ResultadoImportacaoMp =>
@@ -24,12 +24,11 @@ test('grupo que falha não impede os seguintes; só a mensagem conhecida sai, o 
   })
   assert.deepEqual(r, [
     { grupo: 'Sul', ok: false, erro: 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.', fraseNaTela: 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.' },
-    // TypeError é o que o fetch lança sem rede: na tela, "não respondeu agora".
-    { grupo: 'BH', ok: false, erro: 'erro interno', fraseNaTela: FRASES_MP.indisponivel },
+    { grupo: 'BH', ok: false, erro: 'erro interno', fraseNaTela: FALHA_INTERNA },
     { grupo: 'Vale', ok: true, resultado: resultado({ pendentes: 1 }) },
   ])
   // A falha de cada grupo fica guardada para a faixa da conciliação, com a frase de tela (o detalhe fica no log).
-  assert.deepEqual(falhas, [['g1', 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.'], ['g2', FRASES_MP.indisponivel]])
+  assert.deepEqual(falhas, [['g1', 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.'], ['g2', FALHA_INTERNA]])
   // O log do erro desconhecido leva só o nome do erro, como a rotina de inutilização: a mensagem pode ter segredo.
   const linhas = log.mock.calls.map(c => String(c.arguments.join(' ')))
   assert.deepEqual(linhas, [
