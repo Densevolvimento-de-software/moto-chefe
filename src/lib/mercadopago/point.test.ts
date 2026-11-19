@@ -58,10 +58,15 @@ test('401 vira mensagem de credencial recusada sem o token', async () => {
   })
 })
 
-test('consultarConta devolve id como string', async () => {
-  const chamadas = mockFetch([{ body: { id: 123456, nickname: 'LOJA BH', email: 'x@y.z' } }])
-  assert.deepEqual(await consultarConta(TOKEN), { id: '123456', nickname: 'LOJA BH' })
+test('consultarConta devolve id como string, as tags e o documento do titular, sem o e-mail', async () => {
+  const chamadas = mockFetch([{ body: { id: 123456, nickname: 'LOJA X', email: 'x@y.z', tags: ['normal', 'test_user'], identification: { type: 'CNPJ', number: '00000000000191' } } }])
+  assert.deepEqual(await consultarConta(TOKEN), { id: '123456', nickname: 'LOJA X', tags: ['normal', 'test_user'], documento: '00000000000191' })
   assert.equal(chamadas[0].url.pathname, '/users/me')
+})
+
+test('consultarConta sem tags nem documento: lista vazia e documento nulo', async () => {
+  mockFetch([{ body: { id: 9, nickname: 'LOJA Y' } }])
+  assert.deepEqual(await consultarConta(TOKEN), { id: '9', nickname: 'LOJA Y', tags: [], documento: null })
 })
 
 test('sem paging.total segue até vir página incompleta', async () => {
