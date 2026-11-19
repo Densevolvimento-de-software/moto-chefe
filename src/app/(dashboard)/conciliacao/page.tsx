@@ -1,8 +1,9 @@
 import { maquininhasDoGrupo } from '@/lib/maquininhas'
 import { nomeOperadora } from '@/lib/operadoras'
 import { db } from '@/lib/db'
-import { conciliacoesCartao, vendas, vendasPecas, ordensServico, clientes } from '@/lib/db/schema'
-import { eq, desc, and, isNull, isNotNull, inArray, gte, sql } from 'drizzle-orm'
+import { conciliacoesCartao } from '@/lib/db/schema'
+import { resumosDoAlvoCartao } from '@/lib/rotulos-alvo'
+import { eq, desc, and, gte } from 'drizzle-orm'
 import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { getGrupoAtivo } from '@/lib/grupo'
@@ -65,41 +66,10 @@ export default async function ConciliacaoPage({
     .orderBy(desc(conciliacoesCartao.dataTransacao))
     .limit(200)
 
-  // Carrega dados das vendas (motos e peças) vinculadas
-  const vendaIds = [...new Set(transacoes.flatMap(t => t.vendaId ? [t.vendaId] : []))]
-  const pecaVendaIds = [...new Set(transacoes.flatMap(t => t.pecaVendaId ? [t.pecaVendaId] : []))]
-  const vendasMap = new Map<string, { id: string; numero: number; clienteNome: string; valor: string }>()
-  const pecasVendaMap = new Map<string, { id: string; numero: number; clienteNome: string; valor: string }>()
-  if (vendaIds.length > 0) {
-    const rows = await db
-      .select({ id: vendas.id, numero: vendas.numero, clienteNome: vendas.clienteNome, valor: vendas.valor })
-      .from(vendas)
-      .where(inArray(vendas.id, vendaIds))
-    rows.forEach(v => vendasMap.set(v.id, v))
-  }
-  if (pecaVendaIds.length > 0) {
-    const rows = await db
-      .select({ id: vendasPecas.id, numero: vendasPecas.numero, clienteNome: vendasPecas.clienteNome, valor: vendasPecas.valorTotal })
-      .from(vendasPecas)
-      .where(inArray(vendasPecas.id, pecaVendaIds))
-    rows.forEach(v => pecasVendaMap.set(v.id, { ...v, clienteNome: v.clienteNome ?? 'Cliente não identificado' }))
-  }
-
-  const osIds = [...new Set(transacoes.flatMap(t => t.osId ? [t.osId] : []))]
-  const osMap = new Map<string, { id: string; numero: number; clienteNome: string; valor: string }>()
-  if (osIds.length > 0) {
-    const rows = await db
-      .select({
-        id:          ordensServico.id,
-        numero:      ordensServico.numero,
-        clienteNome: sql<string>`COALESCE(${clientes.nome}, ${ordensServico.clienteNomeExterno}, 'Cliente não identificado')`,
-        valor:       ordensServico.valorTotal,
-      })
-      .from(ordensServico)
-      .leftJoin(clientes, eq(ordensServico.clienteId, clientes.id))
-      .where(inArray(ordensServico.id, osIds))
-    rows.forEach(o => osMap.set(o.id, { ...o, numero: o.numero ?? 0, valor: o.valor ?? '0' }))
-  }
+  // Carrega dados das vendas (motos e peças) e OS vinculadas
+  const idsDe = (k: 'vendaId' | 'pecaVendaId' | 'osId') => transacoes.flatMap(t => t[k] ? [t[k]] : [])
+  const { vendas: vendasMap, pecas: pecasVendaMap, os: osMap } =
+    await resumosDoAlvoCartao(grupo, { vendaIds: idsDe('vendaId'), pecaVendaIds: idsDe('pecaVendaId'), osIds: idsDe('osId') })
 
   const [totalPendentes, totalConciliadas] = await Promise.all([
     db.$count(conciliacoesCartao, and(doPeriodo, cartaoPendente)),
