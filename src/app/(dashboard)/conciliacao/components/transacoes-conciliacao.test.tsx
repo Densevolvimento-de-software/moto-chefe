@@ -14,12 +14,13 @@ const desvincular = mock.fn(async (_id: string) => {})
 const vincular = mock.fn(async (_id: string, _alvo: string, _tipo: string) => {})
 const SUGERIDA = {
   id: 'v9', tipo: 'moto', numero: 32001, clienteNome: 'Ana Reis', valor: '3550.00', dataVenda: '2026-11-06T12:00:00.000Z',
-  formaPagamento: 'PIX', pagamentos: [],
+  formaPagamento: 'PIX', pagamentos: [{ tipo: 'pix', valor: 3550 }, { tipo: 'cartao_credito', valor: 100, parcelas: 1 }],
 }
+const sugeridas = mock.fn(async () => [SUGERIDA] as unknown[])
 const mocks = [
   mock.module('../actions', {
     namedExports: {
-      buscarVendasParaVincular: async () => [SUGERIDA], buscarVendaManual: async () => [],
+      buscarVendasParaVincular: () => sugeridas(), buscarVendaManual: async () => [],
       vincularVendaAction: vincular, desvincularVendaAction: desvincular,
     },
   }),
@@ -30,18 +31,19 @@ const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
   desvincular.mock.resetCalls()
   vincular.mock.resetCalls()
+  sugeridas.mock.restore()
   for (const d of montados.splice(0)) await d()
 })
 
 const BASE: LinhaNaTela = {
-  id: 'c1', data: '2026-11-06', operadora: 'Mercado Pago', rotulo: 'PIX', credito: false, bandeira: '', portador: '',
+  id: 'c1', data: '2026-11-06', operadora: 'Mercado Pago', tipo: 'pix', rotulo: 'PIX', credito: false, bandeira: '', portador: '',
   valor: 3550, liquido: 3514.5, nsu: null, estornada: false, alvo: null,
 }
 const LINHAS: LinhaNaTela[] = [
   BASE,
-  { ...BASE, id: 'c2', rotulo: 'Cré 3x', credito: true, bandeira: 'visa', portador: 'MARIA S', valor: 8900, liquido: 8512.4,
+  { ...BASE, id: 'c2', tipo: 'credito', rotulo: 'Cré 3x', credito: true, bandeira: 'visa', portador: 'MARIA S', valor: 8900, liquido: 8512.4,
     nsu: '123400009932', alvo: { id: 'v1', numero: 31902, clienteNome: 'Maria Souza', valor: '8900.00', tipo: 'moto' } },
-  { ...BASE, id: 'c3', data: '2026-11-05', rotulo: 'Déb', valor: 450, liquido: 446.4, estornada: true,
+  { ...BASE, id: 'c3', data: '2026-11-05', tipo: 'debito', rotulo: 'Déb', valor: 450, liquido: 446.4, estornada: true,
     alvo: { id: 'v2', numero: 31903, clienteNome: 'João Prado', valor: '450.00', tipo: 'moto' } },
 ]
 
@@ -156,7 +158,7 @@ test('sem permissão de gerir: nenhum Vincular nem Desvincular na tabela, na lis
 
 // O caso mais comum: o estorno chega antes de alguém ligar a linha a uma venda.
 test('estornada sem venda ligada: sem Vincular na tabela, na lista e na folha', async () => {
-  const sozinha: LinhaNaTela = { ...BASE, id: 'c5', rotulo: 'Cré', credito: true, valor: 199, liquido: 190, estornada: true }
+  const sozinha: LinhaNaTela = { ...BASE, id: 'c5', tipo: 'credito', rotulo: 'Cré', credito: true, valor: 199, liquido: 190, estornada: true }
   const t = await montar([sozinha])
   assert.deepEqual(botoes(linhaDaTabela('R$ 199,00')), [])
   assert.ok(texto(linhaDaTabela('R$ 199,00')).includes('Não se vincula'), texto(linhaDaTabela('R$ 199,00')))
@@ -164,4 +166,24 @@ test('estornada sem venda ligada: sem Vincular na tabela, na lista e na folha', 
   await abrirFolha(t, 'R$ 199,00')
   assert.ok(texto(folha()).includes('Não se vincula: o dinheiro voltou ao cliente.'), texto(folha()))
   assert.deepEqual(botoes(folha() ?? undefined).filter(b => /vincular/i.test(b)), [])
+})
+
+// #51 (PR6c): a linha pix da maquininha cobre o pagamento PIX da venda.
+test('Vincular da linha pix: selo "PIX na maquininha" e a venda sugerida mostra o pagamento PIX dela', async () => {
+  const t = await montar()
+  const vincularDaTabela = [...linhaDaTabela('R$ 3.550,00')!.querySelectorAll('button')].find(b => texto(b) === 'Vincular')
+  await t.act(async () => { clicar(vincularDaTabela); await esperar(50) })
+  const dialogo = document.querySelector('[data-slot="dialog-content"]')
+  assert.ok(texto(dialogo).includes('PIX na maquininha'), texto(dialogo))
+  const sugerida = [...(dialogo?.querySelectorAll('button') ?? [])].find(b => texto(b).includes('Venda #32001'))
+  assert.ok(texto(sugerida).includes('PIX R$ 3.550,00'), texto(sugerida))
+  assert.ok(!texto(sugerida).includes('Crédito'), texto(sugerida))
+})
+
+test('Vincular da linha pix sem venda no valor: o vazio fala de PIX', async () => {
+  sugeridas.mock.mockImplementation(async () => [])
+  const t = await montar()
+  const vincularDaTabela = [...linhaDaTabela('R$ 3.550,00')!.querySelectorAll('button')].find(b => texto(b) === 'Vincular')
+  await t.act(async () => { clicar(vincularDaTabela); await esperar(50) })
+  assert.ok(texto(document.querySelector('[data-slot="dialog-content"]')).includes('Nenhuma venda com PIX no valor exato encontrada.'))
 })

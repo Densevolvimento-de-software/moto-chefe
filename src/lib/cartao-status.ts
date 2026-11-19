@@ -1,6 +1,6 @@
 import { and, eq, ne } from 'drizzle-orm'
 import { conciliacoesCartao } from '@/lib/db/schema'
-import { CARTAO_ESTORNADO, LINHA_PIX } from '@/lib/conciliacao-cartao'
+import { CARTAO_ESTORNADO, LINHA_PIX, type LinhaProcurada } from '@/lib/conciliacao-cartao'
 
 // Venda devolvida ao cliente (estorno do Mercado Pago). A linha continua ligada à venda/OS/peça e aparece na lista "Todas",
 // mas o dinheiro voltou: não é pendência, não é candidata a vínculo e o servidor recusa vinculá-la
@@ -17,3 +17,6 @@ export const cartaoPendente = and(eq(conciliacoesCartao.conciliado, false), cart
  * (#51), que cobre pagamento Pix. As buscas do painel da venda para pagamento de cartão usam esta.
  */
 export const linhaDeCartao = ne(conciliacoesCartao.tipo, LINHA_PIX)
+
+/** Condição Drizzle: a linha que cobre o pagamento procurado (cartão ou a linha pix da maquininha). */
+export const linhaDoPagamento = (linha: LinhaProcurada) => (linha === 'pix' ? eq(conciliacoesCartao.tipo, LINHA_PIX) : linhaDeCartao)

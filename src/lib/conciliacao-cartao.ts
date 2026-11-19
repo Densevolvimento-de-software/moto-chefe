@@ -87,4 +87,10 @@ export function rotuloDaLinha(tipo: string): string {
 // Venda devolvida ao cliente (estorno do Mercado Pago, #51). Mora aqui (sem banco) para a tela e o servidor
 // decidirem pela mesma regra: cartao-status.ts monta o SQL a partir desta constante.
 export const CARTAO_ESTORNADO = 'estornado'
+
+/** Que linha o painel da venda procura para um pagamento: a de cartão ou a pix da maquininha (#51). */
+export const LINHAS_PROCURADAS = ['cartao', 'pix'] as const
+export type LinhaProcurada = (typeof LINHAS_PROCURADAS)[number]
+// O valor vem do navegador: o servidor confere antes de usar.
+export const ehLinhaProcurada = (v: unknown): v is LinhaProcurada => (LINHAS_PROCURADAS as readonly unknown[]).includes(v)
 export const linhaEstornada = (status: string) => status === CARTAO_ESTORNADO

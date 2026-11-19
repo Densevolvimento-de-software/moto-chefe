@@ -8,14 +8,18 @@ import { buscarVendasParaVincular, buscarVendaManual, vincularVendaAction, desvi
 import { dataPuraBr } from '@/lib/data-venda'
 import { brl } from '@/lib/dashboard-painel'
 import { cn } from '@/lib/utils'
+import { LINHA_PIX } from '@/lib/conciliacao-cartao'
+import { tiposDoPagamentoDaLinha } from '@/lib/conciliacao-status'
 
 type Venda = Awaited<ReturnType<typeof buscarVendasParaVincular>>[number]
 type PgtoItem = { tipo: string; valor: number | string; operadora?: string; parcelas?: number; autorizacao?: string }
 
-const TIPO_CARTAO_LABEL: Record<string, string> = {
+// Rótulo do pagamento que a linha cobre (cartão, ou PIX para a linha pix da maquininha).
+const ROTULO_DO_PAGAMENTO: Record<string, string> = {
   cartao_credito: 'Crédito',
   cartao_debito:  'Débito',
   link_pagamento: 'Link',
+  pix:            'PIX',
 }
 
 type Props = {
@@ -24,6 +28,8 @@ type Props = {
   valorRef: number
   vendaVinculada?: { id: string; numero: number; clienteNome: string; valor: string } | null
   tipoVinculado?: 'moto' | 'peca' | 'os'
+  /** Tipo da linha: a linha pix da maquininha procura e mostra o pagamento PIX da venda (#51). */
+  tipoLinha?: string
   tamanho?: Tamanho
 }
 
@@ -93,7 +99,9 @@ export function BotaoDesvincular({ conciliacaoId, tamanho }: { conciliacaoId: st
   )
 }
 
-export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVinculada, tipoVinculado, tamanho }: Props) {
+export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVinculada, tipoVinculado, tipoLinha, tamanho }: Props) {
+  const tiposDaLinha = tiposDoPagamentoDaLinha(tipoLinha)
+  const linhaPix = tipoLinha === LINHA_PIX
   const [open, setOpen]               = useState(false)
   const [vendas, setVendas]           = useState<Venda[]>([])
   const [carregando, setCarregando]   = useState(false)
@@ -145,7 +153,7 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
 
   function renderVenda(v: Venda, force = false) {
     const pgtos = (v.pagamentos as PgtoItem[] | null) ?? []
-    const pgtoCartao = pgtos.filter(p => p.tipo in TIPO_CARTAO_LABEL)
+    const pgtoDaLinha = pgtos.filter(p => tiposDaLinha.has(p.tipo))
 
     return (
       <button
@@ -173,16 +181,16 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
             : '-'}
           {' · '}{v.formaPagamento}
         </div>
-        {pgtoCartao.length > 0 && (
+        {pgtoDaLinha.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">
-            {pgtoCartao.map((p, i) => (
+            {pgtoDaLinha.map((p, i) => (
               <span
                 key={i}
                 className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                   force ? 'bg-warning/15 text-warning' : 'bg-info/15 text-info'
                 }`}
               >
-                {TIPO_CARTAO_LABEL[p.tipo]}
+                {ROTULO_DO_PAGAMENTO[p.tipo]}
                 {p.parcelas && p.parcelas > 1 ? ` ${p.parcelas}x` : ''}{' '}
                 {parseFloat(String(p.valor)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 {p.autorizacao ? ` · ${p.autorizacao}` : ''}
@@ -218,7 +226,10 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Vincular a uma venda</DialogTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <DialogTitle>Vincular a uma venda</DialogTitle>
+              {linhaPix && <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">PIX na maquininha</span>}
+            </div>
             <p className="text-sm text-muted-foreground">
               Recebimento de{' '}
               <span className="font-semibold">{valorRef.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
@@ -240,7 +251,7 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
 
             {!carregando && vendas.length === 0 && (
               <p className="text-sm text-muted-foreground py-2">
-                Nenhuma venda com cartão no valor exato encontrada.
+                {linhaPix ? 'Nenhuma venda com PIX no valor exato encontrada.' : 'Nenhuma venda com cartão no valor exato encontrada.'}
               </p>
             )}
 

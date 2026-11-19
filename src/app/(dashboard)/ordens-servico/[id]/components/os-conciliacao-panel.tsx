@@ -1,12 +1,11 @@
 'use client'
-import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PAGAMENTO_PIX, TIPOS_CARTAO, matchPagamentos, type PgtoOS } from '@/lib/conciliacao-status'
 import { PagamentosConciliacao, useConciliacaoAlvo } from '@/components/pagamentos-conciliacao'
 
-type Props = { osId: string; osNumero: number | null; pagamentos: PgtoOS[]; papel: string }
+type Props = { osId: string; pagamentos: PgtoOS[]; papel: string }
 
-export function OSConciliacaoPanel({ osId, osNumero, pagamentos, papel }: Props) {
+export function OSConciliacaoPanel({ osId, pagamentos, papel }: Props) {
   const temCartao = pagamentos.some(p => TIPOS_CARTAO.has(p.tipo))
   const temPix    = pagamentos.some(p => PAGAMENTO_PIX.has(p.tipo))
 
@@ -32,8 +31,7 @@ export function OSConciliacaoPanel({ osId, osNumero, pagamentos, papel }: Props)
 
         {!dados.loading && pixPendente && (
           <p className="text-xs text-muted-foreground">
-            PIX conciliado à parte — vá em <Link href="/pix-mcp" className="text-primary-text hover:underline">PIX</Link>,
-            busque a OS #{osNumero ?? '—'} e lance a correspondência.
+            PIX pendente: toque no pagamento acima para procurar o PIX na maquininha ou no extrato do banco.
           </p>
         )}
       </CardContent>

@@ -8,9 +8,9 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { and, between, inArray, sql } from 'drizzle-orm'
 import type { db } from '@/lib/db'
 import { conciliacoesCartao, ordensServico, vendas, vendasPecas } from '@/lib/db/schema'
-import { PAGAMENTO_PIX, TIPOS_CARTAO, type PgtoOS } from '@/lib/conciliacao-status'
+import { tiposDoPagamentoDaLinha, type PgtoOS } from '@/lib/conciliacao-status'
 import { addDias } from '@/lib/calendario'
-import { LINHA_PIX, type TransacaoCartao } from '@/lib/conciliacao-cartao'
+import type { TransacaoCartao } from '@/lib/conciliacao-cartao'
 
 type Db = Pick<typeof db, 'select'>
 
@@ -24,14 +24,6 @@ const TOLERANCIA = 0.05 // R$ 0,05 de tolerância no valor
 type Pagamento = Pick<PgtoOS, 'tipo' | 'valor' | 'parcelas'>
 
 export const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
-
-/**
- * Tipos de pagamento da venda que uma linha da conciliação de cartão pode cobrir. A linha 'pix' só
- * existe para o Pix da maquininha Mercado Pago (#51) e cobre o pagamento Pix; as outras, cartão.
- */
-export function tiposDoPagamentoDaLinha(tipoLinha: string | undefined): ReadonlySet<string> {
-  return tipoLinha === LINHA_PIX ? PAGAMENTO_PIX : TIPOS_CARTAO
-}
 
 /** Um lançamento do tipo que a linha cobre, do mesmo valor (±R$ 0,05) e mesmas parcelas. */
 function casaPagamento(pagamentos: unknown, tipos: ReadonlySet<string>, valorBruto: number, parcelas: number): boolean {
