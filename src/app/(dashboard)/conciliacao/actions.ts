@@ -1,5 +1,5 @@
 'use server'
-import { acao, RecusaUsuario } from '@/lib/resultado-action'
+import { acao, RecusaUsuario, type ResultadoAction } from '@/lib/resultado-action'
 import { maquininhasDoGrupo } from '@/lib/maquininhas'
 import { gruposDoTerminalNaConta } from '@/lib/terminal-da-conta'
 import { db } from '@/lib/db'
@@ -29,7 +29,7 @@ import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
 import { grupos } from '@/lib/db/schema'
 import { revalidatePath } from 'next/cache'
 import { revalidarTelasDaConciliacao } from '@/lib/revalidar-conciliacao'
-import { cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo } from '@/lib/alvo-da-conciliacao'
+import { cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from '@/lib/alvo-da-conciliacao'
 import { lojasDoEscopo } from '@/lib/conta'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
@@ -620,48 +620,38 @@ function alvoNaoEncontrado(tipo: AlvoTipo) {
     :                                         'Venda não encontrada')
 }
 
-async function alvoParaEdicao(alvo: AlvoConciliacao) {
+// Lê, muda e grava os pagamentos do alvo numa transação com a linha travada: forçar, desfazer e o desvincular de um
+// PIX (pix-vinculo.ts) no mesmo alvo esperam a vez, e nenhum grava por cima do outro.
+type MudarPagamentos = (pgtos: PgtoOS[], usuario: Usuario, tx: ExecutorDoAlvo) => Promise<PgtoOS[]>
+async function editarPagamentos(alvo: AlvoConciliacao, mudar: MudarPagamentos) {
   const usuario = await exigirAlvoNoGrupoAtivo(alvo)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
-  const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo)
-  if (!pgtos) throw alvoNaoEncontrado(alvo.tipo)
-  return { usuario, lojaIdsGrupo, pgtos }
+  await db.transaction(async tx => {
+    const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo, tx, true)
+    if (!pgtos) throw alvoNaoEncontrado(alvo.tipo)
+    await gravarPagamentosDoAlvo(alvo, lojaIdsGrupo, await mudar(pgtos, usuario, tx), tx)
+  })
+  revalidarTelasDaConciliacao(alvo)
 }
 
-async function gravarPagamentos(alvo: AlvoConciliacao, lojaIdsGrupo: string[], pgtos: PgtoOS[]) {
-  await gravarPagamentosDoAlvo(alvo, lojaIdsGrupo, pgtos)
-  revalidarTelasDaConciliacao(alvo)
+const ouRecusa = (r: ResultadoAction<PgtoOS[]>) => {
+  if (!r.ok) throw new RecusaUsuario(r.erro)
+  return r.dados
 }
 
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
 /** `valorRecebido`: na forçada de PIX, o que entrou na conta (#92); é o único valor em reais que vem da tela. */
 export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string, valorRecebido?: number) {
-  return acao(() => forcarConciliacao(alvo, idx, motivo, valorRecebido))
-}
-async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: string, valorRecebido: unknown) {
-  const usuario = await exigirAlvoNoGrupoAtivo(alvo)
-  const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
-  // Numa transação com a linha do alvo travada: o desvincular de um PIX deste alvo espera (pix-vinculo.ts).
-  await db.transaction(async tx => {
-    const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo, tx, true)
-    if (!pgtos) throw alvoNaoEncontrado(alvo.tipo)
+  return acao(() => editarPagamentos(alvo, async (pgtos, usuario, tx) => {
     // Quanto os lançamentos do alvo já cobrem do pagamento, pela mesma conta do painel: o PIX parcial força o que falta.
     const coberto = matchPagamentos(pgtos, await cartoesDoAlvo(alvo, tx), await pixDoAlvo(alvo, tx))[idx]?.coberto ?? 0
-    const r = comForcado(pgtos, idx, motivo, { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }, { valorRecebido, coberto })
-    if (!r.ok) throw new RecusaUsuario(r.erro)
-    await gravarPagamentosDoAlvo(alvo, lojaIdsGrupo, r.dados, tx)
-  })
-  revalidarTelasDaConciliacao(alvo)
+    const autor = { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }
+    return ouRecusa(comForcado(pgtos, idx, motivo, autor, { valorRecebido, coberto }))
+  }))
 }
 
 export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, idx: number) {
-  return acao(() => desfazerConciliacaoForcada(alvo, idx))
-}
-async function desfazerConciliacaoForcada(alvo: AlvoConciliacao, idx: number) {
-  const { lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
-  const r = semForcado(pgtos, idx)
-  if (!r.ok) throw new RecusaUsuario(r.erro)
-  await gravarPagamentos(alvo, lojaIdsGrupo, r.dados)
+  return acao(() => editarPagamentos(alvo, async pgtos => ouRecusa(semForcado(pgtos, idx))))
 }
 
 export async function buscarVendasParaVincular(conciliacaoId: string) {

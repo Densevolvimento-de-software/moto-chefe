@@ -99,7 +99,7 @@ export async function pagamentosDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo: stri
     .from(vendas)
     .where(and(eq(vendas.id, alvo.id), inArray(vendas.lojaId, lojaIdsGrupo)))
     .limit(1)
-      .$dynamic())
+    .$dynamic())
   return r ? ((r.pagamentos ?? []) as PgtoOS[]) : null
 }
 
