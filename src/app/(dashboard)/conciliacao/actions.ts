@@ -637,18 +637,24 @@ async function gravarPagamentos(alvo: AlvoConciliacao, lojaIdsGrupo: string[], p
 }
 
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
-/** `valorRecebido`: na forçada de PIX, o que entrou na conta (#92); é o único número que vem da tela. */
+/** `valorRecebido`: na forçada de PIX, o que entrou na conta (#92); é o único valor em reais que vem da tela. */
 export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string, valorRecebido?: number) {
   return acao(() => forcarConciliacao(alvo, idx, motivo, valorRecebido))
 }
 async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: string, valorRecebido: unknown) {
-  const { usuario, lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
-  // Quanto os lançamentos do alvo já cobrem do pagamento, pela mesma conta do painel: o PIX parcial força o que falta.
-  const [cartoes, pix] = await Promise.all([cartoesDoAlvo(alvo), pixDoAlvo(alvo)])
-  const coberto = matchPagamentos(pgtos, cartoes, pix)[idx]?.coberto ?? 0
-  const r = comForcado(pgtos, idx, motivo, { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }, { valorRecebido, coberto })
-  if (!r.ok) throw new RecusaUsuario(r.erro)
-  await gravarPagamentos(alvo, lojaIdsGrupo, r.dados)
+  const usuario = await exigirAlvoNoGrupoAtivo(alvo)
+  const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
+  // Numa transação com a linha do alvo travada: o desvincular de um PIX deste alvo espera (pix-vinculo.ts).
+  await db.transaction(async tx => {
+    const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo, tx, true)
+    if (!pgtos) throw alvoNaoEncontrado(alvo.tipo)
+    // Quanto os lançamentos do alvo já cobrem do pagamento, pela mesma conta do painel: o PIX parcial força o que falta.
+    const coberto = matchPagamentos(pgtos, await cartoesDoAlvo(alvo, tx), await pixDoAlvo(alvo, tx))[idx]?.coberto ?? 0
+    const r = comForcado(pgtos, idx, motivo, { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }, { valorRecebido, coberto })
+    if (!r.ok) throw new RecusaUsuario(r.erro)
+    await gravarPagamentosDoAlvo(alvo, lojaIdsGrupo, r.dados, tx)
+  })
+  revalidarTelasDaConciliacao(alvo)
 }
 
 export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, idx: number) {

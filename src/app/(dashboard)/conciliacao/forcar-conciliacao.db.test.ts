@@ -279,6 +279,42 @@ test('forçar cartão e financiamento ignora o valor que entrou: a marca é só 
   }
 })
 
+// Conferir e soltar ao mesmo tempo (bot do #188): cada pedido veria o PIX do outro e a forçada ficaria sem o dinheiro.
+const ligarNaVenda = async (a: Awaited<ReturnType<typeof contaComAlvos>>, valor: number) => {
+  const pix = await semearPixRecebido(db, a.grupoId, { valor })
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'venda', venda_id = ${a.alvos.moto}, valor_bruto = ${valor} where id = ${pix}`)
+  return pix
+}
+const ligados = async (vendaId: string) =>
+  ((await execRows(sql`select count(*)::int as n from pix_recebimentos_mcp where venda_id = ${vendaId}`)) as { n: number }[])[0].n
+
+test('dois desvincular ao mesmo tempo, cada PIX sozinho bastaria para a forçada parcial: só um solta', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  const [p1, p2] = [await ligarNaVenda(a, 400), await ligarNaVenda(a, 400)]
+  // Forçada parcial de 600 (os dois PIX cobrem 800: sobra um de 400 para completar).
+  const marca = { motivo: 'Resto caiu na conta pessoal', porId: usuario.id, porNome: usuario.nome, em: '2026-11-19T12:00:00.000Z',
+    pix: { valorRecebido: 600, valorBruto: 600, custoPix: 0, custoPixTaxa: 0 } }
+  await db.execute(sql`update vendas set pagamentos = ${JSON.stringify([{ tipo: 'pix', valor: 1000, conciliadoManual: marca }])}::jsonb where id = ${a.alvos.moto}`)
+  const rs = await Promise.all([actions.desvincularPixAlvoAction(p1), actions.desvincularPixAlvoAction(p2)])
+  assert.deepEqual(rs.map(r => r.ok).sort(), [false, true])
+  assert.equal(await ligados(a.alvos.moto), 1)
+})
+
+test('forçar e desvincular ao mesmo tempo: se o PIX soltou, a forçada não conta com ele', async () => {
+  for (let i = 0; i < 3; i++) {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    const pix = await ligarNaVenda(a, 400)
+    await Promise.all([
+      actions.forcarConciliacaoAction({ tipo: 'moto', id: a.alvos.moto }, 0, 'Resto caiu na conta pessoal', 598.8),
+      actions.desvincularPixAlvoAction(pix),
+    ])
+    const base = (await marcaDe('moto', a.alvos.moto))?.pix?.valorBruto
+    assert.ok(!((await ligados(a.alvos.moto)) === 0 && base === 600), `rodada ${i}: PIX solto e a marca contando com ele`)
+  }
+})
+
 test('PIX vinculado que completa uma forçada parcial não se desvincula: pede para desfazer a forçada antes', async () => {
   const a = await contaComAlvos()
   usuario = sessao(a, 'aux_adm')
