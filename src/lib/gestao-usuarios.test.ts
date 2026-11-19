@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { limitesDaTela, podeExcluir, podeGerenciar, recusaDaGravacao } from './gestao-usuarios'
+import { categorizaParaGravar, limitesDaTela, podeExcluir, podeGerenciar, recusaDaGravacao } from './gestao-usuarios'
 import { PAPEL_FABRICA } from './login-fabrica'
 
 const VALE = 'grupo-vale'
@@ -247,4 +247,17 @@ test('/admin/usuarios não edita, não desativa nem troca o papel do login da f�
 
 test('a tela de /admin/usuarios não oferece o papel fabrica', () => {
   assert.equal(limitesDaTela(geralDaPlataforma).papeis.includes(PAPEL_FABRICA), false)
+})
+
+test('marca de categorizar saídas do banco: o admin_geral liga e desliga; o sócio não muda o que está gravado (#149)', () => {
+  const geral = { papel: 'admin_geral' }
+  const socio = { papel: 'admin_socio' }
+  assert.equal(categorizaParaGravar(geral, 'admin_socio', true, false), true)
+  assert.equal(categorizaParaGravar(geral, 'admin_socio', false, true), false)
+  assert.equal(categorizaParaGravar(socio, 'admin_socio', true, false), false, 'sócio não liga')
+  assert.equal(categorizaParaGravar(socio, 'admin_socio', false, true), true, 'sócio não desliga')
+  assert.equal(categorizaParaGravar(socio, 'admin_socio', true, null), false, 'criar pelo sócio')
+  assert.equal(categorizaParaGravar(geral, 'aux_adm', true, false), false, 'só vale para sócio')
+  assert.equal(limitesDaTela({ id: 'g', papel: 'admin_geral', gruposVisiveis: [], gruposAprovacao: [], itensLiberaveis: [], aprovaPagamentoSensivel: false }).marcaCategorizaDespesa, true)
+  assert.equal(limitesDaTela({ id: 's', papel: 'admin_socio', gruposVisiveis: [], gruposAprovacao: [], itensLiberaveis: [], aprovaPagamentoSensivel: false }).marcaCategorizaDespesa, false)
 })

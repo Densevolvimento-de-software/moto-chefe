@@ -150,6 +150,17 @@ export type PapelBase = Exclude<(typeof PAPEIS)[number], 'admin_geral' | 'admin_
 /** Os papéis que o sócio dá a um usuário. São também os que um cargo aceita como base (#616). */
 export const PAPEIS_BASE_DO_CARGO = PAPEIS.filter((p): p is PapelBase => p !== 'admin_geral' && p !== 'admin_rede' && p !== 'cargo')
 
+/**
+ * Marca "categoriza as saídas do banco" a gravar (#149): só vale para sócio e só o admin_geral liga ou
+ * desliga. Pedido de outro gestor não muda nada: fica o que estava gravado (false ao criar).
+ */
+export function categorizaParaGravar(
+  gestor: Pick<Gestor, 'papel'>, papelDoUsuario: string, pedido: boolean | undefined, antes: boolean | null,
+): boolean {
+  if (papelDoUsuario !== 'admin_socio') return false
+  return gestor.papel === 'admin_geral' ? pedido === true : antes === true
+}
+
 /** O que a tela de /admin/usuarios oferece: os mesmos limites que recusaDaGravacao confere. */
 export function limitesDaTela(gestor: Gestor) {
   const geral = gestor.papel === 'admin_geral'
@@ -165,6 +176,8 @@ export function limitesDaTela(gestor: Gestor) {
     /** Telas que só o admin_geral liga ou desliga: o sócio vê as que o usuário já tem, travadas. */
     itensTravados: geral ? [] : ITENS_SO_ADMIN_GERAL_LIBERA,
     aprovaPagamentoSensivel: geral || gestor.aprovaPagamentoSensivel,
+    /** Só o admin_geral liga ou desliga "categoriza as saídas do banco"; para os demais a caixa fica travada. */
+    marcaCategorizaDespesa: geral,
     /** null = todos os grupos. */
     gruposAprovacao: geral ? null : gestor.gruposAprovacao,
     travaASiMesmo: !geral,

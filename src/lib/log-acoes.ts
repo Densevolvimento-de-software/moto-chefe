@@ -117,6 +117,8 @@ export type Permissoes = {
   gruposAcesso: string[]
   gruposAprovacao: string[]
   aprovaPagamentoSensivel: boolean
+  /** Categoriza as saídas do banco em /despesas (#149). */
+  categorizaDespesaBanco: boolean
   modulosExtras: string[]
   modulosBloqueados: string[]
   /** Só com papel 'cargo' (#616). */
@@ -135,7 +137,8 @@ export function camposDePermissaoAlterados(antes: Permissoes, depois: Permissoes
 export function permissoesDe(u: Permissoes): Permissoes {
   return {
     papel: u.papel, lojaId: u.lojaId, gruposAcesso: u.gruposAcesso, gruposAprovacao: u.gruposAprovacao,
-    aprovaPagamentoSensivel: u.aprovaPagamentoSensivel, modulosExtras: u.modulosExtras, modulosBloqueados: u.modulosBloqueados,
+    aprovaPagamentoSensivel: u.aprovaPagamentoSensivel, categorizaDespesaBanco: u.categorizaDespesaBanco,
+    modulosExtras: u.modulosExtras, modulosBloqueados: u.modulosBloqueados,
     cargoId: u.cargoId,
   }
 }

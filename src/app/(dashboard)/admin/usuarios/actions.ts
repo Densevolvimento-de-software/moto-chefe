@@ -6,7 +6,7 @@ import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
 import { LOGIN_NAO_CRIADO, criarLoginComCadastro } from '@/lib/supabase/criar-login'
 import { getGrupoIdDaLoja } from '@/lib/grupo'
 import { gestorDaSessao } from '@/lib/gestor-da-sessao'
-import { COM_HISTORICO, podeExcluir, recusaDaGravacao } from '@/lib/gestao-usuarios'
+import { COM_HISTORICO, categorizaParaGravar, podeExcluir, recusaDaGravacao } from '@/lib/gestao-usuarios'
 import { cadastroAtual, cadastroPedido } from '@/lib/usuarios-gerenciaveis'
 import { cargoParaGravar, nomesDosCargos } from '@/lib/cargos'
 import { guardaAcessoAGrupos, guardaAprovacao, papelDasListas } from '@/lib/listas-do-cadastro'
@@ -66,6 +66,7 @@ const colunasPermissao = {
   ...colunasAlvo,
   papel: usuarios.papel, gruposAcesso: usuarios.gruposAcesso, gruposAprovacao: usuarios.gruposAprovacao,
   aprovaPagamentoSensivel: usuarios.aprovaPagamentoSensivel,
+  categorizaDespesaBanco: usuarios.categorizaDespesaBanco,
   modulosExtras: usuarios.modulosExtras, modulosBloqueados: usuarios.modulosBloqueados,
   cargoId: usuarios.cargoId,
 }
@@ -165,6 +166,7 @@ export async function criarUsuarioAction(dados: {
   conecta: string | null
   gruposAprovacao: string[]
   aprovaPagamentoSensivel: boolean
+  categorizaDespesaBanco?: boolean
   gruposAcesso: string[]
   modulosExtras: string[]
   modulosBloqueados: string[]
@@ -200,6 +202,7 @@ export async function criarUsuarioAction(dados: {
         conecta,
         gruposAprovacao:         aprovacao.gruposAprovacao,
         aprovaPagamentoSensivel: aprovacao.aprovaPagamentoSensivel,
+        categorizaDespesaBanco:  categorizaParaGravar(admin, cargo.papelDasListas, dados.categorizaDespesaBanco, null),
         gruposAcesso:            acesso.gruposAcesso,
         modulosExtras:     filtrarIdsValidos(dados.modulosExtras),
         modulosBloqueados: filtrarIdsValidos(dados.modulosBloqueados),
@@ -230,6 +233,7 @@ export async function editarUsuarioAction(id: string, dados: {
   conecta: string | null
   gruposAprovacao: string[]
   aprovaPagamentoSensivel: boolean
+  categorizaDespesaBanco?: boolean
   gruposAcesso: string[]
   modulosExtras: string[]
   modulosBloqueados: string[]
@@ -265,6 +269,8 @@ export async function editarUsuarioAction(id: string, dados: {
         conecta: validarConecta(dados.conecta),
         gruposAprovacao:         aprovacao.gruposAprovacao,
         aprovaPagamentoSensivel: aprovacao.aprovaPagamentoSensivel,
+        // Só o admin_geral liga ou desliga; pelos demais fica o que estava gravado (#149).
+        categorizaDespesaBanco:  categorizaParaGravar(admin, cargo.papelDasListas, dados.categorizaDespesaBanco, antes?.categorizaDespesaBanco ?? false),
         gruposAcesso:            acesso.gruposAcesso,
         modulosExtras:     filtrarIdsValidos(dados.modulosExtras),
         modulosBloqueados: filtrarIdsValidos(dados.modulosBloqueados),
