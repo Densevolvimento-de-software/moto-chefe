@@ -225,12 +225,17 @@ test('dinheiro puro continua conciliado sem nada a conferir', () => {
 
 const AUTOR = { porId: 'u9', porNome: 'Aux da loja', em: '2026-11-18T15:00:00.000Z' }
 const PIX_E_DINHEIRO: PgtoOS[] = [{ tipo: 'pix', valor: 1000 }, { tipo: 'dinheiro', valor: 200 }]
+// Forçar PIX pede o valor que entrou na conta (#92); `coberto` é o que lançamentos já cobrem do pagamento.
+const ENTROU_998 = { valorRecebido: 998, coberto: 0 }
 
 test('comForcado marca só o pagamento da posição, com o motivo sem espaços nas pontas e o autor', () => {
-  assert.deepEqual(comForcado(PIX_E_DINHEIRO, 0, '  PIX na conta pessoal ', AUTOR), {
+  assert.deepEqual(comForcado(PIX_E_DINHEIRO, 0, '  PIX na conta pessoal ', AUTOR, ENTROU_998), {
     ok: true,
     dados: [
-      { tipo: 'pix', valor: 1000, conciliadoManual: { motivo: 'PIX na conta pessoal', porId: 'u9', porNome: 'Aux da loja', em: '2026-11-18T15:00:00.000Z' } },
+      { tipo: 'pix', valor: 1000, conciliadoManual: {
+        motivo: 'PIX na conta pessoal', porId: 'u9', porNome: 'Aux da loja', em: '2026-11-18T15:00:00.000Z',
+        pix: { valorRecebido: 998, valorBruto: 1000, custoPix: 2, custoPixTaxa: 0.002 },
+      } },
       { tipo: 'dinheiro', valor: 200 },
     ],
   })
@@ -239,19 +244,58 @@ test('comForcado marca só o pagamento da posição, com o motivo sem espaços n
 
 test('comForcado recusa motivo curto ou que não é texto', () => {
   for (const motivo of ['', ' ok ', null, 123, { motivo: 'abc' }]) {
-    assert.deepEqual(comForcado(PIX_E_DINHEIRO, 0, motivo, AUTOR), { ok: false, erro: 'Informe o motivo da conciliação forçada' }, String(motivo))
+    assert.deepEqual(comForcado(PIX_E_DINHEIRO, 0, motivo, AUTOR, ENTROU_998), { ok: false, erro: 'Informe o motivo da conciliação forçada' }, String(motivo))
   }
 })
 
 test('comForcado e semForcado recusam posição que não é índice inteiro do array', () => {
   for (const idx of ['length', '0', 1.5, -1, 2] as unknown as number[]) {
-    assert.deepEqual(comForcado(PIX_E_DINHEIRO, idx, 'PIX na conta', AUTOR), { ok: false, erro: 'Pagamento não encontrado' }, `com ${idx}`)
+    assert.deepEqual(comForcado(PIX_E_DINHEIRO, idx, 'PIX na conta', AUTOR, ENTROU_998), { ok: false, erro: 'Pagamento não encontrado' }, `com ${idx}`)
     assert.deepEqual(semForcado(PIX_E_DINHEIRO, idx), { ok: false, erro: 'Pagamento não encontrado' }, `sem ${idx}`)
   }
 })
 
 test('comForcado recusa pagamento que não espera depósito (dinheiro)', () => {
   assert.deepEqual(comForcado(PIX_E_DINHEIRO, 1, 'PIX na conta', AUTOR), { ok: false, erro: 'Esse pagamento não precisa de conciliação' })
+})
+
+test('comForcado de PIX sem valor que entrou (ausente, zero, negativo, texto) recusa com a frase', () => {
+  for (const valorRecebido of [undefined, 0, -1, '998', null, { valor: 998 }]) {
+    assert.deepEqual(comForcado(PIX_E_DINHEIRO, 0, 'PIX na conta', AUTOR, { valorRecebido, coberto: 0 }),
+      { ok: false, erro: 'Informe o valor que entrou na conta' }, String(valorRecebido))
+  }
+  assert.deepEqual(comForcado(PIX_E_DINHEIRO, 0, 'PIX na conta', AUTOR), { ok: false, erro: 'Informe o valor que entrou na conta' }, 'sem o recebimento')
+})
+
+// Decisão do Luis (19/11/2026): PIX parcial força só o que falta; custo = o que faltava − o que entrou.
+test('comForcado de PIX parcial parte do que falta', () => {
+  const r = comForcado(PIX_E_DINHEIRO, 0, 'Resto caiu na conta pessoal', AUTOR, { valorRecebido: 598.8, coberto: 400 })
+  assert.ok(r.ok)
+  assert.deepEqual(r.dados[0].conciliadoManual?.pix, { valorRecebido: 598.8, valorBruto: 600, custoPix: 1.2, custoPixTaxa: 0.002 })
+})
+
+test('comForcado de PIX que entrou cheio ou a mais grava custo 0', () => {
+  for (const valorRecebido of [1000, 1050]) {
+    const r = comForcado(PIX_E_DINHEIRO, 0, 'Caiu na conta pessoal', AUTOR, { valorRecebido, coberto: 0 })
+    assert.ok(r.ok)
+    assert.deepEqual(r.dados[0].conciliadoManual?.pix, { valorRecebido, valorBruto: 1000, custoPix: 0, custoPixTaxa: 0 })
+  }
+})
+
+test('comForcado recusa pagamento já forçado (desfaça antes) e PIX que já está coberto', () => {
+  const forcado: PgtoOS[] = [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }]
+  assert.deepEqual(comForcado(forcado, 0, 'De novo', AUTOR, ENTROU_998),
+    { ok: false, erro: 'Este pagamento já foi marcado como recebido. Desfaça antes de marcar de novo.' })
+  assert.deepEqual(comForcado(PIX_E_DINHEIRO, 0, 'Coberto', AUTOR, { valorRecebido: 998, coberto: 1000 }),
+    { ok: false, erro: 'Esse pagamento já está conciliado' })
+})
+
+test('comForcado de cartão e financiamento ignora o valor que entrou: a marca é só motivo e autor', () => {
+  for (const tipo of ['cartao_credito', 'financiamento']) {
+    assert.deepEqual(comForcado([{ tipo, valor: 1000 }], 0, 'Banco depositou', AUTOR, ENTROU_998), {
+      ok: true, dados: [{ tipo, valor: 1000, conciliadoManual: { motivo: 'Banco depositou', ...AUTOR } }],
+    }, tipo)
+  }
 })
 
 test('semForcado tira só a marcação da posição e mantém o resto do pagamento', () => {

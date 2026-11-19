@@ -1,5 +1,7 @@
 import type { ResultadoAction } from '@/lib/resultado-action'
 import { LINHA_PIX } from './conciliacao-cartao'
+import { VALOR_RECEBIDO_INVALIDO, custoDoPixForcado, lerValorRecebido } from './custo-pix'
+import { centavos } from './centavos'
 export type StatusConc = 'na' | 'pendente' | 'parcial' | 'conciliada'
 
 export const TIPOS_CARTAO = new Set(['cartao_credito', 'cartao_debito', 'link_pagamento'])
@@ -9,7 +11,10 @@ export const PAGAMENTO_PIX: ReadonlySet<string> = new Set(['pix'])
 // lançamento correspondente no sistema (relatório da operadora não importado, PIX
 // fora do Open Finance, transferência avulsa). Fica gravada no próprio item do array
 // `pagamentos` — ver docs/superpowers/specs/2026-07-31-forcar-conciliacao-design.md.
-export type ConciliadoManual = { motivo: string; porId: string; porNome: string; em: string }
+// `pix`: na forçada de um pagamento PIX (#92), o que entrou na conta e o custo, calculados no servidor
+// por comForcado; em cartão e financiamento não existe.
+export type PixDaForcada = { valorRecebido: number; valorBruto: number; custoPix: number; custoPixTaxa: number }
+export type ConciliadoManual = { motivo: string; porId: string; porNome: string; em: string; pix?: PixDaForcada }
 
 export type PgtoOS = {
   tipo: string
@@ -45,16 +50,43 @@ export function precisaConciliar(tipo: string): boolean {
 const pagamentoNo = (pgtos: readonly PgtoOS[], idx: number) => Number.isInteger(idx) ? pgtos[idx] : undefined
 
 /** Quem força e quando: sai do servidor, nunca do navegador. */
-export type AutorDoForcado = Omit<ConciliadoManual, 'motivo'>
+export type AutorDoForcado = Pick<ConciliadoManual, 'porId' | 'porNome' | 'em'>
+
+/**
+ * Na forçada de PIX (#92): o que entrou na conta (vem da tela, ainda sem conferir) e quanto do pagamento os
+ * lançamentos já cobrem (lido no servidor; a forçada parte do que falta, decisão do Luis de 19/11/2026).
+ */
+export type RecebimentoDaForcada = { valorRecebido: unknown; coberto: number }
+
+export const PAGAMENTO_JA_FORCADO = 'Este pagamento já foi marcado como recebido. Desfaça antes de marcar de novo.'
 
 /** Os pagamentos com o da posição `idx` marcado como recebido na mão, ou a frase da recusa. */
-export function comForcado(pgtos: readonly PgtoOS[], idx: number, motivo: unknown, autor: AutorDoForcado): ResultadoAction<PgtoOS[]> {
+export function comForcado(
+  pgtos: readonly PgtoOS[], idx: number, motivo: unknown, autor: AutorDoForcado, recebimento?: RecebimentoDaForcada,
+): ResultadoAction<PgtoOS[]> {
   const texto = typeof motivo === 'string' ? motivo.trim() : ''
   if (texto.length < 3) return { ok: false, erro: 'Informe o motivo da conciliação forçada' }
   const alvo = pagamentoNo(pgtos, idx)
   if (!alvo) return { ok: false, erro: 'Pagamento não encontrado' }
   if (!precisaConciliar(alvo.tipo)) return { ok: false, erro: 'Esse pagamento não precisa de conciliação' }
-  return { ok: true, dados: pgtos.map((p, i) => i === idx ? { ...p, conciliadoManual: { motivo: texto, ...autor } } : p) }
+  // Como no vínculo do PIX (#90): o que a marca gravou não muda calado.
+  if (alvo.conciliadoManual) return { ok: false, erro: PAGAMENTO_JA_FORCADO }
+  const marca: ConciliadoManual = { motivo: texto, porId: autor.porId, porNome: autor.porNome, em: autor.em }
+  if (PAGAMENTO_PIX.has(alvo.tipo)) {
+    const pix = pixDaForcada(alvo.valor, recebimento)
+    if (typeof pix === 'string') return { ok: false, erro: pix }
+    marca.pix = pix
+  }
+  return { ok: true, dados: pgtos.map((p, i) => i === idx ? { ...p, conciliadoManual: marca } : p) }
+}
+
+/** A parte pix da marca, ou a frase da recusa. A tela usa a mesma conta para mostrar as colunas. */
+export function pixDaForcada(valorDoPagamento: number, recebimento?: RecebimentoDaForcada): PixDaForcada | string {
+  const valorRecebido = lerValorRecebido(recebimento?.valorRecebido)
+  if (valorRecebido === null) return VALOR_RECEBIDO_INVALIDO
+  const base = centavos(valorDoPagamento - (recebimento?.coberto ?? 0))
+  if (base <= 0) return 'Esse pagamento já está conciliado'
+  return { valorRecebido, ...custoDoPixForcado(base, valorRecebido) }
 }
 
 /** Os pagamentos sem a marcação de forçado na posição `idx`, ou a frase da recusa. */
