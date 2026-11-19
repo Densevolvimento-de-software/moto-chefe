@@ -33,8 +33,7 @@ test('remover vence o token, mas só com true de verdade', async () => {
   assert.equal(r.ok && r.plano.acao, 'gravar')
 })
 
-// #126 (decisão do Luis): token colado com espaço ou quebra de linha é normalizado antes de qualquer uso. O fetch
-// com header inválido lança TypeError com o valor do header (o token) na mensagem.
+// #126 (decisão do Luis): token colado com espaço ou quebra de linha é normalizado antes de qualquer uso.
 test('token colado com quebra de linha, tab ou espaço no meio: normalizado antes de chamar o Mercado Pago', async () => {
   for (const colado of [`${TOKEN.slice(0, 20)}\n${TOKEN.slice(20)}`, `${TOKEN.slice(0, 20)}\r\n ${TOKEN.slice(20)}`, `\t${TOKEN.slice(0, 30)} ${TOKEN.slice(30)}\n`]) {
     let consultado = ''
@@ -67,7 +66,7 @@ test('401 e 403 do Mercado Pago: token recusado; o log não leva o token nem a m
 
 test('Mercado Pago fora (5xx, 429, timeout, rede): frase de indisponível, log só com o nome do erro', async t => {
   const log = t.mock.method(console, 'error', () => {})
-  const erros = [new ErroMercadoPago('x', 500), new ErroMercadoPago('x', 429), new DOMException(`t ${TOKEN}`, 'TimeoutError'), new TypeError(`Bearer ${TOKEN}`)]
+  const erros = [new ErroMercadoPago('x', 500), new ErroMercadoPago('x', 429), new DOMException(`t ${TOKEN}`, 'TimeoutError'), new TypeError(`falhou com Bearer ${TOKEN}`)]
   for (const e of erros) {
     const r = await conferirCredencialMp({ mpToken: TOKEN }, CNPJ, deps({ consultarConta: async () => { throw e } }))
     assert.deepEqual(r, recusa(FRASES_MP.indisponivel))
@@ -118,7 +117,7 @@ test('a tela leva só se há credencial e os 3 últimos dígitos da conta', () =
 test('nenhum console nem resposta recebe o token ou pedaço dele, com o erro trazendo o token na mensagem', async t => {
   const saidas = (['log', 'info', 'warn', 'error'] as const).map(m => t.mock.method(console, m, () => {}))
   const colado = `${TOKEN.slice(0, 9)}\n${TOKEN.slice(9)}`
-  const comToken = () => [new ErroMercadoPago(`falhou ${TOKEN}`, 401), new ErroMercadoPago(`x ${TOKEN}`, 500), new TypeError(`Bearer ${TOKEN}`), new DOMException(TOKEN, 'TimeoutError')]
+  const comToken = () => [new ErroMercadoPago(`falhou ${TOKEN}`, 401), new ErroMercadoPago(`x ${TOKEN}`, 500), new TypeError(`falhou com Bearer ${TOKEN}`), new DOMException(TOKEN, 'TimeoutError')]
   const respostas = []
   for (const e of comToken()) {
     respostas.push(await conferirCredencialMp({ mpToken: colado }, CNPJ, deps({ consultarConta: async () => { throw e } })))
