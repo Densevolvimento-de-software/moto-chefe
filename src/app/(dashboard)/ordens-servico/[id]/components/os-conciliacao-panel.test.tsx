@@ -45,11 +45,13 @@ async function montar() {
 test('PIX creditado R$ 9.980,00 com valor do PIX R$ 10.000,00 cobre o pagamento: sem a dica de PIX pendente', async () => {
   pixDoAlvo.mock.mockImplementation(async () => [pix('9980.00', '10000.00')])
   await montar()
+  assert.ok(textoDaTela().includes('Todos os pagamentos estão conciliados'), 'o painel carregou e fechou a linha')
   assert.equal(textoDaTela().includes(DICA), false)
 })
 
 test('PIX vinculado antes do custo, creditado a menos, segue pendente: a dica aparece', async () => {
   pixDoAlvo.mock.mockImplementation(async () => [pix('9980.00', null)])
   await montar()
+  assert.ok(textoDaTela().includes('Parcial'), 'o painel carregou com a linha parcial')
   assert.equal(textoDaTela().includes(DICA), true)
 })

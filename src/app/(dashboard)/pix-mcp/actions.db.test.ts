@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearUsuario, type Base } from '@/test/semear-conta'
-import { semearContaComAlvos, semearPixRecebido } from '@/test/semear-alvos-conciliacao'
+import { semearContaComAlvos, semearCustoPixDoGrupo, semearPixRecebido } from '@/test/semear-alvos-conciliacao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -170,8 +170,7 @@ test('mecânico recebe Sem permissão ao lançar e ao remover, e nada grava', as
 
 // ─── Custo do PIX (#90): o vínculo pela /pix-mcp grava o mesmo que o da conciliação ────────────────
 
-const custoDoGrupo = (grupoId: string, taxa: number) => db.execute(sql`insert into configuracao_taxas (grupo_id, custo_pix_taxa) values (${grupoId}, ${taxa})
-  on conflict (grupo_id) do update set custo_pix_taxa = excluded.custo_pix_taxa`)
+const custoDoGrupo = (grupoId: string, taxa: number) => semearCustoPixDoGrupo(db, grupoId, taxa)
 const custoDe = (pixId: string) => um(sql`select valor_bruto, custo_pix, custo_pix_taxa from pix_recebimentos_mcp where id = ${pixId}`)
 
 test('lançar por NF, OS, pedido e venda de peça grava o valor do PIX, o custo e a taxa; mudar a taxa depois não muda; remover limpa', async () => {

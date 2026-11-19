@@ -58,3 +58,8 @@ export async function semearContaComAlvos(tx: Executor, prefixo: string, pagamen
     },
   }
 }
+
+/** Custo do PIX do grupo na configuração de taxas (fração: 0.002 = 0,20%). */
+export const semearCustoPixDoGrupo = (tx: Executor, grupoId: string, taxa: number) =>
+  tx.execute(sql`insert into configuracao_taxas (grupo_id, custo_pix_taxa) values (${grupoId}, ${taxa})
+    on conflict (grupo_id) do update set custo_pix_taxa = excluded.custo_pix_taxa`)

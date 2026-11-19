@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearGrupo, semearLoja, semearUsuario, type Base } from '@/test/semear-conta'
-import { semearContaComAlvos, semearPixRecebido, semearVendaMoto } from '@/test/semear-alvos-conciliacao'
+import { semearContaComAlvos, semearCustoPixDoGrupo, semearPixRecebido, semearVendaMoto } from '@/test/semear-alvos-conciliacao'
 import { ALVO_TIPOS, type AlvoConciliacao } from '@/lib/conciliacao-alvo'
 
 const url = process.env.TEST_DATABASE_URL
@@ -215,8 +215,7 @@ test('alvo forjado (tipo fora da lista com id de venda real, ou id que não é u
 
 // ─── Custo do PIX (#90): o que o vínculo grava e a busca pelo esperado ──────────────────────────────
 
-const custoDoGrupo = (grupoId: string, taxa: number) => db.execute(sql`insert into configuracao_taxas (grupo_id, custo_pix_taxa) values (${grupoId}, ${taxa})
-  on conflict (grupo_id) do update set custo_pix_taxa = excluded.custo_pix_taxa`)
+const custoDoGrupo = (grupoId: string, taxa: number) => semearCustoPixDoGrupo(db, grupoId, taxa)
 const custoDe = async (pixId: string) => (await execRows(sql`select valor_bruto, custo_pix, custo_pix_taxa from pix_recebimentos_mcp where id = ${pixId}`))[0]
 const SEM_CUSTO = { valor_bruto: null, custo_pix: null, custo_pix_taxa: null }
 const COM_CUSTO = { valor_bruto: '10000.00', custo_pix: '20.00', custo_pix_taxa: '0.002000' }

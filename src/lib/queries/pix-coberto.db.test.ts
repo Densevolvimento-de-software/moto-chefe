@@ -1,6 +1,6 @@
 // Teste de banco (#90): as consultas que dizem se a venda, a OS e a venda de peça estão conciliadas contam o
 // PIX pelo valor do PIX gravado na conciliação, não pelo que o banco creditou (já sem o custo do PIX).
-// As consultas rodam de verdade no Postgres descartável; só a sessão é simulada (listagem de peças).
+// As consultas rodam de verdade no Postgres descartável; só a fronteira de fora é simulada (sessão, cookie e revalidatePath).
 import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
