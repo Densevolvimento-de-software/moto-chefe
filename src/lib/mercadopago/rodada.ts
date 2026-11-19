@@ -2,14 +2,15 @@
 // outros; o erro guardado é só a mensagem conhecida (nunca token nem corpo cru da resposta).
 import { RecusaUsuario } from '@/lib/resultado-action'
 import { ErroMercadoPago } from './cliente'
-import { CONTAGENS, gruposComMercadoPago, importarMercadoPagoDoGrupo, registrarFalhaMp, type ResultadoImportacaoMp } from './importar'
+import { gruposComMercadoPago, importarMercadoPagoDoGrupo, registrarFalhaMp } from './importar'
+import { CONTAGENS, type ResultadoImportacaoMp } from './contagens'
 
 export type ResultadoDoGrupo = { grupo: string } & ({ ok: true; resultado: ResultadoImportacaoMp } | { ok: false; erro: string })
 
-export const mensagemConhecida = (e: unknown) =>
+const mensagemConhecida = (e: unknown) =>
   e instanceof ErroMercadoPago || e instanceof RecusaUsuario ? e.message : 'erro interno'
 
-export type DependenciasDoGrupo = { importar?: typeof importarMercadoPagoDoGrupo; registrarFalha?: typeof registrarFalhaMp }
+type DependenciasDoGrupo = { importar?: typeof importarMercadoPagoDoGrupo; registrarFalha?: typeof registrarFalhaMp }
 
 export async function rodarTodosOsGrupos(deps: DependenciasDoGrupo & { grupos?: typeof gruposComMercadoPago } = {}): Promise<ResultadoDoGrupo[]> {
   const { grupos = gruposComMercadoPago, ...doGrupo } = deps

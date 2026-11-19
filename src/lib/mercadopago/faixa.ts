@@ -1,6 +1,6 @@
 // Faixa do Mercado Pago na /conciliacao (#51, V2 escolhida pelo Luis): o que ela mostra a partir do resumo da
 // última importação. Puro, sem banco: roda no componente de cliente.
-import type { NaoTratadoMp, ResultadoImportacaoMp } from './importar'
+import { CONTAGENS, type Contagem, type NaoTratadoMp, type ResultadoImportacaoMp } from './contagens'
 import { dataPuraBr, diaEHoraBrt } from '@/lib/data-venda'
 import { brl } from '@/lib/dashboard-painel'
 
@@ -20,18 +20,20 @@ export function numerosDaFaixa(c: ResultadoImportacaoMp): NumeroDaFaixa[] {
   ]
 }
 
-/** As 7 contagens da importação, para o "Ver detalhes". */
-export function detalhesDaFaixa(c: ResultadoImportacaoMp): LinhaDosDetalhes[] {
-  return [
-    { rotulo: 'Vendas novas, já ligadas a uma venda', explica: 'casadas sozinhas pela autorização ou pelo valor', valor: c.conciliadas, alerta: false },
-    { rotulo: 'Vendas novas, para vincular', explica: 'sem venda igual no dia; vincule na lista abaixo', valor: c.pendentes, alerta: false },
-    { rotulo: 'Já estavam aqui', explica: 'importadas antes; o vínculo não muda', valor: c.duplicadas, alerta: false },
-    { rotulo: 'Marcadas como estornadas', explica: 'o dinheiro voltou ao cliente; saem da conciliação', valor: c.estornos, alerta: false },
-    { rotulo: 'Estornadas antes de chegar aqui', explica: 'aprovadas e estornadas antes da importação; nada a desfazer', valor: c.estornosSemLinha, alerta: false },
-    { rotulo: 'Não tratadas nos últimos 7 dias', explica: 'veja a lista acima', valor: c.naoTratados, alerta: c.naoTratados > 0 },
-    { rotulo: 'Fora da maquininha', explica: 'link de pagamento, pendentes e cancelados: não entram', valor: c.ignorados, alerta: false },
-  ]
+// Um texto por contagem: contagem nova em CONTAGENS sem texto aqui não compila.
+const TEXTO_DA_CONTAGEM: Record<Contagem, { rotulo: string; explica: string }> = {
+  conciliadas: { rotulo: 'Vendas novas, já ligadas a uma venda', explica: 'casadas sozinhas pela autorização ou pelo valor' },
+  pendentes: { rotulo: 'Vendas novas, para vincular', explica: 'sem venda igual no dia; vincule na lista abaixo' },
+  duplicadas: { rotulo: 'Já estavam aqui', explica: 'importadas antes; o vínculo não muda' },
+  estornos: { rotulo: 'Marcadas como estornadas', explica: 'o dinheiro voltou ao cliente; saem da conciliação' },
+  estornosSemLinha: { rotulo: 'Estornadas antes de chegar aqui', explica: 'aprovadas e estornadas antes da importação; nada a desfazer' },
+  naoTratados: { rotulo: 'Não tratadas nos últimos 7 dias', explica: 'veja a lista acima' },
+  ignorados: { rotulo: 'Fora da maquininha', explica: 'link de pagamento, pendentes e cancelados: não entram' },
 }
+
+/** As 7 contagens da importação, para o "Ver detalhes", na ordem de CONTAGENS. */
+export const detalhesDaFaixa = (c: ResultadoImportacaoMp): LinhaDosDetalhes[] =>
+  CONTAGENS.map(k => ({ ...TEXTO_DA_CONTAGEM[k], valor: c[k], alerta: k === 'naoTratados' && c[k] > 0 }))
 
 const comMaiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 

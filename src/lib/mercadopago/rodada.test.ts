@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { resumoDaRodada, rodarTodosOsGrupos, type ResultadoDoGrupo } from './rodada'
 import { ErroMercadoPago } from './cliente'
 import { RecusaUsuario } from '@/lib/resultado-action'
-import type { ResultadoImportacaoMp } from './importar'
+import type { ResultadoImportacaoMp } from './contagens'
 
 const resultado = (o: Partial<ResultadoImportacaoMp> = {}): ResultadoImportacaoMp =>
   ({ conciliadas: 0, pendentes: 0, duplicadas: 0, estornos: 0, estornosSemLinha: 0, naoTratados: 0, ignorados: 0, ...o })

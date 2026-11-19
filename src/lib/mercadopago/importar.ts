@@ -12,14 +12,8 @@ import type { TransacaoCartao } from '@/lib/conciliacao-cartao'
 import { casarPorAutorizacao, casarPorValor, casou, linhaDaTransacao } from '@/lib/conciliacao-casamento'
 import { classificarPagamento, type Classificacao } from '@/lib/conciliacao-mercadopago'
 import { buscarPagamentosDaRodada } from './point'
+import { CONTAGENS, type Contagem, type ResultadoImportacaoMp, type ResumoDaImportacao } from './contagens'
 
-// O desfecho de cada pagamento é uma destas contagens; o resumo da importação e o da rodada saem desta lista.
-export const CONTAGENS = ['conciliadas', 'pendentes', 'duplicadas', 'estornos', 'estornosSemLinha', 'naoTratados', 'ignorados'] as const
-export type Contagem = (typeof CONTAGENS)[number]
-export type ResultadoImportacaoMp = Record<Contagem, number>
-export type NaoTratadoMp = { motivo: string; valor: number; data: string; entraDepois: boolean }
-/** O que a faixa da /conciliacao lê da última importação boa (`ultimo_resumo`, 0197). */
-export type ResumoDaImportacao = { contagens: ResultadoImportacaoMp; naoTratados: NaoTratadoMp[] }
 
 const contarDesfechos = (desfechos: readonly Contagem[]): ResultadoImportacaoMp =>
   Object.fromEntries(CONTAGENS.map(k => [k, desfechos.filter(d => d === k).length])) as ResultadoImportacaoMp
@@ -57,8 +51,7 @@ export async function importarMercadoPagoDoGrupo(
   const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
 
   const classificacoes = pagamentos.map(classificarPagamento)
-  const naoTratados = classificacoes.flatMap(c =>
-    (c.tipo === 'nao_tratado' ? [{ motivo: c.motivo, valor: c.valor, data: c.data, entraDepois: c.entraDepois }] : []))
+  const naoTratados = classificacoes.flatMap(c => (c.tipo === 'nao_tratado' ? [c.naoTratado] : []))
   const contagens = await db.transaction(async tx => {
     // Um pagamento por vez, na ordem: a transação usa uma conexão só, que não roda consultas em paralelo.
     const desfechos = await classificacoes.reduce<Promise<Contagem[]>>(
@@ -74,7 +67,7 @@ export async function importarMercadoPagoDoGrupo(
   })
 
   // Só motivos e contagens: nada do pagamento nem do token vai para o log.
-  const motivos = classificacoes.flatMap(c => (c.tipo === 'ignorar' || c.tipo === 'nao_tratado' ? [c.motivo] : []))
+  const motivos = [...classificacoes.flatMap(c => (c.tipo === 'ignorar' ? [c.motivo] : [])), ...naoTratados.map(n => n.motivo)]
   if (motivos.length > 0) console.info('[mercadopago-importar]', JSON.stringify(contarMotivos(motivos)))
   return contagens
 }

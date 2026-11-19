@@ -109,7 +109,7 @@ describe('classificarPagamento', () => {
   it('cartão pré-pago aprovado da maquininha vira "não tratado", não some', () => {
     // Valor e dia de Brasília para a faixa da conciliação; meio fora não entra sozinho depois (a loja usa o Forçar).
     assert.deepEqual(classificarPagamento(pg(debito, { payment_type_id: 'prepaid_card' })),
-      { tipo: 'nao_tratado', motivo: 'cartão pré-pago', valor: 150, data: '2026-11-10', entraDepois: false })
+      { tipo: 'nao_tratado', naoTratado: { motivo: 'cartão pré-pago', valor: 150, data: '2026-11-10', entraDepois: false } })
   })
 
   it('cartão pré-pago ainda não aprovado é ignorado', () => {
@@ -120,7 +120,7 @@ describe('classificarPagamento', () => {
   it('Pix ou cartão aprovado sem valor líquido (ou com líquido 0) vira "não tratado", não linha sem líquido', () => {
     // Sem líquido, entra sozinho numa rodada seguinte se o Mercado Pago mandar o líquido (sem Forçar).
     for (const f of [pix, credito3x, debito]) {
-      const naoTratado = { tipo: 'nao_tratado', motivo: 'sem valor líquido', valor: f.transaction_amount, data: '2026-11-10', entraDepois: true }
+      const naoTratado = { tipo: 'nao_tratado', naoTratado: { motivo: 'sem valor líquido', valor: f.transaction_amount, data: '2026-11-10', entraDepois: true } }
       assert.deepEqual(classificarPagamento(pg(f, { transaction_details: {} })), naoTratado)
       assert.deepEqual(classificarPagamento(pg(f, { transaction_details: undefined })), naoTratado)
       // Decisão do Luis (#51): líquido 0 tem o mesmo efeito do nulo (o bruto inteiro vira taxa).
@@ -131,6 +131,6 @@ describe('classificarPagamento', () => {
   // Decisão do Luis (#51): todo meio aprovado da maquininha fora de crédito, débito e Pix aparece no resumo.
   it('outro meio aprovado da maquininha vira "não tratado" com o nome do meio', () => {
     assert.deepEqual(classificarPagamento(pg(debito, { payment_type_id: 'account_money', payment_method_id: 'account_money' })),
-      { tipo: 'nao_tratado', motivo: 'meio account_money', valor: 150, data: '2026-11-10', entraDepois: false })
+      { tipo: 'nao_tratado', naoTratado: { motivo: 'meio account_money', valor: 150, data: '2026-11-10', entraDepois: false } })
   })
 })

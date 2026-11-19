@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { detalhesDaFaixa, fraseDaFalha, fraseDoNaoTratado, numerosDaFaixa, rotuloDaUltima } from './faixa'
-import type { ResultadoImportacaoMp } from './importar'
+import type { ResultadoImportacaoMp } from './contagens'
 
 const contagens: ResultadoImportacaoMp = { conciliadas: 8, pendentes: 4, duplicadas: 3, estornos: 1, estornosSemLinha: 2, naoTratados: 1, ignorados: 5 }
 

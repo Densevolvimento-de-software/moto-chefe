@@ -1,4 +1,5 @@
 import type { PagamentoMp } from './mercadopago/point'
+import type { NaoTratadoMp } from './mercadopago/contagens'
 import { dataBrt, LINHA_PIX, type TransacaoCartao } from './conciliacao-cartao'
 import { ehEstornoMp } from './mercadopago/status'
 
@@ -6,9 +7,8 @@ import { ehEstornoMp } from './mercadopago/status'
 export type Classificacao =
   | { tipo: 'transacao'; transacao: TransacaoCartao }
   | { tipo: 'estorno'; chave: string }
-  // valor e data (dia de Brasília) para a faixa da conciliação; entraDepois: vira linha sozinho numa rodada seguinte
-  // (sem líquido), em vez de pedir o Forçar (meio fora). Na resposta do cron e no log entram só as contagens.
-  | { tipo: 'nao_tratado'; motivo: string; valor: number; data: string; entraDepois: boolean }
+  // Na resposta do cron e no log entram só as contagens; o detalhe vai para a faixa da conciliação.
+  | { tipo: 'nao_tratado'; naoTratado: NaoTratadoMp }
   | { tipo: 'ignorar'; motivo: string }
 
 /**
@@ -34,7 +34,7 @@ export function classificarPagamento(p: PagamentoMp): Classificacao {
   if (!p.date_approved) return { tipo: 'ignorar', motivo: 'aprovado sem data de aprovação' }
 
   const naoTratado = (motivo: string, entraDepois: boolean): Classificacao =>
-    ({ tipo: 'nao_tratado', motivo, valor: p.transaction_amount, data: dataBrt(p.date_approved!), entraDepois })
+    ({ tipo: 'nao_tratado', naoTratado: { motivo, valor: p.transaction_amount, data: dataBrt(p.date_approved!), entraDepois } })
   const tipo = tipoDaLinha(p)
   // Venda aprovada que não vira linha conta no resumo da importação: nada some calado (decisão do Luis, #51).
   if (!tipo) {
