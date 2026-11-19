@@ -412,6 +412,8 @@ export const mercadopagoConfig = pgTable('mercadopago_config', {
   ultimoResumo:       jsonb('ultimo_resumo'),
   ultimaFalhaEm:      timestamp('ultima_falha_em', { withTimezone: true }),
   ultimaFalhaErro:    text('ultima_falha_erro'),
+  // Documento do titular da conta no MP (0198), só para comparar com o CNPJ do grupo; nunca vai à tela.
+  titularDocumento:   text('titular_documento'),
 })
 
 export const notagatewayConfig = pgTable('notagateway_config', {

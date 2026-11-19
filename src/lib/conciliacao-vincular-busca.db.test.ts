@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { semearOs } from '@/test/semear-alvos-conciliacao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -116,4 +117,26 @@ test('linha estornada não busca vendas para vincular', async () => {
   assert.deepEqual((await actions.buscarVendasParaVincular(estornada)).map(v => v.id), [venda])
   await linhas(sql`update conciliacoes_cartao set status = 'estornado' where id = ${estornada}`)
   assert.deepEqual(await actions.buscarVendasParaVincular(estornada), [])
+})
+
+// OS da Conta com cliente de outra Conta gravado (dado antigo ou SQL à mão): a busca não lê o nome dele (#128).
+async function osComClienteDeOutraConta(a: Conta, b: Conta, valor: number) {
+  const os = await semearOs(db, { lojaId: a.lojaId, usuarioId: a.usuarioId, em: '2026-11-05 12:00:00-03' }, [{ tipo: 'pix', valor }])
+  const numero = Math.floor(Math.random() * 1e6) + 1
+  const nomeB = `Cliente da B ${randomUUID()}`
+  const [cliente] = await linhas(sql`insert into clientes (nome, conta_id) values (${nomeB}, ${b.contaId}) returning id`)
+  await linhas(sql`update ordens_servico set cliente_id = ${cliente.id}, numero = ${numero} where id = ${os}`)
+  return { os, numero, nomeB }
+}
+
+test('OS com cliente de outra Conta: as buscas do vincular mostram "Cliente não identificado" e o nome dele não acha a OS', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const { os, numero, nomeB } = await osComClienteDeOutraConta(a, b, 414.56)
+  entrarComo(a)
+  const sugeridas = await actions.buscarVendasParaVincular(await linha(a, 'pix', 414.56))
+  assert.deepEqual(sugeridas.map(v => [v.id, v.clienteNome]), [[os, 'Cliente não identificado']])
+  const porNumero = await actions.buscarVendaManual(String(numero))
+  assert.deepEqual(porNumero.filter(v => v.id === os).map(v => v.clienteNome), ['Cliente não identificado'])
+  assert.deepEqual((await actions.buscarVendaManual(nomeB)).map(v => v.id), [])
 })
