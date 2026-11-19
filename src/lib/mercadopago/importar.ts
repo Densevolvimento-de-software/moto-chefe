@@ -17,6 +17,9 @@ import { buscarPagamentosDaRodada } from './point'
 export const CONTAGENS = ['conciliadas', 'pendentes', 'duplicadas', 'estornos', 'estornosSemLinha', 'naoTratados', 'ignorados'] as const
 export type Contagem = (typeof CONTAGENS)[number]
 export type ResultadoImportacaoMp = Record<Contagem, number>
+export type NaoTratadoMp = { motivo: string; valor: number; data: string; entraDepois: boolean }
+/** O que a faixa da /conciliacao lê da última importação boa (`ultimo_resumo`, 0197). */
+export type ResumoDaImportacao = { contagens: ResultadoImportacaoMp; naoTratados: NaoTratadoMp[] }
 
 const contarDesfechos = (desfechos: readonly Contagem[]): ResultadoImportacaoMp =>
   Object.fromEntries(CONTAGENS.map(k => [k, desfechos.filter(d => d === k).length])) as ResultadoImportacaoMp
@@ -54,16 +57,26 @@ export async function importarMercadoPagoDoGrupo(
   const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
 
   const classificacoes = pagamentos.map(classificarPagamento)
-  // Um pagamento por vez, na ordem: a transação usa uma conexão só, que não roda consultas em paralelo.
-  const desfechos = await db.transaction(tx => classificacoes.reduce<Promise<Contagem[]>>(
-    async (anteriores, c) => [...await anteriores, await desfechoDoPagamento(tx, grupoId, lojaIds, c, fim)],
-    Promise.resolve([]),
-  ))
+  const naoTratados = classificacoes.flatMap(c =>
+    (c.tipo === 'nao_tratado' ? [{ motivo: c.motivo, valor: c.valor, data: c.data, entraDepois: c.entraDepois }] : []))
+  const contagens = await db.transaction(async tx => {
+    // Um pagamento por vez, na ordem: a transação usa uma conexão só, que não roda consultas em paralelo.
+    const desfechos = await classificacoes.reduce<Promise<Contagem[]>>(
+      async (anteriores, c) => [...await anteriores, await desfechoDoPagamento(tx, grupoId, lojaIds, c, fim)],
+      Promise.resolve([]),
+    )
+    const resumo: ResumoDaImportacao = { contagens: contarDesfechos(desfechos), naoTratados }
+    // Junto com as linhas: a faixa nunca mostra um resumo de linhas que não entraram. A rodada boa limpa a falha.
+    await tx.update(mercadopagoConfig)
+      .set({ ultimaImportacaoEm: fim, ultimoResumo: resumo, ultimaFalhaEm: null, ultimaFalhaErro: null })
+      .where(eq(mercadopagoConfig.grupoId, grupoId))
+    return resumo.contagens
+  })
 
   // Só motivos e contagens: nada do pagamento nem do token vai para o log.
   const motivos = classificacoes.flatMap(c => (c.tipo === 'ignorar' || c.tipo === 'nao_tratado' ? [c.motivo] : []))
   if (motivos.length > 0) console.info('[mercadopago-importar]', JSON.stringify(contarMotivos(motivos)))
-  return contarDesfechos(desfechos)
+  return contagens
 }
 
 async function desfechoDoPagamento(tx: Tx, grupoId: string, lojaIds: string[], c: Classificacao, agora: Date): Promise<Contagem> {
@@ -115,4 +128,12 @@ async function marcarEstorno(tx: Tx, grupoId: string, nsu: string): Promise<Cont
   const [jaEstornada] = await tx.select({ id: conciliacoesCartao.id }).from(conciliacoesCartao)
     .where(chaveDaLinha(grupoId, nsu)).limit(1)
   return jaEstornada ? 'duplicadas' : 'estornosSemLinha'
+}
+
+/**
+ * A rodada (cron ou botão) que falhou: hora e frase conhecida na linha da credencial, para a faixa dizer por quê.
+ * Fora da transação das linhas (que foi desfeita) e sem mexer no resumo da última importação boa.
+ */
+export async function registrarFalhaMp(grupoId: string, erro: string, agora: Date): Promise<void> {
+  await db.update(mercadopagoConfig).set({ ultimaFalhaEm: agora, ultimaFalhaErro: erro }).where(eq(mercadopagoConfig.grupoId, grupoId))
 }
