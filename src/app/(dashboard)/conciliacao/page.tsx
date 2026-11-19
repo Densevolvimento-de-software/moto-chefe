@@ -13,6 +13,9 @@ import { redirect } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { UploadRelatorio } from './components/upload-relatorio'
 import { VincularVendaButton } from './components/vincular-venda-button'
+import { FaixaMercadoPago } from './components/faixa-mercadopago'
+import { estadoDaFaixaMp } from '@/lib/mercadopago/importar'
+import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import { dataPuraBr } from '@/lib/data-venda'
 import { rotuloCurtoDaLinha } from '@/lib/conciliacao-cartao'
 
@@ -70,9 +73,11 @@ export default async function ConciliacaoPage({
   const { vendas: vendasMap, pecas: pecasVendaMap, os: osMap } =
     await resumosDoAlvoCartao(grupo, { vendaIds: idsDe('vendaId'), pecaVendaIds: idsDe('pecaVendaId'), osIds: idsDe('osId') })
 
-  const [totalPendentes, totalConciliadas] = await Promise.all([
+  // A faixa do Mercado Pago só aparece no grupo ativo com credencial (#51).
+  const [totalPendentes, totalConciliadas, faixaMp] = await Promise.all([
     db.$count(conciliacoesCartao, and(doPeriodo, cartaoPendente)),
     db.$count(conciliacoesCartao, and(doPeriodo, eq(conciliacoesCartao.conciliado, true))),
+    estadoDaFaixaMp(grupo.id),
   ])
 
   return (
@@ -86,6 +91,8 @@ export default async function ConciliacaoPage({
         </div>
         <UploadRelatorio maquininhas={await maquininhasDoGrupo(db, grupo.id)} />
       </div>
+
+      {faixaMp && <FaixaMercadoPago estado={faixaMp} podeImportar={podeGerirConciliacao(usuario.papel)} />}
 
       {/* Filtros */}
       <div className="flex gap-2">

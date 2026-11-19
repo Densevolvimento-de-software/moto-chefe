@@ -8,7 +8,7 @@ import { ehChaveDuplicada } from '@/lib/erro-pg'
 import { somenteDigitos } from '@/lib/grupo-cnpj'
 import { normalizarToken } from '@/lib/token-colado'
 import { RecusaUsuario } from '@/lib/resultado-action'
-import { ErroMercadoPago } from './cliente'
+import { credencialRecusada, ErroMercadoPago } from './cliente'
 import { consultarConta, type ContaMp } from './point'
 import { FRASES_MP } from './frases'
 
@@ -49,7 +49,7 @@ export async function conferirCredencialMp(
     conta = await deps.consultarConta(token)
   } catch (e) {
     console.error('[credencial-mp] /users/me falhou:', pistaDoErro(e))
-    const recusado = e instanceof ErroMercadoPago && (e.status === 401 || e.status === 403)
+    const recusado = credencialRecusada(e)
     return { ok: false, erro: recusado ? FRASES_MP.recusado : FRASES_MP.indisponivel }
   }
   if (deps.producao && conta.tags.includes('test_user')) return { ok: false, erro: FRASES_MP.teste }

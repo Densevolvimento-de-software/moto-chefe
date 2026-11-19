@@ -1,7 +1,8 @@
 // Importação da maquininha Mercado Pago (Point) de um grupo (#51): cartão e Pix viram linhas de
 // conciliacoes_cartao do grupo, casadas com a venda das lojas dele; o estorno marca a linha que já existe.
 // A credencial é do grupo (mercadopago_config) e toda leitura e gravação leva o grupo_id.
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, lt, or, sql } from 'drizzle-orm'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { db } from '@/lib/db'
 import { conciliacoesCartao, grupos, mercadopagoConfig } from '@/lib/db/schema'
 import { CARTAO_ESTORNADO, cartaoNaoEstornado } from '@/lib/cartao-status'
@@ -12,17 +13,16 @@ import type { TransacaoCartao } from '@/lib/conciliacao-cartao'
 import { casarPorAutorizacao, casarPorValor, casou, linhaDaTransacao } from '@/lib/conciliacao-casamento'
 import { classificarPagamento, type Classificacao } from '@/lib/conciliacao-mercadopago'
 import { buscarPagamentosDaRodada } from './point'
-
-// O desfecho de cada pagamento é uma destas contagens; o resumo da importação e o da rodada saem desta lista.
-export const CONTAGENS = ['conciliadas', 'pendentes', 'duplicadas', 'estornos', 'estornosSemLinha', 'naoTratados', 'ignorados'] as const
-export type Contagem = (typeof CONTAGENS)[number]
-export type ResultadoImportacaoMp = Record<Contagem, number>
+import { CONTAGENS, type Contagem, type ResultadoImportacaoMp, type ResumoDaImportacao } from './contagens'
 
 const contarDesfechos = (desfechos: readonly Contagem[]): ResultadoImportacaoMp =>
   Object.fromEntries(CONTAGENS.map(k => [k, desfechos.filter(d => d === k).length])) as ResultadoImportacaoMp
 
 const contarMotivos = (motivos: readonly string[]): Record<string, number> =>
   motivos.reduce<Record<string, number>>((m, x) => ({ ...m, [x]: (m[x] ?? 0) + 1 }), {})
+
+// A hora gravada na coluna é anterior ao `inicio` desta rodada (ou não há nenhuma): esta é mais nova e pode gravar.
+const maisNovaQue = (coluna: AnyPgColumn, inicio: Date) => or(isNull(coluna), lt(coluna, inicio))
 
 const OPERADORA = 'mercadopago'
 const JANELA_MS = 7 * 24 * 60 * 60 * 1000
@@ -47,23 +47,41 @@ export async function importarMercadoPagoDoGrupo(
   if (!config) throw new RecusaUsuario('Este grupo não tem credencial do Mercado Pago.')
   const token = decifrar(config.token).toString('utf8')
 
-  const fim = opts.agora ?? new Date()
-  const inicio = new Date(fim.getTime() - JANELA_MS)
+  // Hora de início da rodada: fim da janela de busca e régua da faixa (ver registrarFalhaMp).
+  const agora = opts.agora ?? new Date()
+  const inicioDaJanela = new Date(agora.getTime() - JANELA_MS)
   // Tudo da API antes de gravar: erro (401, rede) propaga e nada do grupo é gravado.
-  const pagamentos = await (opts.buscar ?? buscarPagamentosDaRodada)(token, { inicio, fim })
+  const pagamentos = await (opts.buscar ?? buscarPagamentosDaRodada)(token, { inicio: inicioDaJanela, fim: agora })
   const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
 
   const classificacoes = pagamentos.map(classificarPagamento)
-  // Um pagamento por vez, na ordem: a transação usa uma conexão só, que não roda consultas em paralelo.
-  const desfechos = await db.transaction(tx => classificacoes.reduce<Promise<Contagem[]>>(
-    async (anteriores, c) => [...await anteriores, await desfechoDoPagamento(tx, grupoId, lojaIds, c, fim)],
-    Promise.resolve([]),
-  ))
+  const naoTratados = classificacoes.flatMap(c => (c.tipo === 'nao_tratado' ? [c.naoTratado] : []))
+  const contagens = await db.transaction(async tx => {
+    // Um pagamento por vez, na ordem: a transação usa uma conexão só, que não roda consultas em paralelo.
+    const desfechos = await classificacoes.reduce<Promise<Contagem[]>>(
+      async (anteriores, c) => [...await anteriores, await desfechoDoPagamento(tx, grupoId, lojaIds, c, agora)],
+      Promise.resolve([]),
+    )
+    const resumo: ResumoDaImportacao = { contagens: contarDesfechos(desfechos), naoTratados }
+    // Junto com as linhas: a faixa nunca mostra um resumo de linhas que não entraram. Régua: a hora de início de cada
+    // rodada (`agora`). Rodada que começou antes da última boa não volta hora nem resumo, e
+    // só apaga a falha que começou antes dela.
+    const falhaMaisVelha = sql`${mercadopagoConfig.ultimaFalhaEm} < ${agora.toISOString()}::timestamptz`
+    await tx.update(mercadopagoConfig)
+      .set({
+        ultimaImportacaoEm: agora,
+        ultimoResumo: resumo,
+        ultimaFalhaEm: sql`case when ${falhaMaisVelha} then null else ${mercadopagoConfig.ultimaFalhaEm} end`,
+        ultimaFalhaErro: sql`case when ${falhaMaisVelha} then null else ${mercadopagoConfig.ultimaFalhaErro} end`,
+      })
+      .where(and(eq(mercadopagoConfig.grupoId, grupoId), maisNovaQue(mercadopagoConfig.ultimaImportacaoEm, agora)))
+    return resumo.contagens
+  })
 
   // Só motivos e contagens: nada do pagamento nem do token vai para o log.
-  const motivos = classificacoes.flatMap(c => (c.tipo === 'ignorar' || c.tipo === 'nao_tratado' ? [c.motivo] : []))
+  const motivos = classificacoes.flatMap(c => (c.tipo === 'ignorar' ? [c.motivo] : c.tipo === 'nao_tratado' ? [c.paraOLog] : []))
   if (motivos.length > 0) console.info('[mercadopago-importar]', JSON.stringify(contarMotivos(motivos)))
-  return contarDesfechos(desfechos)
+  return contagens
 }
 
 async function desfechoDoPagamento(tx: Tx, grupoId: string, lojaIds: string[], c: Classificacao, agora: Date): Promise<Contagem> {
@@ -115,4 +133,39 @@ async function marcarEstorno(tx: Tx, grupoId: string, nsu: string): Promise<Cont
   const [jaEstornada] = await tx.select({ id: conciliacoesCartao.id }).from(conciliacoesCartao)
     .where(chaveDaLinha(grupoId, nsu)).limit(1)
   return jaEstornada ? 'duplicadas' : 'estornosSemLinha'
+}
+
+/**
+ * A rodada (cron ou botão) que falhou: hora e frase conhecida na linha da credencial, para a faixa dizer por quê.
+ * Fora da transação das linhas (que foi desfeita) e sem mexer no resumo da última importação boa. `inicio` é a hora
+ * em que a rodada começou, a mesma régua da importação boa: rodada que começou antes da última boa não grava a falha
+ * (cron lento que falha depois de um botão que importou bem).
+ */
+export async function registrarFalhaMp(grupoId: string, erro: string, inicio: Date): Promise<void> {
+  await db.update(mercadopagoConfig).set({ ultimaFalhaEm: inicio, ultimaFalhaErro: erro }).where(and(
+    eq(mercadopagoConfig.grupoId, grupoId),
+    maisNovaQue(mercadopagoConfig.ultimaImportacaoEm, inicio),
+    maisNovaQue(mercadopagoConfig.ultimaFalhaEm, inicio),
+  ))
+}
+
+export type EstadoDaFaixaMp = { ultimaImportacaoEm: string | null; resumo: ResumoDaImportacao | null; falha: { em: string; erro: string } | null }
+
+/**
+ * O que a faixa da /conciliacao recebe do grupo: nulo sem credencial (a faixa não aparece). Colunas explícitas:
+ * a mesma linha guarda o token e a conta, que não vão para a tela. Datas em ISO (vai ao componente de cliente).
+ */
+export async function estadoDaFaixaMp(grupoId: string): Promise<EstadoDaFaixaMp | null> {
+  const [c] = await db.select({
+    ultimaImportacaoEm: mercadopagoConfig.ultimaImportacaoEm,
+    ultimoResumo: mercadopagoConfig.ultimoResumo,
+    ultimaFalhaEm: mercadopagoConfig.ultimaFalhaEm,
+    ultimaFalhaErro: mercadopagoConfig.ultimaFalhaErro,
+  }).from(mercadopagoConfig).where(eq(mercadopagoConfig.grupoId, grupoId)).limit(1)
+  if (!c) return null
+  return {
+    ultimaImportacaoEm: c.ultimaImportacaoEm?.toISOString() ?? null,
+    resumo: (c.ultimoResumo as ResumoDaImportacao | null) ?? null,
+    falha: c.ultimaFalhaEm && c.ultimaFalhaErro ? { em: c.ultimaFalhaEm.toISOString(), erro: c.ultimaFalhaErro } : null,
+  }
 }

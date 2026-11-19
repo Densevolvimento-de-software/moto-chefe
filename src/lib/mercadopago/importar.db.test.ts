@@ -223,7 +223,7 @@ test('credencial recusada (401) não grava nada', async () => {
   await assert.rejects(
     mod.importarMercadoPagoDoGrupo(a.grupoId, {
       agora: AGORA,
-      buscar: async () => { throw new ErroMercadoPago('Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.', 401) },
+      buscar: async () => { throw new ErroMercadoPago('O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.', 401) },
     }),
     (e: unknown) => e instanceof ErroMercadoPago && e.status === 401,
   )
@@ -250,4 +250,133 @@ test('grupos da rodada: só os que têm credencial e estão ativos', async () =>
   assert.equal(ids.includes(comCredencial.grupoId), true)
   assert.equal(ids.includes(semCredencial.grupoId), false)
   assert.equal(ids.includes(inativo.grupoId), false)
+})
+
+// Faixa da /conciliacao (0197, decisão do Luis): a importação boa grava a hora, as contagens e o detalhe dos não
+// tratados na linha da credencial e limpa a falha anterior; o log continua só com motivos e contagens (D2).
+test('importação boa guarda hora, contagens e não tratados com motivo, valor e dia, e limpa a falha', async t => {
+  const a = await semearConta('A')
+  const b = await semearConta('B')
+  // Falha de uma rodada que começou antes desta importação: a importação boa apaga.
+  await db.execute(sql`update mercadopago_config set ultima_falha_em = '2026-11-11T12:00:00Z', ultima_falha_erro = 'falhou antes' where grupo_id in (${a.grupoId}, ${b.grupoId})`)
+  const log = t.mock.method(console, 'info', () => {})
+  const r = await importar(a, [
+    pg(debito, { id: novoId(), payment_type_id: 'prepaid_card', transaction_amount: 89.9 }),
+    pg(pixFixture, { id: novoId(), transaction_details: {} }),
+  ])
+  const [c] = await execRows(sql`select ultima_importacao_em as em, ultimo_resumo as resumo, ultima_falha_em, ultima_falha_erro
+    from mercadopago_config where grupo_id = ${a.grupoId}`)
+  assert.equal(new Date(String(c.em)).toISOString(), AGORA.toISOString())
+  assert.deepEqual(c.resumo, {
+    contagens: r,
+    naoTratados: [
+      { motivo: 'pre_pago', valor: 89.9, data: '2026-11-10' },
+      { motivo: 'sem_liquido', valor: 80, data: '2026-11-10' },
+    ],
+  })
+  assert.deepEqual([c.ultima_falha_em, c.ultima_falha_erro], [null, null])
+  // A outra Conta não muda.
+  const [deB] = await execRows(sql`select ultimo_resumo, ultima_falha_erro from mercadopago_config where grupo_id = ${b.grupoId}`)
+  assert.deepEqual([deB.ultimo_resumo, deB.ultima_falha_erro], [null, 'falhou antes'])
+  const escrito = log.mock.calls.map(x => x.arguments.map(String).join(' ')).join('\n')
+  assert.equal(escrito.includes('89.9'), false)
+  assert.equal(escrito.includes('2026-11-10'), false)
+})
+
+test('registrarFalhaMp: hora e frase na linha do grupo, sem mexer no resumo nem em outra Conta', async () => {
+  const a = await semearConta('A')
+  const b = await semearConta('B')
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: new Date('2026-11-12T11:00:00.000Z'), buscar: buscarFixo([]) })
+  const antes = (await execRows(sql`select ultima_importacao_em, ultimo_resumo from mercadopago_config where grupo_id = ${a.grupoId}`))[0]
+  await mod.registrarFalhaMp(a.grupoId, 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.', AGORA)
+  const [c] = await execRows(sql`select ultima_importacao_em, ultimo_resumo, ultima_falha_em, ultima_falha_erro from mercadopago_config where grupo_id = ${a.grupoId}`)
+  assert.deepEqual([c.ultima_importacao_em, c.ultimo_resumo], [antes.ultima_importacao_em, antes.ultimo_resumo])
+  assert.equal(new Date(String(c.ultima_falha_em)).toISOString(), AGORA.toISOString())
+  assert.equal(c.ultima_falha_erro, 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.')
+  const [deB] = await execRows(sql`select ultima_falha_em from mercadopago_config where grupo_id = ${b.grupoId}`)
+  assert.equal(deB.ultima_falha_em, null)
+})
+
+// A faixa lê da linha da credencial só o estado da importação: nunca o token, a conta nem o documento do titular.
+test('estado da faixa: nulo sem credencial; com ela, só hora, resumo e falha (sem token nem conta)', async () => {
+  const sem = await semearConta('A', { comCredencial: false })
+  assert.equal(await mod.estadoDaFaixaMp(sem.grupoId), null)
+  const a = await semearConta('B')
+  assert.deepEqual(await mod.estadoDaFaixaMp(a.grupoId), { ultimaImportacaoEm: null, resumo: null, falha: null })
+  await importar(a, [])
+  const depois = new Date(AGORA.getTime() + 60_000)
+  await mod.registrarFalhaMp(a.grupoId, 'falhou', depois)
+  const estado = await mod.estadoDaFaixaMp(a.grupoId)
+  assert.deepEqual(Object.keys(estado!).sort(), ['falha', 'resumo', 'ultimaImportacaoEm'])
+  assert.equal(estado!.ultimaImportacaoEm, AGORA.toISOString())
+  assert.deepEqual(estado!.falha, { em: depois.toISOString(), erro: 'falhou' })
+  assert.equal(JSON.stringify(estado).includes(a.token), false)
+})
+
+test('isolamento: a Conta B lê o próprio estado da faixa, sem o resumo nem a falha da A', async () => {
+  const a = await semearConta('A')
+  const b = await semearConta('B')
+  await importar(a, [pg(debito, { id: novoId(), payment_type_id: 'prepaid_card' })])
+  await mod.registrarFalhaMp(a.grupoId, 'falha da A', new Date(AGORA.getTime() + 60_000))
+  assert.deepEqual(await mod.estadoDaFaixaMp(b.grupoId), { ultimaImportacaoEm: null, resumo: null, falha: null })
+  const deA = await mod.estadoDaFaixaMp(a.grupoId)
+  assert.equal(deA!.falha?.erro, 'falha da A')
+  assert.equal(deA!.resumo?.contagens.naoTratados, 1)
+})
+
+// Cron lento começa, o botão importa bem e termina antes, o cron falha depois: a falha do cron é mais velha que a
+// importação boa e não pode aparecer por cima do resumo mais novo. As duas horas são a do início de cada rodada.
+test('falha de uma rodada que começou antes da última importação boa não é gravada; a que começou depois é', async () => {
+  const a = await semearConta('A')
+  const inicioDoCron = new Date('2026-11-12T11:00:00.000Z')
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: new Date('2026-11-12T11:00:30.000Z'), buscar: buscarFixo([]) })
+  await mod.registrarFalhaMp(a.grupoId, 'falha velha', inicioDoCron)
+  const falha = async () => (await execRows(sql`select ultima_falha_erro from mercadopago_config where grupo_id = ${a.grupoId}`))[0].ultima_falha_erro
+  assert.equal(await falha(), null)
+  await mod.registrarFalhaMp(a.grupoId, 'falha nova', new Date('2026-11-12T11:05:00.000Z'))
+  assert.equal(await falha(), 'falha nova')
+})
+
+// A importação é uma transação só: se um pagamento quebra no meio, nenhuma linha fica, o resumo da última importação
+// boa continua o mesmo e a falha é gravada fora da transação desfeita.
+test('erro dentro da transação: nenhuma linha, resumo de antes intacto e a falha gravada', async t => {
+  t.mock.method(console, 'error', () => {})
+  const { resultadoDoGrupo } = await import('./rodada')
+  const a = await semearConta('A')
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: new Date('2026-11-12T10:00:00.000Z'), buscar: buscarFixo([]) })
+  const antes = (await execRows(sql`select ultima_importacao_em, ultimo_resumo from mercadopago_config where grupo_id = ${a.grupoId}`))[0]
+  // O 2º pagamento não cabe em numeric(12,2): o insert dele lança depois de o 1º já ter entrado na transação.
+  const pagamentos = [pg(credito3x, { id: novoId() }), pg(credito3x, { id: novoId(), transaction_amount: 1e11, transaction_details: { net_received_amount: 1e11 } })]
+  const r = await resultadoDoGrupo({ id: a.grupoId, nome: 'A' }, {
+    importar: id => mod.importarMercadoPagoDoGrupo(id, { agora: AGORA, buscar: buscarFixo(pagamentos) }),
+  })
+  assert.deepEqual(r, { grupo: 'A', ok: false, erro: 'erro interno', fraseNaTela: 'Não deu para importar. Tente de novo em alguns minutos.' })
+  assert.deepEqual(await linhasDoGrupo(a.grupoId), [])
+  const [depois] = await execRows(sql`select ultima_importacao_em, ultimo_resumo, ultima_falha_erro from mercadopago_config where grupo_id = ${a.grupoId}`)
+  assert.deepEqual([depois.ultima_importacao_em, depois.ultimo_resumo], [antes.ultima_importacao_em, antes.ultimo_resumo])
+  assert.equal(depois.ultima_falha_erro, 'Não deu para importar. Tente de novo em alguns minutos.')
+})
+
+// Mesma régua da falha (hora de início de cada rodada): o que começou antes não cobre o que começou depois.
+test('importação boa mais velha não volta a hora e o resumo nem apaga falha mais nova; falha mais velha não cobre a nova', async () => {
+  const a = await semearConta('A')
+  const em = (min: number) => new Date(Date.UTC(2026, 10, 12, 11, min))
+  const estado = async () => (await execRows(sql`select ultima_importacao_em as hora, ultimo_resumo->'contagens'->>'pendentes' as pendentes,
+    ultima_falha_erro as falha from mercadopago_config where grupo_id = ${a.grupoId}`))[0]
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: em(10), buscar: buscarFixo([pg(credito3x, { id: novoId() })]) })
+  // Rodada que começou às 11:05 e terminou bem depois: não volta a hora nem o resumo.
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: em(5), buscar: buscarFixo([]) })
+  let e = await estado()
+  assert.deepEqual([new Date(String(e.hora)).toISOString(), e.pendentes], [em(10).toISOString(), '1'])
+
+  await mod.registrarFalhaMp(a.grupoId, 'falha das 11:20', em(20))
+  await mod.registrarFalhaMp(a.grupoId, 'falha das 11:15', em(15))
+  assert.equal((await estado()).falha, 'falha das 11:20')
+  // Importação boa que começou às 11:12 não apaga a falha das 11:20.
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: em(12), buscar: buscarFixo([]) })
+  e = await estado()
+  assert.equal(e.falha, 'falha das 11:20')
+  // A que começou às 11:30 apaga.
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: em(30), buscar: buscarFixo([]) })
+  assert.equal((await estado()).falha, null)
 })
