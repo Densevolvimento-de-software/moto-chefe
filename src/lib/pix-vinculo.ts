@@ -58,13 +58,11 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
   if (ligados.length === 0) throw new RecusaUsuario(PIX_JA_VINCULADO)
 }
 
-
 // O alvo do PIX com os pagamentos lidos (e a linha travada) só nas lojas do grupo do PIX (pedido não tem forçada).
 // Cartões e PIX do alvo só depois: eles leem pelo id.
-async function alvoComPagamentos(v: Alvos, grupoId: string, tx: ExecutorDoAlvo) {
+async function alvoComPagamentos(v: Alvos, lojaIds: string[], tx: ExecutorDoAlvo) {
   const alvo = alvoDasColunas(v)
   if (!alvo) return null
-  const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
   const pgtos = await pagamentosDoAlvo(alvo, lojaIds, tx, true)
   if (!pgtos) return null
   return { pgtos, cartoes: await cartoesDoAlvo(alvo, tx), pix: await pixDoAlvo(alvo, tx) }
@@ -79,8 +77,8 @@ async function vinculoDoPix(pixId: string, grupoId: string, tx: ExecutorDoAlvo):
 }
 
 /** Sem este PIX a forçada parcial do alvo fica sem o resto que a completava? */
-async function completaForcada(pixId: string, grupoId: string, v: Alvos, tx: ExecutorDoAlvo): Promise<boolean> {
-  const alvo = await alvoComPagamentos(v, grupoId, tx)
+async function completaForcada(pixId: string, lojaIds: string[], v: Alvos, tx: ExecutorDoAlvo): Promise<boolean> {
+  const alvo = await alvoComPagamentos(v, lojaIds, tx)
   return alvo ? pixCompletaForcadaParcial(alvo.pgtos, alvo.cartoes, alvo.pix, pixId) : false
 }
 
@@ -88,10 +86,12 @@ async function completaForcada(pixId: string, grupoId: string, v: Alvos, tx: Exe
 // solta numa transação com a linha do alvo travada: dois desvincular, ou forçar e desvincular, no mesmo alvo não
 // conferem ao mesmo tempo (cada um veria o PIX do outro e a forçada ficaria sem o dinheiro).
 export async function desvincularPix(pixId: string, grupoId: string, fraseSeCompleta = COMPLETA_FORCADA): Promise<void> {
+  // As lojas antes: dentro da transação, o db pegaria uma 2ª conexão do pool.
+  const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
   await db.transaction(async tx => {
     const vinculo = await vinculoDoPix(pixId, grupoId, tx)
     if (!vinculo) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
-    if (await completaForcada(pixId, grupoId, vinculo, tx)) throw new RecusaUsuario(fraseSeCompleta)
+    if (await completaForcada(pixId, lojaIds, vinculo, tx)) throw new RecusaUsuario(fraseSeCompleta)
 
     const soltos = await tx.update(pixRecebimentosMcp)
       .set(PIX_SOLTO)
