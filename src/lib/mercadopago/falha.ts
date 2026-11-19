@@ -1,5 +1,5 @@
 // Frase da falha da importação do Mercado Pago para quem gere a conciliação (#51): pela classe do erro, em linguagem
-// simples e dizendo o que fazer. O detalhe técnico (status, caminho) fica no log e na resposta do cron.
+// simples e dizendo o que fazer. O detalhe técnico (status, caminho) fica só no log (o cron responde só os nomes).
 import { RecusaUsuario } from '@/lib/resultado-action'
 import { ErroMercadoPago } from './cliente'
 import { FRASES_MP } from './frases'

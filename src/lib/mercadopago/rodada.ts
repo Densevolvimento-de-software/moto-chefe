@@ -6,7 +6,8 @@ import { gruposComMercadoPago, importarMercadoPagoDoGrupo, registrarFalhaMp } fr
 import { CONTAGENS, type ResultadoImportacaoMp } from './contagens'
 import { fraseDaFalhaNaTela } from './falha'
 
-// `erro`: a mensagem conhecida, com o detalhe técnico, para o log e o cron; `fraseNaTela`: a da faixa e do botão.
+// `erro`: a mensagem conhecida, com o detalhe técnico, para o log (o cron responde só os nomes, D2); `fraseNaTela`:
+// a da faixa e do botão.
 export type ResultadoDoGrupo = { grupo: string } & ({ ok: true; resultado: ResultadoImportacaoMp } | { ok: false; erro: string; fraseNaTela: string })
 
 const mensagemConhecida = (e: unknown) =>
