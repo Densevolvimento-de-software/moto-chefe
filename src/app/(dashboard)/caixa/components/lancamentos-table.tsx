@@ -96,7 +96,7 @@ export function LancamentosTable({ lancamentos, isAdmin, podeAprovar }: Props) {
     if (filtros.descricao && !l.descricao?.toLowerCase().includes(filtros.descricao.toLowerCase())) return false
     if (filtros.loja && l.lojaNome !== filtros.loja) return false
     if (filtros.aprovacao && l.statusAprovacao !== filtros.aprovacao) return false
-    if (filtros.registradoPor && !(l.usuarioNome ?? '').toLowerCase().includes(filtros.registradoPor.toLowerCase())) return false
+    if (filtros.registradoPor && !(l.usuarioNome ?? SEM_NOME_DE_QUEM_LANCOU).toLowerCase().includes(filtros.registradoPor.toLowerCase())) return false
     return true
   }), [lancamentos, filtros])
 

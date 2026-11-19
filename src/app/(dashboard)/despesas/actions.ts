@@ -207,6 +207,7 @@ async function lancarDespesaOpenFinance(
       lancadoEm: new Date(),
     }).where(and(
       eq(despesasOpenFinance.id, id),
+      eq(despesasOpenFinance.grupoId, grupo.id),
       isNull(despesasOpenFinance.despesaId),
     )).returning({ id: despesasOpenFinance.id })
 

@@ -163,6 +163,7 @@ test('extrato: editar a categorização mantendo a categoria antiga fora do cat�
 test('extrato: editar e cancelar a categorização pelo B não alteram nem apagam a despesa do A', async () => {
   const [a, b] = grupos
   await admin.criarCategoriaDespesa(db, b.grupoId, { nome: 'CAT834G D132', contaComoDespesa: true })
+  await admin.criarCategoriaDespesa(db, b.grupoId, { nome: 'CAT834G D132 Outra', contaComoDespesa: true })
   const despesaA = { id: await semearDespesa(db, { grupoId: a.grupoId, usuarioId: socioDoB.id, categoria: 'CAT834G DoA132', valor: '30.00', data: '2026-09-13' }) }
   const saidaB = { id: await semearSaidaDoExtrato(db, { grupoId: b.grupoId, categoria: 'CAT834G D132', despesaId: despesaA.id }) }
   const despesaDoA = async () => (await execRows(sql`select categoria from despesas where id = ${despesaA.id}`)).map(r => r.categoria)
@@ -170,7 +171,9 @@ test('extrato: editar e cancelar a categorização pelo B não alteram nem apaga
   sessao = socioDoB
   podeCategorizar = true
 
-  await assert.rejects(despesasActions.editarCategorizacaoOpenFinanceAction(saidaB.id as string, 'CAT834G D132', null), /Saída não encontrada/)
+  // Outra categoria e loja: se a recusa saísse fora da transação, a saída do B mudaria.
+  await assert.rejects(despesasActions.editarCategorizacaoOpenFinanceAction(saidaB.id as string, 'CAT834G D132 Outra', b.lojaId), /Saída não encontrada/)
+  assert.deepEqual(await saidaDoB(), { categoria: 'CAT834G D132', despesa_id: despesaA.id })
   assert.deepEqual(await despesaDoA(), ['CAT834G DoA132'])
   await assert.rejects(despesasActions.cancelarCategorizacaoOpenFinanceAction(saidaB.id as string), /Saída não encontrada/)
   assert.deepEqual(await despesaDoA(), ['CAT834G DoA132'])

@@ -7,7 +7,7 @@ import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
-import { semearDespesa } from '@/test/semear-despesas'
+import { semearDespesa, semearLancamentoCaixa, semearSaidaDoExtrato } from '@/test/semear-despesas'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -154,8 +154,7 @@ test('excluir categoria com lançamento no grupo recusa e orienta desativar; sem
     await admin.criarCategoriaCaixa(tx, a.grupoId, { nome: 'CAT834 Gaveta', tipo: 'entrada' })
     await despesa(tx, a, 'cat834 usada')
     await despesa(tx, b, 'CAT834 SoNoB')
-    await tx.execute(sql`insert into lancamentos_caixa (loja_id, usuario_id, tipo, categoria, valor, data)
-      values (${a.lojaId}, ${a.usuarioId}, 'saida', 'CAT834 Gaveta', '10.00', '2026-09-10')`)
+    await semearLancamentoCaixa(tx, { lojaId: a.lojaId, usuarioId: a.usuarioId, categoria: 'CAT834 Gaveta' })
     const doA = await leitura.categoriasDespesaDoGrupo(tx, a.grupoId)
     const usada = doA.find(c => c.nome === 'CAT834 Usada')!
     const soNoB = doA.find(c => c.nome === 'CAT834 SoNoB')!
@@ -265,8 +264,7 @@ test('excluir categoria usada só no extrato do banco (Open Finance) do grupo ta
     const a = await semearGrupoComSocio(tx, 'Extrato A', '83400000010001')
     await admin.criarCategoriaDespesa(tx, a.grupoId, { nome: 'CAT834 Extrato', ...OPERACIONAL })
     const [cat] = (await leitura.categoriasDespesaDoGrupo(tx, a.grupoId)).filter(c => c.nome === 'CAT834 Extrato')
-    await tx.execute(sql`insert into despesas_open_finance (grupo_id, conta_id, banco, transacao_id, data, valor, categoria)
-      values (${a.grupoId}, 'c', 'Banco', ${'cat834-' + a.grupoId}, '2026-09-10T12:00:00Z'::timestamptz, '50.00', 'CAT834 Extrato')`)
+    await semearSaidaDoExtrato(tx, { grupoId: a.grupoId, categoria: 'CAT834 Extrato', data: '2026-09-10' })
 
     await assert.rejects(admin.excluirCategoriaDespesa(tx, a.grupoId, cat.id),
       { message: 'Esta categoria já tem lançamentos. Desative em vez de excluir.' })

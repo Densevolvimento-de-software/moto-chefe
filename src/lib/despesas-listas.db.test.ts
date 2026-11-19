@@ -121,3 +121,13 @@ test('guarda: admin_geral que lançou aparece por nome', async () => {
     assert.deepEqual((await nomesDasListas(tx, a.base)).caixa, [['Geral', null]])
   })
 })
+
+test('linhas de outra Conta no mesmo período não entram nas listas do grupo', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A')
+    const b = await semearConta(tx, 'B')
+    await semearDespesa(tx, { grupoId: b.base.grupoId, usuarioId: b.aux, lojaId: b.base.lojaId })
+    await semearLancamentoCaixa(tx, { lojaId: b.base.lojaId, usuarioId: b.aux })
+    assert.deepEqual(await nomesDasListas(tx, a.base), { manuais: [], caixa: [] })
+  })
+})
