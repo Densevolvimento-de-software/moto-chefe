@@ -2,11 +2,12 @@
 import { useState, useMemo, type Dispatch, type SetStateAction } from 'react'
 import { Label } from '@/components/ui/label'
 import { CurrencyInput } from '@/components/ui/currency-input'
-import { CreditCard, Link2, Building2, ChevronDown, Wallet } from 'lucide-react'
+import { CreditCard, Link2, Building2, ChevronDown, EyeOff, Wallet } from 'lucide-react'
 import { FreteSimulador } from './frete-simulador'
 import { SimuladorCasco, BotaoImprimir, abrirImpressao } from './simulador-casco'
 import type { ResultadoFrete } from '../actions'
 import { fmtBRL } from '@/lib/preco-minimo'
+import { creditoDoPix } from '@/lib/custo-pix'
 import { esc } from '@/lib/html'
 import { folhaSimulacao } from '@/lib/simulador-impressao'
 import { linhasDoSimulador, type LinhaDoSimulador as Linha } from '@/lib/simulador-padrao'
@@ -27,6 +28,8 @@ type Taxas = {
   taxasDebito: Record<string, number>
   taxasLink: Record<string, number>
   taxasFinanciamento: Record<string, number>
+  // Custo do PIX do grupo (fração): só informação para a loja, não entra em preço nenhum (#91).
+  custoPixTaxa: number
 }
 
 type Props = {
@@ -289,13 +292,27 @@ function DescontoBadge({ pct: pctStr, economia, corBadge, corEcon }: { pct: stri
   )
 }
 
+/** Rodapé do card do PIX, variante B da #70: o custo do PIX e o que entra na conta. Fica fora do orçamento impresso. */
+function SoParaALoja({ valor, taxa }: { valor: number; taxa: number }) {
+  if (taxa <= 0) return null
+  const { custo, entra } = creditoDoPix(valor, taxa)
+  return (
+    <div aria-label="Só para a loja" className="mt-3 border-t border-dashed border-success/45 pt-2.5 text-left text-xs text-muted-foreground">
+      <p className="mb-1 flex items-center gap-1.5"><EyeOff aria-hidden className="size-3.5" />Só para a loja, fora do orçamento do cliente</p>
+      <p className="flex justify-between gap-4"><span>Custo do PIX</span><span className="tabular-nums">{fmtBRL(custo)}</span></p>
+      <p className="flex justify-between gap-4"><span>Entra na conta no PIX</span><span className="font-semibold text-foreground tabular-nums">{fmtBRL(entra)}</span></p>
+    </div>
+  )
+}
+
 function PrecosDestaque({
-  base, linhasCartaoDestaque, linhasCartaoComEntrada, entrada,
+  base, linhasCartaoDestaque, linhasCartaoComEntrada, entrada, custoPixTaxa,
 }: {
   base: number
   linhasCartaoDestaque: Linha[]
   linhasCartaoComEntrada: Linha[]
   entrada: number
+  custoPixTaxa: number
 }) {
   const cartao21 = linhasCartaoDestaque.find(l => l.parcelas === 21)
   const cartao12 = linhasCartaoDestaque.find(l => l.parcelas === 12)
@@ -308,7 +325,8 @@ function PrecosDestaque({
   const ecoPix  = cartao21 ? cartao21.credito - base : null
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    // No celular os três cards empilham (variante B): lado a lado não cabe o rodapé do PIX.
+    <div data-precos-destaque className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       {/* Valor de Tabela — 21x */}
       <div className="rounded-xl border-2 border-border bg-muted p-4 text-center">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Valor de Tabela</p>
@@ -356,6 +374,7 @@ function PrecosDestaque({
         <p className="text-lg font-bold text-success">{fmtBRL(base)}</p>
         <p className="text-xs text-success mt-1">PIX / Dinheiro</p>
         <DescontoBadge pct={descPix} economia={ecoPix} corBadge="bg-success/10 text-success" corEcon="text-success" />
+        <SoParaALoja valor={base} taxa={custoPixTaxa} />
       </div>
     </div>
   )
@@ -365,7 +384,7 @@ export function SimuladorClient({ modelos, ...resto }: Props) {
   return <SimuladorCasco modelos={modelos}>{modelo => <ResultadoTaxas modelo={modelo} {...resto} />}</SimuladorCasco>
 }
 
-function ResultadoTaxas({ modelo, taxas, lojasFrete, isAdmin, lojaUsuarioId }: Omit<Props, 'modelos'> & { modelo: Modelo }) {
+export function ResultadoTaxas({ modelo, taxas, lojasFrete, isAdmin, lojaUsuarioId }: Omit<Props, 'modelos'> & { modelo: Modelo }) {
   const [entrada, setEntrada] = useState('')
   const [freteResultado, setFreteResultado] = useState<ResultadoFrete | null>(null)
   const [aberto, setAberto] = useState<Record<string, boolean>>({ cartao: false, debito: false, link: false, financiamento: false })
@@ -439,6 +458,7 @@ function ResultadoTaxas({ modelo, taxas, lojasFrete, isAdmin, lojaUsuarioId }: O
               linhasCartaoDestaque={linhasCartaoDestaque}
               linhasCartaoComEntrada={linhasCartao}
               entrada={entradaInvalida ? 0 : entradaNum}
+              custoPixTaxa={taxas.custoPixTaxa}
             />
 
             <FreteSimulador
