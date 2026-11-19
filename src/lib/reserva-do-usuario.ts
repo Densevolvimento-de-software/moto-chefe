@@ -1,7 +1,7 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { reservas } from '@/lib/db/schema'
-import { lojasDoEscopo } from '@/lib/conta'
+import { lojaNoEscopo } from '@/lib/conta'
 
 type Executor = Pick<typeof db, 'select'>
 
@@ -16,8 +16,7 @@ export async function reservaDoUsuario(
   reservaId: string,
   exec: Executor = db,
 ) {
-  const daConta = usuario.papel === 'admin_geral' ? undefined
-    : usuario.contaId ? inArray(reservas.lojaId, lojasDoEscopo(usuario)) : null
+  const daConta = lojaNoEscopo(usuario, reservas.lojaId)
   if (daConta === null) return null
   const [reserva] = await exec
     .select({

@@ -3,7 +3,7 @@ import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { maquininhasDoGrupo } from '@/lib/maquininhas'
 import { gruposDoTerminalNaConta } from '@/lib/terminal-da-conta'
 import { db } from '@/lib/db'
-import { cartaoNaoEstornado, cartaoPendente, linhaDeCartao } from '@/lib/cartao-status'
+import { cartaoNaoEstornado, cartaoPendente, linhaDoPagamento } from '@/lib/cartao-status'
 import { conciliacoesCartao, pixRecebimentosMcp, vendas, modelos, motos, vendasPecas, ordensServico, clientes } from '@/lib/db/schema'
 import { eq, and, or, desc, gte, sql, isNull, ilike, inArray, type SQL } from 'drizzle-orm'
 import { getUsuarioLogado } from '@/lib/auth'
@@ -15,19 +15,22 @@ import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { alvoValido, colunasDoAlvo, semAlvos, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 import { ehUuid } from '@/lib/uuid'
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
-import { cartoesDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo } from '@/lib/alvo-da-conciliacao'
 import { esperadoComTaxa, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
 import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
 import { comForcado, matchPagamentos, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
-import { casarPorAutorizacao, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
+import { casarPorAutorizacao, linhaDaTransacao } from '@/lib/conciliacao-casamento'
+import { tiposDoPagamentoDaLinha } from '@/lib/conciliacao-status'
 import { detectarFormato } from '@/lib/conciliacao-formato'
-import type { TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
+import { ehLinhaProcurada, type LinhaProcurada, type TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
 import { lerRelatorioCielo } from '@/lib/conciliacao-cielo'
 import { lerRelatorioRede } from '@/lib/conciliacao-rede'
 import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
 import { grupos } from '@/lib/db/schema'
 import { revalidatePath } from 'next/cache'
+import { cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo } from '@/lib/alvo-da-conciliacao'
+import { lojasDoEscopo } from '@/lib/conta'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 // Linha comum aos leitores de relatório, o que a gravação precisa de cada transação.
 type LinhaRelatorio = {
@@ -171,7 +174,8 @@ export async function importarRelatorioAction(formData: FormData) {
 }
 async function importarRelatorio(formData: FormData) {
   const usuario = await getUsuarioLogado()
-  if (!['admin_geral', 'admin_socio'].includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  // Quem gere a conciliação importa o relatório, o aux_adm inclusive (decisão do Luis, 19/11/2026, #51).
+  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
@@ -282,27 +286,22 @@ async function importarRelatorio(formData: FormData) {
     }
 
     // Tenta auto-conciliar pela autorização registrada na venda (moto, peça ou OS), restrito ao grupo ativo
-    const { vendaId, pecaVendaId, osId } = r.autorizacao
-      ? await casarPorAutorizacao(db, lojaIdsGrupo, r.autorizacao)
-      : semAlvos()
+    const alvos = r.autorizacao ? await casarPorAutorizacao(db, lojaIdsGrupo, r.autorizacao) : semAlvos()
+    const transacao = {
+      nsu:           r.nsu ?? undefined,
+      autorizacao:   r.autorizacao ?? undefined,
+      dataTransacao: r.dataTransacao,
+      valorBruto:    r.valorBruto,
+      valorLiquido:  r.valorLiquido,
+      parcelas:      r.parcelas,
+      tipo:          r.tipo,
+      status:        'aprovado',
+      rawData:       { bandeira: r.bandeira, portador: r.portador, serial: r.terminal ?? null },
+    }
+    const linha = linhaDaTransacao(grupo.id, operadora, transacao, alvos, new Date())
+    await db.insert(conciliacoesCartao).values(linha)
 
-    const matched = vendaId ?? pecaVendaId ?? osId
-    await db.insert(conciliacoesCartao).values({
-      grupoId:        grupo.id,
-      operadora,
-      dataTransacao:  r.dataTransacao,
-      nsu:            r.nsu,
-      autorizacao:    r.autorizacao,
-      valorBruto:     String(r.valorBruto),
-      valorLiquido:   r.valorLiquido != null ? String(r.valorLiquido) : null,
-      parcelas:       r.parcelas,
-      tipo:           r.tipo,
-      status:         'aprovado',
-      rawData:        { bandeira: r.bandeira, portador: r.portador, serial: r.terminal ?? null },
-      ...(matched ? { vendaId, pecaVendaId, osId, conciliado: true, conciliadoEm: new Date() } : {}),
-    })
-
-    if (matched) conciliadas++
+    if (linha.conciliado) conciliadas++
     else importadas++
   }
 
@@ -353,9 +352,11 @@ async function desvincularVenda(conciliacaoId: string) {
   revalidatePathsConciliacao()
 }
 
-export async function buscarConciliacoesPorValor(valor: number) {
+/** Linhas pendentes no valor do pagamento; `linha`: a que cobre o pagamento (cartão ou a pix da maquininha). */
+export async function buscarConciliacoesPorValor(valor: number, linha: LinhaProcurada = 'cartao') {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+  if (!ehLinhaProcurada(linha)) throw new Error('Linha inválida')
   const grupo = await getGrupoAtivo(usuario)
 
   return db
@@ -363,6 +364,7 @@ export async function buscarConciliacoesPorValor(valor: number) {
       id:            conciliacoesCartao.id,
       operadora:     conciliacoesCartao.operadora,
       autorizacao:   conciliacoesCartao.autorizacao,
+      nsu:           conciliacoesCartao.nsu,
       valorBruto:    conciliacoesCartao.valorBruto,
       dataTransacao: conciliacoesCartao.dataTransacao,
       tipo:          conciliacoesCartao.tipo,
@@ -374,9 +376,9 @@ export async function buscarConciliacoesPorValor(valor: number) {
         eq(conciliacoesCartao.grupoId, grupo.id),
         // Fora do período de conciliação não é candidato — ver INICIO_CONCILIACAO.
         gte(conciliacoesCartao.dataTransacao, INICIO_CONCILIACAO),
-        sql`${conciliacoesCartao.vendaId} IS NULL`,
-        cartaoNaoEstornado,
-        linhaDeCartao,
+        // Sem nenhum vínculo (venda, peça ou OS) e não estornada: vincular não rouba o vínculo de outra.
+        cartaoPendente,
+        linhaDoPagamento(linha),
         sql`ABS(${conciliacoesCartao.valorBruto}::numeric - ${valor}) <= 0.05`,
       )
     )
@@ -401,29 +403,32 @@ function revalidatePathsConciliacao() {
   revalidatePath('/pix-mcp')
 }
 
-// Com `lojaIdsGrupo`, só acha o alvo dessas lojas (escopo dentro da consulta, como pagamentosDoAlvo).
-async function lojaIdDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo?: string[]): Promise<string | null> {
+// Loja do alvo, já com as lojas permitidas no where: as do grupo ativo (gravação) ou o escopo da Conta (leitura do
+// painel); sem filtro só para o admin_geral. Alvo fora delas e alvo inexistente dão o mesmo null.
+async function lojaIdDoAlvo(alvo: AlvoConciliacao, lojas: Parameters<typeof inArray>[1] | undefined): Promise<string | null> {
+  const naLoja = (coluna: AnyPgColumn) => (lojas ? inArray(coluna, lojas) : undefined)
   if (alvo.tipo === 'peca') {
     const [r] = await db.select({ lojaId: vendasPecas.lojaId }).from(vendasPecas)
-      .where(and(eq(vendasPecas.id, alvo.id), lojaIdsGrupo && inArray(vendasPecas.lojaId, lojaIdsGrupo))).limit(1)
+      .where(and(eq(vendasPecas.id, alvo.id), naLoja(vendasPecas.lojaId))).limit(1)
     return r?.lojaId ?? null
   }
   if (alvo.tipo === 'os') {
     const [r] = await db.select({ lojaId: ordensServico.lojaId }).from(ordensServico)
-      .where(and(eq(ordensServico.id, alvo.id), lojaIdsGrupo && inArray(ordensServico.lojaId, lojaIdsGrupo))).limit(1)
+      .where(and(eq(ordensServico.id, alvo.id), naLoja(ordensServico.lojaId))).limit(1)
     return r?.lojaId ?? null
   }
   const [r] = await db.select({ lojaId: vendas.lojaId }).from(vendas)
-    .where(and(eq(vendas.id, alvo.id), lojaIdsGrupo && inArray(vendas.lojaId, lojaIdsGrupo))).limit(1)
+    .where(and(eq(vendas.id, alvo.id), naLoja(vendas.lojaId))).limit(1)
   return r?.lojaId ?? null
 }
 
-// Quem não abre o alvo recebe o mesmo que o alvo inexistente (lista vazia): a resposta não revela
-// que o registro existe. Alvo forjado (tipo fora da lista, id que não é uuid) também.
+// Quem não abre o alvo recebe o mesmo que o alvo inexistente (lista vazia): a resposta não revela que o registro
+// existe. Alvo forjado (tipo fora da lista, id que não é uuid) também. A Conta (ou o grupo da persona) entra no where
+// de `lojaIdDoAlvo`; a regra de grupo por papel (podeVerGrupo) vem depois, sobre uma loja da Conta.
 async function abreOAlvo(alvo: AlvoConciliacao): Promise<boolean> {
   const usuario = await getUsuarioLogado()
   if (!alvoValido(alvo)) return false
-  const lojaId  = await lojaIdDoAlvo(alvo)
+  const lojaId  = await lojaIdDoAlvo(alvo, usuario.papel === 'admin_geral' ? undefined : lojasDoEscopo(usuario))
   if (!lojaId) return false
   return podeGerirConciliacao(usuario.papel) ? podeAbrirRegistroDaLoja(usuario, lojaId) : lojaId === usuario.lojaId
 }
@@ -433,6 +438,11 @@ export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
   return cartoesDoAlvo(alvo)
 }
 
+/** Linhas da maquininha ligadas ao alvo e estornadas no Mercado Pago (#51): o painel diz que o pagamento voltou. */
+export async function buscarEstornosDoAlvo(alvo: AlvoConciliacao) {
+  if (!(await abreOAlvo(alvo))) return []
+  return estornosDoAlvo(alvo)
+}
 
 export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
   if (!(await abreOAlvo(alvo))) return []
@@ -444,9 +454,10 @@ export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
 // o valor lançado na venda não bate com o que a operadora reportou (taxa embutida,
 // digitação errada), é por aqui que se acha a transação — por autorização, NSU, data
 // ou valor aproximado, sem filtro de valor exato.
-export async function buscarConciliacoesLivres(query: string) {
+export async function buscarConciliacoesLivres(query: string, linha: LinhaProcurada = 'cartao') {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+  if (!ehLinhaProcurada(linha)) throw new Error('Linha inválida')
   const grupo = await getGrupoAtivo(usuario)
 
   const q = query.trim()
@@ -456,17 +467,21 @@ export async function buscarConciliacoesLivres(query: string) {
   const isData  = /^\d{4}-\d{2}-\d{2}$/.test(q)
   const isValor = !isData && Number.isFinite(valor) && valor > 0
 
+  const porTexto = sql`(${conciliacoesCartao.autorizacao} ILIKE ${'%' + q + '%'} OR ${conciliacoesCartao.nsu} ILIKE ${'%' + q + '%'})`
+  const porValor = sql`ABS(${conciliacoesCartao.valorBruto}::numeric - ${valor}) <= 5`
+  // Só dígitos pode ser valor ou NSU/autorização (o NSU do Mercado Pago é só dígitos): procura nos dois.
   const filtro = isData
     ? eq(conciliacoesCartao.dataTransacao, q)
     : isValor
-      ? sql`ABS(${conciliacoesCartao.valorBruto}::numeric - ${valor}) <= 5`
-      : sql`(${conciliacoesCartao.autorizacao} ILIKE ${'%' + q + '%'} OR ${conciliacoesCartao.nsu} ILIKE ${'%' + q + '%'})`
+      ? (/^\d+$/.test(q) ? or(porValor, porTexto) : porValor)
+      : porTexto
 
   return db
     .select({
       id:            conciliacoesCartao.id,
       operadora:     conciliacoesCartao.operadora,
       autorizacao:   conciliacoesCartao.autorizacao,
+      nsu:           conciliacoesCartao.nsu,
       valorBruto:    conciliacoesCartao.valorBruto,
       dataTransacao: conciliacoesCartao.dataTransacao,
       tipo:          conciliacoesCartao.tipo,
@@ -477,7 +492,7 @@ export async function buscarConciliacoesLivres(query: string) {
       eq(conciliacoesCartao.grupoId, grupo.id),
       gte(conciliacoesCartao.dataTransacao, INICIO_CONCILIACAO),
       cartaoPendente,
-      linhaDeCartao,
+      linhaDoPagamento(linha),
       filtro,
     ))
     .orderBy(desc(conciliacoesCartao.dataTransacao))

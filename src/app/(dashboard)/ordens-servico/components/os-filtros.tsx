@@ -4,7 +4,8 @@ import { useCallback, useState } from 'react'
 import { Filter, Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { SheetTitle } from '@/components/ui/sheet'
+import { GavetaDeBaixo } from '@/components/gaveta-de-baixo'
 import { cn } from '@/lib/utils'
 import { MultiSelectFiltro } from '../../estoque/components/multi-select-filtro'
 import { STATUS_OS } from '../status-os'
@@ -100,23 +101,21 @@ export function OSFiltros({ lojas, mecanicos, dataInicioInicial, dataFimInicial,
         </Button>
       </div>
 
-      <Sheet open={gaveta} onOpenChange={setGaveta}>
-        <SheetContent side="bottom" className="max-h-[85dvh] gap-0 overflow-y-auto rounded-t-2xl p-4 pb-8">
-          <SheetTitle className="mb-3 text-base">Filtros</SheetTitle>
-          <div className="space-y-3">
-            {filtroLoja}
-            {filtroMecanico}
-            <div>
-              <p className="mb-1 text-sm font-medium">Período de abertura</p>
-              {periodo}
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={limpar} className="h-11 flex-1 border-input">Limpar</Button>
-              <Button type="button" onClick={() => setGaveta(false)} className="h-11 flex-1">Ver ordens</Button>
-            </div>
+      <GavetaDeBaixo aberta={gaveta} onAbertaChange={setGaveta}>
+        <SheetTitle className="mb-3 text-base">Filtros</SheetTitle>
+        <div className="space-y-3">
+          {filtroLoja}
+          {filtroMecanico}
+          <div>
+            <p className="mb-1 text-sm font-medium">Período de abertura</p>
+            {periodo}
           </div>
-        </SheetContent>
-      </Sheet>
+          <div className="flex gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={limpar} className="h-11 flex-1 border-input">Limpar</Button>
+            <Button type="button" onClick={() => setGaveta(false)} className="h-11 flex-1">Ver ordens</Button>
+          </div>
+        </div>
+      </GavetaDeBaixo>
 
       <div className="hidden flex-wrap items-center gap-2 lg:flex">
         {buscaInput('w-64')}

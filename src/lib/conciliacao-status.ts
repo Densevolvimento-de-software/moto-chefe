@@ -7,6 +7,14 @@ export type StatusConc = 'na' | 'pendente' | 'parcial' | 'conciliada'
 export const TIPOS_CARTAO = new Set(['cartao_credito', 'cartao_debito', 'link_pagamento'])
 export const PAGAMENTO_PIX: ReadonlySet<string> = new Set(['pix'])
 
+/**
+ * Tipos de pagamento da venda que uma linha da conciliação de cartão pode cobrir. A linha 'pix' só
+ * existe para o Pix da maquininha Mercado Pago (#51) e cobre o pagamento Pix; as outras, cartão.
+ */
+export function tiposDoPagamentoDaLinha(tipoLinha: string | undefined): ReadonlySet<string> {
+  return tipoLinha === LINHA_PIX ? PAGAMENTO_PIX : TIPOS_CARTAO
+}
+
 // Conciliação forçada na mão (quem pode: podeGerirConciliacao): o dinheiro entrou, mas não existe
 // lançamento correspondente no sistema (relatório da operadora não importado, PIX
 // fora do Open Finance, transferência avulsa). Fica gravada no próprio item do array
@@ -120,9 +128,10 @@ export function valorConciliadoManual(pagamentos: unknown): number {
     .reduce((a, p) => a + (Number(p.conciliadoManual?.pix?.valorBruto ?? p.valor) || 0), 0)
 }
 
-type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number; tipo?: string }
+type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number; tipo?: string; operadora?: string }
 // `valorBruto`: o valor do PIX gravado ao vincular (#90); o `valor` é o que o banco creditou, já sem o custo.
-type PixMatch  = { id: string; valor: string | number; valorBruto?: string | number | null }
+// `operadora`: só a linha pix da maquininha (#51); o PIX do banco não tem.
+type PixMatch  = { id: string; valor: string | number; valorBruto?: string | number | null; operadora?: string }
 // O PIX cobre o pagamento pelo valor do PIX, como o cartão pelo valor bruto; sem ele gravado (vínculo antigo), pelo crédito.
 // A mesma regra das somas em SQL está em pixCobertoSql (src/lib/queries/pix-coberto.ts).
 const valorQueCobre = (r: PixMatch) => Number(r.valorBruto ?? r.valor)
@@ -130,7 +139,8 @@ const valorQueCobre = (r: PixMatch) => Number(r.valorBruto ?? r.valor)
 /** Quanto do pagamento foi coberto por dinheiro que realmente entrou. */
 // `pixId`: o PIX recebido do banco que cobriu a linha inteira (casou pelo valor); a tela mostra o custo dele (#90).
 // Rateio e a linha pix do Mercado Pago (que vem da conciliação de cartão) não têm.
-export type CoberturaPgto = { conciliado: boolean; coberto: number; pixId?: string }
+// `pixDaMaquininha`: a operadora, quando foi a linha pix da maquininha que cobriu o PIX (o painel diz de onde veio, #51).
+export type CoberturaPgto = { conciliado: boolean; coberto: number; pixId?: string; pixDaMaquininha?: string }
 
 // Vendas, peças e OS podem ter mais de uma forma de pagamento por cartão/pix no mesmo
 // carrinho (ex.: Pix + Cartão). Casa cada item do array `pagamentos` com o que entrou,
@@ -160,7 +170,7 @@ function cobrir(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch
   // `doBanco`: só o PIX recebido do banco tem custo e vira `pixId` na cobertura.
   const pixRecs: (PixMatch & { doBanco: boolean })[] = [
     ...pixDoBanco.map(r => ({ ...r, doBanco: true })),
-    ...linhasDoAlvo.filter(c => c.tipo === LINHA_PIX).map(c => ({ id: c.id, valor: c.valorBruto, doBanco: false })),
+    ...linhasDoAlvo.filter(c => c.tipo === LINHA_PIX).map(c => ({ id: c.id, valor: c.valorBruto, operadora: c.operadora, doBanco: false })),
   ]
   const usados    = new Set<string>()
   const resultado: CoberturaPgto[] = pgtos.map(() => ({ conciliado: false, coberto: 0 }))
@@ -213,6 +223,7 @@ function cobrir(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch
     if (!m) return
     resultado[i].coberto += valorQueCobre(m)
     if (m.doBanco) resultado[i].pixId = m.id
+    if (m.operadora) resultado[i].pixDaMaquininha = m.operadora
     pixUsados.add(m.id)
   })
 
@@ -306,4 +317,22 @@ export function pixCompletaForcadaParcial(pgtos: PgtoOS[], linhasDoAlvo: ConcMat
   const com = cobrir(pgtos, linhasDoAlvo, pixDoBanco).faltaNasForcadas
   const sem = cobrir(pgtos, linhasDoAlvo, pixDoBanco.filter(r => r.id !== pixId)).faltaNasForcadas
   return sem - com > 0.05
+}
+
+/** Linha da maquininha ligada ao alvo e estornada no Mercado Pago. */
+export type EstornoDoAlvo = { id: string; valorBruto: string | number; tipo: string }
+
+const estornoCobre = (p: PgtoOS, e: EstornoDoAlvo) =>
+  tiposDoPagamentoDaLinha(e.tipo).has(p.tipo) && Math.abs(Number(e.valorBruto) - p.valor) <= 0.05
+
+/**
+ * Para cada pagamento, se um estorno no Mercado Pago o deixou pendente: pagamento ainda não conciliado com um estorno
+ * ligado ao alvo do mesmo meio e valor. Cada estorno explica um pagamento só. Sem o dia: o importador não grava quando
+ * estornou, e a data da linha é a da venda.
+ */
+export function estornosDosPagamentos(pgtos: PgtoOS[], cobertura: CoberturaPgto[], estornos: EstornoDoAlvo[]): boolean[] {
+  return pgtos.reduce<{ marcados: boolean[]; usados: ReadonlySet<string> }>((acc, p, i) => {
+    const e = cobertura[i]?.conciliado ? undefined : estornos.find(x => !acc.usados.has(x.id) && estornoCobre(p, x))
+    return { marcados: [...acc.marcados, Boolean(e)], usados: e ? new Set([...acc.usados, e.id]) : acc.usados }
+  }, { marcados: [], usados: new Set() }).marcados
 }

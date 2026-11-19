@@ -4,6 +4,8 @@
 
 const COM_APROVACAO = ['admin_geral', 'admin_rede', 'admin_socio']
 const COM_ACESSO_A_GRUPOS = ['admin_socio', 'admin_rede']
+// Marca "Categoriza saídas do banco" (#149): sócio e admin de rede, na própria Conta (decisão do Luis).
+const COM_CATEGORIZA_DESPESA = ['admin_socio', 'admin_rede']
 
 /** Papel que governa as listas: a base do cargo, ou o próprio papel. */
 export function papelDasListas(papel: string, papelBaseDoCargo: string | null): string {
@@ -16,4 +18,8 @@ export function guardaAprovacao(papel: string): boolean {
 
 export function guardaAcessoAGrupos(papel: string): boolean {
   return COM_ACESSO_A_GRUPOS.includes(papel)
+}
+
+export function guardaCategorizaDespesa(papel: string): boolean {
+  return COM_CATEGORIZA_DESPESA.includes(papel)
 }

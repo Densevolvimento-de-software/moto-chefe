@@ -1,5 +1,7 @@
+import { CONTRATADA } from '@/lib/mova-empresa'
 const FATOR_CORRECAO_ESTRADA = 1.3
-const NOMINATIM_USER_AGENT = 'MotoChefe-Simulador/1.0 (contato@motochefesuldeminas.com.br)'
+// O serviço de geocodificação pede identificação: a do MOVA, nunca o contato de um cliente (#149).
+const NOMINATIM_USER_AGENT = `${CONTRATADA.marca}-Simulador/1.0 (${CONTRATADA.email})`
 
 export type Coordenada = { latitude: number; longitude: number }
 

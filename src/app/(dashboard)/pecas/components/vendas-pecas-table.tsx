@@ -2,7 +2,8 @@
 import { useState } from 'react'
 import { ChevronRight, Printer } from 'lucide-react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { SheetTitle } from '@/components/ui/sheet'
+import { GavetaDeBaixo } from '@/components/gaveta-de-baixo'
 import { buttonVariants } from '@/components/ui/button'
 import { PainelLateral } from '@/components/painel-lateral'
 import { calcStatusMultiPagamento, type StatusConc } from '@/lib/conciliacao-status'
@@ -14,6 +15,7 @@ import { EditarClienteVendaPecaDialog } from './editar-cliente-venda-peca-dialog
 import { ExcluirVendaPecaButton } from './excluir-venda-peca-button'
 import { VendaPecaDialog } from './venda-peca-dialog'
 import { podeGerirPecas } from '../papeis'
+import { LinhaDeDetalhe } from '@/components/linha-de-detalhe'
 
 type VendaPeca = {
   id: string
@@ -87,16 +89,14 @@ export function VendasPecasTable({ vendas, papel, pecas }: Props) {
         ))}
       </div>
 
-      <Sheet open={!!gaveta} onOpenChange={o => !o && setGavetaId(null)}>
-        <SheetContent side="bottom" className="max-h-[85dvh] gap-0 overflow-y-auto rounded-t-2xl p-4 pb-8">
-          {gaveta && (
-            <>
-              <SheetTitle className="text-lg">Venda de peças #{gaveta.v.numero}</SheetTitle>
-              <DetalheVendaPeca v={gaveta.v} status={gaveta.status} papel={papel} pecas={pecas} />
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
+      <GavetaDeBaixo aberta={!!gaveta} onAbertaChange={o => !o && setGavetaId(null)}>
+        {gaveta && (
+          <>
+            <SheetTitle className="text-lg">Venda de peças #{gaveta.v.numero}</SheetTitle>
+            <DetalheVendaPeca v={gaveta.v} status={gaveta.status} papel={papel} pecas={pecas} />
+          </>
+        )}
+      </GavetaDeBaixo>
 
       {/* Desktop: tabela enxuta; clicar na linha abre o painel à direita. */}
       <div className="hidden items-start gap-4 lg:flex">
@@ -156,15 +156,6 @@ export function VendasPecasTable({ vendas, papel, pecas }: Props) {
   )
 }
 
-function Linha({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
-  return (
-    <div className="flex justify-between gap-3 border-b border-border py-2 last:border-0">
-      <span className="text-muted-foreground">{rotulo}</span>
-      <span className="min-w-0 text-right break-words">{children}</span>
-    </div>
-  )
-}
-
 function DetalheVendaPeca({ v, status, papel, pecas }: { v: VendaPeca; status: StatusConc; papel: string; pecas: PecaCatalogo[] }) {
   // Apagar venda é o mesmo nível de quem define preço no catálogo — vendedor não mexe.
   const gestor = podeGerirPecas(papel)
@@ -175,23 +166,23 @@ function DetalheVendaPeca({ v, status, papel, pecas }: { v: VendaPeca; status: S
         <p className={cn('text-2xl font-bold tabular-nums', bonificada(v) && 'text-warning')}>{moeda(v.valorTotal)}</p>
       </div>
       <div>
-        <Linha rotulo="Itens">{v.itens ?? '—'}</Linha>
-        <Linha rotulo="Cliente">
+        <LinhaDeDetalhe rotulo="Itens">{v.itens ?? '—'}</LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Cliente">
           {v.clienteNome ?? '—'}
           {v.clienteDocumento && (
             <span className="block font-mono text-xs text-muted-foreground">
               {v.clienteTipoPessoa === 'juridica' ? 'CNPJ ' : 'CPF '}{formatarCpfCnpj(v.clienteDocumento)}
             </span>
           )}
-        </Linha>
-        <Linha rotulo="Vendedor">{v.vendedorNome}</Linha>
-        <Linha rotulo="Pagamento">{TIPO_LABEL[v.formaPagamento] ?? v.formaPagamento}</Linha>
-        <Linha rotulo="Conciliação">
+        </LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Vendedor">{v.vendedorNome}</LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Pagamento">{TIPO_LABEL[v.formaPagamento] ?? v.formaPagamento}</LinhaDeDetalhe>
+        <LinhaDeDetalhe rotulo="Conciliação">
           <span className="inline-flex items-center gap-1">
             <ConcBadge status={status} />
             <ConciliacaoPecaDialog vendaId={v.id} numero={v.numero} pagamentos={v.pagamentos} papel={papel} status={status} />
           </span>
-        </Linha>
+        </LinhaDeDetalhe>
       </div>
       <div className="flex flex-wrap gap-2">
         {/* Link, não botão: a página do recibo já dispara window.print() sozinha. */}

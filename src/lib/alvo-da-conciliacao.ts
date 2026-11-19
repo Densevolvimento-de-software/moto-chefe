@@ -6,12 +6,12 @@ import { db } from './db'
 import { conciliacoesCartao, ordensServico, pixRecebimentosMcp, vendas, vendasPecas } from './db/schema'
 import { pagamentosEfetivosOS, type PgtoOS } from './conciliacao-status'
 import type { AlvoConciliacao } from './conciliacao-alvo'
+import { colunasQueLigamAoAlvo } from './alvo-conciliado'
+import { CARTAO_ESTORNADO } from './conciliacao-cartao'
 
 // Cartões conciliados ao alvo.
 export function cartoesDoAlvo(alvo: AlvoConciliacao) {
-  const coluna = alvo.tipo === 'peca' ? conciliacoesCartao.pecaVendaId
-    : alvo.tipo === 'os'              ? conciliacoesCartao.osId
-    :                                   conciliacoesCartao.vendaId
+  const coluna = colunasQueLigamAoAlvo(alvo).cartao
 
   return db
     .select({
@@ -27,15 +27,21 @@ export function cartoesDoAlvo(alvo: AlvoConciliacao) {
     .where(and(eq(coluna, alvo.id), eq(conciliacoesCartao.conciliado, true)))
 }
 
+// Linhas da maquininha ligadas ao alvo e estornadas no Mercado Pago (#51): o painel diz que o pagamento voltou.
+export function estornosDoAlvo(alvo: AlvoConciliacao) {
+  return db
+    .select({ id: conciliacoesCartao.id, valorBruto: conciliacoesCartao.valorBruto, tipo: conciliacoesCartao.tipo })
+    .from(conciliacoesCartao)
+    .where(and(eq(colunasQueLigamAoAlvo(alvo).cartao, alvo.id), eq(conciliacoesCartao.status, CARTAO_ESTORNADO)))
+}
+
 // PIX vinculados ao alvo.
 export function pixDoAlvo(alvo: AlvoConciliacao) {
   // Fonte única desde 15/09/2026: o PIX do ValidaPix saiu junto com a
   // integração. Venda de antes de julho/2026, cujo pagamento só existia lá,
   // aparece aqui sem PIX — o dado está em
   // backups/pix_recebimentos_validapix_20260915.json.
-  const coluna = alvo.tipo === 'peca' ? pixRecebimentosMcp.pecaVendaId
-    : alvo.tipo === 'os'              ? pixRecebimentosMcp.osId
-    :                                   pixRecebimentosMcp.vendaId
+  const coluna = colunasQueLigamAoAlvo(alvo).pix
 
   return db
     .select({

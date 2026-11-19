@@ -78,3 +78,9 @@ test('funcionário e sócio da Conta A não servem de mecânico na Conta B (#328
   await assert.rejects(conferirVinculosDaConta(ids.B.loja, { mecanicoId: ids.A.mecanico }, null, tx), /Mecânico não encontrado/)
   await assert.rejects(conferirVinculosDaConta(ids.B.loja, { mecanicoId: ids.A.socio }, null, tx), /Mecânico não encontrado/)
 }))
+
+test('usuário de outra Conta não serve de mecânico, qualquer que seja o cadastro dele (#133)', () => comDuasContas(async (ids, tx) => {
+  const [grupoB] = (await tx.execute(sql`select grupo_id as id from lojas where id = ${ids.B.loja}`) as unknown as { rows: { id: string }[] }).rows
+  await tx.execute(sql`update usuarios set grupos_acesso = array[${grupoB.id}]::uuid[] where id = ${ids.A.socio}`)
+  await assert.rejects(conferirVinculosDaConta(ids.B.loja, { mecanicoId: ids.A.socio }, null, tx), /Mecânico não encontrado/)
+}))

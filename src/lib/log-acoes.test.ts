@@ -18,12 +18,12 @@ test('x-real-ip quando não há x-forwarded-for', () => {
 })
 
 test('permissão: só os campos que mudaram, sem depender da ordem dos grupos', () => {
-  const antes = { papel: 'vendedor', lojaId: 'l1', gruposAcesso: ['a', 'b'], gruposAprovacao: [], aprovaPagamentoSensivel: false, modulosExtras: [], modulosBloqueados: [], cargoId: null }
+  const antes = { papel: 'vendedor', lojaId: 'l1', gruposAcesso: ['a', 'b'], gruposAprovacao: [], aprovaPagamentoSensivel: false, categorizaDespesaBanco: false, modulosExtras: [], modulosBloqueados: [], cargoId: null }
   assert.deepEqual(camposDePermissaoAlterados(antes, { ...antes, gruposAcesso: ['b', 'a'] }), [])
   assert.deepEqual(camposDePermissaoAlterados(antes, { ...antes, papel: 'aux_adm', modulosExtras: ['caixa'] }), ['papel', 'modulosExtras'])
 })
 
-const cadastro = { papel: 'vendedor', lojaId: 'l1', gruposAcesso: [], gruposAprovacao: [], aprovaPagamentoSensivel: false, modulosExtras: [], modulosBloqueados: [], cargoId: null }
+const cadastro = { papel: 'vendedor', lojaId: 'l1', gruposAcesso: [], gruposAprovacao: [], aprovaPagamentoSensivel: false, categorizaDespesaBanco: false, modulosExtras: [], modulosBloqueados: [], cargoId: null }
 const NOMES = { a: 'Gerente', b: 'Caixa' }
 
 test('trocar o usuário de um cargo para outro conta como mudança, mesmo com o papel igual a cargo (#616)', () => {
@@ -62,4 +62,8 @@ test('registrarAcaoSensivelSemFalhar grava pelo executor recebido e, se ele falh
   } finally {
     erro.mock.restore()
   }
+})
+
+test('ligar a marca de categorizar saídas do banco entra no log de permissão (#149)', () => {
+  assert.deepEqual(camposDePermissaoAlterados(cadastro, { ...cadastro, categorizaDespesaBanco: true }), ['categorizaDespesaBanco'])
 })

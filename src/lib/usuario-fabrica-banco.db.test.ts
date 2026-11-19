@@ -58,3 +58,8 @@ test('login da fábrica que aprova pagamento sensível também é recusado', asy
   await assert.rejects(db.execute(sql`insert into usuarios (id, nome, email, papel, aprova_pagamento_sensivel)
     values (gen_random_uuid(), 'Fábrica', ${`fab3-chk-${seq++}@teste.invalid`}, 'fabrica', true)`), recusadoPelaTrava)
 })
+
+test('login da fábrica que categoriza saídas do banco também é recusado (0199, #149)', async () => {
+  await assert.rejects(db.execute(sql`insert into usuarios (id, nome, email, papel, categoriza_despesa_banco)
+    values (gen_random_uuid(), 'Fábrica', ${`fab3-chk-${seq++}@teste.invalid`}, 'fabrica', true)`), recusadoPelaTrava)
+})

@@ -29,7 +29,7 @@ let usuariosCriados = 0
 
 mock.module('@/lib/db', { namedExports: { db } })
 mock.module('@/lib/gestor-da-sessao', { namedExports: { gestorDaSessao: async () => ({ id: 'adm', papel: 'admin_socio' }) } })
-mock.module('@/lib/gestao-usuarios', { namedExports: { recusaDaGravacao: () => recusa, podeExcluir: () => geral, COM_HISTORICO: 'Este usuário tem histórico no sistema. Desative em vez de excluir.' } })
+mock.module('@/lib/gestao-usuarios', { namedExports: { recusaDaGravacao: () => recusa, podeExcluir: () => geral, categorizaParaGravar: () => false, COM_HISTORICO: 'Este usuário tem histórico no sistema. Desative em vez de excluir.' } })
 mock.module('@/lib/usuarios-gerenciaveis', { namedExports: { cadastroPedido: async () => ({}), cadastroAtual: async () => atual } })
 mock.module('@/lib/grupo', { namedExports: { getGrupoIdDaLoja: async () => 'grupo-a' } })
 let cargoDoCadastro: object = { ok: true, cargoId: null, papelBase: null }

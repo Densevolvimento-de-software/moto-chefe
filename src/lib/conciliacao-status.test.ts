@@ -6,6 +6,7 @@ import {
   semForcado,
   matchPagamentos,
   pixCompletaForcadaParcial,
+  estornosDosPagamentos,
   precisaConciliar,
   valorConciliadoManual,
   type ConciliadoManual,
@@ -400,4 +401,33 @@ test('pixCompletaForcadaParcial: só o PIX sem o qual a forçada parcial fica se
   assert.equal(pixCompletaForcadaParcial(pgtos, [], [...pix, { id: 'extra', valor: 4000 }], 'p4'), false)
   // Sem forçada parcial, nada prende.
   assert.equal(pixCompletaForcadaParcial([{ tipo: 'pix', valor: 4000 }], [], [{ id: 'p4', valor: 4000 }], 'p4'), false)
+})
+
+// #51 (PR6c): pagamento que voltou a pendente porque a linha da maquininha foi estornada diz isso (sem o dia: o importador não grava quando estornou).
+test('estornosDosPagamentos: pendente com estorno do mesmo meio e valor é marcado; conciliado e outro meio não', () => {
+  const pgtos: PgtoOS[] = [
+    { tipo: 'pix', valor: 450 },
+    { tipo: 'cartao_credito', valor: 450 },
+    { tipo: 'pix', valor: 300 },
+    { tipo: 'pix', valor: 450 },
+  ]
+  const cobertura = [{ conciliado: false, coberto: 0 }, { conciliado: false, coberto: 0 }, { conciliado: true, coberto: 300 }, { conciliado: false, coberto: 0 }]
+  const estornos = [
+    { id: 'e1', valorBruto: '450.00', tipo: 'pix' },
+    { id: 'e2', valorBruto: '300.00', tipo: 'pix' },
+  ]
+  // O 1º PIX de 450 usa o estorno e1; o cartão de 450 não casa com linha pix; o PIX de 300 está conciliado;
+  // o 2º PIX de 450 não tem outro estorno.
+  assert.deepEqual(estornosDosPagamentos(pgtos, cobertura, estornos), [true, false, false, false])
+})
+
+// #51 (PR6c, V1): depois de vincular, o painel diz de onde veio o PIX: "Conciliado · PIX na maquininha Mercado Pago".
+// Com o custo do PIX (#90), o PIX do banco que cobre a linha inteira marca `pixId`; só a linha da maquininha marca a operadora.
+test('matchPagamentos: PIX coberto pela linha pix da maquininha guarda a operadora; pelo banco, o pixId', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 3550 }, { tipo: 'pix', valor: 90 }]
+  const linhasDoAlvo = [{ id: 'mp', autorizacao: null, valorBruto: '3550.00', tipo: 'pix', operadora: 'mercadopago' }]
+  assert.deepEqual(matchPagamentos(pgtos, linhasDoAlvo, [{ id: 'bco', valor: '90.00' }]), [
+    { conciliado: true, coberto: 3550, pixDaMaquininha: 'mercadopago' },
+    { conciliado: true, coberto: 90, pixId: 'bco' },
+  ])
 })

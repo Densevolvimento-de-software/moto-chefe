@@ -2,7 +2,7 @@
 import { getUsuarioLogado } from '@/lib/auth'
 import { podeAgirNaLoja } from '@/lib/acesso-registro'
 import { db } from '@/lib/db'
-import { ordensServico, osItens, aprovacoesVenda, conciliacoesCartao, pixRecebimentosMcp, cuponsRevisao } from '@/lib/db/schema'
+import { ordensServico, osItens, aprovacoesVenda, cuponsRevisao } from '@/lib/db/schema'
 import { and, eq, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
@@ -16,6 +16,7 @@ import { validarDocumento, isTipoPessoa } from '@/lib/documento'
 import { hojeBrt } from '@/lib/data-venda'
 import { aplicarPagamentoOS, conferirMaquininhasDaOS, type DadosPagamentoOS } from '@/lib/pagamento-os'
 import { conferirVinculosDaConta } from '@/lib/vinculos-da-conta'
+import { alvoConciliado } from '@/lib/alvo-conciliado'
 import {
   TIPO_PAGAMENTO_CUPOM, normalizarCodigoCupom, motivoCupomInvalido,
 } from '@/lib/cupom-revisao'
@@ -53,15 +54,14 @@ async function situacaoFinanceiraOS(osId: string) {
     .limit(1)
   if (!os) throw new RecusaUsuario('OS não encontrada')
 
-  const [cartoes, pix, aprovacoes] = await Promise.all([
-    db.$count(conciliacoesCartao, and(eq(conciliacoesCartao.osId, osId), eq(conciliacoesCartao.conciliado, true))),
-    db.$count(pixRecebimentosMcp, eq(pixRecebimentosMcp.osId, osId)),
+  const [temConciliacao, aprovacoes] = await Promise.all([
+    alvoConciliado(db, { tipo: 'os', id: osId }),
     db.$count(aprovacoesVenda, and(eq(aprovacoesVenda.osId, osId), eq(aprovacoesVenda.status, 'pendente'))),
   ])
 
   return {
     temPagamento:   Boolean(os.formaPagamento) || (os.pagamentos?.length ?? 0) > 0 || os.status === 'concluida',
-    temConciliacao: cartoes > 0 || pix > 0,
+    temConciliacao,
     temAprovacaoPendente: aprovacoes > 0,
   }
 }
@@ -211,7 +211,7 @@ export async function registrarPagamentoOSAction(...a: Parameters<typeof registr
   return acao(() => registrarPagamentoOS(...a))
 }
 async function registrarPagamentoOS(osId: string, dados: DadosPagamentoOS) {
-  const { usuario } = await verificarAcessoOS(osId, GESTORES)
+  const { usuario, os: osDoAcesso } = await verificarAcessoOS(osId, GESTORES)
 
   await validarCupomDoPagamento(usuario, osId, dados.pagamentos)
   await conferirMaquininhasDaOS(db, osId, dados.pagamentos)
@@ -251,7 +251,7 @@ async function registrarPagamentoOS(osId: string, dados: DadosPagamentoOS) {
     }
   }
 
-  await aplicarPagamentoOS(osId, dados)
+  await aplicarPagamentoOS({ id: osId, lojaId: osDoAcesso.lojaId }, dados)
   return { aguardandoAprovacao: false }
 }
 
