@@ -91,7 +91,10 @@ test('recusa do servidor no Editar aparece no diálogo, que continua aberto', as
   const t = await montar({ modo: 'editar', inicial: GRUPO })
   await t.preencher('grupo-mp-token', 'APP_USR-conta-de-teste-ficticia-000000000')
   await t.clique('Salvar')
-  assert.equal(document.querySelector('[role="alert"]')?.textContent, frase)
+  // Recusa do Mercado Pago fica embaixo do campo dele (protótipo V1), ligada ao campo para o leitor de tela.
+  const campo = document.getElementById('grupo-mp-token')!
+  assert.equal(document.getElementById(campo.getAttribute('aria-describedby') ?? '')?.textContent, frase)
+  assert.equal(campo.getAttribute('aria-invalid'), 'true')
   assert.equal(fechou(t.onOpenChange), false)
   assert.equal(toast.success.mock.callCount(), 0)
 })

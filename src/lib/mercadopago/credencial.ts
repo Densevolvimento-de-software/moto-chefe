@@ -9,6 +9,9 @@ import { somenteDigitos } from '@/lib/grupo-cnpj'
 import { RecusaUsuario } from '@/lib/resultado-action'
 import { ErroMercadoPago } from './cliente'
 import { consultarConta, type ContaMp } from './point'
+import { FRASES_MP } from './frases'
+
+export { FRASES_MP }
 
 export type PedidoCredencialMp = { mpToken?: unknown; mpRemover?: unknown }
 export type DependenciasCredencialMp = {
@@ -21,15 +24,6 @@ export type PlanoCredencialMp =
   | { acao: 'remover' }
   | { acao: 'gravar'; token: string; userId: string; aviso: string | null }
 
-export const FRASES_MP = {
-  formato: 'Esse token não está no formato do Mercado Pago. Copie de novo, sem espaços nem quebra de linha.',
-  recusado: 'O Mercado Pago recusou esse token. Confira se é o Access Token de produção da conta da loja.',
-  indisponivel: 'O Mercado Pago não respondeu agora. Tente de novo em alguns minutos.',
-  teste: 'Esta credencial é de uma conta de teste do Mercado Pago. Aqui só entra a credencial da conta real da loja.',
-  mensalidade: 'Esse token é da conta do MOVA que cobra a mensalidade. Use o token da conta da loja.',
-  jaLigada: 'Essa conta do Mercado Pago já está ligada a outro grupo.',
-  outroCnpj: 'Credencial salva, mas confira: a conta do Mercado Pago é de outro CNPJ, diferente do CNPJ deste grupo.',
-} as const
 
 // Access Token do MP: um bloco só de caracteres visíveis. Espaço ou quebra de linha da cópia saem antes de qualquer
 // uso (decisão do Luis, #126): no meio do header, o fetch lança TypeError com o token inteiro na mensagem. O que

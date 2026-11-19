@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Plus, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { criarGrupoAction, editarGrupoAction } from '../actions'
+import { ehRecusaDoMp } from '@/lib/mercadopago/frases'
 
 type Grupo = {
   id: string
@@ -80,6 +81,9 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
     }
     onOpenChange?.(aberto)
   }
+
+  // Recusa do Mercado Pago fica embaixo do campo dele (protótipo V1); as outras, no rodapé.
+  const erroDoMp = erro !== null && ehRecusaDoMp(erro)
 
   const contratoIncompleto = !razaoSocial.trim() || !enderecoSede.trim() || !cidadeSede.trim() || !comarcaForo.trim()
 
@@ -276,13 +280,16 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                     <Input
                       id="grupo-mp-token"
                       type="password"
-                      autoComplete="off"
+                      autoComplete="new-password"
                       value={mpToken}
                       onChange={e => { setMpToken(e.target.value); setMpRemover(false) }}
-                      placeholder={inicial?.mpConectado ? 'Deixe em branco para manter a atual' : 'APP_USR-...'}
+                      placeholder={inicial?.mpConectado ? 'Deixe em branco para manter a atual' : 'Cole o Access Token da conta da loja'}
                       className="h-9 text-sm"
                       disabled={mpRemover}
+                      aria-invalid={erroDoMp || undefined}
+                      aria-describedby={erroDoMp ? 'grupo-mp-token-erro' : undefined}
                     />
+                    {erroDoMp && <p id="grupo-mp-token-erro" role="alert" className="text-[11px] text-destructive">{erro}</p>}
                     {inicial?.mpConectado ? (
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-[11px] text-primary-text">Configurada: conta final {inicial.mpFinal}</p>
@@ -295,7 +302,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                         </button>
                       </div>
                     ) : (
-                      <p className="text-[11px] text-muted-foreground">Sem credencial, a importação do Mercado Pago fica desligada neste grupo.</p>
+                      <p className="text-[11px] text-warning">Sem credencial, a importação do Mercado Pago fica desligada neste grupo.</p>
                     )}
                     {mpRemover && (
                       <p className="text-[11px] text-destructive">
@@ -303,12 +310,13 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                       </p>
                     )}
                     <p className="text-[11px] text-muted-foreground">
-                      O Salvar confere a conta no Mercado Pago antes de gravar. Com a credencial, a conciliação de cartão importa as vendas da maquininha.
+                      Gravada cifrada; nunca volta para esta tela, por isso o campo aparece vazio. O Salvar confere a conta
+                      no Mercado Pago antes de gravar. Com ela, a conciliação de cartão importa as vendas da maquininha.
                     </p>
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground sm:col-span-2">
-                  As chaves são gravadas cifradas e nunca voltam para esta tela, por isso os campos aparecem vazios.
+                  A URL do mcp.ai é gravada cifrada e nunca volta para esta tela, por isso o campo aparece vazio.
                   Bling é a emissão de NF-e. O login da fábrica fica no cadastro de cada loja.
                 </p>
               </div>
@@ -321,7 +329,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
           </div>
         </div>
 
-        {erro && (
+        {erro && !erroDoMp && (
           <p role="alert" className="border-t border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive sm:px-6">{erro}</p>
         )}
         <div className="flex justify-end gap-2 border-t bg-muted/40 px-4 py-3 sm:px-6">
