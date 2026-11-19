@@ -1,6 +1,6 @@
 import type { ResultadoAction } from '@/lib/resultado-action'
 import { LINHA_PIX } from './conciliacao-cartao'
-import { VALOR_RECEBIDO_INVALIDO, custoDoPixForcado, lerValorRecebido } from './custo-pix'
+import { VALOR_RECEBIDO_INVALIDO, custoDoPixForcado, lerValorRecebido, type CustoDoPix } from './custo-pix'
 import { centavos } from './centavos'
 export type StatusConc = 'na' | 'pendente' | 'parcial' | 'conciliada'
 
@@ -11,9 +11,9 @@ export const PAGAMENTO_PIX: ReadonlySet<string> = new Set(['pix'])
 // lançamento correspondente no sistema (relatório da operadora não importado, PIX
 // fora do Open Finance, transferência avulsa). Fica gravada no próprio item do array
 // `pagamentos` — ver docs/superpowers/specs/2026-07-31-forcar-conciliacao-design.md.
-// `pix`: na forçada de um pagamento PIX (#92), o que entrou na conta e o custo, calculados no servidor
-// por comForcado; em cartão e financiamento não existe.
-export type PixDaForcada = { valorRecebido: number; valorBruto: number; custoPix: number; custoPixTaxa: number }
+// `pix`: na forçada de um pagamento PIX feita depois da #92, o que entrou na conta e o custo, calculados por
+// comForcado. Cartão, financiamento e as forçadas de PIX anteriores não têm.
+export type PixDaForcada = { valorRecebido: number } & CustoDoPix
 export type ConciliadoManual = { motivo: string; porId: string; porNome: string; em: string; pix?: PixDaForcada }
 
 export type PgtoOS = {
@@ -54,7 +54,8 @@ export type AutorDoForcado = Pick<ConciliadoManual, 'porId' | 'porNome' | 'em'>
 
 /**
  * Na forçada de PIX (#92): o que entrou na conta (vem da tela, ainda sem conferir) e quanto do pagamento os
- * lançamentos já cobrem (lido no servidor; a forçada parte do que falta, decisão do Luis de 19/11/2026).
+ * lançamentos já cobrem (a forçada parte do que falta, decisão do Luis de 19/11/2026). A action lê a cobertura
+ * no banco; a tela usa a do painel.
  */
 export type RecebimentoDaForcada = { valorRecebido: unknown; coberto: number }
 
@@ -71,12 +72,10 @@ export function comForcado(
   if (!precisaConciliar(alvo.tipo)) return { ok: false, erro: 'Esse pagamento não precisa de conciliação' }
   // Como no vínculo do PIX (#90): o que a marca gravou não muda calado.
   if (alvo.conciliadoManual) return { ok: false, erro: PAGAMENTO_JA_FORCADO }
-  const marca: ConciliadoManual = { motivo: texto, porId: autor.porId, porNome: autor.porNome, em: autor.em }
-  if (PAGAMENTO_PIX.has(alvo.tipo)) {
-    const pix = pixDaForcada(alvo.valor, recebimento)
-    if (typeof pix === 'string') return { ok: false, erro: pix }
-    marca.pix = pix
-  }
+  const autoria = { motivo: texto, porId: autor.porId, porNome: autor.porNome, em: autor.em }
+  const pix = PAGAMENTO_PIX.has(alvo.tipo) ? pixDaForcada(alvo.valor, recebimento) : undefined
+  if (typeof pix === 'string') return { ok: false, erro: pix }
+  const marca: ConciliadoManual = pix ? { ...autoria, pix } : autoria
   return { ok: true, dados: pgtos.map((p, i) => i === idx ? { ...p, conciliadoManual: marca } : p) }
 }
 
@@ -88,11 +87,14 @@ export function temForcadaParcialDePix(pgtos: readonly PgtoOS[]): boolean {
   return pgtos.some(p => PAGAMENTO_PIX.has(p.tipo) && p.conciliadoManual?.pix !== undefined && p.valor - p.conciliadoManual.pix.valorBruto > 0.05)
 }
 
+/** De quanto parte a forçada de PIX: o que os lançamentos ainda não cobrem do pagamento. Tela e servidor. */
+export const baseDaForcada = (valorDoPagamento: number, coberto: number) => centavos(valorDoPagamento - coberto)
+
 /** A parte pix da marca, ou a frase da recusa. A tela usa a mesma conta para mostrar as colunas. */
 export function pixDaForcada(valorDoPagamento: number, recebimento?: RecebimentoDaForcada): PixDaForcada | string {
   const valorRecebido = lerValorRecebido(recebimento?.valorRecebido)
   if (valorRecebido === null) return VALOR_RECEBIDO_INVALIDO
-  const base = centavos(valorDoPagamento - (recebimento?.coberto ?? 0))
+  const base = baseDaForcada(valorDoPagamento, recebimento?.coberto ?? 0)
   if (base <= 0) return 'Esse pagamento já está conciliado'
   return { valorRecebido, ...custoDoPixForcado(base, valorRecebido) }
 }

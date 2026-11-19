@@ -4,6 +4,12 @@ import { centavos } from './centavos'
 import { parseNumeroBR } from './numero-br'
 import { brutoParaReceber, liquidoDoBruto } from './preco-minimo'
 
+/** O que se grava de um PIX: o valor do PIX, o custo e a taxa (fração), no vínculo (#90) e na forçada (#92). */
+export type CustoDoPix = { valorBruto: number; custoPix: number; custoPixTaxa: number }
+
+// As 6 casas da coluna custo_pix_taxa: o banco arredonda assim ao gravar.
+const seisCasas = (n: number) => Math.round(n * 1e6) / 1e6
+
 /** Do crédito do banco: o valor do PIX (bruto) e o custo. Taxa de 100% ou mais não tem bruto que pague: fica sem custo. */
 export function custoDoPixRecebido(credito: number, taxa: number): { bruto: number; custo: number } {
   const bruto = brutoParaReceber(credito, taxa) ?? credito
@@ -25,7 +31,7 @@ export const CUSTO_PIX_FORA_DA_FAIXA = 'O custo do PIX precisa ser de 0 até men
  */
 export function lerCustoPixTaxa(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN
-  const naColuna = Math.round(n * 1e6) / 1e6
+  const naColuna = seisCasas(n)
   return Number.isFinite(naColuna) && naColuna >= 0 && naColuna < 1 ? naColuna : null
 }
 
@@ -43,7 +49,7 @@ export const OPERACAO_COM_CUSTO = 'PIX'
  * O que se grava no PIX recebido ao vinculá-lo (#90): o valor do PIX, o custo e a taxa da época.
  * Só PIX tem custo; TED e linha antiga sem tipo entram inteiras (custo 0, taxa 0).
  */
-export function custoDoPixVinculado(tipoOperacao: string | null, credito: number, taxa: number): { valorBruto: number; custoPix: number; custoPixTaxa: number } {
+export function custoDoPixVinculado(tipoOperacao: string | null, credito: number, taxa: number): CustoDoPix {
   if (tipoOperacao !== OPERACAO_COM_CUSTO || taxa <= 0) return { valorBruto: credito, custoPix: 0, custoPixTaxa: 0 }
   const { bruto, custo } = custoDoPixRecebido(credito, taxa)
   return { valorBruto: bruto, custoPix: custo, custoPixTaxa: taxa }
@@ -69,7 +75,7 @@ export function lerValorRecebido(v: unknown): number | null {
  * do pagamento, ou o que faltava) e do que entrou. Decisão do Luis (19/11/2026): custo = base − recebido,
  * nunca negativo; a taxa gravada é a efetiva (custo ÷ base). A taxa do grupo não entra aqui.
  */
-export function custoDoPixForcado(base: number, recebido: number): { valorBruto: number; custoPix: number; custoPixTaxa: number } {
+export function custoDoPixForcado(base: number, recebido: number): CustoDoPix {
   const custoPix = Math.max(0, centavos(base - recebido))
-  return { valorBruto: base, custoPix, custoPixTaxa: base > 0 ? Math.round((custoPix / base) * 1e6) / 1e6 : 0 }
+  return { valorBruto: base, custoPix, custoPixTaxa: base > 0 ? seisCasas(custoPix / base) : 0 }
 }
