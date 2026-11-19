@@ -24,7 +24,13 @@ export async function POST() {
   if (!usuarioPodeAcessar(usuario, '/conciliacao') || !podeGerirConciliacao(usuario.papel)) {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
-  const grupo = await getGrupoAtivo(usuario)
-  const r = await resultadoDoGrupo({ id: grupo.id, nome: grupo.nome })
-  return r.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ error: r.erro }, { status: 502 })
+  try {
+    const grupo = await getGrupoAtivo(usuario)
+    const r = await resultadoDoGrupo({ id: grupo.id, nome: grupo.nome })
+    return r.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ error: r.erro }, { status: 502 })
+  } catch (e) {
+    // Sem a mensagem, que pode trazer detalhe de conexão; a tela lê só { error }.
+    console.error('[conciliacao-mercadopago] importar pelo botão falhou', e instanceof Error ? e.name : 'erro')
+    return NextResponse.json({ error: 'Não deu para importar agora. Tente de novo em alguns minutos.' }, { status: 500 })
+  }
 }

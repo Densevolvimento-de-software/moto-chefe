@@ -50,13 +50,14 @@ async function conta(nome: string, { credencial = 200 as number | null } = {}) {
   const base = await semearContaBase(db, { prefixo: 'MPROTA', nome: `${nome} ${suf}`, cnpj: suf })
   const aux = await semearUsuario(db, base, { papel: 'aux_adm' })
   const vendedor = await semearUsuario(db, base, { papel: 'vendedor' })
+  const socio = await semearUsuario(db, base, { papel: 'admin_socio' })
   const token = `TEST-${suf}`
   if (credencial !== null) {
     await db.execute(sql`insert into mercadopago_config (grupo_id, token, user_id) values (${base.grupoId}, ${cifrar(token)}, ${'mp-' + suf})`)
     respostasMp.set(token, { status: credencial, results: [] })
   }
   const como = (id: string, papel: string) => ({ id, papel, lojaId: base.lojaId, contaId: base.contaId, gruposAcesso: [], papeisExtras: [], modulosExtras: [] })
-  return { ...base, comoAux: como(aux, 'aux_adm'), comoVendedor: como(vendedor, 'vendedor') }
+  return { ...base, comoAux: como(aux, 'aux_adm'), comoVendedor: como(vendedor, 'vendedor'), comoSocio: como(socio, 'admin_socio') }
 }
 const faixa = async (grupoId: string) => (await execRows(sql`select ultima_importacao_em, ultima_falha_erro from mercadopago_config where grupo_id = ${grupoId}`))[0]
 const chamar = async () => { const r = await POST(); return { status: r.status, corpo: await r.json() } }
@@ -72,14 +73,40 @@ test('vendedor (sem gerir a conciliação): 403 com { error }, e nada importa', 
   assert.equal((await faixa(a.grupoId)).ultima_importacao_em, null)
 })
 
-test('aux_adm importa só o grupo ativo dele, mesmo com o cookie apontando outra Conta', async () => {
+test('aux_adm importa o grupo da loja dele', async () => {
+  const a = await conta('A')
+  sessao = a.comoAux
+  assert.deepEqual(await chamar(), { status: 200, corpo: { ok: true } })
+  assert.notEqual((await faixa(a.grupoId)).ultima_importacao_em, null)
+})
+
+// O sócio escolhe o grupo ativo pelo cookie: o de outra Conta não vale, e cai no da loja dele.
+test('admin_socio com o cookie apontando o grupo de outra Conta importa o próprio grupo, não o outro', async () => {
   const a = await conta('A')
   const b = await conta('B')
-  sessao = a.comoAux
+  sessao = a.comoSocio
   cookieGrupo = b.grupoId
   assert.deepEqual(await chamar(), { status: 200, corpo: { ok: true } })
   assert.notEqual((await faixa(a.grupoId)).ultima_importacao_em, null)
   assert.equal((await faixa(b.grupoId)).ultima_importacao_em, null)
+})
+
+test('admin_geral importa o grupo escolhido no seletor', async () => {
+  const a = await conta('A')
+  const b = await conta('B')
+  sessao = { ...a.comoAux, papel: 'admin_geral' }
+  cookieGrupo = b.grupoId
+  assert.deepEqual(await chamar(), { status: 200, corpo: { ok: true } })
+  assert.notEqual((await faixa(b.grupoId)).ultima_importacao_em, null)
+  assert.equal((await faixa(a.grupoId)).ultima_importacao_em, null)
+})
+
+// A tela só lê { error }: um 500 em HTML viraria "falha ao falar com o servidor".
+test('erro ao achar o grupo ativo (usuário sem loja): { error } com frase fixa, sem lançar', async t => {
+  t.mock.method(console, 'error', () => {})
+  const a = await conta('A')
+  sessao = { ...a.comoAux, lojaId: null }
+  assert.deepEqual(await chamar(), { status: 500, corpo: { error: 'Não deu para importar agora. Tente de novo em alguns minutos.' } })
 })
 
 test('Mercado Pago recusa a credencial: { error } com a frase conhecida, e a falha fica gravada no grupo', async () => {
