@@ -105,7 +105,8 @@ test('recusa do servidor no Editar aparece no diálogo, que continua aberto', as
 test('recusa do servidor no Novo Grupo também aparece, e o Novo Grupo não tem o campo do Mercado Pago', async () => {
   api.criar.mock.mockImplementation(async () => ({ ok: false, erro: 'Conta não encontrada' }))
   const t = await montar({ modo: 'criar', contas: [] })
-  assert.equal(document.getElementById('grupo-mp-token'), null)
+  // Compara texto, nunca o nó: o assert tenta imprimir o nó do JSDOM e trava o arquivo em vez de falhar.
+  assert.equal(document.getElementById('grupo-mp-token')?.outerHTML ?? null, null)
   await t.preencher('grupo-nome', 'Novo')
   await t.preencher('grupo-cnpj', '00.000.000/0001-91')
   await t.clique('Criar')
@@ -146,7 +147,7 @@ test('Cancelar depois de uma recusa: ao reabrir, sem a frase velha e o Salvar n�
   await t.clique('Cancelar')
   await t.redesenhar({ modo: 'editar', inicial: GRUPO, open: false, onOpenChange: t.onOpenChange })
   await t.redesenhar({ modo: 'editar', inicial: GRUPO, open: true, onOpenChange: t.onOpenChange })
-  assert.equal(document.querySelector('[role="alert"]'), null)
+  assert.equal(document.querySelector('[role="alert"]')?.textContent ?? null, null)
   api.editar.mock.mockImplementation(async () => ({ ok: true, dados: { aviso: null } }))
   await t.clique('Salvar')
   const [, dados] = api.editar.mock.calls.at(-1)!.arguments
