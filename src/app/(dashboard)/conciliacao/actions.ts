@@ -16,7 +16,7 @@ import { alvoValido, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/l
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
 import { creditoDoPix, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
 import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
-import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
+import { comForcado, matchPagamentos, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
 import { casarPorAutorizacao, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
 import { detectarFormato } from '@/lib/conciliacao-formato'
@@ -461,7 +461,11 @@ async function abreOAlvo(alvo: AlvoConciliacao): Promise<boolean> {
 
 export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
   if (!(await abreOAlvo(alvo))) return []
+  return cartoesDoAlvo(alvo)
+}
 
+// Cartões conciliados ao alvo. Quem chama já conferiu que o alvo abre para o usuário.
+function cartoesDoAlvo(alvo: AlvoConciliacao) {
   const coluna = alvo.tipo === 'peca' ? conciliacoesCartao.pecaVendaId
     : alvo.tipo === 'os'              ? conciliacoesCartao.osId
     :                                   conciliacoesCartao.vendaId
@@ -482,7 +486,11 @@ export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
 
 export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
   if (!(await abreOAlvo(alvo))) return []
+  return pixDoAlvo(alvo)
+}
 
+// PIX vinculados ao alvo. Quem chama já conferiu que o alvo abre para o usuário.
+function pixDoAlvo(alvo: AlvoConciliacao) {
   // Fonte única desde 15/09/2026: o PIX do ValidaPix saiu junto com a
   // integração. Venda de antes de julho/2026, cujo pagamento só existia lá,
   // aparece aqui sem PIX — o dado está em
@@ -745,12 +753,16 @@ async function gravarPagamentos(alvo: AlvoConciliacao, lojaIdsGrupo: string[], p
 }
 
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
-export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string) {
-  return acao(() => forcarConciliacao(alvo, idx, motivo))
+/** `valorRecebido`: na forçada de PIX, o que entrou na conta (#92); é o único número que vem da tela. */
+export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string, valorRecebido?: number) {
+  return acao(() => forcarConciliacao(alvo, idx, motivo, valorRecebido))
 }
-async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: string) {
+async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: string, valorRecebido: unknown) {
   const { usuario, lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
-  const r = comForcado(pgtos, idx, motivo, { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() })
+  // Quanto os lançamentos do alvo já cobrem do pagamento, pela mesma conta do painel: o PIX parcial força o que falta.
+  const [cartoes, pix] = await Promise.all([cartoesDoAlvo(alvo), pixDoAlvo(alvo)])
+  const coberto = matchPagamentos(pgtos, cartoes, pix)[idx]?.coberto ?? 0
+  const r = comForcado(pgtos, idx, motivo, { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }, { valorRecebido, coberto })
   if (!r.ok) throw new RecusaUsuario(r.erro)
   await gravarPagamentos(alvo, lojaIdsGrupo, r.dados)
 }
