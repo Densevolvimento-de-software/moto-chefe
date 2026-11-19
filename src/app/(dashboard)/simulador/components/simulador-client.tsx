@@ -292,12 +292,15 @@ function DescontoBadge({ pct: pctStr, economia, corBadge, corEcon }: { pct: stri
   )
 }
 
-/** Rodapé do card do PIX, variante B da #70: o custo do PIX e o que entra na conta. Fica fora do orçamento impresso. */
-function SoParaALoja({ valor, taxa }: { valor: number; taxa: number }) {
+/**
+ * Rodapé do card do PIX, variante B da #70: o custo do PIX e o que entra na conta. Fica fora do orçamento
+ * impresso e do Ctrl+P da tela. Duas linhas num card de 1/3 da largura: por isso não usa o ContaDoPix.
+ */
+function RodapeCustoPix({ valor, taxa }: { valor: number; taxa: number }) {
   if (taxa <= 0) return null
   const { custo, entra } = creditoDoPix(valor, taxa)
   return (
-    <div aria-label="Só para a loja" className="mt-3 border-t border-dashed border-success/45 pt-2.5 text-left text-xs text-muted-foreground">
+    <div role="note" aria-label="Só para a loja" className="mt-3 border-t border-dashed border-success/45 pt-2.5 text-left text-xs text-muted-foreground print:hidden">
       <p className="mb-1 flex items-center gap-1.5"><EyeOff aria-hidden className="size-3.5" />Só para a loja, fora do orçamento do cliente</p>
       <p className="flex justify-between gap-4"><span>Custo do PIX</span><span className="tabular-nums">{fmtBRL(custo)}</span></p>
       <p className="flex justify-between gap-4"><span>Entra na conta no PIX</span><span className="font-semibold text-foreground tabular-nums">{fmtBRL(entra)}</span></p>
@@ -374,7 +377,7 @@ function PrecosDestaque({
         <p className="text-lg font-bold text-success">{fmtBRL(base)}</p>
         <p className="text-xs text-success mt-1">PIX / Dinheiro</p>
         <DescontoBadge pct={descPix} economia={ecoPix} corBadge="bg-success/10 text-success" corEcon="text-success" />
-        <SoParaALoja valor={base} taxa={custoPixTaxa} />
+        <RodapeCustoPix valor={base} taxa={custoPixTaxa} />
       </div>
     </div>
   )
