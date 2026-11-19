@@ -1,8 +1,8 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { motos } from '@/lib/db/schema'
 import { podeAgirNaLoja, podeVenderMotoDaLoja } from '@/lib/acesso-registro'
-import { lojasDoEscopo } from '@/lib/conta'
+import { lojaNoEscopo } from '@/lib/conta'
 import { RecusaUsuario } from '@/lib/resultado-action'
 import { MOTO_ARQUIVADA } from '@/lib/arquivar-moto-regras'
 
@@ -12,8 +12,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 /** Conta no where: undefined = admin_geral (todas), null = sem Conta (nenhuma). */
 export const daContaDo = (usuario: { papel: string; contaId: string | null; grupoLiberado?: string | null }) =>
-  usuario.papel === 'admin_geral' ? undefined
-    : usuario.contaId ? inArray(motos.lojaId, lojasDoEscopo(usuario)) : null
+  lojaNoEscopo(usuario, motos.lojaId)
 
 /**
  * Moto que o usuário pode vender, reservar ou pedir venda, ou null. A Conta entra no

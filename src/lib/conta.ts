@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, isNotNull, or, sql, type SQL } from 'drizzle-orm'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { db } from '@/lib/db'
 import { agendamentos, clientes, contas, grupos, gruposLiberados, lojas, ordensServico, usuarios, vendas, vendasPecas } from '@/lib/db/schema'
 
@@ -64,6 +65,13 @@ export function lojasDoEscopo(usuario: EscopoDoUsuario) {
   if (usuario.grupoLiberado) return lojasDoGrupo(usuario.grupoLiberado)
   if (!usuario.contaId) return db.select({ id: lojas.id }).from(lojas).where(sql`false`)
   return lojasDaConta(usuario.contaId)
+}
+
+// Filtro de loja de um registro buscado pelo id: admin_geral vê todas (undefined); quem tem Conta, só as
+// lojas do escopo dele; sem Conta, nada (null: quem chama responde "não encontrado").
+export function lojaNoEscopo(usuario: EscopoDoUsuario & { papel: string }, coluna: AnyPgColumn): SQL | undefined | null {
+  if (usuario.papel === 'admin_geral') return undefined
+  return usuario.contaId ? inArray(coluna, lojasDoEscopo(usuario)) : null
 }
 
 // O grupo está no escopo de quem consulta: o da persona, ou qualquer um da Conta.
