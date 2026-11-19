@@ -23,6 +23,8 @@ import { lerRelatorioRede } from '@/lib/conciliacao-rede'
 import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
 import { grupos } from '@/lib/db/schema'
 import { revalidatePath } from 'next/cache'
+import { lojasDoEscopo, type EscopoDoUsuario } from '@/lib/conta'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 // Linha comum aos leitores de relatório, o que a gravação precisa de cada transação.
 type LinhaRelatorio = {
@@ -428,16 +430,21 @@ function revalidatePathsConciliacao() {
   revalidatePath('/pix-mcp')
 }
 
-async function lojaIdDoAlvo(alvo: AlvoConciliacao): Promise<string | null> {
+// Loja do alvo, lida já com o escopo de lojas de quem consulta no where (admin_geral vê todas; sem Conta, nenhuma):
+// alvo de outra Conta e alvo inexistente dão o mesmo null.
+async function lojaIdDoAlvo(usuario: EscopoDoUsuario & { papel: string }, alvo: AlvoConciliacao): Promise<string | null> {
+  const noEscopo = (coluna: AnyPgColumn) => (usuario.papel === 'admin_geral' ? undefined : inArray(coluna, lojasDoEscopo(usuario)))
   if (alvo.tipo === 'peca') {
-    const [r] = await db.select({ lojaId: vendasPecas.lojaId }).from(vendasPecas).where(eq(vendasPecas.id, alvo.id)).limit(1)
+    const [r] = await db.select({ lojaId: vendasPecas.lojaId }).from(vendasPecas)
+      .where(and(eq(vendasPecas.id, alvo.id), noEscopo(vendasPecas.lojaId))).limit(1)
     return r?.lojaId ?? null
   }
   if (alvo.tipo === 'os') {
-    const [r] = await db.select({ lojaId: ordensServico.lojaId }).from(ordensServico).where(eq(ordensServico.id, alvo.id)).limit(1)
+    const [r] = await db.select({ lojaId: ordensServico.lojaId }).from(ordensServico)
+      .where(and(eq(ordensServico.id, alvo.id), noEscopo(ordensServico.lojaId))).limit(1)
     return r?.lojaId ?? null
   }
-  const [r] = await db.select({ lojaId: vendas.lojaId }).from(vendas).where(eq(vendas.id, alvo.id)).limit(1)
+  const [r] = await db.select({ lojaId: vendas.lojaId }).from(vendas).where(and(eq(vendas.id, alvo.id), noEscopo(vendas.lojaId))).limit(1)
   return r?.lojaId ?? null
 }
 
@@ -446,7 +453,7 @@ async function lojaIdDoAlvo(alvo: AlvoConciliacao): Promise<string | null> {
 // papel) não cabe num where; a loja lida pelo id não sai na resposta.
 async function alvoVisivel(alvo: AlvoConciliacao): Promise<boolean> {
   const usuario = await getUsuarioLogado()
-  const lojaId  = await lojaIdDoAlvo(alvo)
+  const lojaId  = await lojaIdDoAlvo(usuario, alvo)
   if (!lojaId) return false
   return podeGerirConciliacao(usuario.papel) ? podeAbrirRegistroDaLoja(usuario, lojaId) : lojaId === usuario.lojaId
 }
@@ -629,10 +636,10 @@ export async function vincularPixAlvoAction(pixId: string, alvo: AlvoConciliacao
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
 
-  const lojaId = await lojaIdDoAlvo(alvo)
-  if (!lojaId) throw new Error('Venda não encontrada')
+  // Outra Conta, outro grupo e inexistente: a mesma frase (não revela que a venda existe).
+  const lojaId = await lojaIdDoAlvo(usuario, alvo)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
-  if (!lojaIdsGrupo.includes(lojaId)) throw new Error('Venda não pertence ao grupo ativo')
+  if (!lojaId || !lojaIdsGrupo.includes(lojaId)) throw new Error('Venda não encontrada')
 
   const [pix] = await db
     .select({ pagadorNome: pixRecebimentosMcp.pagadorNome })

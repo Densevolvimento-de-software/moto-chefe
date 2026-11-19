@@ -228,3 +228,18 @@ test('linha pix já ligada a uma venda ou estornada não aparece na busca por va
   entrarComo(a)
   assert.deepEqual((await actions.buscarConciliacoesPorValor(658.42, 'pix')).map(l => l.id), [livre])
 })
+
+// Vincular um PIX do banco a uma venda: venda de outra Conta e venda inexistente recebem a mesma frase, e nada grava.
+test('vincular PIX a venda de outra Conta ou inexistente: mesma frase e o PIX segue livre', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const vendaDeB = await vendaPeca(b, [{ tipo: 'pix', valor: 669.53 }])
+  const [pix] = await linhas(sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor)
+    values (${a.grupoId}, 'conta-sintetica', 'banco', ${randomUUID()}, now(), 669.53) returning id`)
+  entrarComo(a)
+  for (const id of [vendaDeB, randomUUID()]) {
+    await assert.rejects(actions.vincularPixAlvoAction(pix.id, { tipo: 'peca', id }), (e: Error) => e.message === 'Venda não encontrada')
+  }
+  const [depois] = await linhas(sql`select peca_venda_id from pix_recebimentos_mcp where id = ${pix.id}`)
+  assert.equal(depois.peca_venda_id, null)
+})
