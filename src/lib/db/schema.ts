@@ -23,7 +23,7 @@ export const pedidoStatusEnum = pgEnum('pedido_status', ['pendente', 'efetivado'
 export const transferenciaStatusEnum = pgEnum('transferencia_status', ['pendente', 'aceita', 'recusada'])
 export const aprovacaoVendaStatusEnum = pgEnum('aprovacao_venda_status', ['pendente', 'aprovada', 'recusada'])
 // 'valor_minimo': venda abaixo do preço mínimo, aprovada por admin_geral/admin_socio do grupo.
-// 'pagamento_sensivel': venda com financiamento/transferência, só o responsável (ver EMAIL_ACESSO_MULTI_GRUPO) aprova.
+// 'pagamento_sensivel': venda com financiamento/transferência, só quem tem aprova_pagamento_sensivel aprova (aprovacao-permissao.ts).
 export const aprovacaoVendaTipoEnum = pgEnum('aprovacao_venda_tipo', ['valor_minimo', 'pagamento_sensivel'])
 // 'cancelada' é terminal e fica fora de SEQUENCIA_STATUS — só se chega nele pela
 // cancelarOSAction, e só a partir de OS sem pagamento/conciliação.
@@ -204,6 +204,8 @@ export const usuarios = pgTable('usuarios', {
   gruposAprovacao: uuid('grupos_aprovacao').array().notNull().default([]),
   // Libera aprovar financiamento/transferência, nos mesmos grupos acima.
   aprovaPagamentoSensivel: boolean('aprova_pagamento_sensivel').notNull().default(false),
+  // Categoriza as saídas do banco em /despesas (#149). Só o admin_geral liga, em /admin/usuarios.
+  categorizaDespesaBanco: boolean('categoriza_despesa_banco').notNull().default(false),
   // Grupos EXTRAS que este usuário pode ESCOLHER no seletor de empresa (além do
   // grupo da própria loja). Coluna separada de grupos_aprovacao de propósito:
   // aprovar pagamento num grupo e enxergar/trocar para aquele grupo são coisas

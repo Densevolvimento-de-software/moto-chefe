@@ -33,7 +33,7 @@ export const TERMOS = {
   diasCorrecaoDescumprimento: 10,
   diasExportacaoDados: 15,
   diasGuardaDados: 60,
-  emailContato: 'contato@meumova.com',
+  emailContato: CONTRATADA.email,
   diasAvisoMudancaFuncao: 30,
   horasOrientacao: 2,
   diasUteisImplantacao: 15,

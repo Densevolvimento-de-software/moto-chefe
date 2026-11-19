@@ -7,6 +7,7 @@ export const CONTRATADA = {
   cnpj: '13481112000153',
   endereco: 'Av. Getúlio Vargas, 232, apto. 202, Centro, Pouso Alegre/MG, CEP 37.550-037',
   marca: 'MOVA',
+  email: 'contato@meumova.com',
   cidadeFecho: 'Pouso Alegre/MG',
   comarcaForo: 'Pouso Alegre/MG',
 } as const
