@@ -188,8 +188,7 @@ test('pagamento pendente com estorno da maquininha mostra "Estornado no Mercado 
     { id: 'e1', valorBruto: '450.00', tipo: 'pix' },
   ])
   const textos = linhas().map(b => (b.textContent ?? '').replace(/\s+/g, ' '))
-  // Sem dia: o importador não grava quando estornou, e a data da linha é a da venda.
-  assert.ok(textos.some(t => t.includes('Estornado no Mercado Pago') && !t.includes('05/11') && t.includes('450,00')), textos.join(' | '))
+  assert.ok(textos.some(t => t.includes('Pendente · Estornado no Mercado Pago') && t.includes('450,00')), textos.join(' | '))
   assert.ok(!textos.some(t => t.includes('Estornado') && t.includes('90,00')), textos.join(' | '))
 })
 
