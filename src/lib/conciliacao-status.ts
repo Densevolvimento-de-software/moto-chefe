@@ -231,3 +231,21 @@ export function pagamentosEfetivosOS(
   const tipo = LABEL_PARA_TIPO_OS[formaPagamento] ?? formaPagamento.toLowerCase()
   return [{ tipo, valor: Number(valorTotal) || 0 }]
 }
+
+/** Linha da maquininha ligada ao alvo e estornada no Mercado Pago. */
+export type EstornoDoAlvo = { id: string; valorBruto: string | number; tipo: string; dataTransacao: string }
+
+// A linha pix da maquininha cobre pagamento PIX; as outras, pagamento de cartão (como em `matchPagamentos`).
+const estornoCobre = (p: PgtoOS, e: EstornoDoAlvo) =>
+  (e.tipo === LINHA_PIX ? PAGAMENTO_PIX.has(p.tipo) : TIPOS_CARTAO.has(p.tipo)) && Math.abs(Number(e.valorBruto) - p.valor) <= 0.05
+
+/**
+ * Para cada pagamento, o dia do estorno no Mercado Pago que o deixou pendente (ou null): pagamento ainda não conciliado
+ * com um estorno ligado ao alvo do mesmo meio e valor. Cada estorno explica um pagamento só.
+ */
+export function estornosDosPagamentos(pgtos: PgtoOS[], cobertura: CoberturaPgto[], estornos: EstornoDoAlvo[]): (string | null)[] {
+  return pgtos.reduce<{ dias: (string | null)[]; usados: ReadonlySet<string> }>((acc, p, i) => {
+    const e = cobertura[i]?.conciliado ? undefined : estornos.find(x => !acc.usados.has(x.id) && estornoCobre(p, x))
+    return { dias: [...acc.dias, e?.dataTransacao ?? null], usados: e ? new Set([...acc.usados, e.id]) : acc.usados }
+  }, { dias: [], usados: new Set() }).dias
+}
