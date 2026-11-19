@@ -35,3 +35,13 @@ export function custoPixDoCampo(texto: string): number | null {
   const percentual = parseNumeroBR(texto)
   return percentual === null ? null : lerCustoPixTaxa(percentual / 100)
 }
+
+/**
+ * O que se grava no PIX recebido ao vinculá-lo (#90): o valor do PIX, o custo e a taxa da época.
+ * Só PIX tem custo; TED e linha antiga sem tipo entram inteiras (custo 0, taxa 0).
+ */
+export function custoDoPixVinculado(tipoOperacao: string | null, credito: number, taxa: number): { valorBruto: number; custoPix: number; custoPixTaxa: number } {
+  if (tipoOperacao !== 'PIX' || taxa <= 0) return { valorBruto: credito, custoPix: 0, custoPixTaxa: 0 }
+  const { bruto, custo } = custoDoPixRecebido(credito, taxa)
+  return { valorBruto: bruto, custoPix: custo, custoPixTaxa: taxa }
+}

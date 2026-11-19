@@ -1,7 +1,7 @@
 // Custo do PIX (#89): o banco credita o valor do PIX menos a porcentagem do grupo.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { creditoDoPix, custoDoPixRecebido, custoPixDoCampo, lerCustoPixTaxa } from './custo-pix'
+import { creditoDoPix, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa } from './custo-pix'
 
 test('crédito de R$ 9.980,00 com 0,20%: o PIX foi de R$ 10.000,00 e custou R$ 20,00', () => {
   assert.deepEqual(custoDoPixRecebido(9980, 0.002), { bruto: 10000, custo: 20 })
@@ -63,4 +63,15 @@ test('custoPixDoCampo: ponto decimal com zero à esquerda não vira milhar', () 
 
 test('custoPixDoCampo: ilegível ou fora da faixa é null', () => {
   for (const texto of ['abc', '0,2%', '100', '1.000', '-1']) assert.equal(custoPixDoCampo(texto), null, texto)
+})
+
+// #90: o que se grava no PIX recebido ao vincular. Só PIX tem custo; TED e linha antiga sem tipo entram inteiras.
+test('custoDoPixVinculado: PIX creditado R$ 9.980,00 com 0,20% grava bruto R$ 10.000,00, custo R$ 20,00 e a taxa', () => {
+  assert.deepEqual(custoDoPixVinculado('PIX', 9980, 0.002), { valorBruto: 10000, custoPix: 20, custoPixTaxa: 0.002 })
+})
+
+test('custoDoPixVinculado: TED, linha sem tipo e grupo sem custo gravam o crédito inteiro, custo 0 e taxa 0', () => {
+  for (const [tipo, taxa] of [['TED', 0.002], [null, 0.002], ['PIX', 0]] as const) {
+    assert.deepEqual(custoDoPixVinculado(tipo, 9980, taxa), { valorBruto: 9980, custoPix: 0, custoPixTaxa: 0 }, `${tipo} ${taxa}`)
+  }
 })
