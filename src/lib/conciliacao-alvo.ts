@@ -1,6 +1,7 @@
 // Alvo da conciliação: a venda de moto, a venda de peça ou a OS cujos pagamentos se conciliam.
 // Vem do navegador nas Server Actions; tipo fora da lista ou id que não é uuid vale como inexistente.
 import { ehUuid } from './uuid'
+import { semAlvos, type Alvos } from './conciliacao-casamento'
 
 export const ALVO_TIPOS = ['moto', 'peca', 'os'] as const
 export type AlvoTipo = typeof ALVO_TIPOS[number]
@@ -21,8 +22,7 @@ export function tipoDoAlvo(alvo: unknown): AlvoTipo {
 }
 
 /** Colunas do vínculo de uma linha de cartão: a do tipo do alvo com o id, as outras nulas. */
-export const colunasDoAlvo = ({ tipo, id }: AlvoConciliacao) => ({
-  vendaId:     tipo === 'moto' ? id : null,
-  pecaVendaId: tipo === 'peca' ? id : null,
-  osId:        tipo === 'os'   ? id : null,
+export const colunasDoAlvo = ({ tipo, id }: AlvoConciliacao): Alvos => ({
+  ...semAlvos(),
+  ...(tipo === 'moto' ? { vendaId: id } : tipo === 'peca' ? { pecaVendaId: id } : { osId: id }),
 })

@@ -19,7 +19,7 @@ import { creditoDoPix, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
 import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
 import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
-import { casarPorAutorizacao, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
+import { casarPorAutorizacao, semAlvos, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
 import { detectarFormato } from '@/lib/conciliacao-formato'
 import type { TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
 import { lerRelatorioCielo } from '@/lib/conciliacao-cielo'
@@ -283,7 +283,7 @@ async function importarRelatorio(formData: FormData) {
     // Tenta auto-conciliar pela autorização registrada na venda (moto, peça ou OS), restrito ao grupo ativo
     const { vendaId, pecaVendaId, osId } = r.autorizacao
       ? await casarPorAutorizacao(db, lojaIdsGrupo, r.autorizacao)
-      : { vendaId: null, pecaVendaId: null, osId: null }
+      : semAlvos()
 
     const matched = vendaId ?? pecaVendaId ?? osId
     await db.insert(conciliacoesCartao).values({
@@ -342,7 +342,7 @@ async function desvincularVenda(conciliacaoId: string) {
 
   const atualizadas = ehUuid(conciliacaoId)
     ? await db.update(conciliacoesCartao)
-      .set({ vendaId: null, pecaVendaId: null, osId: null, conciliado: false, conciliadoEm: null })
+      .set({ ...semAlvos(), conciliado: false, conciliadoEm: null })
       // Estornada mantém o vínculo com a venda: desvincular recebe a mesma frase de linha inexistente.
       .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
       .returning({ id: conciliacoesCartao.id })
