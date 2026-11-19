@@ -25,8 +25,11 @@ type LancamentoInput = {
 
 // Recusa de categoria (#834) volta como { ok: false, erro }: lançada, a mensagem some no build de
 // produção (#404). Os outros erros seguem lançados, como antes.
-export async function criarLancamentoAction(dados: LancamentoInput) {
-  return acao(() => criarLancamento(dados))
+export async function criarLancamentoAction(dados: LancamentoInput, comprovante?: FormData) {
+  return acao(async () => {
+    const comprovanteUrl = comprovante ? await uploadComprovanteAction(comprovante) : dados.comprovanteUrl
+    return criarLancamento({ ...dados, comprovanteUrl })
+  })
 }
 
 async function criarLancamento(dados: LancamentoInput) {

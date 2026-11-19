@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { FileCheck, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import { criarLancamentoAction, uploadComprovanteAction } from '../../actions'
+import { criarLancamentoAction } from '../../actions'
 import Link from 'next/link'
 
 type Loja = { id: string; nome: string }
@@ -70,13 +70,9 @@ export function NovoLancamentoForm({
 
     setLoading(true)
     try {
-      let comprovanteUrl: string | undefined
-
-      if (arquivo) {
-        const fd = new FormData()
-        fd.append('file', arquivo)
-        comprovanteUrl = await uploadComprovanteAction(fd)
-      }
+      // O arquivo vai junto: o servidor confere a loja e monta o caminho antes de subir (#153).
+      const comprovante = arquivo ? new FormData() : undefined
+      if (arquivo) comprovante!.append('file', arquivo)
 
       const r = await criarLancamentoAction({
         lojaId,
@@ -85,8 +81,7 @@ export function NovoLancamentoForm({
         descricao: descricao.trim() || undefined,
         valor,
         data,
-        comprovanteUrl,
-      })
+      }, comprovante)
       if (!r.ok) { toast.error(r.erro); return }
       toast.success('Lançamento registrado!')
       router.push('/caixa')
