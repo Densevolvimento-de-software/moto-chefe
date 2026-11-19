@@ -174,3 +174,20 @@ test('tipo de linha forjado é recusado nas duas buscas', async () => {
   await assert.rejects(actions.buscarConciliacoesPorValor(646.31, 'todas' as never), /Linha inválida/)
   await assert.rejects(actions.buscarConciliacoesLivres('646,31', 'todas' as never), /Linha inválida/)
 })
+
+// #51 (PR6c): o painel da venda diz "Estornado no Mercado Pago" com as linhas estornadas ligadas à venda.
+test('estornos do alvo: só as linhas estornadas ligadas à venda; Conta B não lê', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const venda = await vendaPeca(a, [{ tipo: 'pix', valor: 456.78 }, { tipo: 'pix', valor: 123.45 }])
+  const estornada = await linha(a, 'pix', 456.78)
+  const conciliada = await linha(a, 'pix', 123.45)
+  await linhas(sql`update conciliacoes_cartao set peca_venda_id = ${venda}, status = 'estornado', conciliado = false where id = ${estornada}`)
+  await linhas(sql`update conciliacoes_cartao set peca_venda_id = ${venda}, conciliado = true where id = ${conciliada}`)
+  entrarComo(a)
+  const alvo = { tipo: 'peca' as const, id: venda }
+  assert.deepEqual((await actions.buscarEstornosDoAlvo(alvo)).map(e => [e.id, e.tipo, Number(e.valorBruto), e.dataTransacao]), [[estornada, 'pix', 456.78, '2026-11-05']])
+  assert.deepEqual((await actions.buscarConciliacoesDoAlvo(alvo)).map(c => c.id), [conciliada])
+  entrarComo(b)
+  await assert.rejects(actions.buscarEstornosDoAlvo(alvo), /Sem permissão/)
+})

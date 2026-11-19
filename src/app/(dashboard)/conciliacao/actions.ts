@@ -16,7 +16,7 @@ import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
 import { casarPorAutorizacao, linhaDaTransacao, semAlvos, tiposDoPagamentoDaLinha } from '@/lib/conciliacao-casamento'
 import { detectarFormato } from '@/lib/conciliacao-formato'
-import { ehLinhaProcurada, type LinhaProcurada, type TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
+import { CARTAO_ESTORNADO, ehLinhaProcurada, type LinhaProcurada, type TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
 import { lerRelatorioCielo } from '@/lib/conciliacao-cielo'
 import { lerRelatorioRede } from '@/lib/conciliacao-rede'
 import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
@@ -440,15 +440,20 @@ async function lojaIdDoAlvo(alvo: AlvoConciliacao): Promise<string | null> {
   return r?.lojaId ?? null
 }
 
-export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
+// Quem pode ver as linhas ligadas ao alvo e por qual coluna elas se ligam; null: alvo inexistente.
+async function colunaDoAlvoVisivel(alvo: AlvoConciliacao) {
   const usuario = await getUsuarioLogado()
   const lojaId  = await lojaIdDoAlvo(alvo)
-  if (!lojaId) return []
+  if (!lojaId) return null
   if (podeGerirConciliacao(usuario.papel) ? !(await podeAbrirRegistroDaLoja(usuario, lojaId)) : lojaId !== usuario.lojaId) throw new Error('Sem permissão')
+  return alvo.tipo === 'peca' ? conciliacoesCartao.pecaVendaId
+    : alvo.tipo === 'os'      ? conciliacoesCartao.osId
+    :                           conciliacoesCartao.vendaId
+}
 
-  const coluna = alvo.tipo === 'peca' ? conciliacoesCartao.pecaVendaId
-    : alvo.tipo === 'os'              ? conciliacoesCartao.osId
-    :                                   conciliacoesCartao.vendaId
+export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
+  const coluna = await colunaDoAlvoVisivel(alvo)
+  if (!coluna) return []
 
   return db
     .select({
@@ -462,6 +467,21 @@ export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
     })
     .from(conciliacoesCartao)
     .where(and(eq(coluna, alvo.id), eq(conciliacoesCartao.conciliado, true)))
+}
+
+/** Linhas da maquininha ligadas ao alvo e estornadas no Mercado Pago (#51): o painel diz que o pagamento voltou. */
+export async function buscarEstornosDoAlvo(alvo: AlvoConciliacao) {
+  const coluna = await colunaDoAlvoVisivel(alvo)
+  if (!coluna) return []
+  return db
+    .select({
+      id:            conciliacoesCartao.id,
+      valorBruto:    conciliacoesCartao.valorBruto,
+      tipo:          conciliacoesCartao.tipo,
+      dataTransacao: conciliacoesCartao.dataTransacao,
+    })
+    .from(conciliacoesCartao)
+    .where(and(eq(coluna, alvo.id), eq(conciliacoesCartao.status, CARTAO_ESTORNADO)))
 }
 
 export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
