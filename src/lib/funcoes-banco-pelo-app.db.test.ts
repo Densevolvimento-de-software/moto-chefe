@@ -36,7 +36,7 @@ let transf: typeof import('@/app/(dashboard)/transferencias/actions')
 let garantiasActions: typeof import('@/app/(dashboard)/garantias/actions')
 let alterarStatusAction: typeof import('@/app/(dashboard)/estoque/[id]/actions')['alterarStatusAction']
 let correcaoStatusAdminAction: typeof import('@/app/(dashboard)/admin/acoes/actions')['correcaoStatusAdminAction']
-const s = { contaId: '', grupoId: '', lojaId: '', destinoId: '', modeloId: '', contaBId: '', grupoBId: '' }
+const s = { contaId: '', grupoId: '', lojaId: '', destinoId: '', modeloId: '', contaBId: '', grupoBId: '', mecanicoA: '', mecanicoB: '' }
 const quem = { socio: {}, aux: {}, admin: {}, socioB: {}, auxB: {} } as Record<'socio' | 'aux' | 'admin' | 'socioB' | 'auxB', Record<string, unknown>>
 
 const umaLinha = async (q: ReturnType<typeof sql>) => (await execRows(q))[0]
@@ -68,6 +68,8 @@ before(async () => {
   const comumB = { gruposAcesso: [contaB.grupoId], contaId: contaB.contaId, grupoLiberado: null }
   quem.socioB = { ...comumB, id: await semearUsuario(db, contaB, { papel: 'admin_socio', rotulo: 'socio', semLoja: true, comGrupo: true }), papel: 'admin_socio', lojaId: null }
   quem.auxB = { ...comumB, id: await semearUsuario(db, contaB, { papel: 'aux_adm', rotulo: 'aux' }), papel: 'aux_adm', lojaId: contaB.lojaId }
+  s.mecanicoA = await semearUsuario(db, base, { papel: 'mecanico', rotulo: 'mec', nomeDoUsuario: 'Mecânico A', comConta: true })
+  s.mecanicoB = await semearUsuario(db, contaB, { papel: 'mecanico', rotulo: 'mec', nomeDoUsuario: 'Mecânico B', comConta: true })
 })
 
 after(async () => {
@@ -137,6 +139,15 @@ test('alterar status da moto grava o status e o histórico com quem mudou', asyn
     { status_anterior: 'montada', status_novo: 'em_garantia', observacao: 'barulho no motor', usuario_id: quem.aux.id })
 })
 
+test('guarda: montar a moto com mecânico da Conta grava o responsável, a data e o histórico com o nome', async () => {
+  const motoId = await novaMoto('caixa')
+  usuarioDaSessao = quem.aux
+  await alterarStatusAction(motoId, 'montada', undefined, s.mecanicoA, '2026-11-10')
+  assert.deepEqual(await umaLinha(sql`select status, responsavel_montagem_id, data_montagem::text, disponibilidade from motos where id = ${motoId}`),
+    { status: 'montada', responsavel_montagem_id: s.mecanicoA, data_montagem: '2026-11-10', disponibilidade: 'disponivel' })
+  assert.equal((await ultimoHistorico(motoId)).observacao, 'Mecânico responsável: Mecânico A')
+})
+
 test('correção de status pelo admin grava o status e o histórico', async () => {
   const motoId = await novaMoto('montada')
   usuarioDaSessao = quem.admin
@@ -154,7 +165,7 @@ describe('usuário de outra Conta', () => {
       try { await agir(alvo); return 'aceitou' } catch (e) { return (e as Error).message }
     }
     const paraInexistente = await frase(inexistente)
-    assert.match(paraInexistente, /não encontrada?$/)
+    assert.match(paraInexistente, /não encontrad[oa]$/)
     assert.equal(await frase(id), paraInexistente)
   }
 
@@ -174,6 +185,15 @@ describe('usuário de outra Conta', () => {
     usuarioDaSessao = quem.socioB
     await recusaIgualAInexistente(alvo => garantiasActions.encerrarGarantiaAction(alvo, 'x'), id)
     assert.equal((await umaLinha(sql`select status from garantias where id = ${id}`)).status, 'ativa')
+  })
+
+  test('montagem com mecânico da Conta B: mesma frase de mecânico inexistente e a moto fica intacta', async () => {
+    const motoId = await novaMoto('caixa')
+    usuarioDaSessao = quem.aux
+    await recusaIgualAInexistente(mec => alterarStatusAction(motoId, 'montada', undefined, mec), s.mecanicoB)
+    assert.deepEqual(await umaLinha(sql`select status, responsavel_montagem_id, data_montagem, disponibilidade,
+      (select count(*)::int from historico_estoque where moto_id = ${motoId}) as historicos from motos where id = ${motoId}`),
+    { status: 'caixa', responsavel_montagem_id: null, data_montagem: null, disponibilidade: 'disponivel', historicos: 0 })
   })
 
   test('não muda o status de moto da Conta A', async () => {
