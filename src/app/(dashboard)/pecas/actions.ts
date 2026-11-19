@@ -18,7 +18,7 @@ import { excluirVendaPecaTx } from '@/lib/excluir-venda-peca'
 import { alterarPeca, inserirPeca, listarPecas, type QuemVePecas } from '@/lib/pecas-da-conta'
 import { definirSaldo } from '@/lib/estoque-pecas-loja'
 import { aplicarVendaPeca, type DadosVendaPeca, type ItemVendaPecaInput, type PagamentoVendaPecaInput } from '@/lib/venda-peca'
-import { vendaPecaConciliada } from '@/lib/venda-peca-conciliada'
+import { alvoConciliado } from '@/lib/alvo-conciliado'
 
 
 async function verificarAcesso() {
@@ -243,7 +243,7 @@ async function vendaEditavel(vendaId: string) {
 }
 
 async function avisosDaVenda(venda: { id: string; dataVenda: Date }) {
-  return avisosDaEdicao({ conciliada: await vendaPecaConciliada(db, venda.id), dataVenda: venda.dataVenda })
+  return avisosDaEdicao({ conciliada: await alvoConciliado(db, { tipo: 'peca', id: venda.id }), dataVenda: venda.dataVenda })
 }
 
 /**
