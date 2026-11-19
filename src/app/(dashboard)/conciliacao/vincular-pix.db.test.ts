@@ -312,3 +312,32 @@ test('busca de PIX livre: o PIX pelo esperado sem o custo, a TED pelo valor chei
   const cheio = await semearPixRecebido(db, semCusto.grupoId, { valor: 10000 })
   assert.deepEqual(ids(await actions.buscarPixLivres(10000)), [cheio], 'grupo sem custo: como hoje')
 })
+
+// ─── Tela (#90, 90b): o que a busca do PIX mostra antes de vincular ─────────────────────────────────
+
+test('contexto da busca: esperado sem o custo no grupo com custo, nenhum no grupo sem custo; alvo do grupo ativo', async () => {
+  const a = await contaComAlvos()
+  await custoDoGrupo(a.grupoId, 0.002)
+  usuario = await sessao(a, 'aux_adm')
+  for (const tipo of TIPOS) {
+    assert.deepEqual(await actions.contextoDaBuscaPix({ tipo, id: a.alvos[tipo] }, 10000), { esperado: 9980, noGrupoAtivo: true }, tipo)
+  }
+  const semCusto = await contaComAlvos()
+  usuario = await sessao(semCusto, 'aux_adm')
+  assert.deepEqual(await actions.contextoDaBuscaPix({ tipo: 'moto', id: semCusto.alvos.moto }, 10000), { esperado: null, noGrupoAtivo: true })
+})
+
+test('contexto da busca: alvo de outro grupo da mesma Conta, de outra Conta, inexistente ou forjado não é do grupo ativo', async () => {
+  const a = await contaComAlvos()
+  const suf = randomUUID()
+  const outro = await semearGrupo(db, a.contaId, { prefixo: 'VP90', nome: suf, cnpj: suf })
+  const lojaOutro = await semearLoja(db, outro.grupoId, 'VP90 loja ' + suf)
+  const vendaOutro = await semearVendaMoto(db, { ...a.balcao, lojaId: lojaOutro }, PAGAMENTOS)
+  const b = await contaComAlvos()
+  usuario = await sessao(a, 'admin_socio', { lojaId: null, gruposAcesso: [a.grupoId, outro.grupoId] })
+  grupoAtivoNoCookie = a.grupoId
+  for (const alvo of [{ tipo: 'moto', id: vendaOutro }, { tipo: 'os', id: b.alvos.os }, { tipo: 'peca', id: randomUUID() }, { tipo: 'xyz', id: a.alvos.moto }] as unknown as AlvoConciliacao[]) {
+    assert.equal((await actions.contextoDaBuscaPix(alvo, 10000)).noGrupoAtivo, false, JSON.stringify(alvo))
+  }
+  assert.equal((await actions.contextoDaBuscaPix({ tipo: 'moto', id: a.alvos.moto }, 10000)).noGrupoAtivo, true)
+})

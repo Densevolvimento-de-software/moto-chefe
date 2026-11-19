@@ -927,3 +927,17 @@ export async function buscarVendaManual(query: string) {
 
   return [...motosRows, ...pecasRows, ...osRows]
 }
+
+/**
+ * O que a tela mostra antes de procurar PIX para o alvo (#90): o valor esperado no banco, já sem o custo
+ * do PIX do grupo (null se o grupo não tem custo), e se o alvo é do grupo ativo. Vincular só vale no grupo
+ * do PIX, o ativo: fora dele a tela pede para trocar o grupo em vez de oferecer o Vincular.
+ */
+export async function contextoDaBuscaPix(alvo: AlvoConciliacao, valor: number): Promise<{ esperado: number | null; noGrupoAtivo: boolean }> {
+  const usuario = await getUsuarioLogado()
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+  const grupo = await getGrupoAtivo(usuario)
+  const taxa = await custoPixTaxaDoGrupo(grupo.id)
+  const noGrupoAtivo = alvoValido(alvo) && (await lojaIdDoAlvo(alvo, await listarLojaIdsDoGrupoAtivo(usuario))) !== null
+  return { esperado: taxa > 0 ? creditoDoPix(valor, taxa).entra : null, noGrupoAtivo }
+}
