@@ -76,3 +76,17 @@ test('se gravar a falha também falhar, o grupo seguinte importa do mesmo jeito'
   assert.deepEqual(r.map(x => x.ok), [false, true])
   assert.ok(log.mock.calls.some(c => String(c.arguments[0]).includes('falha não registrada (TypeError)')))
 })
+
+// A importação boa grava a hora de início dela; a falha usa a mesma régua (registrarFalhaMp compara as duas).
+test('a importação e o registro da falha recebem a mesma hora de início da rodada', async t => {
+  t.mock.method(console, 'error', () => {})
+  const horas: Date[] = []
+  await rodarTodosOsGrupos({
+    grupos: async () => [{ id: 'g1', nome: 'Sul' }],
+    importar: async (_id, opts) => { horas.push(opts!.agora!); throw new ErroMercadoPago('x', 500) },
+    registrarFalha: async (_id, _erro, inicio) => { horas.push(inicio) },
+  })
+  assert.equal(horas.length, 2)
+  assert.ok(horas[0] instanceof Date)
+  assert.equal(horas[1], horas[0])
+})
