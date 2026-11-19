@@ -28,6 +28,7 @@ import { lerRelatorioRede } from '@/lib/conciliacao-rede'
 import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
 import { grupos } from '@/lib/db/schema'
 import { revalidatePath } from 'next/cache'
+import { revalidarTelasDaConciliacao } from '@/lib/revalidar-conciliacao'
 import { cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo } from '@/lib/alvo-da-conciliacao'
 import { lojasDoEscopo } from '@/lib/conta'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
@@ -329,7 +330,7 @@ async function vincularVenda(conciliacaoId: string, alvo: AlvoConciliacao) {
     : []
   if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
 
-  revalidatePathsConciliacao()
+  revalidarTelasDaConciliacao()
 }
 
 export async function desvincularVendaAction(conciliacaoId: string) {
@@ -349,7 +350,7 @@ async function desvincularVenda(conciliacaoId: string) {
     : []
   if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
 
-  revalidatePathsConciliacao()
+  revalidarTelasDaConciliacao()
 }
 
 /** Linhas pendentes no valor do pagamento; `linha`: a que cobre o pagamento (cartão ou a pix da maquininha). */
@@ -391,17 +392,6 @@ export async function buscarConciliacoesPorValor(valor: number, linha: LinhaProc
 // carregam os lançamentos pelas mesmas funções — ver src/components/pagamentos-conciliacao.tsx.
 
 export type { AlvoConciliacao, AlvoTipo }
-
-// O mesmo status de conciliação aparece em várias telas; todas revalidam juntas
-// para nunca divergirem (uma dizendo "pendente" e a outra "conciliada").
-function revalidatePathsConciliacao() {
-  revalidatePath('/vendas')
-  revalidatePath('/pecas')
-  revalidatePath('/ordens-servico')
-  revalidatePath('/dashboard')
-  revalidatePath('/conciliacao')
-  revalidatePath('/pix-mcp')
-}
 
 // Loja do alvo, já com as lojas permitidas no where: as do grupo ativo (gravação) ou o escopo da Conta (leitura do
 // painel); sem filtro só para o admin_geral. Alvo fora delas e alvo inexistente dão o mesmo null.
@@ -604,7 +594,7 @@ async function vincularPixAlvo(pixId: string, alvo: AlvoConciliacao) {
     :                                    { tipo: 'venda' as const, vendaId: alvo.id }
   await vincularPix(pixId, grupo.id, vinculo, usuario.id)
 
-  revalidatePathsConciliacao()
+  revalidarTelasDaConciliacao()
 }
 
 export async function desvincularPixAlvoAction(pixId: string) {
@@ -615,7 +605,7 @@ async function desvincularPixAlvo(pixId: string) {
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
   await desvincularPix(pixId, grupo.id)
-  revalidatePathsConciliacao()
+  revalidarTelasDaConciliacao()
 }
 
 // ─── Forçar conciliação na mão ───────────────────────────────────────────────
@@ -643,8 +633,7 @@ async function alvoParaEdicao(alvo: AlvoConciliacao) {
 
 async function gravarPagamentos(alvo: AlvoConciliacao, lojaIdsGrupo: string[], pgtos: PgtoOS[]) {
   await gravarPagamentosDoAlvo(alvo, lojaIdsGrupo, pgtos)
-  if (alvo.tipo === 'os') revalidatePath(`/ordens-servico/${alvo.id}`)
-  revalidatePathsConciliacao()
+  revalidarTelasDaConciliacao(alvo)
 }
 
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
