@@ -84,6 +84,7 @@ type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | 
 // `valorBruto`: o valor do PIX gravado ao vincular (#90); o `valor` é o que o banco creditou, já sem o custo.
 type PixMatch  = { id: string; valor: string | number; valorBruto?: string | number | null }
 // O PIX cobre o pagamento pelo valor do PIX, como o cartão pelo valor bruto; sem ele gravado (vínculo antigo), pelo crédito.
+// A mesma regra das somas em SQL está em pixCobertoSql (src/lib/queries/pix-coberto.ts).
 const valorQueCobre = (r: PixMatch) => Number(r.valorBruto ?? r.valor)
 
 /** Quanto do pagamento foi coberto por dinheiro que realmente entrou. */

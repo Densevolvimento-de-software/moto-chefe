@@ -14,7 +14,7 @@ import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-per
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { alvoValido, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
-import { creditoDoPix } from '@/lib/custo-pix'
+import { creditoDoPix, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
 import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
 import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
@@ -582,7 +582,7 @@ export async function buscarPixLivres(valor: number, query?: string): Promise<Pi
   if (!q) {
     const esperado = creditoDoPix(valor, await custoPixTaxaDoGrupo(grupo.id)).entra
     filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric
-      - CASE WHEN ${pixRecebimentosMcp.tipoOperacao} = 'PIX' THEN ${esperado}::numeric ELSE ${valor}::numeric END) <= 5`
+      - CASE WHEN ${pixRecebimentosMcp.tipoOperacao} = ${OPERACAO_COM_CUSTO} THEN ${esperado}::numeric ELSE ${valor}::numeric END) <= 5`
   } else {
     const valorBusca = parseFloat(q.replace(/\./g, '').replace(',', '.'))
     if (/^\d{4}-\d{2}-\d{2}$/.test(q)) {
