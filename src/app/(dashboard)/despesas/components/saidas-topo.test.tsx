@@ -27,10 +27,9 @@ afterEach(async () => {
 
 function responder(corpo: unknown) {
   const corpos: unknown[] = []
-  // Confere a rota: só a da sincronização desta tela responde.
+  // Rota diferente entra na lista com a URL, para a asserção sobre os corpos mostrar qual foi.
   globalThis.fetch = (async (url: string, init: RequestInit) => {
-    assert.equal(url, '/api/despesas/sincronizar')
-    corpos.push(JSON.parse(String(init.body)))
+    corpos.push(url === '/api/despesas/sincronizar' ? JSON.parse(String(init.body)) : { rotaErrada: url })
     return { json: async () => corpo }
   }) as unknown as typeof fetch
   return corpos
