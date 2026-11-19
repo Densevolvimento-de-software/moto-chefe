@@ -124,6 +124,19 @@ test('nome de quem enviou: só de usuário da Conta (inclui sócio sem loja e ad
   })
 })
 
+test('nome de quem enviou: admin_rede de outra Conta com o grupo liberado aparece', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearConta(tx, 'A', '00000000063413')
+    const b = await semearConta(tx, 'B', '00000000063414')
+    const geral = await semearUsuario(tx, a.base, { papel: 'admin_geral', rotulo: 'geral', semLoja: true })
+    const rede = await semearUsuario(tx, b.base, { papel: 'admin_rede', rotulo: 'rede', nomeDoUsuario: 'Rede B', semLoja: true, comConta: true })
+    await linhas(tx, sql`insert into grupos_liberados (usuario_id, grupo_id, liberado_por) values (${rede}, ${a.grupoId}, ${geral})`)
+    await linhas(tx, sql`update holerites set enviado_por = ${rede} where id = ${a.holeriteId}`)
+    const [h] = await helpers.listarHoleritesDoGrupo(a.grupo, '2026-10', tx)
+    assert.equal(h.enviadoPorNome, 'Rede B')
+  })
+})
+
 test('funcionário sem loja não pertence a nenhum grupo', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A', '00000000063406')
