@@ -3,21 +3,23 @@ import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { mesBrt } from '@/lib/data-venda'
 import { listarLojasDoGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { db } from '@/lib/db'
-import { lancamentosCaixa, lojas, usuarios } from '@/lib/db/schema'
-import { eq, desc, and, gte, lte, lt, sql, ne, inArray } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
+import { lancamentosCaixa } from '@/lib/db/schema'
+import { eq, and, gte, lte, lt, sql, ne, inArray } from 'drizzle-orm'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LancamentosTable } from './components/lancamentos-table'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { CaixaFiltros } from './components/caixa-filtros'
+import { lancamentosCaixaDoPeriodo } from '@/lib/lancamentos-caixa'
+import { grupoAtivoDaRequisicao } from '@/lib/grupo'
 
 export default async function CaixaPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const usuario = await getUsuarioLogado()
   if (!usuarioPodeAcessar(usuario, '/caixa')) redirect('/dashboard')
 
   const params = await searchParams
+  const grupo = await grupoAtivoDaRequisicao(usuario)
   const mesParam = params.mes ?? mesBrt()
   const lojaParam = params.loja ?? ''
 
@@ -42,7 +44,6 @@ export default async function CaixaPage({ searchParams }: { searchParams: Promis
     lojaFiltroPadrao,
   )
 
-  const aprovadoresTbl = alias(usuarios, 'aprovadores')
 
   // Filtro de loja para saldo anterior (sem restrição de data) — mesma proteção de `filtros`
   const filtroLojaSaldoAnterior = and(
@@ -51,28 +52,7 @@ export default async function CaixaPage({ searchParams }: { searchParams: Promis
   )
 
   const [lancamentos, lojasOpts, totais, saldoAnteriorRaw, saidasPorCategoria] = await Promise.all([
-    db
-      .select({
-        id: lancamentosCaixa.id,
-        tipo: lancamentosCaixa.tipo,
-        categoria: lancamentosCaixa.categoria,
-        descricao: lancamentosCaixa.descricao,
-        valor: lancamentosCaixa.valor,
-        data: lancamentosCaixa.data,
-        lojaNome: lojas.nome,
-        usuarioNome: usuarios.nome,
-        comprovanteUrl: lancamentosCaixa.comprovanteUrl,
-        statusAprovacao: lancamentosCaixa.statusAprovacao,
-        aprovadoPorNome: aprovadoresTbl.nome,
-        aprovadoEm: lancamentosCaixa.aprovadoEm,
-        criadoEm: lancamentosCaixa.criadoEm,
-      })
-      .from(lancamentosCaixa)
-      .innerJoin(lojas, eq(lancamentosCaixa.lojaId, lojas.id))
-      .innerJoin(usuarios, eq(lancamentosCaixa.usuarioId, usuarios.id))
-      .leftJoin(aprovadoresTbl, eq(lancamentosCaixa.aprovadoPorId, aprovadoresTbl.id))
-      .where(filtros)
-      .orderBy(desc(lancamentosCaixa.data), desc(lancamentosCaixa.criadoEm)),
+    lancamentosCaixaDoPeriodo(grupo, { lojaIds: lojaIdsPermitidos, lojaId: lojaParamValido, inicio: inicioMes, fim: ultimoDia }),
 
     listarLojasDoGrupoAtivo(usuario),
 
