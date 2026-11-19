@@ -7,6 +7,7 @@ import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { semearDespesa } from '@/test/semear-despesas'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -61,8 +62,7 @@ async function semearGrupoComSocio(exec: Exec, nome: string, cnpj: string) {
 }
 
 async function despesa(exec: Exec, g: { grupoId: string; lojaId: string; usuarioId: string }, categoria: string, data = '2026-09-10') {
-  await exec.execute(sql`insert into despesas (grupo_id, loja_id, usuario_id, categoria, valor, data, forma_pagamento, banco)
-    values (${g.grupoId}, ${g.lojaId}, ${g.usuarioId}, ${categoria}, '100.00', ${data}, 'Pix', 'Banco')`)
+  await semearDespesa(exec, { grupoId: g.grupoId, lojaId: g.lojaId, usuarioId: g.usuarioId, categoria, valor: '100.00', data })
 }
 
 const OPERACIONAL = { contaComoDespesa: true, motivoNaoOperacional: null, grupoDre: null }

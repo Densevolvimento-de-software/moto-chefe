@@ -6,6 +6,7 @@ import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario, type Base } from '@/test/semear-conta'
+import { semearDespesa, semearSaidaDoExtrato } from '@/test/semear-despesas'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -89,8 +90,7 @@ test('despesa: o sócio do B não grava com a categoria do A; com a do B grava (
 test('editar despesa: mantém a categoria antiga fora do catálogo; trocar para a do A recusa (#834)', async () => {
   const [a, b] = grupos
   sessao = socioDoB
-  const [legada] = await execRows(sql`insert into despesas (grupo_id, usuario_id, categoria, valor, data, forma_pagamento, banco)
-    values (${b.grupoId}, ${sessao.id}, 'CAT834G Legada', '5.00', '2026-09-11', 'Pix', 'Banco') returning id`)
+  const legada = { id: await semearDespesa(db, { grupoId: b.grupoId, usuarioId: sessao.id, categoria: 'CAT834G Legada', valor: '5.00', data: '2026-09-11' }) }
   await admin.criarCategoriaDespesa(db, a.grupoId, { nome: 'CAT834G OutraDoA', contaComoDespesa: true })
 
   assert.deepEqual(await despesasActions.editarDespesaAction(legada.id as string, { ...despesaCom('CAT834G Legada'), valor: '6.00' }),
@@ -125,15 +125,11 @@ test('categoria que exige beneficiário, escrita com outra grafia e sem benefici
     { ok: false, erro: 'Beneficiário não encontrado no grupo ativo' })
 })
 
-async function saidaDoExtrato(grupoId: string, transacao: string, lancada?: { categoria: string; usuarioId: string }) {
+async function saidaDoExtrato(grupoId: string, lancada?: { categoria: string; usuarioId: string }) {
   const despesaId = lancada
-    ? (await execRows(sql`insert into despesas (grupo_id, usuario_id, categoria, valor, data, forma_pagamento, banco)
-        values (${grupoId}, ${lancada.usuarioId}, ${lancada.categoria}, '30.00', '2026-09-13', 'Pix', 'Banco') returning id`))[0].id
+    ? await semearDespesa(db, { grupoId, usuarioId: lancada.usuarioId, categoria: lancada.categoria, valor: '30.00', data: '2026-09-13' })
     : null
-  const [linha] = await execRows(sql`insert into despesas_open_finance (grupo_id, conta_id, banco, transacao_id, data, valor, categoria, despesa_id)
-    values (${grupoId}, 'c', 'Banco', ${transacao}, '2026-09-13T12:00:00Z'::timestamptz, '30.00', ${lancada?.categoria ?? null}, ${despesaId})
-    returning id`)
-  return { id: linha.id as string, despesaId: despesaId as string | null }
+  return { id: await semearSaidaDoExtrato(db, { grupoId, categoria: lancada?.categoria ?? null, despesaId }), despesaId }
 }
 
 test('extrato: o sócio do B não lança a saída com a categoria do A; a saída segue pendente (#834)', async () => {
@@ -141,7 +137,7 @@ test('extrato: o sócio do B não lança a saída com a categoria do A; a saída
   await admin.criarCategoriaDespesa(db, a.grupoId, { nome: 'CAT834G ExtratoDoA', contaComoDespesa: true })
   sessao = socioDoB
   podeCategorizar = true
-  const saida = await saidaDoExtrato(b.grupoId, 'cat834g-lancar')
+  const saida = await saidaDoExtrato(b.grupoId)
 
   assert.deepEqual(await despesasActions.lancarDespesaOpenFinanceAction(saida.id, 'CAT834G ExtratoDoA', null), NAO_ENCONTRADA)
   const [depois] = await execRows(sql`select despesa_id from despesas_open_finance where id = ${saida.id}`)
@@ -153,7 +149,7 @@ test('extrato: editar a categorização mantendo a categoria antiga fora do cat�
   await admin.criarCategoriaDespesa(db, a.grupoId, { nome: 'CAT834G OutraExtratoDoA', contaComoDespesa: true })
   sessao = socioDoB
   podeCategorizar = true
-  const saida = await saidaDoExtrato(b.grupoId, 'cat834g-editar', { categoria: 'CAT834G LegadaExtrato', usuarioId: socioDoB.id })
+  const saida = await saidaDoExtrato(b.grupoId, { categoria: 'CAT834G LegadaExtrato', usuarioId: socioDoB.id })
 
   assert.deepEqual(await despesasActions.editarCategorizacaoOpenFinanceAction(saida.id, 'CAT834G LegadaExtrato', b.lojaId),
     { ok: true, dados: undefined })
@@ -167,10 +163,8 @@ test('extrato: editar a categorização mantendo a categoria antiga fora do cat�
 test('extrato: editar e cancelar a categorização pelo B não alteram nem apagam a despesa do A', async () => {
   const [a, b] = grupos
   await admin.criarCategoriaDespesa(db, b.grupoId, { nome: 'CAT834G D132', contaComoDespesa: true })
-  const [despesaA] = await execRows(sql`insert into despesas (grupo_id, usuario_id, categoria, valor, data, forma_pagamento, banco)
-    values (${a.grupoId}, ${socioDoB.id}, 'CAT834G DoA132', '30.00', '2026-09-13', 'Pix', 'Banco') returning id`)
-  const [saidaB] = await execRows(sql`insert into despesas_open_finance (grupo_id, conta_id, banco, transacao_id, data, valor, categoria, despesa_id)
-    values (${b.grupoId}, 'c', 'Banco', 'T132-forjada', '2026-09-13T12:00:00Z'::timestamptz, '30.00', 'CAT834G D132', ${despesaA.id}) returning id`)
+  const despesaA = { id: await semearDespesa(db, { grupoId: a.grupoId, usuarioId: socioDoB.id, categoria: 'CAT834G DoA132', valor: '30.00', data: '2026-09-13' }) }
+  const saidaB = { id: await semearSaidaDoExtrato(db, { grupoId: b.grupoId, categoria: 'CAT834G D132', despesaId: despesaA.id }) }
   const despesaDoA = async () => (await execRows(sql`select categoria from despesas where id = ${despesaA.id}`)).map(r => r.categoria)
   const saidaDoB = async () => (await execRows(sql`select categoria, despesa_id from despesas_open_finance where id = ${saidaB.id}`))[0]
   sessao = socioDoB
