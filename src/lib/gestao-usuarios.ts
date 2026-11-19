@@ -9,6 +9,7 @@
 
 import { ITENS, acessaModulo, liberavelPara, type UsuarioNav } from '@/lib/navegacao'
 import { PAPEL_FABRICA } from '@/lib/login-fabrica'
+import { guardaCategorizaDespesa } from '@/lib/listas-do-cadastro'
 
 export type Gestor = {
   id: string
@@ -151,14 +152,16 @@ export type PapelBase = Exclude<(typeof PAPEIS)[number], 'admin_geral' | 'admin_
 export const PAPEIS_BASE_DO_CARGO = PAPEIS.filter((p): p is PapelBase => p !== 'admin_geral' && p !== 'admin_rede' && p !== 'cargo')
 
 /**
- * Marca "categoriza as saídas do banco" a gravar (#149): só vale para sócio e só o admin_geral liga ou
- * desliga. Pedido de outro gestor não muda nada: fica o que estava gravado (false ao criar).
+ * Marca "categoriza as saídas do banco" a gravar (#149): só para quem a marca vale (guardaCategorizaDespesa,
+ * a mesma regra da tela e da leitura) e só quem a tela deixa marcar muda o valor; para os demais fica o que
+ * estava gravado (false ao criar).
  */
 export function categorizaParaGravar(
-  gestor: Pick<Gestor, 'papel'>, papelDoUsuario: string, pedido: boolean | undefined, antes: boolean | null,
+  gestor: Gestor,
+  cadastro: { papelDasListas: string; pedido: boolean | undefined; gravado: boolean | null },
 ): boolean {
-  if (papelDoUsuario !== 'admin_socio') return false
-  return gestor.papel === 'admin_geral' ? pedido === true : antes === true
+  if (!guardaCategorizaDespesa(cadastro.papelDasListas)) return false
+  return limitesDaTela(gestor).marcaCategorizaDespesa ? cadastro.pedido === true : cadastro.gravado === true
 }
 
 /** O que a tela de /admin/usuarios oferece: os mesmos limites que recusaDaGravacao confere. */

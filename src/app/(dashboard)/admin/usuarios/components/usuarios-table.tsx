@@ -15,7 +15,7 @@ import { CargosDialog, type CargoDaConta } from './cargos-dialog'
 import { cargosDoAlvo } from '@/lib/cargos-opcoes'
 import { OPCOES_DE_PAPEL, rotuloDoPapelGravado } from '@/lib/rotulo-do-papel'
 import type { LimitesDaTela } from '@/lib/gestao-usuarios'
-import { guardaAcessoAGrupos, guardaAprovacao, papelDasListas } from '@/lib/listas-do-cadastro'
+import { guardaAcessoAGrupos, guardaAprovacao, guardaCategorizaDespesa, papelDasListas } from '@/lib/listas-do-cadastro'
 import { diferencaDaFuncao } from '@/lib/modulos-picker-estado'
 import { ITENS } from '@/lib/navegacao'
 import { contaDoFormulario, gruposDaConta } from '@/lib/grupos-do-formulario'
@@ -207,8 +207,8 @@ function FormUsuario({
       conecta: conecta.trim() || null,
       gruposAprovacao: mostrarAprovacao ? gruposAprov : [],
       aprovaPagamentoSensivel: mostrarAprovacao && aprovaSensivel,
-      // Vai sempre o valor da ficha: o servidor só deixa o admin_geral mudar (#149).
-      categorizaDespesaBanco: categoriza,
+      // Vai o valor da ficha; o servidor só deixa o admin_geral mudar e zera para quem a marca não vale (#149).
+      categorizaDespesaBanco: guardaCategorizaDespesa(papelEfetivo) && categoriza,
       gruposAcesso: mostrarAcessoGrupos ? gruposAcesso : [],
       modulosExtras,
       modulosBloqueados,
@@ -341,7 +341,7 @@ function FormUsuario({
                 <>Aprova transferência bancária <span className="block text-xs text-muted-foreground">Nos mesmos grupos. Sem isto, ele só aprova venda abaixo do preço.</span></>,
                 !limites.aprovaPagamentoSensivel && !inicial?.aprovaPagamentoSensivel)}
             </div>
-            {papel === 'admin_socio' && (
+            {guardaCategorizaDespesa(papelEfetivo) && (
               <div className="border-t pt-3">
                 {caixa(categoriza, () => setCategoriza(v => !v),
                   <>Categoriza saídas do banco <span className="block text-xs text-muted-foreground">Lança, edita e cancela a categorização na aba Importar do Banco de Despesas. Só o Admin Geral marca.</span></>,

@@ -16,7 +16,7 @@ test('sócio com a marca categoriza; sem a marca, não', async () => {
   assert.equal(podeCategorizarDespesaBanco(quem('admin_socio', false)), false)
 })
 
-test('guarda: admin_geral categoriza sempre; aux_adm e vendedor não, nem com a marca', async () => {
+test('guarda: admin_geral categoriza sempre; aux_adm e vendedor não, nem com a marca (admin de rede chega como sócio na sessão)', async () => {
   const { podeCategorizarDespesaBanco } = await import('./auth')
   assert.equal(podeCategorizarDespesaBanco(quem('admin_geral', false)), true)
   for (const papel of ['aux_adm', 'vendedor']) assert.equal(podeCategorizarDespesaBanco(quem(papel, true)), false, papel)

@@ -202,7 +202,7 @@ export async function criarUsuarioAction(dados: {
         conecta,
         gruposAprovacao:         aprovacao.gruposAprovacao,
         aprovaPagamentoSensivel: aprovacao.aprovaPagamentoSensivel,
-        categorizaDespesaBanco:  categorizaParaGravar(admin, cargo.papelDasListas, dados.categorizaDespesaBanco, null),
+        categorizaDespesaBanco:  categorizaParaGravar(admin, { papelDasListas: cargo.papelDasListas, pedido: dados.categorizaDespesaBanco, gravado: null }),
         gruposAcesso:            acesso.gruposAcesso,
         modulosExtras:     filtrarIdsValidos(dados.modulosExtras),
         modulosBloqueados: filtrarIdsValidos(dados.modulosBloqueados),
@@ -270,7 +270,7 @@ export async function editarUsuarioAction(id: string, dados: {
         gruposAprovacao:         aprovacao.gruposAprovacao,
         aprovaPagamentoSensivel: aprovacao.aprovaPagamentoSensivel,
         // Só o admin_geral liga ou desliga; pelos demais fica o que estava gravado (#149).
-        categorizaDespesaBanco:  categorizaParaGravar(admin, cargo.papelDasListas, dados.categorizaDespesaBanco, antes?.categorizaDespesaBanco ?? false),
+        categorizaDespesaBanco:  categorizaParaGravar(admin, { papelDasListas: cargo.papelDasListas, pedido: dados.categorizaDespesaBanco, gravado: antes?.categorizaDespesaBanco ?? false }),
         gruposAcesso:            acesso.gruposAcesso,
         modulosExtras:     filtrarIdsValidos(dados.modulosExtras),
         modulosBloqueados: filtrarIdsValidos(dados.modulosBloqueados),

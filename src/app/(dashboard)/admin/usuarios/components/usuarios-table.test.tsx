@@ -323,7 +323,7 @@ test('admin_geral vê a caixa Categoriza saídas do banco livre na aba Aprovaç�
   assert.equal(caixaDe('Categoriza saídas do banco')?.disabled, false)
   editadas.length = 0
   await clicar(botao('Salvar'))
-  assert.equal(editadas.at(-1)?.dados.categorizaDespesaBanco, true, 'salvar outro campo não desmarca')
+  assert.equal(editadas.at(-1)?.dados.categorizaDespesaBanco, true, 'salvar sem mexer na caixa manda a marca que ele tem')
 })
 
 test('sócio vê a caixa Categoriza saídas do banco travada (#149)', async () => {
@@ -338,4 +338,19 @@ test('a caixa Categoriza saídas do banco não aparece para quem não é sócio 
   await montar('admin_geral', [{ ...base, id: 'u9', nome: 'Aux Da Loja', papel: 'aux_adm', cargoId: null }])
   await abrirFicha('Aux Da Loja')
   assert.ok(!caixaDe('Categoriza saídas do banco'))
+})
+
+test('a caixa Categoriza saídas do banco aparece para cargo com base Admin Sócio e para admin de rede (#149)', async () => {
+  const cargoSocioCaixa = { id: 'c9', nome: 'Gerente Sócio', papelBase: 'admin_socio', contaId: 'A' }
+  await montar('admin_geral', [{ ...base, id: 'u10', nome: 'Gerente Com Cargo', papel: 'cargo', cargoId: 'c9' }], { cargos: [cargoSocioCaixa] })
+  await abrirFicha('Gerente Com Cargo')
+  await clicar(abaAprovacao())
+  assert.ok(caixaDe('Categoriza saídas do banco'))
+  const { act } = await import('react')
+  await act(async () => { for (const r of raizes.splice(0)) r.unmount() })
+  document.body.innerHTML = ''
+  await montar('admin_geral', [{ ...base, id: 'u11', nome: 'Rede Da Conta', papel: 'admin_rede', cargoId: null }])
+  await abrirFicha('Rede Da Conta')
+  await clicar(abaAprovacao())
+  assert.ok(caixaDe('Categoriza saídas do banco'))
 })

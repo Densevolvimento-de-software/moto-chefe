@@ -10,6 +10,7 @@ import { usuarioComCargo } from '@/lib/usuario-com-cargo'
 import { gruposLiberadosVivos, usuarioDaRede } from '@/lib/grupos-liberados'
 import { PAPEL_FABRICA, ROTA_CONTA_DESATIVADA, ehPedidoDeAcao } from '@/lib/login-fabrica'
 import { ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
+import { guardaCategorizaDespesa } from '@/lib/listas-do-cadastro'
 
 // getUsuarioLogado roda PRIMEIRO em toda página (layout e página). Se a query de
 // usuário fica esperando uma conexão do pool (instância do Fluid com conexões
@@ -116,10 +117,11 @@ export function temPapel(
 // ─── Categorizar saída do banco (/despesas) ───────────────────────────────────
 // Todo sócio vê a aba inteira; lançar, editar e cancelar a categorização é do admin_geral e de quem
 // tem a marca do cadastro (categoriza_despesa_banco), que só o admin_geral liga em /admin/usuarios (#149).
-// A marca só vale para quem é sócio: outro papel marcado continua sem categorizar.
-export function podeCategorizarDespesaBanco(usuario: { papel: string; categorizaDespesaBanco?: boolean | null }) {
+// A marca só vale para o papel de guardaCategorizaDespesa (o da sessão: cargo já vem com a base e o
+// admin de rede como sócio; no grupo liberado de outra Conta a marca vem zerada).
+export function podeCategorizarDespesaBanco(usuario: { papel: string; categorizaDespesaBanco: boolean | null }) {
   if (usuario.papel === 'admin_geral') return true
-  return usuario.papel === 'admin_socio' && usuario.categorizaDespesaBanco === true
+  return guardaCategorizaDespesa(usuario.papel) && usuario.categorizaDespesaBanco === true
 }
 
 export function canEditLoja(usuarioLojaId: string | null, targetLojaId: string, papel: string) {
