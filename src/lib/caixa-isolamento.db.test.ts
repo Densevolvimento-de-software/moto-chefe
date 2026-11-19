@@ -246,3 +246,14 @@ test('tudo é conferido antes de subir: formato, tamanho, categoria, valor, saí
   await assert.rejects(caixa.criarLancamentoAction({ ...base, lojaId: randomUUID() }, comprovante()), /Sem permissão para esta loja/)
   assert.deepEqual(subidos, [])
 })
+
+test('mesmo caminho antigo em duas lojas da mesma Conta: o aux_adm abre o da loja dele', async () => {
+  const a = await semearConta('A')
+  const outraLoja = await semearLoja(db, a.base.grupoId, `CX153 outra ${randomUUID()}`)
+  const auxDaOutra = await semearUsuario(db, { ...a.base, lojaId: outraLoja }, { papel: 'aux_adm', rotulo: `aux3-${randomUUID()}`, comConta: true })
+  const caminho = `caixa/${randomUUID()}.pdf`
+  await semearLancamentoCaixa(db, { lojaId: a.base.lojaId, usuarioId: a.aux, comprovanteUrl: caminho })
+  await semearLancamentoCaixa(db, { lojaId: outraLoja, usuarioId: auxDaOutra, comprovanteUrl: caminho })
+  idDaSessao = auxDaOutra
+  assert.equal(await caixa.getComprovanteUrlAction(caminho), `https://teste.invalid/${caminho}`)
+})

@@ -21,11 +21,14 @@ export async function lancamentoCaixaDoUsuario(
   if (daConta === null) return null
   if ('id' in alvo && !ehUuid(alvo.id)) return null
   const chave = 'id' in alvo ? eq(lancamentosCaixa.id, alvo.id) : eq(lancamentosCaixa.comprovanteUrl, alvo.comprovante)
-  const [lancamento] = await exec
+  // O caminho antigo do comprovante não é único: sem limit antes da conferência da loja, senão a linha
+  // de outra loja da Conta escondia a da loja de quem pede.
+  const candidatos = await exec
     .select({ id: lancamentosCaixa.id, tipo: lancamentosCaixa.tipo, status: lancamentosCaixa.statusAprovacao, lojaId: lancamentosCaixa.lojaId })
     .from(lancamentosCaixa)
     .where(and(chave, daConta))
-    .limit(1)
-  if (!lancamento || !(await podeAgirNaLoja(usuario, lancamento.lojaId, exec))) return null
-  return lancamento
+  for (const lancamento of candidatos) {
+    if (await podeAgirNaLoja(usuario, lancamento.lojaId, exec)) return lancamento
+  }
+  return null
 }
