@@ -161,3 +161,25 @@ test('extrato: editar a categorização mantendo a categoria antiga fora do cat�
   const [depois] = await execRows(sql`select categoria, loja_id from despesas where id = ${saida.despesaId}`)
   assert.deepEqual([depois.categoria, depois.loja_id], ['CAT834G LegadaExtrato', b.lojaId])
 })
+
+// Saída do banco do B que aponta para uma despesa do A (dado forjado ou SQL à mão): editar e cancelar a
+// categorização pelo B não mexem na despesa do A, e a saída fica como estava (#132).
+test('extrato: editar e cancelar a categorização pelo B não alteram nem apagam a despesa do A', async () => {
+  const [a, b] = grupos
+  await admin.criarCategoriaDespesa(db, b.grupoId, { nome: 'CAT834G D132', contaComoDespesa: true })
+  const [despesaA] = await execRows(sql`insert into despesas (grupo_id, usuario_id, categoria, valor, data, forma_pagamento, banco)
+    values (${a.grupoId}, ${socioDoB.id}, 'CAT834G DoA132', '30.00', '2026-09-13', 'Pix', 'Banco') returning id`)
+  const [saidaB] = await execRows(sql`insert into despesas_open_finance (grupo_id, conta_id, banco, transacao_id, data, valor, categoria, despesa_id)
+    values (${b.grupoId}, 'c', 'Banco', 'T132-forjada', '2026-09-13T12:00:00Z'::timestamptz, '30.00', 'CAT834G D132', ${despesaA.id}) returning id`)
+  const despesaDoA = async () => (await execRows(sql`select categoria from despesas where id = ${despesaA.id}`)).map(r => r.categoria)
+  const saidaDoB = async () => (await execRows(sql`select categoria, despesa_id from despesas_open_finance where id = ${saidaB.id}`))[0]
+  sessao = socioDoB
+  podeCategorizar = true
+
+  await assert.rejects(despesasActions.editarCategorizacaoOpenFinanceAction(saidaB.id as string, 'CAT834G D132', null), /Saída não encontrada/)
+  assert.deepEqual(await despesaDoA(), ['CAT834G DoA132'])
+  await assert.rejects(despesasActions.cancelarCategorizacaoOpenFinanceAction(saidaB.id as string), /Saída não encontrada/)
+  assert.deepEqual(await despesaDoA(), ['CAT834G DoA132'])
+  assert.deepEqual(await saidaDoB(), { categoria: 'CAT834G D132', despesa_id: despesaA.id })
+  podeCategorizar = false
+})
