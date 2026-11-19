@@ -11,7 +11,9 @@ const grupos = async () => [{ id: 'g1', nome: 'Sul' }, { id: 'g2', nome: 'BH' },
 
 test('grupo que falha não impede os seguintes; só a mensagem conhecida sai, o resto vira "erro interno"', async t => {
   const log = t.mock.method(console, 'error', () => {})
+  const falhas: [string, string][] = []
   const r = await rodarTodosOsGrupos({
+    registrarFalha: async (grupoId, erro) => { falhas.push([grupoId, erro]) },
     grupos,
     importar: async id => {
       if (id === 'g1') throw new ErroMercadoPago('Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.', 401)
@@ -24,6 +26,8 @@ test('grupo que falha não impede os seguintes; só a mensagem conhecida sai, o 
     { grupo: 'BH', ok: false, erro: 'erro interno' },
     { grupo: 'Vale', ok: true, resultado: resultado({ pendentes: 1 }) },
   ])
+  // A falha de cada grupo fica guardada para a faixa da conciliação, com a mesma frase da resposta.
+  assert.deepEqual(falhas, [['g1', 'Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.'], ['g2', 'erro interno']])
   // O log do erro desconhecido leva só o nome do erro, como a rotina de inutilização: a mensagem pode ter segredo.
   const linhas = log.mock.calls.map(c => String(c.arguments.join(' ')))
   assert.deepEqual(linhas, [
@@ -35,6 +39,7 @@ test('grupo que falha não impede os seguintes; só a mensagem conhecida sai, o 
 test('recusa do sistema (grupo sem credencial) mantém a frase', async t => {
   t.mock.method(console, 'error', () => {})
   const r = await rodarTodosOsGrupos({
+    registrarFalha: async () => {},
     grupos: async () => [{ id: 'g1', nome: 'Sul' }],
     importar: async () => { throw new RecusaUsuario('Este grupo não tem credencial do Mercado Pago.') },
   })
@@ -59,4 +64,15 @@ test('rodada sem grupo: tudo zero', () => {
     grupos: 0, conciliadas: 0, pendentes: 0, duplicadas: 0, estornos: 0, estornosSemLinha: 0, naoTratados: 0, ignorados: 0,
     falhas: 0, gruposComFalha: [],
   })
+})
+
+test('se gravar a falha também falhar, o grupo seguinte importa do mesmo jeito', async t => {
+  const log = t.mock.method(console, 'error', () => {})
+  const r = await rodarTodosOsGrupos({
+    grupos: async () => [{ id: 'g1', nome: 'Sul' }, { id: 'g2', nome: 'BH' }],
+    importar: async id => { if (id === 'g1') throw new ErroMercadoPago('x', 500); return resultado({ pendentes: 1 }) },
+    registrarFalha: async () => { throw new TypeError('banco fora') },
+  })
+  assert.deepEqual(r.map(x => x.ok), [false, true])
+  assert.ok(log.mock.calls.some(c => String(c.arguments[0]).includes('falha não registrada (TypeError)')))
 })

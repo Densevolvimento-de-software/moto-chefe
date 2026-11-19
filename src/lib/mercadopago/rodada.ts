@@ -2,26 +2,30 @@
 // outros; o erro guardado é só a mensagem conhecida (nunca token nem corpo cru da resposta).
 import { RecusaUsuario } from '@/lib/resultado-action'
 import { ErroMercadoPago } from './cliente'
-import { CONTAGENS, gruposComMercadoPago, importarMercadoPagoDoGrupo, type ResultadoImportacaoMp } from './importar'
+import { CONTAGENS, gruposComMercadoPago, importarMercadoPagoDoGrupo, registrarFalhaMp, type ResultadoImportacaoMp } from './importar'
 
 export type ResultadoDoGrupo = { grupo: string } & ({ ok: true; resultado: ResultadoImportacaoMp } | { ok: false; erro: string })
 
-const mensagemConhecida = (e: unknown) =>
+export const mensagemConhecida = (e: unknown) =>
   e instanceof ErroMercadoPago || e instanceof RecusaUsuario ? e.message : 'erro interno'
 
-export async function rodarTodosOsGrupos(deps: {
-  grupos?: typeof gruposComMercadoPago
-  importar?: typeof importarMercadoPagoDoGrupo
-} = {}): Promise<ResultadoDoGrupo[]> {
-  const { grupos = gruposComMercadoPago, importar = importarMercadoPagoDoGrupo } = deps
+export type DependenciasDoGrupo = { importar?: typeof importarMercadoPagoDoGrupo; registrarFalha?: typeof registrarFalhaMp }
+
+export async function rodarTodosOsGrupos(deps: DependenciasDoGrupo & { grupos?: typeof gruposComMercadoPago } = {}): Promise<ResultadoDoGrupo[]> {
+  const { grupos = gruposComMercadoPago, ...doGrupo } = deps
   // Um grupo por vez, como a rotina de inutilização (#67).
   return (await grupos()).reduce<Promise<ResultadoDoGrupo[]>>(
-    async (anteriores, g) => [...await anteriores, await resultadoDoGrupo(g, importar)],
+    async (anteriores, g) => [...await anteriores, await resultadoDoGrupo(g, doGrupo)],
     Promise.resolve([]),
   )
 }
 
-async function resultadoDoGrupo(g: { id: string; nome: string }, importar: typeof importarMercadoPagoDoGrupo): Promise<ResultadoDoGrupo> {
+/**
+ * Importa um grupo; a falha volta só com a frase conhecida e fica guardada para a faixa da /conciliacao. A rotina
+ * e o botão Importar (só o grupo ativo) passam por aqui.
+ */
+export async function resultadoDoGrupo(g: { id: string; nome: string }, deps: DependenciasDoGrupo = {}): Promise<ResultadoDoGrupo> {
+  const { importar = importarMercadoPagoDoGrupo, registrarFalha = registrarFalhaMp } = deps
   try {
     return { grupo: g.nome, ok: true, resultado: await importar(g.id) }
   } catch (e) {
@@ -29,6 +33,9 @@ async function resultadoDoGrupo(g: { id: string; nome: string }, importar: typeo
     // Erro desconhecido: só o nome no log, nunca a mensagem, que pode trazer segredo (como a rotina de inutilização).
     const pista = erro === 'erro interno' ? ` (${e instanceof Error ? e.name : 'erro'})` : ''
     console.error(`[conciliacao-mercadopago] ${g.nome}: ${erro}${pista}`)
+    // Gravar a falha não pode derrubar a rodada dos outros grupos.
+    await registrarFalha(g.id, erro, new Date())
+      .catch((e2: unknown) => console.error(`[conciliacao-mercadopago] ${g.nome}: falha não registrada (${e2 instanceof Error ? e2.name : 'erro'})`))
     return { grupo: g.nome, ok: false, erro }
   }
 }
