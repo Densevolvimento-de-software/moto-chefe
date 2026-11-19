@@ -4,10 +4,14 @@ import { podeAgirNaLoja } from '@/lib/acesso-registro'
 import { db } from '@/lib/db'
 import { lancamentosCaixa } from '@/lib/db/schema'
 import { conferirCategoriaCaixaDaLoja } from '@/lib/categorias-do-grupo'
-import { acao } from '@/lib/resultado-action'
+import { acao, RecusaUsuario } from '@/lib/resultado-action'
+import { lancamentoCaixaDoUsuario } from '@/lib/lancamento-caixa-do-usuario'
 import { eq, and } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
+
+// Outra Conta, loja que ele não opera e id inexistente recebem a mesma frase (#153).
+const NAO_ENCONTRADO = 'Lançamento não encontrado'
 
 type LancamentoInput = {
   lojaId: string
@@ -16,7 +20,6 @@ type LancamentoInput = {
   descricao?: string
   valor: string
   data: string
-  vendaId?: string
   comprovanteUrl?: string
 }
 
@@ -58,7 +61,7 @@ async function criarLancamento(dados: LancamentoInput) {
     descricao: dados.descricao || null,
     valor: dados.valor,
     data: dados.data,
-    vendaId: dados.vendaId || null,
+    // Lançamento à mão não se liga a venda: só o servidor faz esse vínculo (#153).
     comprovanteUrl: dados.comprovanteUrl || null,
   })
 
@@ -112,19 +115,8 @@ export async function getComprovanteUrlAction(filePath: string): Promise<string>
     throw new Error('Caminho inválido')
   }
 
-  // Verifica que o path pertence a um lançamento real; aux_adm só acessa sua própria loja
-  const isAdmin = ['admin_geral', 'admin_socio'].includes(usuario.papel)
-  const whereClause = isAdmin
-    ? eq(lancamentosCaixa.comprovanteUrl, filePath)
-    : and(eq(lancamentosCaixa.comprovanteUrl, filePath), eq(lancamentosCaixa.lojaId, usuario.lojaId!))
-
-  const [lancamento] = await db
-    .select({ id: lancamentosCaixa.id, lojaId: lancamentosCaixa.lojaId })
-    .from(lancamentosCaixa)
-    .where(whereClause)
-    .limit(1)
-
-  if (!lancamento || !(await podeAgirNaLoja(usuario, lancamento.lojaId))) throw new Error('Comprovante não encontrado')
+  // O caminho só abre se for o comprovante gravado num lançamento que ele pode ver (#153).
+  if (!(await lancamentoCaixaDoUsuario(usuario, { comprovante: filePath }))) throw new RecusaUsuario('Comprovante não encontrado')
 
   const supabaseAdmin = clienteSupabaseAdmin()
   const { data, error } = await supabaseAdmin.storage
@@ -141,20 +133,17 @@ export async function aprovarLancamentoAction(lancamentoId: string) {
     throw new Error('Sem permissão')
   }
 
-  const [lancamento] = await db
-    .select({ tipo: lancamentosCaixa.tipo, status: lancamentosCaixa.statusAprovacao, lojaId: lancamentosCaixa.lojaId })
-    .from(lancamentosCaixa)
-    .where(eq(lancamentosCaixa.id, lancamentoId))
-    .limit(1)
+  const lancamento = await lancamentoCaixaDoUsuario(usuario, { id: lancamentoId })
+  if (!lancamento) throw new RecusaUsuario(NAO_ENCONTRADO)
+  if (lancamento.tipo !== 'saida') throw new RecusaUsuario('Apenas saídas podem ser aprovadas')
+  if (lancamento.status === 'aprovado') throw new RecusaUsuario('Lançamento já aprovado')
 
-  if (!lancamento || !(await podeAgirNaLoja(usuario, lancamento.lojaId))) throw new Error('Lançamento não encontrado')
-  if (lancamento.tipo !== 'saida') throw new Error('Apenas saídas podem ser aprovadas')
-  if (lancamento.status === 'aprovado') throw new Error('Lançamento já aprovado')
-
-  await db
+  const gravados = await db
     .update(lancamentosCaixa)
     .set({ statusAprovacao: 'aprovado', aprovadoPorId: usuario.id, aprovadoEm: new Date() })
-    .where(eq(lancamentosCaixa.id, lancamentoId))
+    .where(and(eq(lancamentosCaixa.id, lancamento.id), eq(lancamentosCaixa.lojaId, lancamento.lojaId)))
+    .returning({ id: lancamentosCaixa.id })
+  if (gravados.length === 0) throw new RecusaUsuario(NAO_ENCONTRADO)
 
   revalidatePath('/caixa')
 }
@@ -165,20 +154,17 @@ export async function reprovarLancamentoAction(lancamentoId: string) {
     throw new Error('Sem permissão')
   }
 
-  const [lancamento] = await db
-    .select({ tipo: lancamentosCaixa.tipo, status: lancamentosCaixa.statusAprovacao, lojaId: lancamentosCaixa.lojaId })
-    .from(lancamentosCaixa)
-    .where(eq(lancamentosCaixa.id, lancamentoId))
-    .limit(1)
+  const lancamento = await lancamentoCaixaDoUsuario(usuario, { id: lancamentoId })
+  if (!lancamento) throw new RecusaUsuario(NAO_ENCONTRADO)
+  if (lancamento.tipo !== 'saida') throw new RecusaUsuario('Apenas saídas podem ser reprovadas')
+  if (lancamento.status === 'reprovado') throw new RecusaUsuario('Lançamento já reprovado')
 
-  if (!lancamento || !(await podeAgirNaLoja(usuario, lancamento.lojaId))) throw new Error('Lançamento não encontrado')
-  if (lancamento.tipo !== 'saida') throw new Error('Apenas saídas podem ser reprovadas')
-  if (lancamento.status === 'reprovado') throw new Error('Lançamento já reprovado')
-
-  await db
+  const gravados = await db
     .update(lancamentosCaixa)
     .set({ statusAprovacao: 'reprovado', aprovadoPorId: usuario.id, aprovadoEm: new Date() })
-    .where(eq(lancamentosCaixa.id, lancamentoId))
+    .where(and(eq(lancamentosCaixa.id, lancamento.id), eq(lancamentosCaixa.lojaId, lancamento.lojaId)))
+    .returning({ id: lancamentosCaixa.id })
+  if (gravados.length === 0) throw new RecusaUsuario(NAO_ENCONTRADO)
 
   revalidatePath('/caixa')
 }
@@ -189,14 +175,13 @@ export async function excluirLancamentoAction(lancamentoId: string) {
     throw new Error('Sem permissão')
   }
 
-  const [lancamento] = await db
-    .select({ lojaId: lancamentosCaixa.lojaId })
-    .from(lancamentosCaixa)
-    .where(eq(lancamentosCaixa.id, lancamentoId))
-    .limit(1)
-  if (!lancamento || !(await podeAgirNaLoja(usuario, lancamento.lojaId))) throw new Error('Lançamento não encontrado')
+  const lancamento = await lancamentoCaixaDoUsuario(usuario, { id: lancamentoId })
+  if (!lancamento) throw new RecusaUsuario(NAO_ENCONTRADO)
 
-  await db.delete(lancamentosCaixa).where(eq(lancamentosCaixa.id, lancamentoId))
+  const apagados = await db.delete(lancamentosCaixa)
+    .where(and(eq(lancamentosCaixa.id, lancamento.id), eq(lancamentosCaixa.lojaId, lancamento.lojaId)))
+    .returning({ id: lancamentosCaixa.id })
+  if (apagados.length === 0) throw new RecusaUsuario(NAO_ENCONTRADO)
 
   revalidatePath('/caixa')
   revalidatePath('/financeiro')
