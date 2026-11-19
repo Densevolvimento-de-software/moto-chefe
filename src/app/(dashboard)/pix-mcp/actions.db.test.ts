@@ -100,7 +100,7 @@ test('Conta B: PIX da Conta A (até o de transferência interna) e PIX inexisten
 test('NF e OS com o mesmo número em outra Conta: liga a da própria Conta', async () => {
   const nf = String(Math.floor(Math.random() * 1e9))
   const numeroOs = Math.floor(Math.random() * 1e9)
-  // A outra Conta grava primeiro: sem a Conta no where, a busca pelo número achava a dela.
+  // A outra Conta grava primeiro: sem a Conta no where, a busca pelo número costuma achar a dela.
   await contaComNumeros(nf, numeroOs)
   const a = await contaComNumeros(nf, numeroOs)
   usuario = await sessao(a, 'aux_adm')
@@ -109,6 +109,29 @@ test('NF e OS com o mesmo número em outra Conta: liga a da própria Conta', asy
     assert.deepEqual(await actions.lancarCorrespondenciaAction(pix, tipo, a.numeros[tipo]), { ok: true, dados: undefined }, tipo)
     assert.equal((await vinculoDe(pix))[COLUNA[tipo]], a.ids[tipo], tipo)
   }
+})
+
+// Pedido e venda de peça numeram por uma sequência global: o número da Conta A não existe na B.
+test('Conta B lança o número de pedido e de venda de peça que só existe na Conta A: frase do não encontrado e nada grava', async () => {
+  const a = await contaComNumeros()
+  const b = await contaComNumeros()
+  usuario = await sessao(b, 'aux_adm')
+  const pix = await semearPixRecebido(db, b.grupoId, { valor: 1000 })
+  const nomeB = (await um<{ nome: string }>(sql`select nome from grupos where id = ${b.grupoId}`)).nome
+  assert.deepEqual(await actions.lancarCorrespondenciaAction(pix, 'pedido', a.numeros.pedido),
+    { ok: false, erro: `Pedido #${a.numeros.pedido} não encontrado no grupo ${nomeB}` })
+  assert.deepEqual(await actions.lancarCorrespondenciaAction(pix, 'peca', a.numeros.peca),
+    { ok: false, erro: `Venda PA #${a.numeros.peca} não encontrada no grupo ${nomeB}` })
+  assert.deepEqual(await vinculoDe(pix), LIVRE)
+})
+
+test('PIX de transferência interna do próprio grupo é recusado e nada grava', async () => {
+  const a = await contaComNumeros()
+  usuario = await sessao(a, 'aux_adm')
+  const interno = await semearPixRecebido(db, a.grupoId, { valor: 1000, pagadorNome: 'MOTOCHEFE LTDA' })
+  assert.deepEqual(await actions.lancarCorrespondenciaAction(interno, 'venda', a.numeros.venda),
+    { ok: false, erro: 'Essa transferência é interna (maquininha/conta do próprio grupo) e não pode ser conciliada com uma venda' })
+  assert.deepEqual(await vinculoDe(interno), LIVRE)
 })
 
 test('tipo de correspondência fora da lista é recusado e nada grava', async () => {
