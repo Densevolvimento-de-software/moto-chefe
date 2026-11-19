@@ -63,7 +63,7 @@ export function FaixaMercadoPago({ estado, podeImportar }: Props) {
       {resumo && (
         <dl className="mt-3 grid grid-cols-4 divide-x divide-border border-t border-border pt-2.5 md:gap-2.5 md:divide-x-0 md:border-t-0 md:pt-0">
           {numerosDaFaixa(resumo.contagens).map(n => (
-            <div key={n.rotulo} className="flex min-w-0 flex-col-reverse px-1 text-center md:rounded-lg md:border md:border-border md:px-2.5 md:py-2 md:text-left">
+            <div key={n.rotulo} className="flex min-w-0 flex-col-reverse justify-end px-1 text-center md:rounded-lg md:border md:border-border md:px-2.5 md:py-2 md:text-left">
               <dt className="text-[11px] leading-tight text-muted-foreground md:text-xs">
                 {n.rotulo}
                 {n.nota && <span className="mt-0.5 hidden text-[11px] md:block">{n.nota}</span>}
