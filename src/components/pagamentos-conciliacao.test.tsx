@@ -212,3 +212,10 @@ test('PIX conciliado sem custo gravado (TED, grupo sem custo ou vínculo antigo)
     await desmontar()
   }
 })
+
+// Decisão do Luis (19/11/2026): na linha parcial é "Coberto" (pelo valor do PIX); "Entrou" fica para o crédito, nas três colunas.
+test('linha parcial diz quanto foi coberto e quanto falta', async () => {
+  await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }], [pixRec({ valor: '4990.00', valorBruto: '5000.00', custoPix: '10.00' })])
+  assert.ok(tela().includes('Parcial · Coberto R$ 5.000,00 · faltam R$ 5.000,00'), tela())
+  assert.equal(tela().includes('Parcial · Entrou'), false)
+})

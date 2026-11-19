@@ -317,7 +317,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
             situacao === 'forcado' && p.conciliadoManual
               ? `${p.conciliadoManual.porNome} · ${new Date(p.conciliadoManual.em).toLocaleDateString('pt-BR')} · ${p.conciliadoManual.motivo}`
               : situacao === 'parcial'
-                ? `Entrou ${fmt(coberto)} · faltam ${fmt(p.valor - coberto)}`
+                ? `Coberto ${fmt(coberto)} · faltam ${fmt(p.valor - coberto)}`
                 : situacao === 'conciliado' && pix?.pagadorNome
                   ? pix.pagadorNome
                   : detalhe
