@@ -144,6 +144,20 @@ test('extrato: o sócio do B não lança a saída com a categoria do A; a saída
   assert.equal(depois.despesa_id, null)
 })
 
+test('guarda: o sócio do B lança a saída do B com a categoria do B (#132)', async () => {
+  const [, b] = grupos
+  await admin.criarCategoriaDespesa(db, b.grupoId, { nome: 'CAT834G LancaDoB', contaComoDespesa: true })
+  sessao = socioDoB
+  podeCategorizar = true
+  const saida = await saidaDoExtrato(b.grupoId)
+
+  assert.deepEqual(await despesasActions.lancarDespesaOpenFinanceAction(saida.id, 'CAT834G LancaDoB', null), { ok: true, dados: undefined })
+  const [depois] = await execRows(sql`select o.categoria, o.lancado_por_id, d.grupo_id from despesas_open_finance o
+    join despesas d on d.id = o.despesa_id where o.id = ${saida.id}`)
+  assert.deepEqual(depois, { categoria: 'CAT834G LancaDoB', lancado_por_id: socioDoB.id, grupo_id: b.grupoId })
+  podeCategorizar = false
+})
+
 test('extrato: editar a categorização mantendo a categoria antiga fora do catálogo grava; trocar para a do A recusa (#834)', async () => {
   const [a, b] = grupos
   await admin.criarCategoriaDespesa(db, a.grupoId, { nome: 'CAT834G OutraExtratoDoA', contaComoDespesa: true })
