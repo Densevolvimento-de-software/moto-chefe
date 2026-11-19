@@ -1,4 +1,4 @@
-import { and, inArray, or, sql } from 'drizzle-orm'
+import { and, inArray, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { usuarios } from '@/lib/db/schema'
 import { lojasDoGrupo, usuarioOuLojaDaConta } from '@/lib/conta'
@@ -20,8 +20,8 @@ export const usuarioDoGrupo = (grupoId: string) => and(
 
 // Usuário que um registro da Conta pode ligar (vendedor, mecânico): o da Conta, ou só o do grupo
 // liberado na persona do admin_rede (#517), a mesma função da lista da tela.
-export const usuarioDoEscopo = ({ contaId, grupoLiberado }: { contaId: string; grupoLiberado: string | null }) =>
-  grupoLiberado ? usuarioDoGrupo(grupoLiberado) : usuarioOuLojaDaConta(contaId)
+export const usuarioDoEscopo = ({ contaId, grupoLiberado }: { contaId: string; grupoLiberado: string | null }): SQL =>
+  grupoLiberado ? usuarioDoGrupo(grupoLiberado)! : usuarioOuLojaDaConta(contaId)
 
 export async function listarUsuariosDoGrupo(
   grupoId: string,
