@@ -30,9 +30,11 @@ export const FRASES_MP = {
   outroCnpj: 'Credencial salva, mas confira: a conta do Mercado Pago é de outro CNPJ, diferente do CNPJ deste grupo.',
 } as const
 
-// Access Token do MP: um bloco só de caracteres visíveis. Espaço ou quebra de linha no meio faz o fetch lançar
-// TypeError com o header inteiro (o token) na mensagem (#126); por isso nem chega a chamar.
+// Access Token do MP: um bloco só de caracteres visíveis. Espaço ou quebra de linha da cópia saem antes de qualquer
+// uso (decisão do Luis, #126): no meio do header, o fetch lança TypeError com o token inteiro na mensagem. O que
+// ainda ficar fora do formato não chega ao Mercado Pago.
 const FORMATO_TOKEN = /^[\x21-\x7e]{20,300}$/
+export const normalizarToken = (colado: unknown) => (typeof colado === 'string' ? colado.replace(/\s+/g, '') : '')
 const digitos = (s: string) => s.replace(/\D/g, '')
 
 // Só o status ou o nome do erro: a mensagem pode trazer o token.
@@ -47,7 +49,7 @@ export async function conferirCredencialMp(
   pedido: PedidoCredencialMp, cnpjDoGrupo: string, deps: DependenciasCredencialMp,
 ): Promise<{ ok: true; plano: PlanoCredencialMp } | { ok: false; erro: string }> {
   if (pedido.mpRemover === true) return { ok: true, plano: { acao: 'remover' } }
-  const token = typeof pedido.mpToken === 'string' ? pedido.mpToken.trim() : ''
+  const token = normalizarToken(pedido.mpToken)
   if (!token) return { ok: true, plano: { acao: 'manter' } }
   if (!FORMATO_TOKEN.test(token)) return { ok: false, erro: FRASES_MP.formato }
 
