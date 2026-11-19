@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache'
 import { getUsuarioLogado } from '@/lib/auth'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
-import { desvincularPix, vincularPix, type VinculoPix } from '@/lib/pix-vinculo'
+import { desfazerForcadaEDesvincularPix, desvincularPix, vincularPix, type VinculoPix } from '@/lib/pix-vinculo'
 
 const PAPEIS_PERMITIDOS = ['admin_geral', 'admin_socio', 'aux_adm', 'vendedor']
 type Tipo = typeof tipoCorrespondenciaPixEnum.enumValues[number]
@@ -69,4 +69,18 @@ async function removerCorrespondencia(id: string) {
   const grupo = await getGrupoAtivo(usuario)
   await desvincularPix(id, grupo.id)
   revalidatePath('/pix-mcp')
+}
+
+// PIX que completa uma forçada parcial (#92): quem desvincula aqui, inclusive o vendedor, desfaz a forçada junto
+// (decisão do Luis, 19/11/2026). A tela só oferece depois da recusa do remover.
+export async function desfazerForcadaERemoverAction(id: string) {
+  return acao(() => desfazerForcadaERemover(id))
+}
+async function desfazerForcadaERemover(id: string) {
+  const usuario = await getUsuarioLogado()
+  if (!PAPEIS_PERMITIDOS.includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  const grupo = await getGrupoAtivo(usuario)
+  await desfazerForcadaEDesvincularPix(id, grupo.id)
+  // A forçada muda o status da venda, OS ou peça nas listas.
+  for (const caminho of ['/pix-mcp', '/vendas', '/pecas', '/ordens-servico', '/dashboard', '/conciliacao']) revalidatePath(caminho)
 }

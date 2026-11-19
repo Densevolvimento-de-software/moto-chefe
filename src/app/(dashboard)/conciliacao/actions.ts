@@ -14,6 +14,7 @@ import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-per
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { alvoValido, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
+import { cartoesDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo } from '@/lib/alvo-da-conciliacao'
 import { esperadoComTaxa, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
 import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
 import { comForcado, matchPagamentos, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
@@ -464,56 +465,12 @@ export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
   return cartoesDoAlvo(alvo)
 }
 
-// Cartões conciliados ao alvo. Quem chama já conferiu que o alvo abre para o usuário.
-function cartoesDoAlvo(alvo: AlvoConciliacao) {
-  const coluna = alvo.tipo === 'peca' ? conciliacoesCartao.pecaVendaId
-    : alvo.tipo === 'os'              ? conciliacoesCartao.osId
-    :                                   conciliacoesCartao.vendaId
-
-  return db
-    .select({
-      id:            conciliacoesCartao.id,
-      autorizacao:   conciliacoesCartao.autorizacao,
-      valorBruto:    conciliacoesCartao.valorBruto,
-      valorLiquido:  conciliacoesCartao.valorLiquido,
-      operadora:     conciliacoesCartao.operadora,
-      tipo:          conciliacoesCartao.tipo,
-      dataTransacao: conciliacoesCartao.dataTransacao,
-    })
-    .from(conciliacoesCartao)
-    .where(and(eq(coluna, alvo.id), eq(conciliacoesCartao.conciliado, true)))
-}
 
 export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
   if (!(await abreOAlvo(alvo))) return []
   return pixDoAlvo(alvo)
 }
 
-// PIX vinculados ao alvo. Quem chama já conferiu que o alvo abre para o usuário.
-function pixDoAlvo(alvo: AlvoConciliacao) {
-  // Fonte única desde 15/09/2026: o PIX do ValidaPix saiu junto com a
-  // integração. Venda de antes de julho/2026, cujo pagamento só existia lá,
-  // aparece aqui sem PIX — o dado está em
-  // backups/pix_recebimentos_validapix_20260915.json.
-  const coluna = alvo.tipo === 'peca' ? pixRecebimentosMcp.pecaVendaId
-    : alvo.tipo === 'os'              ? pixRecebimentosMcp.osId
-    :                                   pixRecebimentosMcp.vendaId
-
-  return db
-    .select({
-      id:            pixRecebimentosMcp.id,
-      dataPagamento: pixRecebimentosMcp.data,
-      valor:         pixRecebimentosMcp.valor,
-      pagadorNome:   pixRecebimentosMcp.pagadorNome,
-      observacao:    pixRecebimentosMcp.descricao,
-      // Gravados no vínculo (#90): o PIX cobre o pagamento pelo valor do PIX, não pelo crédito.
-      valorBruto:    pixRecebimentosMcp.valorBruto,
-      custoPix:      pixRecebimentosMcp.custoPix,
-      custoPixTaxa:  pixRecebimentosMcp.custoPixTaxa,
-    })
-    .from(pixRecebimentosMcp)
-    .where(eq(coluna, alvo.id))
-}
 
 // Busca livre: a lupa padrão só acha transação de valor praticamente idêntico. Quando
 // o valor lançado na venda não bate com o que a operadora reportou (taxa embutida,
@@ -687,39 +644,6 @@ function alvoNaoEncontrado(tipo: AlvoTipo) {
     :                                         'Venda não encontrada')
 }
 
-// Pagamentos do alvo, só se ele for de uma loja do grupo ativo (escopo dentro da consulta).
-async function pagamentosDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo: string[]): Promise<PgtoOS[] | null> {
-  if (alvo.tipo === 'peca') {
-    const [r] = await db
-      .select({ pagamentos: vendasPecas.pagamentos })
-      .from(vendasPecas)
-      .where(and(eq(vendasPecas.id, alvo.id), inArray(vendasPecas.lojaId, lojaIdsGrupo)))
-      .limit(1)
-    return r ? ((r.pagamentos ?? []) as PgtoOS[]) : null
-  }
-
-  if (alvo.tipo === 'os') {
-    const [r] = await db
-      .select({
-        pagamentos:     ordensServico.pagamentos,
-        formaPagamento: ordensServico.formaPagamento,
-        valorTotal:     ordensServico.valorTotal,
-      })
-      .from(ordensServico)
-      .where(and(eq(ordensServico.id, alvo.id), inArray(ordensServico.lojaId, lojaIdsGrupo)))
-      .limit(1)
-    // OS antiga só tem `formaPagamento` em texto — materializa o array sintetizado
-    // para que a marcação tenha onde morar.
-    return r ? pagamentosEfetivosOS(r.formaPagamento, r.pagamentos, r.valorTotal) : null
-  }
-
-  const [r] = await db
-    .select({ pagamentos: vendas.pagamentos })
-    .from(vendas)
-    .where(and(eq(vendas.id, alvo.id), inArray(vendas.lojaId, lojaIdsGrupo)))
-    .limit(1)
-  return r ? ((r.pagamentos ?? []) as PgtoOS[]) : null
-}
 
 async function alvoParaEdicao(alvo: AlvoConciliacao) {
   const usuario = await getUsuarioLogado()
@@ -734,18 +658,8 @@ async function alvoParaEdicao(alvo: AlvoConciliacao) {
 
 // Grava com o mesmo escopo da leitura: o update não confia só no id.
 async function gravarPagamentos(alvo: AlvoConciliacao, lojaIdsGrupo: string[], pgtos: PgtoOS[]) {
-  if (alvo.tipo === 'peca') {
-    await db.update(vendasPecas).set({ pagamentos: pgtos })
-      .where(and(eq(vendasPecas.id, alvo.id), inArray(vendasPecas.lojaId, lojaIdsGrupo)))
-  } else if (alvo.tipo === 'os') {
-    await db.update(ordensServico).set({ pagamentos: pgtos })
-      .where(and(eq(ordensServico.id, alvo.id), inArray(ordensServico.lojaId, lojaIdsGrupo)))
-    revalidatePath(`/ordens-servico/${alvo.id}`)
-  } else {
-    await db.update(vendas).set({ pagamentos: pgtos })
-      .where(and(eq(vendas.id, alvo.id), inArray(vendas.lojaId, lojaIdsGrupo)))
-  }
-
+  await gravarPagamentosDoAlvo(alvo, lojaIdsGrupo, pgtos)
+  if (alvo.tipo === 'os') revalidatePath(`/ordens-servico/${alvo.id}`)
   revalidatePathsConciliacao()
 }
 

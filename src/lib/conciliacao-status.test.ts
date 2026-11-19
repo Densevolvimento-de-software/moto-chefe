@@ -5,6 +5,7 @@ import {
   comForcado,
   semForcado,
   matchPagamentos,
+  pixCompletaForcadaParcial,
   precisaConciliar,
   valorConciliadoManual,
   type ConciliadoManual,
@@ -387,4 +388,16 @@ test('status nas listas: forçada parcial conta só a base da marca, e o PIX vin
   // 6.000 da marca + 4.000 do PIX vinculado cobrem a linha forçada; a de 3.000 segue sem dinheiro.
   assert.equal(calcStatusMultiPagamento(pgtos, 0, 4000, '13000'), 'parcial')
   assert.equal(calcStatusMultiPagamento(pgtos, 0, 7000, '13000'), 'conciliada')
+})
+
+// Decisão do Luis (19/11/2026): desvincular recusa só o PIX que completa a forçada parcial.
+test('pixCompletaForcadaParcial: só o PIX sem o qual a forçada parcial fica sem o resto', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000, conciliadoManual: FORCADA_PARCIAL }, { tipo: 'pix', valor: 3000 }]
+  const pix = [{ id: 'p4', valor: 3992, valorBruto: 4000 }, { id: 'p3', valor: 3000 }]
+  assert.equal(pixCompletaForcadaParcial(pgtos, [], pix, 'p4'), true)
+  assert.equal(pixCompletaForcadaParcial(pgtos, [], pix, 'p3'), false, 'p3 cobre a outra linha')
+  // Com PIX de sobra, nenhum sozinho faz falta.
+  assert.equal(pixCompletaForcadaParcial(pgtos, [], [...pix, { id: 'extra', valor: 4000 }], 'p4'), false)
+  // Sem forçada parcial, nada prende.
+  assert.equal(pixCompletaForcadaParcial([{ tipo: 'pix', valor: 4000 }], [], [{ id: 'p4', valor: 4000 }], 'p4'), false)
 })

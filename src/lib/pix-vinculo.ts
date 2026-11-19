@@ -4,8 +4,11 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { custoDoPixVinculado } from './custo-pix'
 import { custoPixTaxaDoGrupo } from './custo-pix-grupo'
 import { db } from './db'
-import { ordensServico, pixRecebimentosMcp, vendas, vendasPecas } from './db/schema'
-import { temForcadaParcialDePix, type PgtoOS } from './conciliacao-status'
+import { pixRecebimentosMcp } from './db/schema'
+import { COMPLETA_FORCADA, PAGAMENTO_PIX, pixCompletaForcadaParcial, semForcado, type PgtoOS } from './conciliacao-status'
+import { cartoesDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo } from './alvo-da-conciliacao'
+import type { AlvoConciliacao } from './conciliacao-alvo'
+import { lojasDoGrupo } from './conta'
 import { ehTransferenciaInterna } from './pix-internos'
 import { RecusaUsuario } from './resultado-action'
 import { ehUuid } from './uuid'
@@ -55,28 +58,63 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
   if (ligados.length === 0) throw new RecusaUsuario(PIX_JA_VINCULADO)
 }
 
-const COMPLETA_FORCADA = 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.'
+type Vinculo = { vendaId: string | null; osId: string | null; pecaVendaId: string | null }
+const alvoDoVinculo = (v: Vinculo): AlvoConciliacao | null =>
+  v.vendaId ? { tipo: 'moto', id: v.vendaId } : v.osId ? { tipo: 'os', id: v.osId } : v.pecaVendaId ? { tipo: 'peca', id: v.pecaVendaId } : null
 
-// Pagamentos do alvo a que o PIX está ligado (venda, OS ou venda de peça); pedido não tem forçada.
-async function pagamentosDoVinculo(v: { vendaId: string | null; osId: string | null; pecaVendaId: string | null }): Promise<PgtoOS[]> {
-  const [r] = v.vendaId ? await db.select({ p: vendas.pagamentos }).from(vendas).where(eq(vendas.id, v.vendaId))
-    : v.osId ? await db.select({ p: ordensServico.pagamentos }).from(ordensServico).where(eq(ordensServico.id, v.osId))
-    : v.pecaVendaId ? await db.select({ p: vendasPecas.pagamentos }).from(vendasPecas).where(eq(vendasPecas.id, v.pecaVendaId))
-    : []
-  return (r?.p ?? []) as PgtoOS[]
+// O alvo do PIX com os pagamentos lidos só nas lojas do grupo do PIX (pedido não tem forçada).
+async function alvoComPagamentos(v: Vinculo, grupoId: string) {
+  const alvo = alvoDoVinculo(v)
+  if (!alvo) return null
+  const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
+  const pgtos = await pagamentosDoAlvo(alvo, lojaIds)
+  return pgtos ? { alvo, lojaIds, pgtos } : null
 }
 
-export async function desvincularPix(pixId: string, grupoId: string): Promise<void> {
-  const [vinculo] = ehUuid(pixId)
+async function vinculoDoPix(pixId: string, grupoId: string): Promise<Vinculo | null> {
+  const [v] = ehUuid(pixId)
     ? await db.select({ vendaId: pixRecebimentosMcp.vendaId, osId: pixRecebimentosMcp.osId, pecaVendaId: pixRecebimentosMcp.pecaVendaId })
       .from(pixRecebimentosMcp).where(doGrupo(pixId, grupoId)).limit(1)
     : []
+  return v ?? null
+}
+
+/** Sem este PIX a forçada parcial do alvo fica sem o resto que a completava? */
+async function completaForcada(pixId: string, grupoId: string, v: Vinculo): Promise<boolean> {
+  const alvo = await alvoComPagamentos(v, grupoId)
+  if (!alvo) return false
+  const [cartoes, pix] = await Promise.all([cartoesDoAlvo(alvo.alvo), pixDoAlvo(alvo.alvo)])
+  return pixCompletaForcadaParcial(alvo.pgtos, cartoes, pix, pixId)
+}
+
+export async function desvincularPix(pixId: string, grupoId: string): Promise<void> {
+  const vinculo = await vinculoDoPix(pixId, grupoId)
   if (!vinculo) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
-  if (temForcadaParcialDePix(await pagamentosDoVinculo(vinculo))) throw new RecusaUsuario(COMPLETA_FORCADA)
+  if (await completaForcada(pixId, grupoId, vinculo)) throw new RecusaUsuario(COMPLETA_FORCADA)
 
   const soltos = await db.update(pixRecebimentosMcp)
     .set(PIX_SOLTO)
     .where(doGrupo(pixId, grupoId))
     .returning({ id: pixRecebimentosMcp.id })
   if (soltos.length === 0) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
+}
+
+/**
+ * Desfaz a forçada parcial de PIX que este PIX completa e solta o PIX (decisão do Luis, 19/11/2026: na
+ * /pix-mcp, quem desvincula, inclusive o vendedor, faz as duas coisas de uma vez).
+ */
+export async function desfazerForcadaEDesvincularPix(pixId: string, grupoId: string): Promise<void> {
+  const vinculo = await vinculoDoPix(pixId, grupoId)
+  if (!vinculo) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
+  const alvo = await alvoComPagamentos(vinculo, grupoId)
+  if (alvo) {
+    // As linhas PIX forçadas só em parte perdem a marca; as outras ficam.
+    const semForcadas = alvo.pgtos.reduce<PgtoOS[]>((pgtos, p, i) => {
+      const parcial = PAGAMENTO_PIX.has(p.tipo) && p.conciliadoManual?.pix && p.valor - p.conciliadoManual.pix.valorBruto > 0.05
+      const r = parcial ? semForcado(pgtos, i) : null
+      return r?.ok ? r.dados : pgtos
+    }, alvo.pgtos)
+    if (semForcadas !== alvo.pgtos) await gravarPagamentosDoAlvo(alvo.alvo, alvo.lojaIds, semForcadas)
+  }
+  await desvincularPix(pixId, grupoId)
 }
