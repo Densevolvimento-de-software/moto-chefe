@@ -1,7 +1,7 @@
 // Custo do PIX (#89): o banco credita o valor do PIX menos a porcentagem do grupo.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { creditoDoPix, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa } from './custo-pix'
+import { creditoDoPix, custoDoPixForcado, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa, lerValorRecebido } from './custo-pix'
 
 test('crédito de R$ 9.980,00 com 0,20%: o PIX foi de R$ 10.000,00 e custou R$ 20,00', () => {
   assert.deepEqual(custoDoPixRecebido(9980, 0.002), { bruto: 10000, custo: 20 })
@@ -74,4 +74,21 @@ test('custoDoPixVinculado: TED, linha sem tipo e grupo sem custo gravam o crédi
   for (const [tipo, taxa] of [['TED', 0.002], [null, 0.002], ['PIX', 0]] as const) {
     assert.deepEqual(custoDoPixVinculado(tipo, 9980, taxa), { valorBruto: 9980, custoPix: 0, custoPixTaxa: 0 }, `${tipo} ${taxa}`)
   }
+})
+
+// #92: forçada de PIX. Decisão do Luis: custo = o que o pagamento esperava − o que entrou, nunca negativo.
+test('lerValorRecebido: número positivo em centavos; o resto é null', () => {
+  assert.equal(lerValorRecebido(9980), 9980)
+  assert.equal(lerValorRecebido(9970.015), 9970.02)
+  for (const v of [0, -1, 0.004, NaN, Infinity, '9980', null, undefined, {}]) assert.equal(lerValorRecebido(v), null, String(v))
+})
+
+test('custoDoPixForcado: custo é a base menos o que entrou; a taxa é a efetiva', () => {
+  assert.deepEqual(custoDoPixForcado(10000, 9980), { valorBruto: 10000, custoPix: 20, custoPixTaxa: 0.002 })
+  assert.deepEqual(custoDoPixForcado(10000, 9970.02), { valorBruto: 10000, custoPix: 29.98, custoPixTaxa: 0.002998 })
+})
+
+test('custoDoPixForcado: entrou o valor cheio ou mais, custo 0', () => {
+  assert.deepEqual(custoDoPixForcado(10000, 10000), { valorBruto: 10000, custoPix: 0, custoPixTaxa: 0 })
+  assert.deepEqual(custoDoPixForcado(10000, 10050), { valorBruto: 10000, custoPix: 0, custoPixTaxa: 0 })
 })

@@ -48,3 +48,23 @@ export function custoDoPixVinculado(tipoOperacao: string | null, credito: number
   const { bruto, custo } = custoDoPixRecebido(credito, taxa)
   return { valorBruto: bruto, custoPix: custo, custoPixTaxa: taxa }
 }
+
+/** Recusa do forçar de PIX sem um valor que entrou na conta que se possa ler (#92). */
+export const VALOR_RECEBIDO_INVALIDO = 'Informe o valor que entrou na conta'
+
+/** Valor que entrou na conta, digitado no forçar de PIX: só número, em centavos, maior que zero. */
+export function lerValorRecebido(v: unknown): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null
+  const emCentavos = centavos(v)
+  return emCentavos > 0 ? emCentavos : null
+}
+
+/**
+ * O que se grava na marca da forçada de um PIX (#92), a partir do que o pagamento esperava (`base`: o valor
+ * do pagamento, ou o que faltava) e do que entrou. Decisão do Luis (19/11/2026): custo = base − recebido,
+ * nunca negativo; a taxa gravada é a efetiva (custo ÷ base). A taxa do grupo não entra aqui.
+ */
+export function custoDoPixForcado(base: number, recebido: number): { valorBruto: number; custoPix: number; custoPixTaxa: number } {
+  const custoPix = Math.max(0, centavos(base - recebido))
+  return { valorBruto: base, custoPix, custoPixTaxa: base > 0 ? Math.round((custoPix / base) * 1e6) / 1e6 : 0 }
+}
