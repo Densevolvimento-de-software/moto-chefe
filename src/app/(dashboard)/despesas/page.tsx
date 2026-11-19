@@ -23,6 +23,7 @@ import { urlDespesasSemSync, cacheSaidasValido } from '@/lib/sync-incremental'
 import { Suspense } from 'react'
 import { despesasManuaisDoPeriodo } from '@/lib/despesas-manuais'
 import { lancamentosCaixaDoPeriodo } from '@/lib/lancamentos-caixa'
+import { SEM_NOME_DE_QUEM_LANCOU } from '@/lib/nome-de-quem-lancou'
 
 export default async function DespesasPage({
   searchParams,
@@ -288,7 +289,8 @@ export default async function DespesasPage({
               beneficiario: s.beneficiario,
               lojaId: s.lojaId,
               lojaNome: s.lojaNome,
-              lancadoPorNome: s.lancadoPorNome,
+              // "Automático" na tela é só sem ninguém lançado; nome que a Conta não enxerga vira o texto comum.
+              lancadoPorNome: s.lancadoPorNome ?? (s.lancadoPorId ? SEM_NOME_DE_QUEM_LANCOU : null),
               lancadoEm: s.lancadoEm ? s.lancadoEm.toISOString() : null,
             }))}
             lojas={lojasOpts}

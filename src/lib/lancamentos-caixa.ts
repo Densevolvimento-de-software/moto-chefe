@@ -1,8 +1,10 @@
 // Lançamentos do caixa das lojas, lidos pelo /caixa e pela aba de despesas (saídas de caixa).
+// Nome de quem lançou e de quem aprovou pela regra de nomesDeUsuariosVisiveis; fora dela, nulo, e a
+// linha continua na lista e nos totais (#132).
 import { and, desc, eq, gte, inArray, lte, ne } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
 import { db } from '@/lib/db'
-import { lancamentosCaixa, lojas, usuarios } from '@/lib/db/schema'
+import { lancamentosCaixa, lojas } from '@/lib/db/schema'
+import { nomesDeUsuariosVisiveis } from '@/lib/conta'
 import type { GrupoDoRegistro } from '@/lib/rotulos-alvo'
 
 type Executor = Pick<typeof db, 'select'>
@@ -17,9 +19,8 @@ export type FiltroCaixa = {
   semReprovados?: boolean
 }
 
-export async function lancamentosCaixaDoPeriodo(_grupo: GrupoDoRegistro, f: FiltroCaixa, exec: Executor = db) {
-  const aprovadores = alias(usuarios, 'aprovadores')
-  return exec
+export async function lancamentosCaixaDoPeriodo(grupo: GrupoDoRegistro, f: FiltroCaixa, exec: Executor = db) {
+  const linhas = await exec
     .select({
       id: lancamentosCaixa.id,
       tipo: lancamentosCaixa.tipo,
@@ -29,17 +30,15 @@ export async function lancamentosCaixaDoPeriodo(_grupo: GrupoDoRegistro, f: Filt
       descricao: lancamentosCaixa.descricao,
       valor: lancamentosCaixa.valor,
       data: lancamentosCaixa.data,
-      usuarioNome: usuarios.nome,
+      usuarioId: lancamentosCaixa.usuarioId,
       comprovanteUrl: lancamentosCaixa.comprovanteUrl,
       statusAprovacao: lancamentosCaixa.statusAprovacao,
-      aprovadoPorNome: aprovadores.nome,
+      aprovadoPorId: lancamentosCaixa.aprovadoPorId,
       aprovadoEm: lancamentosCaixa.aprovadoEm,
       criadoEm: lancamentosCaixa.criadoEm,
     })
     .from(lancamentosCaixa)
     .innerJoin(lojas, eq(lancamentosCaixa.lojaId, lojas.id))
-    .innerJoin(usuarios, eq(lancamentosCaixa.usuarioId, usuarios.id))
-    .leftJoin(aprovadores, eq(lancamentosCaixa.aprovadoPorId, aprovadores.id))
     .where(and(
       inArray(lancamentosCaixa.lojaId, f.lojaIds),
       f.lojaId ? eq(lancamentosCaixa.lojaId, f.lojaId) : undefined,
@@ -49,4 +48,11 @@ export async function lancamentosCaixaDoPeriodo(_grupo: GrupoDoRegistro, f: Filt
       f.semReprovados ? ne(lancamentosCaixa.statusAprovacao, 'reprovado') : undefined,
     ))
     .orderBy(desc(lancamentosCaixa.data), desc(lancamentosCaixa.criadoEm))
+  const ids = linhas.flatMap(l => l.aprovadoPorId ? [l.usuarioId, l.aprovadoPorId] : [l.usuarioId])
+  const nomes = await nomesDeUsuariosVisiveis(grupo, ids, exec)
+  return linhas.map(({ usuarioId, aprovadoPorId, ...l }) => ({
+    ...l,
+    usuarioNome: nomes.get(usuarioId) ?? null,
+    aprovadoPorNome: aprovadoPorId ? nomes.get(aprovadoPorId) ?? null : null,
+  }))
 }
