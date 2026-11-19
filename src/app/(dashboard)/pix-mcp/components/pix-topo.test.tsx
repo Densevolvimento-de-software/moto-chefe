@@ -5,6 +5,9 @@ import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
 import { montarDialogo, textoDaTela } from '@/test/dialogo-em-tela'
 
+// O motivo técnico da falha fica no title do aviso (tooltip).
+const tituloDoAviso = () => document.querySelector('p[title]')?.getAttribute('title') ?? null
+
 const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
 
@@ -24,7 +27,12 @@ afterEach(async () => {
 
 function responder(corpo: unknown) {
   const corpos: unknown[] = []
-  globalThis.fetch = (async (_url: string, init: RequestInit) => { corpos.push(JSON.parse(String(init.body))); return { json: async () => corpo } }) as unknown as typeof fetch
+  // Confere a rota: só a da sincronização desta tela responde.
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    assert.equal(url, '/api/pix-mcp/sincronizar')
+    corpos.push(JSON.parse(String(init.body)))
+    return { json: async () => corpo }
+  }) as unknown as typeof fetch
   return corpos
 }
 
@@ -49,15 +57,16 @@ test('ao abrir sincroniza sem forçar e dá refresh, sem aviso', async () => {
 
 test('Atualizar agora força; falha do servidor, recusa da rota e conta pulada mostram o aviso de cada uma', async () => {
   const t = await montar(false)
-  for (const [corpo, frase] of [
-    [{ ok: false, erro: 'erro ao sincronizar' }, /Não foi possível sincronizar agora/],
-    [{ error: 'Sem permissão' }, /Não foi possível sincronizar agora/],
-    [{ ok: true, contasPuladas: ['Banco Ficticio'] }, /Conta não lida: Banco Ficticio/],
+  for (const [corpo, frase, detalhe] of [
+    [{ ok: false, erro: 'erro ao sincronizar' }, /Não foi possível sincronizar agora/, 'erro ao sincronizar'],
+    [{ error: 'Sem permissão' }, /Não foi possível sincronizar agora/, 'Sem permissão'],
+    [{ ok: true, contasPuladas: ['Banco Ficticio'] }, /Conta não lida: Banco Ficticio/, null],
   ] as const) {
     const corpos = responder(corpo)
     await t.clique('Atualizar agora')
     assert.deepEqual(corpos, [{ forcar: true }])
     assert.match(textoDaTela(), frase)
+    assert.equal(tituloDoAviso(), detalhe)
   }
   assert.equal(roteador.refresh.mock.callCount(), 3)
 })
