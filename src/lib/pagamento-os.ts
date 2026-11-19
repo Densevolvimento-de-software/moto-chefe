@@ -51,7 +51,7 @@ export async function aplicarPagamentoOS(os: { id: string; lojaId: string }, dad
     if (!osAtual) throw new RecusaUsuario('OS não encontrada')
     const pagamentos = pagamentosParaGravar(daTela, CAMPOS_PAGAMENTO_OS, osAtual.pagamentos)
     // Aqui, e não só no fechamento: a aprovação de pagamento sensível chega direto (#460).
-    await conferirMaquininhasDaOS(tx, osId, pagamentos)
+    await conferirMaquininhas(tx, osAtual.lojaId, pagamentos, operadorasGravadas(osAtual.pagamentos))
     const pagamentosDinheiro = pagamentos.filter(p => p.tipo === 'dinheiro')
 
     await tx.update(ordensServico).set({
