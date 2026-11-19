@@ -24,8 +24,7 @@ export function tipoDoAlvo(alvo: unknown): AlvoTipo {
   return ehAlvoTipo(tipo) ? tipo : 'moto'
 }
 
+const COLUNA_DO_TIPO: Record<AlvoTipo, keyof Alvos> = { moto: 'vendaId', peca: 'pecaVendaId', os: 'osId' }
+
 /** Colunas do vínculo de uma linha de cartão: a do tipo do alvo com o id, as outras nulas. */
-export const colunasDoAlvo = ({ tipo, id }: AlvoConciliacao): Alvos => ({
-  ...semAlvos(),
-  ...(tipo === 'moto' ? { vendaId: id } : tipo === 'peca' ? { pecaVendaId: id } : { osId: id }),
-})
+export const colunasDoAlvo = ({ tipo, id }: AlvoConciliacao): Alvos => ({ ...semAlvos(), [COLUNA_DO_TIPO[tipo]]: id })
