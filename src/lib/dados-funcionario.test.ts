@@ -48,7 +48,7 @@ test('celular é normalizado no formato que o PIX usa', () => {
 
 test('e-mail precisa ter cara de e-mail', () => {
   assert.equal(chavePixValida('email', 'pessoa@exemplo.com.br'), true)
-  assert.equal(chavePixValida('email', 'luiz.motochefe.com.br'), false)
+  assert.equal(chavePixValida('email', 'pessoa.exemplo.com.br'), false)
 })
 
 test('e-mail é normalizado em minúsculas', () => {

@@ -98,7 +98,7 @@ export function isAdmin(papel: string) {
 }
 
 // ─── Papéis acumulados ────────────────────────────────────────────────────────
-// Uma pessoa pode exercer mais de uma função (ex.: Tiago é aux_adm em Lavras e
+// Uma pessoa pode exercer mais de uma função (ex.: aux_adm de uma loja que
 // também vende). `papel` continua sendo o papel principal e governa todo o
 // sistema; `papeisExtras` só acrescenta.
 //

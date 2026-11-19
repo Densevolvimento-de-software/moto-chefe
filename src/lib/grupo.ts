@@ -255,8 +255,7 @@ async function aprovaNaContaDoGrupo(usuario: UsuarioAprovadorComConta, grupoId: 
 }
 
 // ─── Aprovação de venda abaixo do valor mínimo ────────────────────────────────
-// admin_geral aprova em qualquer grupo; admin_socio
-// aprova no próprio grupo (o da loja fixa dele, usuarios.lojaId) mais os grupos
+// admin_geral aprova em qualquer grupo; admin_socio aprova no próprio grupo (o da loja fixa dele, usuarios.lojaId) mais os grupos
 // liberados no cadastro (usuarios.grupos_aprovacao) — nunca pelo cookie
 // grupoAtivo: a permissão de aprovar não deve depender de qual grupo o sócio
 // está "olhando" no momento. A regra pura fica em @/lib/aprovacao-permissao
