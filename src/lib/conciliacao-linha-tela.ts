@@ -7,7 +7,7 @@ import { nomeOperadora } from '@/lib/operadoras'
 
 export type AlvoDaLinha = ResumoDoAlvo & { tipo: 'moto' | 'peca' | 'os' }
 export type LinhaNaTela = {
-  id: string; data: string; operadora: string; rotulo: string; credito: boolean; bandeira: string; portador: string
+  id: string; data: string; operadora: string; tipo: string; rotulo: string; credito: boolean; bandeira: string; portador: string
   valor: number; liquido: number | null; nsu: string | null; estornada: boolean; alvo: AlvoDaLinha | null
 }
 export type LinhaDoBanco = Pick<typeof conciliacoesCartao.$inferSelect,
@@ -30,6 +30,7 @@ export function linhaNaTela(t: LinhaDoBanco, alvos: ResumosDoAlvoCartao): LinhaN
     id: t.id,
     data: t.dataTransacao,
     operadora: nomeOperadora(t.operadora),
+    tipo: t.tipo,
     rotulo: rotuloCurtoDaLinha(t.tipo, t.parcelas),
     credito: t.tipo === 'credito',
     bandeira: raw.bandeira ?? '',

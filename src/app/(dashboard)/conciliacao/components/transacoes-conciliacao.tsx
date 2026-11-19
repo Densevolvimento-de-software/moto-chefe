@@ -43,6 +43,7 @@ const botaoVincular = (l: LinhaNaTela, tamanho?: 'toque' | 'largo') => (
     valorRef={l.valor}
     vendaVinculada={l.alvo}
     tipoVinculado={l.alvo?.tipo}
+    tipoLinha={l.tipo}
     tamanho={tamanho}
   />
 )

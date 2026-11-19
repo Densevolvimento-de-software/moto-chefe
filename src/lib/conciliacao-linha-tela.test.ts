@@ -16,7 +16,7 @@ const BASE: LinhaDoBanco = {
 
 test('pendente: nome da operadora, rótulo, bandeira, portador, valores em número, sem alvo', () => {
   assert.deepEqual(linhaNaTela(BASE, ALVOS), {
-    id: 'c1', data: '2026-11-06', operadora: 'Mercado Pago', rotulo: 'Cré 3x', credito: true, bandeira: 'visa',
+    id: 'c1', data: '2026-11-06', operadora: 'Mercado Pago', tipo: 'credito', rotulo: 'Cré 3x', credito: true, bandeira: 'visa',
     portador: 'MARIA S', valor: 8900, liquido: 8512.4, nsu: '123400009932', estornada: false, alvo: null,
   })
 })
