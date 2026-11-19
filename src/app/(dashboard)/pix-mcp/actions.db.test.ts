@@ -4,8 +4,8 @@ import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearModelo, semearUsuario, type Base } from '@/test/semear-conta'
-import { semearOs, semearPixRecebido, semearVendaMoto, semearVendaPeca } from '@/test/semear-alvos-conciliacao'
+import { semearUsuario, type Base } from '@/test/semear-conta'
+import { semearContaComAlvos, semearPixRecebido } from '@/test/semear-alvos-conciliacao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -37,14 +37,10 @@ const um = async <T = Record<string, unknown>>(q: ReturnType<typeof sql>) => (aw
 
 // Conta com uma venda de moto (com NF), uma OS (com número), o pedido da venda e uma venda de peça.
 async function contaComNumeros(nf = String(Math.floor(Math.random() * 1e9)), numeroOs = Math.floor(Math.random() * 1e9)) {
-  const suf = randomUUID()
-  const base = await semearContaBase(db, { prefixo: 'PM90', nome: suf, cnpj: suf })
-  const balcao = { lojaId: base.lojaId, usuarioId: await semearUsuario(db, base, { papel: 'vendedor' }), modeloId: await semearModelo(db, 'PM90 ' + suf) }
-  const venda = await semearVendaMoto(db, balcao, PAGAMENTOS)
+  const conta = await semearContaComAlvos(db, 'PM90', PAGAMENTOS)
+  const { moto: venda, os, peca } = conta.alvos
   await db.execute(sql`update vendas set nota_fiscal_saida = ${nf} where id = ${venda}`)
-  const os = await semearOs(db, balcao, PAGAMENTOS)
   await db.execute(sql`update ordens_servico set numero = ${numeroOs} where id = ${os}`)
-  const peca = await semearVendaPeca(db, balcao, PAGAMENTOS)
   const pedido = (await um<{ id: string }>(sql`select pedido_venda_id as id from vendas where id = ${venda}`)).id
   const numeros = {
     venda: nf,
@@ -52,7 +48,7 @@ async function contaComNumeros(nf = String(Math.floor(Math.random() * 1e9)), num
     pedido: String((await um<{ n: number }>(sql`select numero as n from pedidos_venda where id = ${pedido}`)).n),
     peca: String((await um<{ n: number }>(sql`select numero as n from vendas_pecas where id = ${peca}`)).n),
   }
-  return { ...base, ids: { venda, os, pedido, peca }, numeros }
+  return { ...conta, ids: { venda, os, pedido, peca }, numeros }
 }
 
 const sessao = async (b: Base, papel: string): Promise<Sessao> =>
