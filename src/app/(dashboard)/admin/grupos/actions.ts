@@ -100,16 +100,18 @@ function cifrarChaveMcp(dados: GrupoInput): string | null | undefined {
   return cifrar(url)
 }
 
-function exigirNomeECnpj(dados: GrupoInput) {
+function exigirNomeECnpj(dados: Pick<GrupoInput, 'nome' | 'cnpj'>) {
   if (!dados.nome.trim()) throw new RecusaUsuario('Nome obrigatório')
   if (!dados.cnpj.trim()) throw new RecusaUsuario('CNPJ obrigatório')
 }
 
 // Sem o Mercado Pago: o campo só existe no Editar Grupo (decisão do Luis, #51).
-export async function criarGrupoAction(dados: GrupoInput & { contaId?: string | null }): Promise<ResultadoAction> {
-  return acao(() => criarGrupoNovo(dados))
+type NovoGrupoInput = Omit<GrupoInput, 'mpToken' | 'mpRemover'> & { contaId?: string | null }
+
+export async function criarGrupoAction(dados: NovoGrupoInput): Promise<ResultadoAction> {
+  return acao(() => gravarNovoGrupo(dados))
 }
-async function criarGrupoNovo(dados: GrupoInput & { contaId?: string | null }) {
+async function gravarNovoGrupo(dados: NovoGrupoInput) {
   await assertAdmin()
   exigirNomeECnpj(dados)
 

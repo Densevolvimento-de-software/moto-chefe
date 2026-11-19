@@ -19,12 +19,15 @@ const api = {
   editar: mock.fn(async (_id: string, _d: Dados): Promise<ResultadoAction<{ aviso: string | null }>> => ({ ok: true, dados: { aviso: null } })),
 }
 const toast = { success: mock.fn(), error: mock.fn(), warning: mock.fn() }
-mock.module('../actions', { namedExports: {
-  criarGrupoAction: (d: Dados) => api.criar(d),
-  editarGrupoAction: (id: string, d: Dados) => api.editar(id, d),
-} })
-mock.module('next/navigation', { namedExports: { useRouter: () => ({ refresh: () => {} }) } })
-mock.module('sonner', { namedExports: { toast } })
+const mocks = [
+  mock.module('../actions', { namedExports: {
+    criarGrupoAction: (d: Dados) => api.criar(d),
+    editarGrupoAction: (id: string, d: Dados) => api.editar(id, d),
+  } }),
+  mock.module('next/navigation', { namedExports: { useRouter: () => ({ refresh: () => {} }) } }),
+  mock.module('sonner', { namedExports: { toast } }),
+]
+after(() => { for (const m of mocks) m.restore() })
 
 const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
