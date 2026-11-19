@@ -5,7 +5,8 @@ import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import type { ResultadoAction } from '@/lib/resultado-action'
 import { montarDom } from '@/test/montar-dom'
-import { montarDialogo, textoDaTela } from '@/test/dialogo-em-tela'
+import { apertarEscape, montarDialogo, textoDaTela } from '@/test/dialogo-em-tela'
+import { FRASES_MP } from '@/lib/mercadopago/frases'
 import type { GrupoDialog as Dialogo } from './grupo-dialog'
 
 type Props = Parameters<typeof Dialogo>[0]
@@ -152,4 +153,15 @@ test('Cancelar depois de uma recusa: ao reabrir, sem a frase velha e o Salvar n�
   await t.clique('Salvar')
   const [, dados] = api.editar.mock.calls.at(-1)!.arguments
   assert.deepEqual([dados.mpToken, dados.mpRemover, dados.mcpaiEndpointUrl, dados.mcpaiRemover], ['', false, '', false])
+})
+
+// Recusa do MP fica embaixo do campo, dentro de Integrações: recolhida, a frase sumiria (#578).
+test('recusa do Mercado Pago com Integrações recolhida: a seção abre e a frase aparece', async () => {
+  api.editar.mock.mockImplementation(async () => ({ ok: false, erro: FRASES_MP.recusado }))
+  const t = await montar({ modo: 'editar', inicial: { ...GRUPO, mpConectado: false, mpFinal: null } })
+  assert.equal(document.querySelector('details')?.open, false)
+  await t.preencher('grupo-mp-token', 'APP_USR-recolhido-ficticio-000000000000')
+  await t.clique('Salvar')
+  assert.equal(document.querySelector('details')?.open, true)
+  assert.equal(document.getElementById('grupo-mp-token-erro')?.textContent ?? null, FRASES_MP.recusado)
 })

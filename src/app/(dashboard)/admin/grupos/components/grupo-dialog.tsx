@@ -218,7 +218,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
             {/* Com remoção pendente, abre e o título avisa: recolhida, a remoção não passa calada. */}
             <details
               className="rounded-lg border px-3 py-2 sm:col-span-2"
-              open={integracoesAbertas || mcpaiRemover || mpRemover}
+              open={integracoesAbertas || mcpaiRemover || mpRemover || erroDoMp}
               onToggle={e => setIntegracoesAbertas(e.currentTarget.open)}
             >
               <summary className="cursor-pointer text-sm font-medium">
