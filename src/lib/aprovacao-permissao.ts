@@ -3,11 +3,8 @@
 // aprovador) exige banco e fica em @/lib/grupo. Aqui mora só a REGRA, sem banco
 // nem next/headers, para poder ser testada isoladamente.
 
-// Único usuário que opera os dois grupos (Sul de Minas + BH) por decisão
-// histórica, sem passar pelo cadastro. Mesma exceção de podeTransferirEntreGrupos.
-// Para qualquer outra pessoa use os campos de /admin/usuarios (grupos_aprovacao
-// e aprova_pagamento_sensivel) em vez de acrescentar e-mail aqui.
-export const EMAIL_ACESSO_MULTI_GRUPO = 'cesar.rodrigues@motochefesuldeminas.com.br'
+// Quem aprova o quê vem do cadastro em /admin/usuarios (grupos_aprovacao e
+// aprova_pagamento_sensivel), nunca de e-mail no código (#149).
 
 // Só admin aprova. Os campos de aprovação existem no cadastro de qualquer
 // usuário, mas não valem nada para vendedor/mecânico/aux_adm.
@@ -19,20 +16,9 @@ export function papelAprova(papel: string): boolean {
 
 export type UsuarioAprovador = {
   papel: string
-  email: string
   lojaId: string | null
   gruposAprovacao?: string[] | null
   aprovaPagamentoSensivel?: boolean | null
-}
-
-// Quem aprova venda de baixo valor sem depender da loja fixa:
-//   - admin_geral: aprova tudo, sempre.
-//   - usuário multi-grupo: opera os grupos da Conta dele, então aprova em todos. Sem
-//     isto ele só aprovaria no grupo da própria loja (Sul de Minas) e ficaria
-//     travado no BH — que é o bug que esta função corrige.
-// Não olha a Conta: chame por podeAprovarVendaBaixoValor (@/lib/grupo), que confere.
-export function aprovaBaixoValorEmQualquerGrupo(usuario: { papel: string; email: string }): boolean {
-  return usuario.papel === 'admin_geral' || usuario.email === EMAIL_ACESSO_MULTI_GRUPO
 }
 
 // admin_socio comum aprova no próprio grupo — o da loja fixa dele
@@ -48,24 +34,22 @@ export function socioAprovaNoGrupo(
 }
 
 // Grupos liberados no cadastro, ALÉM do grupo da loja fixa. É por aqui que um
-// sócio de um grupo aprova no outro sem precisar de deploy (ex.: João Brito,
-// loja em Itajubá/Sul de Minas, liberado também no BH e no Vale).
+// sócio de um grupo aprova no outro sem precisar de deploy.
 export function aprovaEmGrupoExtra(usuario: UsuarioAprovador, grupoAlvo: string): boolean {
   if (!papelAprova(usuario.papel)) return false
   return (usuario.gruposAprovacao ?? []).includes(grupoAlvo)
 }
 
-// Financiamento/transferência: além de precisar da liberação explícita
-// (aprova_pagamento_sensivel), respeita o mesmo escopo de grupo do baixo valor —
-// grupo da própria loja + grupos extras. admin_geral NÃO entra por papel: ver
-// esse dado é liberação nominal, não atributo do cargo.
+// Financiamento/transferência: só com a liberação explícita (aprova_pagamento_sensivel).
+// admin_geral liberado aprova em todos os grupos (decisão do Luis, #149); os demais, no
+// mesmo escopo do baixo valor: grupo da própria loja + grupos extras.
 export function aprovaPagamentoSensivelNoGrupo(
   usuario: UsuarioAprovador,
   grupoAlvo: string,
   grupoDaLojaDoUsuario: string | null,
 ): boolean {
-  if (usuario.email === EMAIL_ACESSO_MULTI_GRUPO) return true
   if (!usuario.aprovaPagamentoSensivel) return false
+  if (usuario.papel === 'admin_geral') return true
   if (!papelAprova(usuario.papel)) return false
   if (grupoDaLojaDoUsuario && grupoAlvo === grupoDaLojaDoUsuario) return true
   return (usuario.gruposAprovacao ?? []).includes(grupoAlvo)
