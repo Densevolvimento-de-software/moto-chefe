@@ -1,7 +1,7 @@
 // Importação da maquininha Mercado Pago (Point) de um grupo (#51): cartão e Pix viram linhas de
 // conciliacoes_cartao do grupo, casadas com a venda das lojas dele; o estorno marca a linha que já existe.
 // A credencial é do grupo (mercadopago_config) e toda leitura e gravação leva o grupo_id.
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, lt, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { conciliacoesCartao, grupos, mercadopagoConfig } from '@/lib/db/schema'
 import { CARTAO_ESTORNADO, cartaoNaoEstornado } from '@/lib/cartao-status'
@@ -132,10 +132,15 @@ async function marcarEstorno(tx: Tx, grupoId: string, nsu: string): Promise<Cont
 
 /**
  * A rodada (cron ou botão) que falhou: hora e frase conhecida na linha da credencial, para a faixa dizer por quê.
- * Fora da transação das linhas (que foi desfeita) e sem mexer no resumo da última importação boa.
+ * Fora da transação das linhas (que foi desfeita) e sem mexer no resumo da última importação boa. `inicio` é a hora
+ * em que a rodada começou, a mesma régua da importação boa: rodada que começou antes da última boa não grava a falha
+ * (cron lento que falha depois de um botão que importou bem).
  */
-export async function registrarFalhaMp(grupoId: string, erro: string, agora: Date): Promise<void> {
-  await db.update(mercadopagoConfig).set({ ultimaFalhaEm: agora, ultimaFalhaErro: erro }).where(eq(mercadopagoConfig.grupoId, grupoId))
+export async function registrarFalhaMp(grupoId: string, erro: string, inicio: Date): Promise<void> {
+  await db.update(mercadopagoConfig).set({ ultimaFalhaEm: inicio, ultimaFalhaErro: erro }).where(and(
+    eq(mercadopagoConfig.grupoId, grupoId),
+    or(isNull(mercadopagoConfig.ultimaImportacaoEm), lt(mercadopagoConfig.ultimaImportacaoEm, inicio)),
+  ))
 }
 
 export type EstadoDaFaixaMp = { ultimaImportacaoEm: string | null; resumo: ResumoDaImportacao | null; falha: { em: string; erro: string } | null }

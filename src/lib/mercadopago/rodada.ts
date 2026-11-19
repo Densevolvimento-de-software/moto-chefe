@@ -26,15 +26,17 @@ export async function rodarTodosOsGrupos(deps: DependenciasDoGrupo & { grupos?: 
  */
 export async function resultadoDoGrupo(g: { id: string; nome: string }, deps: DependenciasDoGrupo = {}): Promise<ResultadoDoGrupo> {
   const { importar = importarMercadoPagoDoGrupo, registrarFalha = registrarFalhaMp } = deps
+  // A importação boa grava a própria hora de início; a falha usa a mesma régua (ver registrarFalhaMp).
+  const inicio = new Date()
   try {
-    return { grupo: g.nome, ok: true, resultado: await importar(g.id) }
+    return { grupo: g.nome, ok: true, resultado: await importar(g.id, { agora: inicio }) }
   } catch (e) {
     const erro = mensagemConhecida(e)
     // Erro desconhecido: só o nome no log, nunca a mensagem, que pode trazer segredo (como a rotina de inutilização).
     const pista = erro === 'erro interno' ? ` (${e instanceof Error ? e.name : 'erro'})` : ''
     console.error(`[conciliacao-mercadopago] ${g.nome}: ${erro}${pista}`)
     // Gravar a falha não pode derrubar a rodada dos outros grupos.
-    await registrarFalha(g.id, erro, new Date())
+    await registrarFalha(g.id, erro, inicio)
       .catch((e2: unknown) => console.error(`[conciliacao-mercadopago] ${g.nome}: falha não registrada (${e2 instanceof Error ? e2.name : 'erro'})`))
     return { grupo: g.nome, ok: false, erro }
   }
