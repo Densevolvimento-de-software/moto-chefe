@@ -21,6 +21,7 @@ const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { named
   vincularPixAlvoAction: async () => ({ ok: true, dados: undefined }),
   forcarConciliacaoAction: async () => ({ ok: true, dados: undefined }),
   desfazerConciliacaoForcadaAction: async () => ({ ok: true, dados: undefined }),
+  contextoDaBuscaPix: async () => ({ esperado: null, noGrupoAtivo: true }),
 } })
 const linkMock = mock.module('next/link', { defaultExport: ({ href, children }: { href: string; children: ReactNode }) => createElement('a', { href }, children) })
 after(() => { actionsMock.restore(); linkMock.restore() })
