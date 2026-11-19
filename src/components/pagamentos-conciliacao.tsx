@@ -260,6 +260,9 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   }
 
   const modo = buscandoPix ? MODO.pix : MODO.cartao
+  // PIX: fora do grupo ativo o servidor não vincula nem força; com custo no grupo, procura pelo esperado.
+  const pixForaDoGrupo = buscandoPix && contextoPix !== null && !contextoPix.noGrupoAtivo
+  const esperadoPix = buscandoPix ? contextoPix?.esperado ?? null : null
   const sugestoes = buscandoPix ? candidatosPix.map(renderCandidatoPix) : candidatos.map(renderCandidato)
   const achadosLivres = buscandoPix ? livresPix.map(renderCandidatoPix) : livres.map(renderCandidato)
 
@@ -385,20 +388,20 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                     </div>
                   ) : (
                     <>
-                      {mostraBusca && buscandoPix && contextoPix && !contextoPix.noGrupoAtivo ? (
+                      {mostraBusca && pixForaDoGrupo ? (
                         <p className="text-sm text-muted-foreground">Este pagamento é de outro grupo. Troque o grupo ativo para procurar e vincular o PIX.</p>
                       ) : mostraBusca && (
                         <>
-                          {buscandoPix && contextoPix?.esperado != null && !buscaLoading && (
+                          {esperadoPix !== null && !buscaLoading && (
                             <p className="text-xs text-muted-foreground">
-                              O banco deposita sem o custo do PIX. Procurando perto de <b className="text-foreground">{fmt(contextoPix.esperado)}</b>.
+                              O banco deposita sem o custo do PIX. Procurando perto de <b className="text-foreground">{fmt(esperadoPix)}</b>.
                             </p>
                           )}
                           {buscaLoading ? (
                             <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Procurando recebimentos…</p>
                           ) : sugestoes.length > 0 ? (
                             <div className="space-y-2">
-                              {!(buscandoPix && contextoPix?.esperado != null) && (
+                              {esperadoPix === null && (
                                 <p className="text-xs text-muted-foreground">
                                   {modo.nome} de valor próximo a <b className="text-foreground">{fmt(p.valor)}</b> ainda sem vínculo:
                                 </p>
@@ -439,7 +442,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                         </>
                       )}
 
-                      {podeGerir && (
+                      {podeGerir && !(mostraBusca && pixForaDoGrupo) && (
                         <div className={cn('flex items-center gap-3', mostraBusca && 'border-t border-border pt-3')}>
                           <p className="min-w-0 flex-1 text-xs text-muted-foreground">
                             {p.tipo === 'financiamento'

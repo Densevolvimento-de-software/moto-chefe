@@ -142,7 +142,7 @@ test('vendedor não abre a linha pendente nem vê o Desfazer forçado', async ()
   await montar('vendedor', [{ tipo: 'pix', valor: 1000 }, { tipo: 'cartao_credito', valor: 500, conciliadoManual: FORCADO }])
   assert.equal(linha('PIX')?.disabled, true)
   assert.equal(botao('Desfazer forçado'), undefined)
-  assert.equal(botao('Forçar'), undefined)
+  assert.equal(botao('Forçar')?.textContent ?? null, null)
 })
 
 const PIX_LIVRE: PixLivre = { id: 'pix-1', data: new Date('2026-11-12T14:32:00Z'), valor: '1000.00', pagadorNome: 'Pagador Exemplo', descricao: null }
@@ -188,14 +188,15 @@ test('PIX pendente no grupo sem custo: o texto de hoje, pelo valor do pagamento'
   assert.equal(tela().includes('custo do PIX'), false)
 })
 
-test('PIX de venda de outro grupo: pede para trocar o grupo ativo e não procura nem oferece Vincular', async () => {
+test('PIX de venda de outro grupo: pede para trocar o grupo ativo e não procura nem oferece Vincular nem Forçar', async () => {
   contexto.mock.mockImplementation(async () => ({ esperado: 9980, noGrupoAtivo: false }))
   const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }])
   await tocar(linha('PIX'))
   assert.ok(tela().includes('Este pagamento é de outro grupo. Troque o grupo ativo para procurar e vincular o PIX.'), tela())
   assert.equal(buscarPixLivres.mock.callCount(), 0)
   assert.equal(document.querySelector('button[aria-label^="Vincular PIX"]'), null)
-  assert.ok(botao('Forçar'), 'Forçar continua')
+  // O servidor também recusa forçar fora do grupo ativo (alvoParaEdicao): a tela não oferece.
+  assert.equal(botao('Forçar')?.textContent ?? null, null)
 })
 
 test('PIX conciliado com custo: pagador e as três colunas, Valor do PIX, Custo e Entrou', async () => {
