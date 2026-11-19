@@ -8,6 +8,7 @@ import { eq, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { modeloUsavelNaLoja } from '@/lib/modelos-da-conta'
 import { pagamentosFecham, somaPagamentos, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
+import { CAMPOS_PAGAMENTO_ENTRADA, pagamentosParaGravar } from '@/lib/pagamentos-gravacao'
 import { lerDocumentoCliente } from '@/lib/documento'
 
 const ADMINS = ['admin_geral', 'admin_socio']
@@ -113,7 +114,7 @@ export async function criarDemandaAction(dados: NovaDemanda): Promise<{ id: stri
       sinalRecebido: true,
       valorSinal: String(dados.sinal.valorSinal),
       meioPagamento: principal.tipo,
-      pagamentos: dados.sinal.pagamentos,
+      pagamentos: pagamentosParaGravar(dados.sinal.pagamentos, CAMPOS_PAGAMENTO_ENTRADA, []),
       numero: sql`nextval('numero_venda_seq')`,
       sinalRecebidoEm: new Date(),
       ...snapshotCols(dados.sinal),
@@ -161,7 +162,7 @@ export async function marcarSinalDemandaAction(demandaId: string, sinal: DadosSi
     sinalRecebido: true,
     valorSinal: String(sinal.valorSinal),
     meioPagamento: principal.tipo,
-    pagamentos: sinal.pagamentos,
+    pagamentos: pagamentosParaGravar(sinal.pagamentos, CAMPOS_PAGAMENTO_ENTRADA, []),
     // atribui número do recibo só na primeira vez
     numero: demanda.numero ?? sql`nextval('numero_venda_seq')`,
     sinalRecebidoEm: new Date(),
