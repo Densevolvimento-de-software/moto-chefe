@@ -46,7 +46,7 @@ async function semearConta(tx: Tx, nome: string, cnpj: string) {
   const vendId = await semearUsuario(tx, base, { papel: 'vendedor', rotulo: 'vend' })
   const peca = await mod.inserirPeca(tx, base.contaId, { nome: 'Retrovisor ' + nome, valor: 50 })
   assert.equal(await saldos.definirSaldo(tx, peca.id, base.lojaId, 8), true)
-  return { contaId: base.contaId, lojaId: base.lojaId, vendId, pecaId: peca.id }
+  return { contaId: base.contaId, grupoId: base.grupoId, lojaId: base.lojaId, vendId, pecaId: peca.id }
 }
 
 const estoque = (tx: Tx, c: { pecaId: string; lojaId: string }) => saldos.saldoNaLoja(tx, c.pecaId, c.lojaId)
@@ -112,7 +112,7 @@ test('edição de venda da Conta B recusa trocar o item por peça da Conta A (#1
     const { id: vendaId } = await aplicarVendaPeca(tx, b.vendId, venda(b.lojaId, b.pecaId))
 
     await assert.rejects(editarVendaPecaTx(tx, {
-      vendaId, grupoId: '', usuarioId: b.vendId,
+      vendaId, grupoId: b.grupoId, usuarioId: b.vendId,
       itens: [{ pecaId: a.pecaId, quantidade: 1 }], pagamentos: [{ tipo: 'pix', valor: 50 }],
     }), /Peça não encontrada/)
     assert.equal(await estoque(tx, a), 8)
