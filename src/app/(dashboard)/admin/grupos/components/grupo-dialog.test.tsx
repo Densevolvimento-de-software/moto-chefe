@@ -178,3 +178,17 @@ test('Esc depois de uma recusa também esquece a frase e o token colado', async 
   assert.equal(document.querySelector('[role="alert"]')?.textContent ?? null, null)
   assert.equal((document.getElementById('grupo-mp-token') as HTMLInputElement).value, '')
 })
+
+// Fechar durante o Salvando deixaria a resposta que chega depois para a próxima abertura.
+test('enquanto salva, Cancelar fica desabilitado e Esc não fecha; fecha quando o servidor responde', async () => {
+  let responder: (r: ResultadoAction<{ aviso: string | null }>) => void = () => {}
+  api.editar.mock.mockImplementation(() => new Promise(r => { responder = r }))
+  const t = await montar({ modo: 'editar', inicial: GRUPO })
+  await t.clique('Salvar')
+  const cancelar = [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Cancelar')
+  assert.equal(cancelar?.disabled, true)
+  await t.act(async () => { apertarEscape() })
+  assert.equal(fechou(t.onOpenChange), false)
+  await t.act(async () => { responder({ ok: true, dados: { aviso: null } }) })
+  assert.ok(fechou(t.onOpenChange))
+})
