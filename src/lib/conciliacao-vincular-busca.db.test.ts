@@ -237,7 +237,7 @@ test('vincular PIX a venda de outra Conta ou inexistente: mesma frase e o PIX se
     values (${a.grupoId}, 'conta-sintetica', 'banco', ${randomUUID()}, now(), 669.53) returning id`)
   entrarComo(a)
   for (const id of [vendaDeB, randomUUID()]) {
-    await assert.rejects(actions.vincularPixAlvoAction(pix.id, { tipo: 'peca', id }), (e: Error) => e.message === 'Venda não encontrada')
+    await assert.rejects(actions.vincularPixAlvoAction(pix.id, { tipo: 'peca', id }), (e: Error) => e.message === 'Venda de peça não encontrada')
   }
   const [depois] = await linhas(sql`select peca_venda_id from pix_recebimentos_mcp where id = ${pix.id}`)
   assert.equal(depois.peca_venda_id, null)

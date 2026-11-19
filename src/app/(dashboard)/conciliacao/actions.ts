@@ -448,9 +448,9 @@ async function lojaIdDoAlvo(usuario: EscopoDoUsuario & { papel: string }, alvo: 
   return r?.lojaId ?? null
 }
 
-// O usuário vê o alvo? Alvo de outro grupo ou Conta e alvo inexistente dão o mesmo false, e as leituras do painel
-// devolvem lista vazia nos dois: a resposta não revela que o registro existe. A regra de quem vê (podeVerGrupo, por
-// papel) não cabe num where; a loja lida pelo id não sai na resposta.
+// O usuário vê o alvo? Alvo de outra Conta e alvo inexistente dão o mesmo false (a Conta entra no where de
+// `lojaIdDoAlvo`); a regra de grupo por papel (podeVerGrupo) vem depois, sobre uma loja da Conta. As leituras do painel
+// devolvem lista vazia em todos os casos: a resposta não revela que o registro existe.
 async function alvoVisivel(alvo: AlvoConciliacao): Promise<boolean> {
   const usuario = await getUsuarioLogado()
   const lojaId  = await lojaIdDoAlvo(usuario, alvo)
@@ -634,7 +634,7 @@ export async function vincularPixAlvoAction(pixId: string, alvo: AlvoConciliacao
   // Outra Conta, outro grupo e inexistente: a mesma frase (não revela que a venda existe).
   const lojaId = await lojaIdDoAlvo(usuario, alvo)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
-  if (!lojaId || !lojaIdsGrupo.includes(lojaId)) throw new Error('Venda não encontrada')
+  if (!lojaId || !lojaIdsGrupo.includes(lojaId)) throw alvoNaoEncontrado(alvo.tipo)
 
   const [pix] = await db
     .select({ pagadorNome: pixRecebimentosMcp.pagadorNome })
