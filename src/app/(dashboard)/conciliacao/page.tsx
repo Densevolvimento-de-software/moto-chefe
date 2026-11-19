@@ -86,7 +86,7 @@ export default async function ConciliacaoPage({
             {totalPendentes} pendente{totalPendentes !== 1 ? 's' : ''} · {totalConciliadas} conciliada{totalConciliadas !== 1 ? 's' : ''}
           </p>
         </div>
-        <UploadRelatorio maquininhas={await maquininhasDoGrupo(db, grupo.id)} />
+        <UploadRelatorio maquininhas={await maquininhasDoGrupo(db, grupo.id)} podeImportar={podeGerirConciliacao(usuario.papel)} />
       </div>
 
       {faixaMp && <FaixaMercadoPago estado={faixaMp} podeImportar={podeGerirConciliacao(usuario.papel)} />}

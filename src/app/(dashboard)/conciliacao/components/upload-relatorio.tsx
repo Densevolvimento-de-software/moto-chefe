@@ -8,12 +8,15 @@ import { Upload, Loader2 } from 'lucide-react'
 import { importarRelatorioAction } from '../actions'
 import { separarPorRelatorio } from '@/lib/operadoras'
 
-export function UploadRelatorio({ maquininhas: doGrupo }: { maquininhas: Maquininha[] }) {
+/** `podeImportar`: o mesmo `podeGerirConciliacao` com que `importarRelatorio` recusa; sem ele, nada aparece. */
+export function UploadRelatorio({ maquininhas: doGrupo, podeImportar }: { maquininhas: Maquininha[]; podeImportar: boolean }) {
   const { comRelatorio: maquininhas, manuais } = separarPorRelatorio(doGrupo)
   const semOpcao = manuais.length > 0 ? 'Nenhuma com relatório' : 'Nenhuma maquininha cadastrada'
   const fileRef = useRef<HTMLInputElement>(null)
   const [operadora, setOperadora] = useState(maquininhas[0]?.operadora ?? '')
   const [loading, setLoading] = useState(false)
+
+  if (!podeImportar) return null
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
