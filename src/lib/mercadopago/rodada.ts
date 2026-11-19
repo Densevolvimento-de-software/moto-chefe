@@ -4,8 +4,10 @@ import { RecusaUsuario } from '@/lib/resultado-action'
 import { ErroMercadoPago } from './cliente'
 import { gruposComMercadoPago, importarMercadoPagoDoGrupo, registrarFalhaMp } from './importar'
 import { CONTAGENS, type ResultadoImportacaoMp } from './contagens'
+import { fraseDaFalhaNaTela } from './falha'
 
-export type ResultadoDoGrupo = { grupo: string } & ({ ok: true; resultado: ResultadoImportacaoMp } | { ok: false; erro: string })
+// `erro`: a mensagem conhecida, com o detalhe técnico, para o log e o cron; `fraseNaTela`: a da faixa e do botão.
+export type ResultadoDoGrupo = { grupo: string } & ({ ok: true; resultado: ResultadoImportacaoMp } | { ok: false; erro: string; fraseNaTela: string })
 
 const mensagemConhecida = (e: unknown) =>
   e instanceof ErroMercadoPago || e instanceof RecusaUsuario ? e.message : 'erro interno'
@@ -36,10 +38,11 @@ export async function resultadoDoGrupo(g: { id: string; nome: string }, deps: De
     // Erro desconhecido: só o nome no log, nunca a mensagem, que pode trazer segredo (como a rotina de inutilização).
     const pista = erro === 'erro interno' ? ` (${e instanceof Error ? e.name : 'erro'})` : ''
     console.error(`[conciliacao-mercadopago] ${g.nome}: ${erro}${pista}`)
+    const fraseNaTela = fraseDaFalhaNaTela(e)
     // Gravar a falha não pode derrubar a rodada dos outros grupos.
-    await registrarFalha(g.id, erro, inicio)
+    await registrarFalha(g.id, fraseNaTela, inicio)
       .catch((e2: unknown) => console.error(`[conciliacao-mercadopago] ${g.nome}: falha não registrada (${e2 instanceof Error ? e2.name : 'erro'})`))
-    return { grupo: g.nome, ok: false, erro }
+    return { grupo: g.nome, ok: false, erro, fraseNaTela }
   }
 }
 

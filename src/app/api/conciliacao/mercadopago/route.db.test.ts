@@ -106,7 +106,7 @@ test('erro ao achar o grupo ativo (usuário sem loja): { error } com frase fixa,
   t.mock.method(console, 'error', () => {})
   const a = await conta('A')
   sessao = { ...a.comoAux, lojaId: null }
-  assert.deepEqual(await chamar(), { status: 500, corpo: { error: 'Não deu para importar agora. Tente de novo em alguns minutos.' } })
+  assert.deepEqual(await chamar(), { status: 500, corpo: { error: 'Não deu para importar. Tente de novo em alguns minutos.' } })
 })
 
 test('Mercado Pago recusa a credencial: { error } com a frase conhecida, e a falha fica gravada no grupo', async () => {

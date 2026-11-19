@@ -349,9 +349,9 @@ test('erro dentro da transação: nenhuma linha, resumo de antes intacto e a fal
   const r = await resultadoDoGrupo({ id: a.grupoId, nome: 'A' }, {
     importar: id => mod.importarMercadoPagoDoGrupo(id, { agora: AGORA, buscar: buscarFixo(pagamentos) }),
   })
-  assert.deepEqual(r, { grupo: 'A', ok: false, erro: 'erro interno' })
+  assert.deepEqual(r, { grupo: 'A', ok: false, erro: 'erro interno', fraseNaTela: 'Não deu para importar. Tente de novo em alguns minutos.' })
   assert.deepEqual(await linhasDoGrupo(a.grupoId), [])
   const [depois] = await execRows(sql`select ultima_importacao_em, ultimo_resumo, ultima_falha_erro from mercadopago_config where grupo_id = ${a.grupoId}`)
   assert.deepEqual([depois.ultima_importacao_em, depois.ultimo_resumo], [antes.ultima_importacao_em, antes.ultimo_resumo])
-  assert.equal(depois.ultima_falha_erro, 'erro interno')
+  assert.equal(depois.ultima_falha_erro, 'Não deu para importar. Tente de novo em alguns minutos.')
 })

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { resumoDaRodada, rodarTodosOsGrupos, type ResultadoDoGrupo } from './rodada'
 import { ErroMercadoPago } from './cliente'
 import { RecusaUsuario } from '@/lib/resultado-action'
+import { FRASES_MP } from './frases'
 import type { ResultadoImportacaoMp } from './contagens'
 
 const resultado = (o: Partial<ResultadoImportacaoMp> = {}): ResultadoImportacaoMp =>
@@ -22,12 +23,13 @@ test('grupo que falha não impede os seguintes; só a mensagem conhecida sai, o 
     },
   })
   assert.deepEqual(r, [
-    { grupo: 'Sul', ok: false, erro: 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.' },
-    { grupo: 'BH', ok: false, erro: 'erro interno' },
+    { grupo: 'Sul', ok: false, erro: 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.', fraseNaTela: 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.' },
+    // TypeError é o que o fetch lança sem rede: na tela, "não respondeu agora".
+    { grupo: 'BH', ok: false, erro: 'erro interno', fraseNaTela: FRASES_MP.indisponivel },
     { grupo: 'Vale', ok: true, resultado: resultado({ pendentes: 1 }) },
   ])
-  // A falha de cada grupo fica guardada para a faixa da conciliação, com a mesma frase da resposta.
-  assert.deepEqual(falhas, [['g1', 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.'], ['g2', 'erro interno']])
+  // A falha de cada grupo fica guardada para a faixa da conciliação, com a frase de tela (o detalhe fica no log).
+  assert.deepEqual(falhas, [['g1', 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.'], ['g2', FRASES_MP.indisponivel]])
   // O log do erro desconhecido leva só o nome do erro, como a rotina de inutilização: a mensagem pode ter segredo.
   const linhas = log.mock.calls.map(c => String(c.arguments.join(' ')))
   assert.deepEqual(linhas, [
@@ -43,14 +45,14 @@ test('recusa do sistema (grupo sem credencial) mantém a frase', async t => {
     grupos: async () => [{ id: 'g1', nome: 'Sul' }],
     importar: async () => { throw new RecusaUsuario('Este grupo não tem credencial do Mercado Pago.') },
   })
-  assert.deepEqual(r, [{ grupo: 'Sul', ok: false, erro: 'Este grupo não tem credencial do Mercado Pago.' }])
+  assert.deepEqual(r, [{ grupo: 'Sul', ok: false, erro: 'Este grupo não tem credencial do Mercado Pago.', fraseNaTela: 'Este grupo não tem credencial do Mercado Pago.' }])
 })
 
 // Decisão D2 do Luis (#51): a resposta do cron traz as contagens e o nome dos grupos que falharam.
 test('resumo soma os grupos que importaram e lista pelo nome os que falharam', () => {
   const rs: ResultadoDoGrupo[] = [
     { grupo: 'Sul', ok: true, resultado: resultado({ conciliadas: 2, pendentes: 1, duplicadas: 1, naoTratados: 1 }) },
-    { grupo: 'BH', ok: false, erro: 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.' },
+    { grupo: 'BH', ok: false, erro: 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.', fraseNaTela: 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.' },
     { grupo: 'Vale', ok: true, resultado: resultado({ conciliadas: 1, pendentes: 1, estornos: 1, estornosSemLinha: 2, ignorados: 4 }) },
   ]
   assert.deepEqual(resumoDaRodada(rs), {
