@@ -35,8 +35,8 @@ export function SaidasTopo({ itens, from, to, hoje, rotuloSync, modoInicial, sin
     setAviso(null)
     const r = await disparar({ modo })
     const novoAviso = !r.ok ? { tipo: 'falha' as const, detalhe: r.erro }
-      : !r.corpo.ok ? { tipo: 'falha' as const, detalhe: r.corpo.erro }
-      : r.corpo.contasPuladas.length > 0 ? { tipo: 'parcial' as const, detalhe: r.corpo.contasPuladas.join(', ') }
+      : !r.dados.ok ? { tipo: 'falha' as const, detalhe: r.dados.erro }
+      : r.dados.contasPuladas.length > 0 ? { tipo: 'parcial' as const, detalhe: r.dados.contasPuladas.join(', ') }
       : null
     setAviso(novoAviso)
     // URL com ?sync= e um sync concluído sem falha (o da abertura ou o do botão, o modo não importa): tira o

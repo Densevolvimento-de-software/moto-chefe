@@ -33,8 +33,8 @@ export function PixTopo({ itens, from, to, hoje, min, rotuloSync, sincronizarAoA
     setAviso(null)
     const r = await disparar({ forcar })
     if (!r.ok) setAviso({ tipo: 'falha', detalhe: r.erro })
-    else if (!r.corpo.ok) setAviso({ tipo: 'falha', detalhe: r.corpo.erro })
-    else if (r.corpo.contasPuladas.length > 0) setAviso({ tipo: 'parcial', detalhe: r.corpo.contasPuladas.join(', ') })
+    else if (!r.dados.ok) setAviso({ tipo: 'falha', detalhe: r.dados.erro })
+    else if (r.dados.contasPuladas.length > 0) setAviso({ tipo: 'parcial', detalhe: r.dados.contasPuladas.join(', ') })
     router.refresh()
   }
 

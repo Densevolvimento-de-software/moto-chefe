@@ -33,7 +33,7 @@ test('manda POST com o corpo em JSON e devolve o corpo da resposta; pendente só
   await h.act(async () => { void h.visto.atual!.disparar({ forcar: true }).then(r => { resultado = r }) })
   assert.equal(h.visto.atual!.pendente, true)
   await h.act(async () => { responder({ json: async () => ({ ok: true, total: 3 }) } as Response) })
-  assert.deepEqual(resultado, { ok: true, corpo: { ok: true, total: 3 } })
+  assert.deepEqual(resultado, { ok: true, dados: { ok: true, total: 3 } })
   assert.equal(h.visto.atual!.pendente, false)
   assert.deepEqual([pedidos[0].url, pedidos[0].init.method, pedidos[0].init.body], ['/api/alguma-rota', 'POST', '{"forcar":true}'])
   await h.desmontar()
