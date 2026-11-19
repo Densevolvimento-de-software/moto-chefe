@@ -21,6 +21,14 @@
     {
       "path": "/api/cron/avaliacoes-google",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/inutilizacoes-pendentes",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/conciliacao-mercadopago",
+      "schedule": "0 9 * * *"
     }
   ]
 }

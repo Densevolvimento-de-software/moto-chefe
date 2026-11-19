@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cronAutorizado } from '@/lib/cron-auth'
 import { db } from '@/lib/db'
 import { conciliacoesCartao, grupos } from '@/lib/db/schema'
 import { eq, and, sql } from 'drizzle-orm'
-import { casarPorValor } from '@/lib/conciliacao-casamento'
+import { casarPorValor, linhaDaTransacao } from '@/lib/conciliacao-casamento'
 import { lojasDoGrupo } from '@/lib/conta'
 import { chaveDedup, type PayloadConciliacao } from '@/lib/conciliacao-cartao'
 import { somenteDigitos } from '@/lib/grupo-cnpj'
 
 export async function POST(req: NextRequest) {
-  const secret = req.headers.get('x-cron-secret')
-  if (secret !== process.env.CRON_SECRET) {
+  if (!cronAutorizado(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -78,30 +78,12 @@ export async function POST(req: NextRequest) {
 
     // Tenta casar com uma venda: mesmo dia ± 1 dia, valor bruto próximo, mesma qtd de parcelas.
     // Grupo sem loja cadastrada não tem como ter venda: nada a casar.
-    const { vendaId, pecaVendaId, osId } = await casarPorValor(db, lojaIdsGrupo, t)
-
-    const matched = vendaId ?? pecaVendaId ?? osId
-    await db.insert(conciliacoesCartao).values({
-      grupoId: grupo.id,
-      operadora,
-      dataTransacao: t.dataTransacao,
-      nsu: t.nsu ?? null,
-      autorizacao: t.autorizacao ?? null,
-      valorBruto: String(t.valorBruto),
-      valorLiquido: t.valorLiquido != null ? String(t.valorLiquido) : null,
-      parcelas: t.parcelas,
-      tipo: t.tipo,
-      status: t.status,
-      vendaId: vendaId ?? undefined,
-      pecaVendaId: pecaVendaId ?? undefined,
-      osId: osId ?? undefined,
-      conciliado: matched !== null,
-      conciliadoEm: matched !== null ? new Date() : null,
-      rawData: t.rawData ?? null,
-    })
+    const alvos = await casarPorValor(db, lojaIdsGrupo, t)
+    const linha = linhaDaTransacao(grupo.id, operadora, t, alvos, new Date())
+    await db.insert(conciliacoesCartao).values(linha)
 
     importadas++
-    if (matched) conciliadas++
+    if (linha.conciliado) conciliadas++
   }
 
   return NextResponse.json({ importadas, duplicadas, conciliadas, pendentes: importadas - conciliadas })

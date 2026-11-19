@@ -1,5 +1,6 @@
 'use server'
 import { randomUUID } from 'node:crypto'
+import { CONTRATADA } from '@/lib/mova-empresa'
 import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
 import { db } from '@/lib/db'
 import { adesoesMova } from '@/lib/db/schema'
@@ -8,7 +9,7 @@ import { enviarEmail } from '@/lib/email'
 import { adesaoSchema, validarArquivoCnpj, validarArquivoCert, emailNovaAdesao } from '@/lib/adesao'
 
 // Para onde vai o aviso de nova adesão; mesma env que já existia para os leads.
-const EMAIL_EQUIPE = process.env.LEADS_EMAIL_TO || 'contato@meumova.com'
+const EMAIL_EQUIPE = process.env.LEADS_EMAIL_TO || CONTRATADA.email
 
 export type ResultadoAdesao = { ok: true } | { ok: false; erro: string }
 

@@ -5,8 +5,10 @@ import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { getGrupoAtivo } from '@/lib/grupo'
 import { cachePixValido, ultimaSincronizacaoPix } from '@/lib/pix-sync'
 import { db } from '@/lib/db'
-import { pixRecebimentosMcp, vendas, ordensServico, usuarios, pedidosVenda, vendasPecas } from '@/lib/db/schema'
-import { inArray, and, eq, gte, lte, desc } from 'drizzle-orm'
+import { pixRecebimentosMcp } from '@/lib/db/schema'
+import { and, eq, gte, lte, desc } from 'drizzle-orm'
+import { rotulosDoVinculoPix } from '@/lib/rotulos-alvo'
+import { nomesDeUsuariosVisiveis } from '@/lib/conta'
 import { PixTopo } from './components/pix-topo'
 import { PixLista, type LinhaPix } from './components/pix-lista'
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
@@ -79,35 +81,13 @@ export default async function PixMcpPage({
 
   tempo('consultar_linhas', tLinhas, `linhas=${linhas.length}`)
 
-  const vendaIds = linhas.map(l => l.vendaId).filter((id): id is string => !!id)
-  const osIds = linhas.map(l => l.osId).filter((id): id is string => !!id)
-  const pedidoIds = linhas.map(l => l.pedidoId).filter((id): id is string => !!id)
-  const pecaVendaIds = linhas.map(l => l.pecaVendaId).filter((id): id is string => !!id)
-  const lancadoPorIds = linhas.map(l => l.lancadoPorId).filter((id): id is string => !!id)
-
-  const [vendasDb, osDb, pedidosDb, pecasVendaDb, usuariosDb] = await Promise.all([
-    vendaIds.length > 0
-      ? db.select({ id: vendas.id, notaFiscalSaida: vendas.notaFiscalSaida }).from(vendas).where(inArray(vendas.id, vendaIds))
-      : Promise.resolve([] as { id: string; notaFiscalSaida: string | null }[]),
-    osIds.length > 0
-      ? db.select({ id: ordensServico.id, numero: ordensServico.numero }).from(ordensServico).where(inArray(ordensServico.id, osIds))
-      : Promise.resolve([] as { id: string; numero: number | null }[]),
-    pedidoIds.length > 0
-      ? db.select({ id: pedidosVenda.id, numero: pedidosVenda.numero }).from(pedidosVenda).where(inArray(pedidosVenda.id, pedidoIds))
-      : Promise.resolve([] as { id: string; numero: number }[]),
-    pecaVendaIds.length > 0
-      ? db.select({ id: vendasPecas.id, numero: vendasPecas.numero }).from(vendasPecas).where(inArray(vendasPecas.id, pecaVendaIds))
-      : Promise.resolve([] as { id: string; numero: number }[]),
-    lancadoPorIds.length > 0
-      ? db.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios).where(inArray(usuarios.id, lancadoPorIds))
-      : Promise.resolve([] as { id: string; nome: string }[]),
+  const ids = <K extends 'vendaId' | 'osId' | 'pedidoId' | 'pecaVendaId' | 'lancadoPorId'>(k: K) =>
+    linhas.map(l => l[k]).filter((id): id is string => !!id)
+  const [rotulos, usuarioNomeById] = await Promise.all([
+    rotulosDoVinculoPix(grupo, { vendaIds: ids('vendaId'), osIds: ids('osId'), pedidoIds: ids('pedidoId'), pecaVendaIds: ids('pecaVendaId') }),
+    nomesDeUsuariosVisiveis(grupo, ids('lancadoPorId')),
   ])
   tempo('total_ate_montar_dados', tPagina)
-  const vendaNfById = new Map(vendasDb.map(v => [v.id, v.notaFiscalSaida]))
-  const osNumeroById = new Map(osDb.map(o => [o.id, o.numero]))
-  const pedidoNumeroById = new Map(pedidosDb.map(p => [p.id, p.numero]))
-  const pecaNumeroById = new Map(pecasVendaDb.map(p => [p.id, p.numero]))
-  const usuarioNomeById = new Map(usuariosDb.map(u => [u.id, u.nome]))
 
   // Transferência interna é dinheiro andando entre contas do próprio grupo
   // (maquininha, conta a conta). Não é recebimento de cliente e não é assunto de
@@ -144,10 +124,10 @@ export default async function PixMcpPage({
     interna: ehInterna(l),
     correspondencia: {
       tipo: l.tipoCorrespondencia,
-      vendaNf: l.vendaId ? vendaNfById.get(l.vendaId) ?? null : null,
-      osNumero: l.osId ? osNumeroById.get(l.osId) ?? null : null,
-      pedidoNumero: l.pedidoId ? pedidoNumeroById.get(l.pedidoId) ?? null : null,
-      pecaNumero: l.pecaVendaId ? pecaNumeroById.get(l.pecaVendaId) ?? null : null,
+      vendaNf: l.vendaId ? rotulos.nfDaVenda.get(l.vendaId) ?? null : null,
+      osNumero: l.osId ? rotulos.numeroDaOs.get(l.osId) ?? null : null,
+      pedidoNumero: l.pedidoId ? rotulos.numeroDoPedido.get(l.pedidoId) ?? null : null,
+      pecaNumero: l.pecaVendaId ? rotulos.numeroDaPeca.get(l.pecaVendaId) ?? null : null,
       lancadoPorNome: l.lancadoPorId ? usuarioNomeById.get(l.lancadoPorId) ?? null : null,
       lancadoEm: l.lancadoEm ? l.lancadoEm.toISOString() : null,
     },

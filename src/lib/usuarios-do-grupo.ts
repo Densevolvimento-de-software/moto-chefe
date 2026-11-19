@@ -1,7 +1,7 @@
-import { and, inArray, or, sql } from 'drizzle-orm'
+import { and, inArray, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { usuarios } from '@/lib/db/schema'
-import { lojasDoGrupo } from '@/lib/conta'
+import { lojasDoGrupo, usuarioOuLojaDaConta } from '@/lib/conta'
 
 type Executor = Pick<typeof db, 'select'>
 type Papel = (typeof usuarios.papel.enumValues)[number]
@@ -17,6 +17,11 @@ export const usuarioDoGrupo = (grupoId: string) => and(
   // Marcação de grupo de outra Conta não vale (ADR-0018, adendo de 21/10).
   sql`${usuarios.contaId} = (select conta_id from grupos where id = ${grupoId}::uuid)`,
 )
+
+// Usuário que um registro da Conta pode ligar (vendedor, mecânico): o da Conta, ou, na persona do
+// admin_rede (#517), só o do grupo liberado, pela mesma função da lista da tela.
+export const usuarioDoEscopo = ({ contaId, grupoLiberado }: { contaId: string; grupoLiberado: string | null }): SQL =>
+  grupoLiberado ? usuarioDoGrupo(grupoLiberado)! : usuarioOuLojaDaConta(contaId)
 
 export async function listarUsuariosDoGrupo(
   grupoId: string,

@@ -4,6 +4,7 @@ import {
   ComposedChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot,
 } from 'recharts'
 import type { PontoFaturamento } from '@/lib/dashboard-series'
+import { diaMesBr } from '@/lib/data-venda'
 import { Secao } from './painel-secoes'
 
 const brl = (v: number) =>
@@ -15,7 +16,6 @@ const brlCurto = (v: number) =>
   Math.abs(v) >= 1000
     ? `R$ ${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: Math.abs(v) >= 10_000 ? 0 : 1 })} mil`
     : brl(v)
-const diaMes = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 // Margem do eixo Y pelo maior rótulo (~6,5px por caractere a 11px): fixa, ela corta "R$ 100 mil" no celular.
 function larguraEixoY(max: number) {
@@ -57,7 +57,7 @@ function Dica({ active, payload, campos }: {
   const dif = atual - anterior
   return (
     <div className="rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-sm">
-      <div className="font-semibold">{diaMes(p.dia)}</div>
+      <div className="font-semibold">{diaMesBr(p.dia)}</div>
       <div className="tabular-nums">Período: {brl(atual)}</div>
       <div className="tabular-nums text-muted-foreground">Anterior: {brl(anterior)}</div>
       <div className={`tabular-nums ${dif < 0 ? 'text-destructive' : 'text-primary-text'}`}>
@@ -69,7 +69,7 @@ function Dica({ active, payload, campos }: {
 
 // Eixos e grade iguais nos dois gráficos, como props: o XAxis/YAxis continua filho direto do gráfico.
 const grade = { vertical: false, stroke: 'var(--border)' }
-const eixoX = { dataKey: 'dia', tickFormatter: diaMes, tick: eixo, tickLine: false, axisLine: { stroke: 'var(--input)' } }
+const eixoX = { dataKey: 'dia', tickFormatter: diaMesBr, tick: eixo, tickLine: false, axisLine: { stroke: 'var(--input)' } }
 const eixoY = (max: number) => ({ tick: <TickReais />, tickLine: false, axisLine: false, width: larguraEixoY(max) })
 
 function QuadroGrafico({ titulo, vazio, altura, children }: {

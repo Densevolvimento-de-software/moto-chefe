@@ -19,8 +19,13 @@ export function semZerosAEsquerda(texto: string | null | undefined): string {
   return aparado.replace(/^0+/, '') || '0'
 }
 
+/** A palavra no singular com 1, no plural com outro número (sem o número). */
+export const palavraPara = (n: number, um: string, varios: string) => (n === 1 ? um : varios)
 /** Quantidade com a palavra certa: "1 moto", "2 motos", "0 motos". */
-export const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`
+export const plural = (n: number, um: string, varios: string) => `${n} ${palavraPara(n, um, varios)}`
+
+/** "março de 2026" → "Março de 2026". */
+export const comMaiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** "Ana Paula Souza" → "AS": primeira letra do primeiro e do último nome, para o selo de iniciais. */
 export function iniciaisDoNome(nome: string): string {

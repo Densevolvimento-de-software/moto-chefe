@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { guardaAcessoAGrupos, guardaAprovacao, papelDasListas } from './listas-do-cadastro'
+import { guardaAcessoAGrupos, guardaAprovacao, guardaCategorizaDespesa, papelDasListas } from './listas-do-cadastro'
 
 test('quem tem cargo guarda as listas pelo papel da base; sem base, pelo próprio papel (#617)', () => {
   assert.equal(papelDasListas('cargo', 'admin_socio'), 'admin_socio')
@@ -14,4 +14,9 @@ test('aprovação: admin_geral, admin de rede e sócio; acesso a grupos: sócio 
   const papeis = ['admin_geral', 'admin_rede', 'admin_socio', 'aux_adm', 'vendedor', 'mecanico', 'motorista', 'cargo']
   assert.deepEqual(papeis.filter(guardaAprovacao), ['admin_geral', 'admin_rede', 'admin_socio'])
   assert.deepEqual(papeis.filter(guardaAcessoAGrupos), ['admin_rede', 'admin_socio'])
+})
+
+test('a marca de categorizar saídas do banco vale para sócio e admin de rede, não para os outros papéis (#149)', () => {
+  assert.deepEqual(['admin_socio', 'admin_rede', 'admin_geral', 'aux_adm', 'vendedor', 'cargo'].map(guardaCategorizaDespesa),
+    [true, true, false, false, false, false])
 })

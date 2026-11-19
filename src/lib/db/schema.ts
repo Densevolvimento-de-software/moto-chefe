@@ -23,7 +23,7 @@ export const pedidoStatusEnum = pgEnum('pedido_status', ['pendente', 'efetivado'
 export const transferenciaStatusEnum = pgEnum('transferencia_status', ['pendente', 'aceita', 'recusada'])
 export const aprovacaoVendaStatusEnum = pgEnum('aprovacao_venda_status', ['pendente', 'aprovada', 'recusada'])
 // 'valor_minimo': venda abaixo do preço mínimo, aprovada por admin_geral/admin_socio do grupo.
-// 'pagamento_sensivel': venda com financiamento/transferência, só o responsável (ver EMAIL_ACESSO_MULTI_GRUPO) aprova.
+// 'pagamento_sensivel': venda com financiamento/transferência, só quem tem aprova_pagamento_sensivel aprova (aprovacao-permissao.ts).
 export const aprovacaoVendaTipoEnum = pgEnum('aprovacao_venda_tipo', ['valor_minimo', 'pagamento_sensivel'])
 // 'cancelada' é terminal e fica fora de SEQUENCIA_STATUS — só se chega nele pela
 // cancelarOSAction, e só a partir de OS sem pagamento/conciliação.
@@ -204,6 +204,8 @@ export const usuarios = pgTable('usuarios', {
   gruposAprovacao: uuid('grupos_aprovacao').array().notNull().default([]),
   // Libera aprovar financiamento/transferência, nos mesmos grupos acima.
   aprovaPagamentoSensivel: boolean('aprova_pagamento_sensivel').notNull().default(false),
+  // Categoriza as saídas do banco em /despesas (#149). Só o admin_geral liga, em /admin/usuarios.
+  categorizaDespesaBanco: boolean('categoriza_despesa_banco').notNull().default(false),
   // Grupos EXTRAS que este usuário pode ESCOLHER no seletor de empresa (além do
   // grupo da própria loja). Coluna separada de grupos_aprovacao de propósito:
   // aprovar pagamento num grupo e enxergar/trocar para aquele grupo são coisas
@@ -406,6 +408,14 @@ export const mercadopagoConfig = pgTable('mercadopago_config', {
   publicKey:     text('public_key'),
   atualizadoPor: uuid('atualizado_por').references(() => usuarios.id, { onDelete: 'set null' }),
   atualizadoEm:  timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
+  // Faixa da /conciliacao (0197): a última rodada que terminou sem erro, mesmo sem pagamento novo, e a
+  // última que falhou (nulas quando a mais recente deu certo; o erro é só a frase conhecida).
+  ultimaImportacaoEm: timestamp('ultima_importacao_em', { withTimezone: true }),
+  ultimoResumo:       jsonb('ultimo_resumo'),
+  ultimaFalhaEm:      timestamp('ultima_falha_em', { withTimezone: true }),
+  ultimaFalhaErro:    text('ultima_falha_erro'),
+  // Documento do titular da conta no MP (0198), só para comparar com o CNPJ do grupo; nunca vai à tela.
+  titularDocumento:   text('titular_documento'),
 })
 
 export const notagatewayConfig = pgTable('notagateway_config', {
@@ -1112,6 +1122,8 @@ export const configuracaoTaxas = pgTable('configuracao_taxas', {
   // Cards do simulador: 'taxas' (21x e 12x pela taxa do cartão, e PIX) ou 'avista_12x' (PIX e
   // o total em 12x digitado por modelo em precificacao.valor_12x). Ver src/lib/simulador-padrao.ts.
   padraoSimulador: text('padrao_simulador').$type<PadraoSimulador>().notNull().default('taxas'),
+  // Custo do PIX do grupo (#86), em fração (0.002 = 0,20%); 0 = o banco não cobra.
+  custoPixTaxa: numeric('custo_pix_taxa', { precision: 8, scale: 6 }).notNull().default('0'),
   atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -1206,6 +1218,10 @@ export const pixRecebimentosMcp = pgTable('pix_recebimentos_mcp', {
   pecaVendaId:         uuid('peca_venda_id').references(() => vendasPecas.id),
   lancadoPorId:        uuid('lancado_por_id').references(() => usuarios.id),
   lancadoEm:           timestamp('lancado_em', { withTimezone: true }),
+  // Gravados na conciliação: o valor acima é o crédito do banco, já sem o custo do PIX.
+  valorBruto:          numeric('valor_bruto', { precision: 12, scale: 2 }),
+  custoPix:            numeric('custo_pix', { precision: 12, scale: 2 }),
+  custoPixTaxa:        numeric('custo_pix_taxa', { precision: 8, scale: 6 }),
   criadoEm:            timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
 })
 

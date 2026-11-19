@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, isNotNull, or, sql, type SQL } from 'drizzle-orm'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { db } from '@/lib/db'
-import { agendamentos, clientes, contas, grupos, lojas, ordensServico, usuarios, vendas, vendasPecas } from '@/lib/db/schema'
+import { agendamentos, clientes, contas, grupos, gruposLiberados, lojas, ordensServico, usuarios, vendas, vendasPecas } from '@/lib/db/schema'
 
 type Executor = Pick<typeof db, 'select'>
 
@@ -51,6 +52,11 @@ export function usuarioDaConta(contaId: string): SQL {
   return eq(usuarios.contaId, contaId)
 }
 
+// Usuário da Conta para ligar ou exibir: conta_id da Conta ou loja dela (funcionário de loja pode ter só loja_id).
+export function usuarioOuLojaDaConta(contaId: string): SQL {
+  return or(usuarioDaConta(contaId), inArray(usuarios.lojaId, lojasDaConta(contaId)))!
+}
+
 // Escopo de lojas de quem consulta: as da Conta, ou só as do grupo liberado na persona do
 // admin_rede (#517), que nunca vê outro grupo da Conta dona.
 export type EscopoDoUsuario = { contaId: string | null; grupoLiberado?: string | null }
@@ -59,6 +65,13 @@ export function lojasDoEscopo(usuario: EscopoDoUsuario) {
   if (usuario.grupoLiberado) return lojasDoGrupo(usuario.grupoLiberado)
   if (!usuario.contaId) return db.select({ id: lojas.id }).from(lojas).where(sql`false`)
   return lojasDaConta(usuario.contaId)
+}
+
+// Filtro de loja de um registro buscado pelo id: admin_geral vê todas (undefined); quem tem Conta, só as
+// lojas do escopo dele; sem Conta, nada (null: quem chama responde "não encontrado").
+export function lojaNoEscopo(usuario: EscopoDoUsuario & { papel: string }, coluna: AnyPgColumn): SQL | undefined | null {
+  if (usuario.papel === 'admin_geral') return undefined
+  return usuario.contaId ? inArray(coluna, lojasDoEscopo(usuario)) : null
 }
 
 // O grupo está no escopo de quem consulta: o da persona, ou qualquer um da Conta.
@@ -99,4 +112,27 @@ export async function contaDoGrupoUsaBling(grupoId: string, exec: Executor = db)
     .where(and(inArray(grupos.contaId, daConta), sql`coalesce(${grupos.blingClientId}, '') <> ''`, sql`coalesce(${grupos.blingClientSecret}, '') <> ''`))
     .limit(1)
   return !!comBling
+}
+
+// Nome de quem lançou ou enviou um registro do grupo, para exibir. Aparece quem é da Conta do grupo
+// (conta_id ou loja da Conta), o admin_geral e quem teve o grupo liberado (admin_rede, #517), mesmo
+// revogado ou com outro papel hoje: autoria é histórico (decisão do Luis, 18/11/2026). Marcação em
+// grupos_acesso não conta (ADR-0018).
+export async function nomesDeUsuariosVisiveis(
+  grupo: { id: string; contaId: string },
+  ids: string[],
+  exec: Executor = db,
+): Promise<Map<string, string>> {
+  if (!ids.length) return new Map()
+  const liberados = exec.select({ id: gruposLiberados.usuarioId }).from(gruposLiberados).where(eq(gruposLiberados.grupoId, grupo.id))
+  const linhas = await exec.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios)
+    .where(and(
+      inArray(usuarios.id, [...new Set(ids)]),
+      or(
+        usuarioOuLojaDaConta(grupo.contaId),
+        eq(usuarios.papel, 'admin_geral'),
+        inArray(usuarios.id, liberados),
+      ),
+    ))
+  return new Map(linhas.map(l => [l.id, l.nome]))
 }

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { validarAcessoFabrica } from './acessos-fabrica'
 
 test('limpa nome e e-mail e aceita senha de 8 ou mais', () => {
-  assert.deepEqual(validarAcessoFabrica({ nome: '  Fábrica Comercial  ', email: ' Comercial@MotoChefe.com ', senha: '12345678' }),
-    { ok: true, dados: { nome: 'Fábrica Comercial', email: 'comercial@motochefe.com', senha: '12345678' } })
+  assert.deepEqual(validarAcessoFabrica({ nome: '  Fábrica Comercial  ', email: ' Comercial@Exemplo.com.br ', senha: '12345678' }),
+    { ok: true, dados: { nome: 'Fábrica Comercial', email: 'comercial@exemplo.com.br', senha: '12345678' } })
 })
 
 test('recusa nome vazio, e-mail inválido e senha curta, com a frase de cada um', () => {

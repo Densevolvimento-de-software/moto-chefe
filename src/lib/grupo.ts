@@ -5,8 +5,6 @@ import { grupos, lojas } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { transferenciaEntreGruposLigada } from '@/lib/transferencia-grupos'
 import {
-  EMAIL_ACESSO_MULTI_GRUPO,
-  aprovaBaixoValorEmQualquerGrupo,
   aprovaEmGrupoExtra,
   aprovaPagamentoSensivelNoGrupo,
   socioAprovaNoGrupo,
@@ -218,17 +216,16 @@ export async function podeTransferirEntreGrupos(usuario: { contaId: string | nul
 }
 
 // ─── Aprovação de pagamento sensível (financiamento/transferência) ────────────
-// Não é permissão de papel: um admin_socio só aprova se tiver
-// aprova_pagamento_sensivel marcado em /admin/usuarios — os demais continuam
-// sem acesso a essa informação, como o Cesar definiu. Quem tem a liberação
-// aprova nos MESMOS grupos em que aprova venda de baixo valor (grupo da loja
-// fixa + grupos_aprovacao), nunca no grupo do cookie grupoAtivo.
+// Não é permissão de papel: só aprova quem tem aprova_pagamento_sensivel marcado em
+// /admin/usuarios. O admin_geral marcado aprova em todos os grupos; os demais, nos MESMOS
+// grupos em que aprovam venda de baixo valor (grupo da loja fixa + grupos_aprovacao),
+// nunca no grupo do cookie grupoAtivo.
 // A regra pura fica em @/lib/aprovacao-permissao.
 export async function podeAprovarPagamentoSensivelNaLoja(
   usuario: UsuarioAprovadorComConta,
   lojaIdVenda: string,
 ): Promise<boolean> {
-  if (usuario.email !== EMAIL_ACESSO_MULTI_GRUPO && !usuario.aprovaPagamentoSensivel) return false
+  if (!usuario.aprovaPagamentoSensivel) return false
 
   const [grupoAlvo, grupoUsuario] = await Promise.all([
     getGrupoIdDaLoja(lojaIdVenda),
@@ -243,7 +240,7 @@ export async function podeAprovarPagamentoSensivelNaLoja(
 export async function podeAprovarPagamentoSensivelNoGrupoAtivo(
   usuario: UsuarioAprovadorComConta & UsuarioComConta,
 ): Promise<boolean> {
-  if (usuario.email !== EMAIL_ACESSO_MULTI_GRUPO && !usuario.aprovaPagamentoSensivel) return false
+  if (!usuario.aprovaPagamentoSensivel) return false
 
   const grupoAtivo = await getGrupoAtivo(usuario)
   if (!(await aprovaNaContaDoGrupo(usuario, grupoAtivo.id))) return false
@@ -251,15 +248,14 @@ export async function podeAprovarPagamentoSensivelNoGrupoAtivo(
   return aprovaPagamentoSensivelNoGrupo(usuario, grupoAtivo.id, grupoUsuario)
 }
 
-// Fora o admin_geral, aprovar (pela exceção nominal, pelos grupos de aprovação ou como
-// sócio) só vale em grupo da própria Conta (ADR-0018).
+// Fora o admin_geral, aprovar (pelos grupos de aprovação ou como sócio) só vale em grupo
+// da própria Conta (ADR-0018).
 async function aprovaNaContaDoGrupo(usuario: UsuarioAprovadorComConta, grupoId: string): Promise<boolean> {
   return usuario.papel === 'admin_geral' || grupoNoEscopo(grupoId, usuario)
 }
 
 // ─── Aprovação de venda abaixo do valor mínimo ────────────────────────────────
-// admin_geral aprova em qualquer grupo; o usuário multi-grupo, em qualquer grupo da Conta dele; admin_socio
-// aprova no próprio grupo (o da loja fixa dele, usuarios.lojaId) mais os grupos
+// admin_geral aprova em qualquer grupo; admin_socio aprova no próprio grupo (o da loja fixa dele, usuarios.lojaId) mais os grupos
 // liberados no cadastro (usuarios.grupos_aprovacao) — nunca pelo cookie
 // grupoAtivo: a permissão de aprovar não deve depender de qual grupo o sócio
 // está "olhando" no momento. A regra pura fica em @/lib/aprovacao-permissao
@@ -271,11 +267,7 @@ export async function podeAprovarVendaBaixoValor(
   if (usuario.papel === 'admin_geral') return true
   const grupoVenda = await getGrupoIdDaLoja(lojaIdVenda)
   if (!(await aprovaNaContaDoGrupo(usuario, grupoVenda))) return false
-  // O usuário multi-grupo aprova em qualquer grupo da Conta dele — sem isto ficava
-  // travado no BH por ter loja fixa no Sul de Minas.
-  if (aprovaBaixoValorEmQualquerGrupo(usuario)) return true
-
-  // Grupo liberado nominalmente no cadastro (ex.: João Brito no BH e no Vale).
+  // Grupo liberado no cadastro (grupos_aprovacao).
   if (aprovaEmGrupoExtra(usuario, grupoVenda)) return true
 
   if (usuario.papel !== 'admin_socio' || !usuario.lojaId) return false

@@ -5,6 +5,7 @@
  * conferem as motos por conferirMotosDaEntrada. A tela confere a loja com
  * lojaDestinoDaEntrada.
  */
+import { ehChaveDuplicada } from '@/lib/erro-pg'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
@@ -178,10 +179,6 @@ export async function recusasDeChassiCadastrado(exec: Pick<typeof db, 'select'>,
     return m ? [`${chassi}: ${fraseDoChassiCadastrado({ noEscopo: m.noEscopo, arquivada: m.arquivadaEm !== null })}`] : []
   })
 }
-
-/** Erro de chave única do Postgres (23505), direto ou embrulhado pelo Drizzle. */
-export const ehChaveDuplicada = (e: { code?: string; cause?: { code?: string }; message?: string }) =>
-  e.code === '23505' || e.cause?.code === '23505' || !!e.message?.includes('unique') || !!e.message?.includes('duplicate key')
 
 /**
  * Frase do insert que falhou na Entrada manual ou por planilha, moto a moto. Chave duplicada

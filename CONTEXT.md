@@ -310,6 +310,16 @@ Nota Gateway, descartada depois que a consulta confirmou que a nota não existe 
 SEFAZ e libera nova emissão para a venda.
 _Evitar_: cancelada (cancelamento é de nota que valeu na SEFAZ)
 
+**Inutilização**:
+Pedido à SEFAZ, pela Nota Gateway, que declara sem uso um número ou uma faixa de números de NF de
+saída que ficou sem nota; o resultado (autorizada ou negada) chega depois.
+_Evitar_: cancelar o número
+
+**Aviso da Nota Gateway**:
+Chamada que a Nota Gateway faz ao MOVA quando um pedido muda de situação; só dispara a consulta,
+não vale como resultado.
+_Evitar_: notificação, callback
+
 **NF de devolução**:
 Nota que registra o retorno da moto vendida, referenciando a NF de saída original. Depois do
 prazo de cancelamento, é a saída usual; a outra é o cancelamento extemporâneo, pedido à SEFAZ.

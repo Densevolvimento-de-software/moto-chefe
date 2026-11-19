@@ -250,7 +250,6 @@ export default async function OSDetalhePage({ params }: { params: Promise<{ id: 
           {podeGerirConciliacao(usuario.papel) && os.status === 'concluida' && pagamentosOS.length > 0 && (
             <OSConciliacaoPanel
               osId={id}
-              osNumero={os.numero}
               pagamentos={pagamentosOS}
               papel={usuario.papel}
             />

@@ -15,9 +15,9 @@ Base da API: `https://api.notagateway.com.br`. Os caminhos abaixo vêm das pági
 |---|---|---|---|
 | Sobre a API | https://docs.notagateway.com.br/v2/docs/sobre-a-api | sem resumo ainda | REST/JSON, autenticação por API Key, documentos NF-e, NFC-e e DC-e |
 | Introdução (referência) | https://docs.notagateway.com.br/v2/reference/introdu%C3%A7%C3%A3o | sem resumo ainda | Entrada da referência de endpoints; a lista fica na barra lateral |
-| Autenticação | https://docs.notagateway.com.br/v2/reference/autentica%C3%A7%C3%A3o | sem resumo ainda | Header `Authorization: Basic` com a API Key |
+| Autenticação | https://docs.notagateway.com.br/v2/reference/autentica%C3%A7%C3%A3o | `docs/fiscal/ng-autenticacao.md` | Header `Authorization: Basic` com a API Key |
 | Status da nota | https://docs.notagateway.com.br/v2/docs/status-da-nota-fiscal | sem resumo ainda | Os 13 status de autorização e cancelamento, com o significado de cada um. Fonte do `status.ts` |
-| Webhook | https://docs.notagateway.com.br/v2/docs/webhook | sem resumo ainda | Avisa Autorizada, Negada, Cancelada e CancelamentoNegado; JSON ou XML por POST; token opcional no header `x-token`; 15 tentativas em cerca de 4 h até receber 200 |
+| Webhook | https://docs.notagateway.com.br/v2/docs/webhook | `docs/fiscal/ng-webhook.md` | Avisa Autorizada, Negada, Cancelada e CancelamentoNegado; JSON ou XML por POST; token opcional no header `x-token`; 15 tentativas em cerca de 4 h até receber 200 |
 
 ## NF-e (modelo 55), a que o MOVA emite
 
