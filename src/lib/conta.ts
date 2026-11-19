@@ -100,3 +100,15 @@ export async function contaDoGrupoUsaBling(grupoId: string, exec: Executor = db)
     .limit(1)
   return !!comBling
 }
+
+// Nome de quem lançou ou enviou um registro do grupo, para exibir.
+export async function nomesDeUsuariosVisiveis(
+  _grupo: { id: string; contaId: string },
+  ids: string[],
+  exec: Executor = db,
+): Promise<Map<string, string>> {
+  if (!ids.length) return new Map()
+  const linhas = await exec.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios)
+    .where(inArray(usuarios.id, [...new Set(ids)]))
+  return new Map(linhas.map(l => [l.id, l.nome]))
+}
