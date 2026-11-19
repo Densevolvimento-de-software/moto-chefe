@@ -18,8 +18,11 @@ export async function sessaoQueSegura(url: string) {
     pid,
     travar: (sqlTexto: string, params: unknown[]) => c.query(sqlTexto, params),
     /** Sessões esperando lock por causa de uma das sessões dadas. */
-    esperandoPor: async (pids: number[]) =>
-      (await c.query('select pid from pg_stat_activity where pg_blocking_pids(pid) && $1::int[]', [pids])).rows.map(r => Number(r.pid)),
+    // Dentro da transação aberta, pg_stat_activity congela na 1ª leitura: limpa o snapshot antes de cada consulta.
+    esperandoPor: async (pids: number[]) => {
+      await c.query('select pg_stat_clear_snapshot()')
+      return (await c.query('select pid from pg_stat_activity where pg_blocking_pids(pid) && $1::int[]', [pids])).rows.map(r => Number(r.pid))
+    },
     soltar: () => c.query('commit'),
     fim: () => c.end(),
   }
