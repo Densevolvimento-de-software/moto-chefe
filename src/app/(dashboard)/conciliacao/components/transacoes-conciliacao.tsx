@@ -49,9 +49,17 @@ const botaoVincular = (l: LinhaNaTela, tamanho?: 'toque' | 'largo') => (
 
 type Props = { linhas: LinhaNaTela[]; podeVincular: boolean }
 
-// Coluna Venda da tabela: estornada não se vincula; sem permissão, só o que está ligado.
+// Coluna Venda da tabela: estornada mostra de qual venda foi o estorno (decisão do Luis, 19/11) e não se vincula;
+// sem permissão, só o que está ligado.
 function VendaNaTabela({ l, podeVincular }: { l: LinhaNaTela; podeVincular: boolean }) {
-  if (l.estornada) return <span className="text-xs">{NAO_SE_VINCULA}</span>
+  if (l.estornada) {
+    return (
+      <span className="flex flex-col gap-0.5 text-xs">
+        {l.alvo && <RotuloDoAlvo numero={l.alvo.numero} clienteNome={l.alvo.clienteNome} tipo={l.alvo.tipo} estornada />}
+        <span>{NAO_SE_VINCULA}</span>
+      </span>
+    )
+  }
   if (podeVincular) return botaoVincular(l)
   return l.alvo ? <RotuloDoAlvo numero={l.alvo.numero} clienteNome={l.alvo.clienteNome} tipo={l.alvo.tipo} /> : null
 }

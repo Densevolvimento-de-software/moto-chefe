@@ -41,11 +41,16 @@ export function ChipDoAlvo({ tipo, className }: { tipo?: 'moto' | 'peca' | 'os';
   return <span className={cn('text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5', className)}>{tipo === 'peca' ? 'PA' : 'OS'}</span>
 }
 
-/** "#31902, Maria" com o selo de ligada: a venda da linha na tabela, com ou sem o Desvincular ao lado. */
-export function RotuloDoAlvo({ numero, clienteNome, tipo }: { numero: number; clienteNome: string; tipo?: 'moto' | 'peca' | 'os' }) {
+/**
+ * "#31902, Maria": a venda da linha na tabela, com ou sem o Desvincular ao lado. `estornada`: a venda de que o dinheiro
+ * voltou, sem o selo verde de ligada.
+ */
+export function RotuloDoAlvo({ numero, clienteNome, tipo, estornada = false }: {
+  numero: number; clienteNome: string; tipo?: 'moto' | 'peca' | 'os'; estornada?: boolean
+}) {
   return (
-    <span className="flex items-center gap-1 text-xs text-success font-medium">
-      <CheckCircle2 size={12} />
+    <span className={cn('flex items-center gap-1 text-xs font-medium', !estornada && 'text-success')}>
+      {!estornada && <CheckCircle2 size={12} />}
       <ChipDoAlvo tipo={tipo} />
       #{numero}, {clienteNome.split(' ')[0]}
     </span>

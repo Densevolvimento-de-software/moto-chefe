@@ -61,7 +61,7 @@ const selos = (el: Element | null | undefined) => [...(el?.querySelectorAll('[da
 const abrirFolha = (t: { act: (f: () => Promise<void>) => Promise<void> }, valor: string) =>
   t.act(async () => { clicar(itemDaLista(valor)!.querySelector('button')); await esperar(50) })
 
-test('tabela: pendente com Vincular; ligada com a venda e Desvincular; estornada riscada, com selo e sem botões', async () => {
+test('tabela: pendente com Vincular; ligada com a venda e Desvincular; estornada riscada, com selo, a venda do estorno e sem botões', async () => {
   await montar()
   assert.deepEqual(botoes(linhaDaTabela('R$ 3.550,00')), ['Vincular'])
   assert.deepEqual(selos(linhaDaTabela('R$ 3.550,00')), ['PIX'])
@@ -76,7 +76,8 @@ test('tabela: pendente com Vincular; ligada com a venda e Desvincular; estornada
   assert.ok(texto(estornada).includes('Estornado'), texto(estornada))
   assert.ok(texto(estornada).includes('Não se vincula'), texto(estornada))
   assert.deepEqual(selos(estornada), ['Déb', 'Estornado'])
-  assert.ok(!texto(estornada).includes('#31903'), texto(estornada))
+  // Decisão do Luis (19/11): a tabela mostra de qual venda foi o estorno, como a folha do celular.
+  assert.ok(texto(estornada).includes('#31903, João'), texto(estornada))
 })
 
 test('celular: pendente com Vincular; ligada com o número; estornada riscada, com selo e "Não se vincula"', async () => {
