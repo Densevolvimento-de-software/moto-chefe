@@ -359,3 +359,32 @@ test('linha coberta por um PIX inteiro diz qual foi; rateio entre PIX e linha se
   assert.deepEqual(r.map(x => x.pixId), ['inteiro', undefined, undefined])
   assert.deepEqual(r.map(x => x.conciliado), [true, true, false])
 })
+
+// #92: forçada parcial de PIX. A marca cobre o que faltava; o PIX vinculado fica com esta linha e não cobre outra.
+const FORCADA_PARCIAL: ConciliadoManual = { ...FORCADO, pix: { valorRecebido: 5988, valorBruto: 6000, custoPix: 12, custoPixTaxa: 0.002 } }
+
+test('forçada parcial de PIX: o PIX vinculado que completa a linha não cobre outra linha PIX', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000, conciliadoManual: FORCADA_PARCIAL }, { tipo: 'pix', valor: 3000 }]
+  const r = matchPagamentos(pgtos, [], [{ id: 'p4', valor: 3992, valorBruto: 4000 }])
+  assert.deepEqual(r.map(x => [x.conciliado, x.coberto]), [[true, 10000], [false, 0]])
+})
+
+test('forçada parcial de PIX completada por mais de um PIX vinculado: nenhum deles cobre outra linha', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000, conciliadoManual: FORCADA_PARCIAL }, { tipo: 'pix', valor: 3000 }]
+  const r = matchPagamentos(pgtos, [], [{ id: 'a', valor: 2000 }, { id: 'b', valor: 2000 }])
+  assert.deepEqual(r.map(x => [x.conciliado, x.coberto]), [[true, 10000], [false, 0]])
+})
+
+test('PIX a mais que a forçada parcial não usa segue cobrindo outra linha', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000, conciliadoManual: FORCADA_PARCIAL }, { tipo: 'pix', valor: 3000 }]
+  const r = matchPagamentos(pgtos, [], [{ id: 'p4', valor: 4000 }, { id: 'p3', valor: 3000 }])
+  assert.deepEqual(r.map(x => [x.conciliado, x.coberto]), [[true, 10000], [true, 3000]])
+})
+
+test('status nas listas: forçada parcial conta só a base da marca, e o PIX vinculado completa a linha dela', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000, conciliadoManual: FORCADA_PARCIAL }, { tipo: 'pix', valor: 3000 }]
+  assert.equal(valorConciliadoManual(pgtos), 6000)
+  // 6.000 da marca + 4.000 do PIX vinculado cobrem a linha forçada; a de 3.000 segue sem dinheiro.
+  assert.equal(calcStatusMultiPagamento(pgtos, 0, 4000, '13000'), 'parcial')
+  assert.equal(calcStatusMultiPagamento(pgtos, 0, 7000, '13000'), 'conciliada')
+})

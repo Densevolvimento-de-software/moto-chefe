@@ -109,7 +109,8 @@ export function valorConciliadoManual(pagamentos: unknown): number {
   const pgtos = (pagamentos ?? []) as PgtoItem[]
   return pgtos
     .filter(p => p.conciliadoManual && precisaConciliar(p.tipo))
-    .reduce((a, p) => a + (Number(p.valor) || 0), 0)
+    // Forçada parcial de PIX (#92): a marca vale o que faltava; o resto da linha já conta como PIX vinculado.
+    .reduce((a, p) => a + (Number(p.conciliadoManual?.pix?.valorBruto ?? p.valor) || 0), 0)
 }
 
 type ConcMatch = { id: string; autorizacao: string | null; valorBruto: string | number; tipo?: string }
@@ -184,6 +185,18 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
   // pintava a linha errada na venda com PIX de 4.490 + 5.000 + 1.000 (NF 2284), onde os
   // recebimentos conciliados eram justamente os de 5.000 e 1.000.
   const pixUsados = new Set<string>()
+  // Forçada parcial de PIX (#92): a marca cobre só o que faltava (pix.valorBruto); o resto da linha é dos
+  // PIX vinculados, que ficam com ela e não cobrem outra linha PIX. Casa pelo valor; sem casar, reserva do rateio.
+  let reservaPix = 0
+  pgtos.forEach(p => {
+    const base = PAGAMENTO_PIX.has(p.tipo) ? p.conciliadoManual?.pix?.valorBruto : undefined
+    if (base === undefined) return
+    const resto = p.valor - base
+    if (resto <= 0.05) return
+    const m = pixRecs.find(r => !pixUsados.has(r.id) && Math.abs(valorQueCobre(r) - resto) <= 0.05)
+    if (m) pixUsados.add(m.id)
+    else reservaPix += resto
+  })
   pgtos.forEach((p, i) => {
     if (!PAGAMENTO_PIX.has(p.tipo) || resultado[i].conciliado) return
     const m = pixRecs.find(r => !pixUsados.has(r.id) && Math.abs(valorQueCobre(r) - p.valor) <= 0.05)
@@ -195,7 +208,7 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
 
   // O que sobrou rateia entre as linhas PIX ainda descobertas, na ordem. Dois PIX
   // lançados e um só recebimento fecham um, não os dois.
-  let poolPix = pixRecs.filter(r => !pixUsados.has(r.id)).reduce((a, r) => a + (valorQueCobre(r) || 0), 0)
+  let poolPix = Math.max(0, pixRecs.filter(r => !pixUsados.has(r.id)).reduce((a, r) => a + (valorQueCobre(r) || 0), 0) - reservaPix)
   pgtos.forEach((p, i) => {
     if (!PAGAMENTO_PIX.has(p.tipo) || resultado[i].conciliado || poolPix <= 0) return
     const falta = p.valor - resultado[i].coberto
