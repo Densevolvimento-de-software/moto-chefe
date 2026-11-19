@@ -85,7 +85,7 @@ test('aux_adm importa só o grupo ativo dele, mesmo com o cookie apontando outra
 test('Mercado Pago recusa a credencial: { error } com a frase conhecida, e a falha fica gravada no grupo', async () => {
   const a = await conta('A', { credencial: 401 })
   sessao = a.comoAux
-  const frase = 'Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.'
+  const frase = 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.'
   assert.deepEqual(await chamar(), { status: 502, corpo: { error: frase } })
   assert.equal((await faixa(a.grupoId)).ultima_falha_erro, frase)
 })

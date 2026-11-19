@@ -51,8 +51,8 @@ test('401 vira mensagem de credencial recusada sem o token', async () => {
   await assert.rejects(buscarPagamentosAlterados(TOKEN, periodo), (err: unknown) => {
     assert.ok(err instanceof ErroMercadoPago)
     assert.equal(err.status, 401)
-    // Sem apontar tela: a do cadastro ainda não existe (#51).
-    assert.equal(err.message, 'Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.')
+    // Diz quem resolve e onde (Grupos, PR5 da #51): quem vê a frase na conciliação não cadastra credencial.
+    assert.equal(err.message, 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.')
     assert.ok(!err.message.includes(TOKEN))
     return true
   })
@@ -84,7 +84,7 @@ test('403 também vira credencial recusada sem o token', async () => {
   await assert.rejects(buscarPagamentosAlterados(TOKEN, periodo), (err: unknown) => {
     assert.ok(err instanceof ErroMercadoPago)
     assert.equal(err.status, 403)
-    assert.equal(err.message, 'Credencial do Mercado Pago recusada (HTTP 403). Cadastre o token novo.')
+    assert.equal(err.message, 'O Mercado Pago recusou a credencial deste grupo (HTTP 403). Peça ao administrador para cadastrá-la de novo em Grupos.')
     return true
   })
 })

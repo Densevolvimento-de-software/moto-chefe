@@ -48,11 +48,11 @@ test('mostra a hora, os 4 números, o não tratado com o Forçar e as 7 contagen
 })
 
 test('nunca importado: diz isso e não mostra números; a falha da última rodada aparece como frase', async () => {
-  await montar({ ultimaImportacaoEm: null, resumo: null, falha: { em: '2026-11-19T12:02:00.000Z', erro: 'Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.' } })
+  await montar({ ultimaImportacaoEm: null, resumo: null, falha: { em: '2026-11-19T12:02:00.000Z', erro: 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.' } })
   assert.match(textoDaTela(), /Ainda não importado/)
   assert.doesNotMatch(textoDaTela(), /vendas novas/)
   assert.equal(document.querySelector('[role="alert"]')?.textContent ?? null,
-    'A importação de 19/11 às 09:02 falhou: Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.')
+    'A importação de 19/11 às 09:02 falhou: O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.')
 })
 
 test('Importar agora: um pedido só mesmo com dois cliques, botão travado enquanto importa e refresh no fim', async () => {

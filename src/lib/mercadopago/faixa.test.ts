@@ -41,6 +41,6 @@ test('frase do não tratado: meio fora pede o Forçar; sem líquido diz que entr
 test('hora da última importação e frase da falha, no horário de Brasília', () => {
   assert.equal(rotuloDaUltima(null), 'Ainda não importado. Roda sozinho uma vez por dia.')
   assert.equal(rotuloDaUltima('2026-11-19T12:02:00.000Z'), 'Importado em 19/11 às 09:02. Roda sozinho uma vez por dia.')
-  assert.equal(fraseDaFalha('2026-11-19T12:02:00.000Z', 'Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.'),
-    'A importação de 19/11 às 09:02 falhou: Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.')
+  assert.equal(fraseDaFalha('2026-11-19T12:02:00.000Z', 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.'),
+    'A importação de 19/11 às 09:02 falhou: O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.')
 })

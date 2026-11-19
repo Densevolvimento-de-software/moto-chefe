@@ -29,7 +29,7 @@ async function chamarGrupo<T>(token: string, caminho: string): Promise<T> {
   } catch (e) {
     if (e instanceof ErroMercadoPago && (e.status === 401 || e.status === 403)) {
       throw new ErroMercadoPago(
-        `Credencial do Mercado Pago recusada (HTTP ${e.status}). Cadastre o token novo.`,
+        `O Mercado Pago recusou a credencial deste grupo (HTTP ${e.status}). Peça ao administrador para cadastrá-la de novo em Grupos.`,
         e.status,
       )
     }

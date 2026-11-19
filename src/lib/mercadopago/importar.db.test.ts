@@ -223,7 +223,7 @@ test('credencial recusada (401) não grava nada', async () => {
   await assert.rejects(
     mod.importarMercadoPagoDoGrupo(a.grupoId, {
       agora: AGORA,
-      buscar: async () => { throw new ErroMercadoPago('Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.', 401) },
+      buscar: async () => { throw new ErroMercadoPago('O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.', 401) },
     }),
     (e: unknown) => e instanceof ErroMercadoPago && e.status === 401,
   )
@@ -287,11 +287,11 @@ test('falha registrada pela rodada ou pelo botão: hora e frase na linha do grup
   const b = await semearConta('B')
   await importar(a, [])
   const antes = (await execRows(sql`select ultima_importacao_em, ultimo_resumo from mercadopago_config where grupo_id = ${a.grupoId}`))[0]
-  await mod.registrarFalhaMp(a.grupoId, 'Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.', AGORA)
+  await mod.registrarFalhaMp(a.grupoId, 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.', AGORA)
   const [c] = await execRows(sql`select ultima_importacao_em, ultimo_resumo, ultima_falha_em, ultima_falha_erro from mercadopago_config where grupo_id = ${a.grupoId}`)
   assert.deepEqual([c.ultima_importacao_em, c.ultimo_resumo], [antes.ultima_importacao_em, antes.ultimo_resumo])
   assert.equal(new Date(String(c.ultima_falha_em)).toISOString(), AGORA.toISOString())
-  assert.equal(c.ultima_falha_erro, 'Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.')
+  assert.equal(c.ultima_falha_erro, 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.')
   const [deB] = await execRows(sql`select ultima_falha_em from mercadopago_config where grupo_id = ${b.grupoId}`)
   assert.equal(deB.ultima_falha_em, null)
 })

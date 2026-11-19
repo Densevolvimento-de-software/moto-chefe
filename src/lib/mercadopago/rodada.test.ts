@@ -16,22 +16,22 @@ test('grupo que falha não impede os seguintes; só a mensagem conhecida sai, o 
     registrarFalha: async (grupoId, erro) => { falhas.push([grupoId, erro]) },
     grupos,
     importar: async id => {
-      if (id === 'g1') throw new ErroMercadoPago('Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.', 401)
+      if (id === 'g1') throw new ErroMercadoPago('O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.', 401)
       if (id === 'g2') throw new TypeError('falha com TEST-token-123 no meio')
       return resultado({ pendentes: 1 })
     },
   })
   assert.deepEqual(r, [
-    { grupo: 'Sul', ok: false, erro: 'Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.' },
+    { grupo: 'Sul', ok: false, erro: 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.' },
     { grupo: 'BH', ok: false, erro: 'erro interno' },
     { grupo: 'Vale', ok: true, resultado: resultado({ pendentes: 1 }) },
   ])
   // A falha de cada grupo fica guardada para a faixa da conciliação, com a mesma frase da resposta.
-  assert.deepEqual(falhas, [['g1', 'Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.'], ['g2', 'erro interno']])
+  assert.deepEqual(falhas, [['g1', 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.'], ['g2', 'erro interno']])
   // O log do erro desconhecido leva só o nome do erro, como a rotina de inutilização: a mensagem pode ter segredo.
   const linhas = log.mock.calls.map(c => String(c.arguments.join(' ')))
   assert.deepEqual(linhas, [
-    '[conciliacao-mercadopago] Sul: Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.',
+    '[conciliacao-mercadopago] Sul: O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.',
     '[conciliacao-mercadopago] BH: erro interno (TypeError)',
   ])
 })
@@ -50,7 +50,7 @@ test('recusa do sistema (grupo sem credencial) mantém a frase', async t => {
 test('resumo soma os grupos que importaram e lista pelo nome os que falharam', () => {
   const rs: ResultadoDoGrupo[] = [
     { grupo: 'Sul', ok: true, resultado: resultado({ conciliadas: 2, pendentes: 1, duplicadas: 1, naoTratados: 1 }) },
-    { grupo: 'BH', ok: false, erro: 'Credencial do Mercado Pago recusada (HTTP 401). Cadastre o token novo.' },
+    { grupo: 'BH', ok: false, erro: 'O Mercado Pago recusou a credencial deste grupo (HTTP 401). Peça ao administrador para cadastrá-la de novo em Grupos.' },
     { grupo: 'Vale', ok: true, resultado: resultado({ conciliadas: 1, pendentes: 1, estornos: 1, estornosSemLinha: 2, ignorados: 4 }) },
   ]
   assert.deepEqual(resumoDaRodada(rs), {
