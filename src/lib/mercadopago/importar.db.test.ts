@@ -335,3 +335,23 @@ test('falha de uma rodada que começou antes da última importação boa não é
   await mod.registrarFalhaMp(a.grupoId, 'falha nova', new Date('2026-11-12T11:05:00.000Z'))
   assert.equal(await falha(), 'falha nova')
 })
+
+// A importação é uma transação só: se um pagamento quebra no meio, nenhuma linha fica, o resumo da última importação
+// boa continua o mesmo e a falha é gravada fora da transação desfeita.
+test('erro dentro da transação: nenhuma linha, resumo de antes intacto e a falha gravada', async t => {
+  t.mock.method(console, 'error', () => {})
+  const { resultadoDoGrupo } = await import('./rodada')
+  const a = await semearConta('A')
+  await mod.importarMercadoPagoDoGrupo(a.grupoId, { agora: new Date('2026-11-12T10:00:00.000Z'), buscar: buscarFixo([]) })
+  const antes = (await execRows(sql`select ultima_importacao_em, ultimo_resumo from mercadopago_config where grupo_id = ${a.grupoId}`))[0]
+  // O 2º pagamento não cabe em numeric(12,2): o insert dele lança depois de o 1º já ter entrado na transação.
+  const pagamentos = [pg(credito3x, { id: novoId() }), pg(credito3x, { id: novoId(), transaction_amount: 1e11, transaction_details: { net_received_amount: 1e11 } })]
+  const r = await resultadoDoGrupo({ id: a.grupoId, nome: 'A' }, {
+    importar: id => mod.importarMercadoPagoDoGrupo(id, { agora: AGORA, buscar: buscarFixo(pagamentos) }),
+  })
+  assert.deepEqual(r, { grupo: 'A', ok: false, erro: 'erro interno' })
+  assert.deepEqual(await linhasDoGrupo(a.grupoId), [])
+  const [depois] = await execRows(sql`select ultima_importacao_em, ultimo_resumo, ultima_falha_erro from mercadopago_config where grupo_id = ${a.grupoId}`)
+  assert.deepEqual([depois.ultima_importacao_em, depois.ultimo_resumo], [antes.ultima_importacao_em, antes.ultimo_resumo])
+  assert.equal(depois.ultima_falha_erro, 'erro interno')
+})
