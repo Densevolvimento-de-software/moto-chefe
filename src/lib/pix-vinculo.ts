@@ -4,7 +4,8 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { custoDoPixVinculado } from './custo-pix'
 import { custoPixTaxaDoGrupo } from './custo-pix-grupo'
 import { db } from './db'
-import { pixRecebimentosMcp } from './db/schema'
+import { ordensServico, pixRecebimentosMcp, vendas, vendasPecas } from './db/schema'
+import { temForcadaParcialDePix, type PgtoOS } from './conciliacao-status'
 import { ehTransferenciaInterna } from './pix-internos'
 import { RecusaUsuario } from './resultado-action'
 import { ehUuid } from './uuid'
@@ -54,12 +55,28 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
   if (ligados.length === 0) throw new RecusaUsuario(PIX_JA_VINCULADO)
 }
 
-export async function desvincularPix(pixId: string, grupoId: string): Promise<void> {
-  const soltos = ehUuid(pixId)
-    ? await db.update(pixRecebimentosMcp)
-      .set(PIX_SOLTO)
-      .where(doGrupo(pixId, grupoId))
-      .returning({ id: pixRecebimentosMcp.id })
+const COMPLETA_FORCADA = 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.'
+
+// Pagamentos do alvo a que o PIX está ligado (venda, OS ou venda de peça); pedido não tem forçada.
+async function pagamentosDoVinculo(v: { vendaId: string | null; osId: string | null; pecaVendaId: string | null }): Promise<PgtoOS[]> {
+  const [r] = v.vendaId ? await db.select({ p: vendas.pagamentos }).from(vendas).where(eq(vendas.id, v.vendaId))
+    : v.osId ? await db.select({ p: ordensServico.pagamentos }).from(ordensServico).where(eq(ordensServico.id, v.osId))
+    : v.pecaVendaId ? await db.select({ p: vendasPecas.pagamentos }).from(vendasPecas).where(eq(vendasPecas.id, v.pecaVendaId))
     : []
+  return (r?.p ?? []) as PgtoOS[]
+}
+
+export async function desvincularPix(pixId: string, grupoId: string): Promise<void> {
+  const [vinculo] = ehUuid(pixId)
+    ? await db.select({ vendaId: pixRecebimentosMcp.vendaId, osId: pixRecebimentosMcp.osId, pecaVendaId: pixRecebimentosMcp.pecaVendaId })
+      .from(pixRecebimentosMcp).where(doGrupo(pixId, grupoId)).limit(1)
+    : []
+  if (!vinculo) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
+  if (temForcadaParcialDePix(await pagamentosDoVinculo(vinculo))) throw new RecusaUsuario(COMPLETA_FORCADA)
+
+  const soltos = await db.update(pixRecebimentosMcp)
+    .set(PIX_SOLTO)
+    .where(doGrupo(pixId, grupoId))
+    .returning({ id: pixRecebimentosMcp.id })
   if (soltos.length === 0) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
 }

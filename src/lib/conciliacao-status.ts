@@ -80,6 +80,14 @@ export function comForcado(
   return { ok: true, dados: pgtos.map((p, i) => i === idx ? { ...p, conciliadoManual: marca } : p) }
 }
 
+/**
+ * Há linha PIX forçada só em parte (#92)? O resto dela é de PIX vinculado: soltar esse PIX deixaria a linha
+ * "Forçado" sem o dinheiro que a completava. Quem desvincula pede para desfazer a forçada antes.
+ */
+export function temForcadaParcialDePix(pgtos: readonly PgtoOS[]): boolean {
+  return pgtos.some(p => PAGAMENTO_PIX.has(p.tipo) && p.conciliadoManual?.pix !== undefined && p.valor - p.conciliadoManual.pix.valorBruto > 0.05)
+}
+
 /** A parte pix da marca, ou a frase da recusa. A tela usa a mesma conta para mostrar as colunas. */
 export function pixDaForcada(valorDoPagamento: number, recebimento?: RecebimentoDaForcada): PixDaForcada | string {
   const valorRecebido = lerValorRecebido(recebimento?.valorRecebido)

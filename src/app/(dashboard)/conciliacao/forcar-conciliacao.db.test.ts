@@ -251,7 +251,7 @@ test('PIX já forçado não se força por cima: pede para desfazer antes, e a ma
 })
 
 // Decisão do Luis (19/11/2026): PIX parcial força só o que falta.
-test('PIX parcial (um PIX vinculado cobre parte): a forçada parte do que falta, e o custo não conta duas vezes', async () => {
+test('PIX parcial (um PIX vinculado cobre parte): a marca guarda só o que faltava (base 600), não o pagamento inteiro', async () => {
   const a = await contaComAlvos()
   usuario = sessao(a, 'aux_adm')
   const pix = await semearPixRecebido(db, a.grupoId, { valor: 399.2 })
@@ -268,4 +268,19 @@ test('forçar cartão e financiamento ignora o valor que entrou: a marca é só 
     assert.equal((await actions.forcarConciliacaoAction({ tipo: 'moto', id: a.alvos.moto }, idx, MOTIVO, 123)).ok, true)
     assert.deepEqual({ ...(await marcaDe('moto', a.alvos.moto, idx)), em: undefined }, { motivo: MOTIVO, porId: usuario.id, porNome: usuario.nome, em: undefined }, String(idx))
   }
+})
+
+test('PIX vinculado que completa uma forçada parcial não se desvincula: pede para desfazer a forçada antes', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  const pix = await semearPixRecebido(db, a.grupoId, { valor: 399.2 })
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'peca', peca_venda_id = ${a.alvos.peca},
+    valor_bruto = 400, custo_pix = 0.8, custo_pix_taxa = 0.002 where id = ${pix}`)
+  assert.equal((await actions.forcarConciliacaoAction({ tipo: 'peca', id: a.alvos.peca }, 0, 'Resto caiu na conta pessoal', 598.8)).ok, true)
+  assert.deepEqual(await actions.desvincularPixAlvoAction(pix),
+    { ok: false, erro: 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.' })
+  assert.equal((await execRows(sql`select peca_venda_id from pix_recebimentos_mcp where id = ${pix}`))[0].peca_venda_id, a.alvos.peca)
+  // Desfeita a forçada, o PIX se desvincula.
+  assert.equal((await actions.desfazerConciliacaoForcadaAction({ tipo: 'peca', id: a.alvos.peca }, 0)).ok, true)
+  assert.equal((await actions.desvincularPixAlvoAction(pix)).ok, true)
 })
