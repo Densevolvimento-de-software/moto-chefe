@@ -6,13 +6,13 @@ import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearUsuario, type Base } from '@/test/semear-conta'
 import { semearContaComAlvos, semearCustoPixDoGrupo, semearPixRecebido } from '@/test/semear-alvos-conciliacao'
+import { sessaoDe, type Sessao } from '@/test/sessao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
 process.env.DATABASE_URL = url
 
 type Db = typeof import('@/lib/db')
-type Sessao = { id: string; nome: string; papel: string; lojaId: string | null; contaId: string | null; gruposAcesso: string[]; gruposAprovacao: string[] }
 let db: Db['db']
 let execRows: Db['execRows']
 let actions: typeof import('./actions')
@@ -52,7 +52,7 @@ async function contaComNumeros(nf = String(Math.floor(Math.random() * 1e9)), num
 }
 
 const sessao = async (b: Base, papel: string): Promise<Sessao> =>
-  ({ id: await semearUsuario(db, b, { papel, rotulo: `${papel}-${randomUUID()}` }), nome: `${papel} de teste`, papel, lojaId: b.lojaId, contaId: b.contaId, gruposAcesso: [], gruposAprovacao: [] })
+  sessaoDe(b, papel, await semearUsuario(db, b, { papel, rotulo: `${papel}-${randomUUID()}` }))
 
 const vinculoDe = (pixId: string) => um(sql`
   select tipo_correspondencia, venda_id, os_id, pedido_id, peca_venda_id, lancado_por_id is not null as lancado

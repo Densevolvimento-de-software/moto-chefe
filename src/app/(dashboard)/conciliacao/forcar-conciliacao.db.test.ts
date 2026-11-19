@@ -10,13 +10,13 @@ import { semearContaComAlvos, semearVendaPeca } from '@/test/semear-alvos-concil
 import { ALVO_TIPOS } from '@/lib/conciliacao-alvo'
 import type { AlvoConciliacao } from './actions'
 import type { PgtoOS } from '@/lib/conciliacao-status'
+import { sessaoDe, type Sessao } from '@/test/sessao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
 process.env.DATABASE_URL = url
 
 type Db = typeof import('@/lib/db')
-type Sessao = { id: string; nome: string; papel: string; lojaId: string | null; contaId: string | null; gruposAcesso: string[]; gruposAprovacao: string[] }
 let db: Db['db']
 let execRows: Db['execRows']
 let actions: typeof import('./actions')
@@ -52,7 +52,7 @@ const pagamentosDe = async (tipo: AlvoConciliacao['tipo'], id: string): Promise<
   (await execRows(sql`select pagamentos from ${sql.raw(TABELA[tipo])} where id = ${id}`))[0].pagamentos
 
 const sessao = (b: Base, papel: string, extra: Partial<Sessao> = {}): Sessao =>
-  ({ id: randomUUID(), nome: `${papel} de teste`, papel, lojaId: b.lojaId, contaId: b.contaId, gruposAcesso: [], gruposAprovacao: [], ...extra })
+  sessaoDe(b, papel, randomUUID(), extra)
 
 const TIPOS = ALVO_TIPOS
 
@@ -159,7 +159,7 @@ test('admin_rede (persona real) força no grupo liberado; em grupo não liberado
   const casa = await contaComAlvos()
   const liberado = await contaComAlvos()
   const { a: naoLiberado, comoFicou } = await forcadoNaContaA()
-  const rede = { id: randomUUID(), nome: 'admin_rede de teste', papel: 'admin_rede', lojaId: casa.lojaId, contaId: casa.contaId, gruposAcesso: [] as string[], gruposAprovacao: [] as string[] }
+  const rede = sessaoDe(casa, 'admin_rede', randomUUID())
   const vivos = [{ grupoId: liberado.grupoId, contaId: liberado.contaId }]
 
   grupoAtivoNoCookie = liberado.grupoId

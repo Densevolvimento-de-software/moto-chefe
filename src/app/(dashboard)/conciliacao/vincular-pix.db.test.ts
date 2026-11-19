@@ -8,13 +8,13 @@ import { sql } from 'drizzle-orm'
 import { semearGrupo, semearLoja, semearUsuario, type Base } from '@/test/semear-conta'
 import { semearContaComAlvos, semearCustoPixDoGrupo, semearPixRecebido, semearVendaMoto } from '@/test/semear-alvos-conciliacao'
 import { ALVO_TIPOS, type AlvoConciliacao } from '@/lib/conciliacao-alvo'
+import { sessaoDe, type Sessao } from '@/test/sessao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
 process.env.DATABASE_URL = url
 
 type Db = typeof import('@/lib/db')
-type Sessao = { id: string; nome: string; papel: string; lojaId: string | null; contaId: string | null; gruposAcesso: string[]; gruposAprovacao: string[] }
 let db: Db['db']
 let execRows: Db['execRows']
 let actions: typeof import('./actions')
@@ -49,7 +49,7 @@ const contaComAlvos = () => semearContaComAlvos(db, 'VP90', PAGAMENTOS)
 
 // Usuário semeado de verdade: o vincular grava quem lançou (lancado_por_id, FK de usuarios).
 const sessao = async (b: Base, papel: string, extra: Partial<Sessao> = {}): Promise<Sessao> =>
-  ({ id: await semearUsuario(db, b, { papel, rotulo: `${papel}-${randomUUID()}` }), nome: `${papel} de teste`, papel, lojaId: b.lojaId, contaId: b.contaId, gruposAcesso: [], gruposAprovacao: [], ...extra })
+  sessaoDe(b, papel, await semearUsuario(db, b, { papel, rotulo: `${papel}-${randomUUID()}` }), extra)
 
 const vinculoDe = async (pixId: string) => (await execRows(sql`
   select tipo_correspondencia, venda_id, os_id, peca_venda_id, pedido_id, lancado_por_id is not null as lancado

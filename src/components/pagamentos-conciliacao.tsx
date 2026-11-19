@@ -157,12 +157,14 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   async function vincular(conciliacaoId: string) {
     setVinculando(true)
     try {
-      await vincularVendaAction(conciliacaoId, alvo.id, alvo.tipo)
+      const r = await vincularVendaAction(conciliacaoId, alvo)
+      if (!r.ok) { toast.error(r.erro); return }
       await recarregar()
       setBuscandoIdx(null)
       limparBusca()
       toast.success('Pagamento conciliado')
     } catch {
+      // A recusa com frase já voltou em `r.erro`; aqui só cai falha interna, sem frase legível.
       toast.error('Erro ao vincular')
     } finally {
       setVinculando(false)

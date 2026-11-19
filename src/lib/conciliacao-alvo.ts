@@ -6,6 +6,10 @@ export const ALVO_TIPOS = ['moto', 'peca', 'os'] as const
 export type AlvoTipo = typeof ALVO_TIPOS[number]
 export type AlvoConciliacao = { tipo: AlvoTipo; id: string }
 
+/** Colunas de vínculo de uma linha de cartão com o alvo (no máximo uma preenchida). */
+export type Alvos = { vendaId: string | null; pecaVendaId: string | null; osId: string | null }
+export const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
+
 export const ehAlvoTipo = (x: unknown): x is AlvoTipo => (ALVO_TIPOS as readonly unknown[]).includes(x)
 
 export function alvoValido(alvo: unknown): alvo is AlvoConciliacao {
@@ -19,3 +23,8 @@ export function tipoDoAlvo(alvo: unknown): AlvoTipo {
   const tipo = typeof alvo === 'object' && alvo !== null ? (alvo as Record<string, unknown>).tipo : undefined
   return ehAlvoTipo(tipo) ? tipo : 'moto'
 }
+
+const COLUNA_DO_TIPO: Record<AlvoTipo, keyof Alvos> = { moto: 'vendaId', peca: 'pecaVendaId', os: 'osId' }
+
+/** Colunas do vínculo de uma linha de cartão: a do tipo do alvo com o id, as outras nulas. */
+export const colunasDoAlvo = ({ tipo, id }: AlvoConciliacao): Alvos => ({ ...semAlvos(), [COLUNA_DO_TIPO[tipo]]: id })

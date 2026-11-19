@@ -7,12 +7,12 @@ import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
 import { semearOs } from '@/test/semear-alvos-conciliacao'
+import { sessaoDe, type Sessao } from '@/test/sessao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
 process.env.DATABASE_URL = url
 
-type Sessao = { id: string; papel: string; lojaId: string | null; contaId: string | null; gruposAcesso: string[]; gruposAprovacao: string[] }
 let db: typeof import('@/lib/db')['db']
 let actions: typeof import('@/app/(dashboard)/conciliacao/actions')
 let usuario: Sessao
@@ -42,7 +42,7 @@ async function semearConta() {
 type Conta = Awaited<ReturnType<typeof semearConta>>
 
 const entrarComo = (c: Conta) => {
-  usuario = { id: c.usuarioId, papel: 'aux_adm', lojaId: c.lojaId, contaId: c.contaId, gruposAcesso: [], gruposAprovacao: [] }
+  usuario = sessaoDe(c, 'aux_adm', c.usuarioId)
 }
 
 async function vendaPeca(c: Conta, pagamentos: Record<string, unknown>[]) {
@@ -90,7 +90,7 @@ test('papel sem a conciliação (vendedor) é recusado e não vê vendas', async
   const a = await semearConta()
   await vendaPeca(a, [{ tipo: 'pix', valor: 515.67 }])
   const linhaA = await linha(a, 'pix', 515.67)
-  usuario = { id: a.usuarioId, papel: 'vendedor', lojaId: a.lojaId, contaId: a.contaId, gruposAcesso: [], gruposAprovacao: [] }
+  usuario = sessaoDe(a, 'vendedor', a.usuarioId)
   await assert.rejects(actions.buscarVendasParaVincular(linhaA), { message: 'Sem permissão' })
 })
 
