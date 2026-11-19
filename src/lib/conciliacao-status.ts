@@ -88,7 +88,9 @@ type PixMatch  = { id: string; valor: string | number; valorBruto?: string | num
 const valorQueCobre = (r: PixMatch) => Number(r.valorBruto ?? r.valor)
 
 /** Quanto do pagamento foi coberto por dinheiro que realmente entrou. */
-export type CoberturaPgto = { conciliado: boolean; coberto: number }
+// `pixId`: o PIX recebido do banco que cobriu a linha inteira (casou pelo valor); a tela mostra o custo dele (#90).
+// Rateio e a linha pix do Mercado Pago (que vem da conciliação de cartão) não têm.
+export type CoberturaPgto = { conciliado: boolean; coberto: number; pixId?: string }
 
 // Vendas, peças e OS podem ter mais de uma forma de pagamento por cartão/pix no mesmo
 // carrinho (ex.: Pix + Cartão). Casa cada item do array `pagamentos` com o que entrou,
@@ -152,7 +154,10 @@ export function matchPagamentos(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixD
   pgtos.forEach((p, i) => {
     if (!PAGAMENTO_PIX.has(p.tipo) || resultado[i].conciliado) return
     const m = pixRecs.find(r => !pixUsados.has(r.id) && Math.abs(valorQueCobre(r) - p.valor) <= 0.05)
-    if (m) { resultado[i].coberto += valorQueCobre(m); pixUsados.add(m.id) }
+    if (!m) return
+    resultado[i].coberto += valorQueCobre(m)
+    if (pixDoBanco.includes(m)) resultado[i].pixId = m.id
+    pixUsados.add(m.id)
   })
 
   // O que sobrou rateia entre as linhas PIX ainda descobertas, na ordem. Dois PIX
