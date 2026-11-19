@@ -1,7 +1,7 @@
-import { and, eq, inArray, or } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { holerites, usuarios } from '@/lib/db/schema'
-import { lojasDoGrupo, usuarioDaConta } from '@/lib/conta'
+import { lojasDoGrupo, nomesDeUsuariosVisiveis } from '@/lib/conta'
 
 type Executor = Pick<typeof db, 'select' | 'delete'>
 
@@ -52,8 +52,8 @@ export async function removerHoleriteDoGrupo(grupoId: string, id: string, exec: 
   return row?.arquivoPath ?? null
 }
 
-/** Holerites do mês dos funcionários do grupo, com o nome de quem enviou. O nome só vem de usuário
- *  da Conta do grupo (ou admin_geral, da plataforma): quem enviou pode estar em outro grupo da Conta. */
+/** Holerites do mês dos funcionários do grupo, com o nome de quem enviou. O nome só vem de quem a
+ *  Conta do grupo enxerga (nomesDeUsuariosVisiveis): quem enviou pode estar em outro grupo da Conta. */
 export async function listarHoleritesDoGrupo(grupo: { id: string; contaId: string }, mes: string, exec: Executor = db) {
   const grupoId = grupo.id
   const rows = await exec
@@ -71,24 +71,7 @@ export async function listarHoleritesDoGrupo(grupo: { id: string; contaId: strin
     .innerJoin(usuarios, eq(holerites.usuarioId, usuarios.id))
     .where(and(eq(holerites.mes, mes), inArray(usuarios.lojaId, lojasDoGrupo(grupoId))))
 
-  // Nome de quem enviou vem de uma segunda consulta em vez de um segundo join na
-  // mesma tabela: são poucas linhas por mês e o alias deixaria a query bem menos
-  // legível do que este de-para.
-  const enviantes = [...new Set(rows.map(r => r.enviadoPorId).filter((id): id is string => !!id))]
-  const nomePorId = new Map<string, string>()
-  if (enviantes.length > 0) {
-    const pessoas = await exec
-      .select({ id: usuarios.id, nome: usuarios.nome })
-      .from(usuarios)
-      .where(and(
-        inArray(usuarios.id, enviantes),
-        or(
-          usuarioDaConta(grupo.contaId),
-          eq(usuarios.papel, 'admin_geral'),
-        ),
-      ))
-    for (const p of pessoas) nomePorId.set(p.id, p.nome)
-  }
+  const nomePorId = await nomesDeUsuariosVisiveis(grupo, rows.flatMap(r => r.enviadoPorId ? [r.enviadoPorId] : []), exec)
 
   return rows.map(({ enviadoPorId, ...r }) => ({
     ...r,
