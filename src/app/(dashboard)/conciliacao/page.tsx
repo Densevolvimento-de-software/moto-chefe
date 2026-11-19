@@ -78,7 +78,8 @@ export default async function ConciliacaoPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Celular: título em cima e o envio do relatório embaixo (lado a lado estourava a largura). */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Conciliação de Cartão</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
