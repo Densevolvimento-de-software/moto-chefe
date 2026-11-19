@@ -167,3 +167,34 @@ test('mecânico recebe Sem permissão ao lançar e ao remover, e nada grava', as
   assert.deepEqual(await vinculoDe(livre), LIVRE)
   assert.deepEqual(await vinculoDe(ligado), comoFicou)
 })
+
+// ─── Custo do PIX (#90): o vínculo pela /pix-mcp grava o mesmo que o da conciliação ────────────────
+
+const custoDoGrupo = (grupoId: string, taxa: number) => db.execute(sql`insert into configuracao_taxas (grupo_id, custo_pix_taxa) values (${grupoId}, ${taxa})
+  on conflict (grupo_id) do update set custo_pix_taxa = excluded.custo_pix_taxa`)
+const custoDe = (pixId: string) => um(sql`select valor_bruto, custo_pix, custo_pix_taxa from pix_recebimentos_mcp where id = ${pixId}`)
+
+test('lançar por NF, OS, pedido e venda de peça grava o valor do PIX, o custo e a taxa; mudar a taxa depois não muda; remover limpa', async () => {
+  const a = await contaComNumeros()
+  await custoDoGrupo(a.grupoId, 0.002)
+  usuario = await sessao(a, 'aux_adm')
+  const ligados: string[] = []
+  for (const tipo of TIPOS) {
+    const pix = await semearPixRecebido(db, a.grupoId, { valor: 9980 })
+    assert.equal((await actions.lancarCorrespondenciaAction(pix, tipo, a.numeros[tipo])).ok, true, tipo)
+    ligados.push(pix)
+  }
+  await custoDoGrupo(a.grupoId, 0.005)
+  for (const pix of ligados) assert.deepEqual(await custoDe(pix), { valor_bruto: '10000.00', custo_pix: '20.00', custo_pix_taxa: '0.002000' })
+  assert.equal((await actions.removerCorrespondenciaAction(ligados[0])).ok, true)
+  assert.deepEqual(await custoDe(ligados[0]), { valor_bruto: null, custo_pix: null, custo_pix_taxa: null })
+})
+
+test('TED lançada pela /pix-mcp grava o crédito inteiro, custo 0 e taxa 0', async () => {
+  const a = await contaComNumeros()
+  await custoDoGrupo(a.grupoId, 0.002)
+  usuario = await sessao(a, 'aux_adm')
+  const ted = await semearPixRecebido(db, a.grupoId, { valor: 9980, tipoOperacao: 'TED' })
+  assert.equal((await actions.lancarCorrespondenciaAction(ted, 'pedido', a.numeros.pedido)).ok, true)
+  assert.deepEqual(await custoDe(ted), { valor_bruto: '9980.00', custo_pix: '0.00', custo_pix_taxa: '0.000000' })
+})
