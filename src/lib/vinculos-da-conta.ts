@@ -1,8 +1,9 @@
-import { and, arrayContains, eq, inArray, or } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { clientes, lojas, motos, ordensServico, usuarios } from '@/lib/db/schema'
 import { clientesDoEscopo, contaDaLoja, lojasDoEscopo } from '@/lib/conta'
 import { RecusaUsuario } from '@/lib/resultado-action'
+import { usuarioDoEscopo } from '@/lib/usuarios-do-grupo'
 
 type Executor = Pick<typeof db, 'select'>
 
@@ -43,14 +44,8 @@ export async function conferirVinculosDaConta(
   }
 
   if (vinculos.mecanicoId) {
-    // Funcionário de loja costuma ter só loja_id; sócio, só conta_id.
     const [mecanico] = await exec.select({ id: usuarios.id }).from(usuarios)
-      .where(and(
-        eq(usuarios.id, vinculos.mecanicoId),
-        grupoLiberado
-          ? or(inArray(usuarios.lojaId, lojasDoEscopo(escopo)), arrayContains(usuarios.gruposAcesso, [grupoLiberado]))
-          : or(eq(usuarios.contaId, contaId), inArray(usuarios.lojaId, lojasDoEscopo(escopo))),
-      )).limit(1)
+      .where(and(eq(usuarios.id, vinculos.mecanicoId), usuarioDoEscopo(escopo))).limit(1)
     if (!mecanico) throw new RecusaUsuario('Mecânico não encontrado')
   }
 }
