@@ -1,4 +1,6 @@
-import { sql, type SQL } from 'drizzle-orm'
+import { eq, sql, type SQL } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { taxasDaReceita } from '@/lib/dre'
 import { vendas, conciliacoesCartao } from '@/lib/db/schema'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 
@@ -93,4 +95,25 @@ export const custoPixDaVendaExpr = () => custoPixDaVenda({
 export function custoPixDaVendaSql(v = 'v') {
   const col = (c: string) => sql.raw(`${v}.${c}`)
   return custoPixDaVenda({ id: col('id'), pedido: col('pedido_venda_id'), numero: col('numero'), loja: col('loja_id'), pagamentos: col('pagamentos') })
+}
+
+/**
+ * Os custos de recebimento de uma venda para os Detalhes da venda (#93), pelas mesmas expressões do líquido e a
+ * mesma divisão do DRE (taxasDaReceita): a soma das três é o bruto − líquido. Lê só pelo id: quem chama já
+ * conferiu que a venda é da Conta.
+ */
+export async function custosDaVenda(vendaId: string) {
+  const [r] = await db.select({
+      bruto: vendas.valor,
+      liquido: sql<string>`${valorLiquidoExpr()}`,
+      tarifaPix: sql<string>`${tarifaPixDaVendaExpr()}`,
+      custoPix: sql<string>`${custoPixDaVendaExpr()}`,
+    }).from(vendas).where(eq(vendas.id, vendaId)).limit(1)
+  if (!r) return null
+  const liquido = Number(r.liquido)
+  const { taxasCartao, tarifaPix, custoPix } = taxasDaReceita({
+    brutoMotos: Number(r.bruto), liquidoMotos: liquido, tarifaPixMotos: Number(r.tarifaPix), custoPixMotos: Number(r.custoPix),
+    taxaCartaoOutras: 0, tarifaPixOutras: 0,
+  })
+  return { taxaCartao: taxasCartao, tarifaPix, custoPix, liquido }
 }

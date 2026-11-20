@@ -1,17 +1,28 @@
 // Teste de banco (#93): o líquido da venda de moto desconta o custo do PIX, nas duas formas da regra
 // (valorLiquidoExpr, em Drizzle, e valorLiquidoSql, em SQL cru com alias), contra o Postgres descartável.
 // Cada teste usa só as vendas que semeou.
-import { before, after, test } from 'node:test'
+import { before, after, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { eq, sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { sessaoDe, type Sessao } from '@/test/sessao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
 process.env.DATABASE_URL = url
 
 let db: typeof import('@/lib/db')['db']
+// Os Detalhes da venda leem os custos pela action de vendas: só a sessão e o que ela importa de fora são simulados.
+let usuario: Sessao
+const mocks = [
+  mock.module('@/lib/auth', { namedExports: { getUsuarioLogado: async () => usuario } }),
+  mock.module('next/cache', { namedExports: { revalidatePath: () => {} } }),
+  mock.module('next/headers', { namedExports: { cookies: async () => ({ get: () => undefined }) } }),
+  mock.module('@/lib/kommo', { namedExports: { virarLeadKommo: async () => ({ resultado: 'sem_lead' }) } }),
+  mock.module('@/lib/whatsapp/venda', { namedExports: { notificarVendaWhatsapp: async () => ({ resultado: 'desligado' }) } }),
+]
+let acoesVendas: typeof import('@/app/(dashboard)/vendas/actions')
 let vl: typeof import('@/lib/queries/valor-liquido')
 let vendas: typeof import('@/lib/db/schema')['vendas']
 let dre: typeof import('@/lib/queries/dre')
@@ -23,8 +34,10 @@ before(async () => {
   ;({ vendas } = await import('@/lib/db/schema'))
   dre = await import('@/lib/queries/dre')
   contabil = await import('@/lib/queries/export-contabil')
+  acoesVendas = await import('@/app/(dashboard)/vendas/actions')
 })
 after(async () => {
+  for (const m of mocks) m.restore()
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
 })
 
@@ -134,4 +147,18 @@ test('DRE e contabilidade: custo do PIX em linha própria, taxa de cartão igual
   const exp = await contabil.dadosExportContabil({ grupo: { id: c.grupoId, nome: 'G' }, lojaIds: [c.lojaId], competencias: [{ ano: 2026, mes: 11 }] })
   const linha = exp.vendas.find(v => v.valorBruto === 18_500)!
   assert.deepEqual([linha.taxas, linha.valorLiquido], [632, 17_868])
+})
+
+// Detalhes da venda (#93): os números vêm do servidor pelas mesmas contas do líquido e do DRE.
+test('Detalhes da venda: taxa do cartão, tarifa do PIX na maquininha, custo do PIX e líquido; venda de outra Conta = vazio', async () => {
+  const a = await semearConta()
+  const { venda } = await vendaMoto(a, 18_500, [{ tipo: 'pix', valor: 10_000 }, { tipo: 'cartao_credito', valor: 8_500 }])
+  await cartaoConciliado(a, venda, 8_500, 7_888)
+  await pixVinculado(a.grupoId, { venda }, 9_980, 10_000, 20)
+  usuario = sessaoDe(a, 'aux_adm', a.usuarioId)
+  assert.deepEqual(await acoesVendas.custosDaVendaAction(venda), { ok: true, dados: { taxaCartao: 612, tarifaPix: 0, custoPix: 20, liquido: 17_868 } })
+  const b = await semearConta()
+  usuario = sessaoDe(b, 'aux_adm', b.usuarioId)
+  assert.deepEqual(await acoesVendas.custosDaVendaAction(venda), { ok: true, dados: null })
+  assert.deepEqual(await acoesVendas.custosDaVendaAction(randomUUID()), { ok: true, dados: null })
 })
