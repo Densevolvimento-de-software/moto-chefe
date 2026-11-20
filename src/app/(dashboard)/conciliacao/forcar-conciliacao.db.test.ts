@@ -515,3 +515,53 @@ test('linha religada a outro alvo enquanto o desvincular confere o primeiro: nã
   } finally { await s.fim() }
   assert.equal(await linhaLigada(linha), true)
 })
+
+// ─── #166 (variante 2): desfazer a forçada e desvincular a linha pix da maquininha ───────────────
+const NAO_ENCONTRADA = { ok: false, erro: 'Conciliação não encontrada' }
+
+for (const tipo of ALVO_TIPOS) {
+  test(`${tipo}: aux_adm desfaz só a forçada que a linha completa e desvincula; a forçada cheia de cartão fica`, async () => {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    const linha = await maquininha(a, tipo, 400)
+    await comPagamentos(tipo, a.alvos[tipo], [
+      { tipo: 'pix', valor: 1000, conciliadoManual: marcaParcial(600) }, { tipo: 'cartao_credito', valor: 500, conciliadoManual: FORCADO_CARTAO(usuario) },
+    ])
+    assert.deepEqual((await actions.forcadaDaLinhaAction(linha)), { ok: true, dados: { linhas: [{ valor: 1000, marcado: 600 }], cobre: 400 } })
+    assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha), OK)
+    assert.equal(await linhaLigada(linha), false)
+    const [pix, cartao] = await pagamentosDe(tipo, a.alvos[tipo])
+    assert.equal(pix.conciliadoManual, undefined)
+    assert.equal(cartao.conciliadoManual?.motivo, 'Operadora não mandou o relatório')
+  })
+}
+
+test('desfazer e desvincular uma linha que não completa forçada nenhuma: só desvincula, e o resumo é nulo', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  const linha = await maquininha(a, 'moto', 400)
+  assert.deepEqual(await actions.forcadaDaLinhaAction(linha), { ok: true, dados: null })
+  assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha), OK)
+  assert.equal(await linhaLigada(linha), false)
+})
+
+test('desfazer e desvincular: vendedor recebe Sem permissão; Conta B, estornada e id inválido a frase do inexistente; nada muda', async () => {
+  const a = await contaComAlvos()
+  const b = await contaComAlvos()
+  const linha = await maquininha(a, 'moto', 400)
+  usuario = sessao(a, 'aux_adm')
+  await comPagamentos('moto', a.alvos.moto, [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaParcial(600) }])
+  usuario = sessao(a, 'vendedor')
+  assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha), { ok: false, erro: 'Sem permissão' })
+  assert.deepEqual(await actions.forcadaDaLinhaAction(linha), { ok: false, erro: 'Sem permissão' })
+  usuario = sessao(b, 'aux_adm')
+  assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha), NAO_ENCONTRADA)
+  assert.deepEqual(await actions.forcadaDaLinhaAction(linha), { ok: true, dados: null })
+  assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction('abc'), NAO_ENCONTRADA)
+  usuario = sessao(a, 'aux_adm')
+  const estornada = await maquininha(a, 'moto', 300)
+  await db.execute(sql`update conciliacoes_cartao set status = 'estornado', conciliado = false where id = ${estornada}`)
+  assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(estornada), NAO_ENCONTRADA)
+  assert.equal(await linhaLigada(linha), true)
+  assert.ok((await marcaDe('moto', a.alvos.moto))?.pix)
+})
