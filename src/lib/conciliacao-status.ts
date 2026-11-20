@@ -315,11 +315,12 @@ export function pagamentosEfetivosOS(
 
 /**
  * Sem este PIX, a forçada parcial de PIX do alvo (#92) fica sem o resto que a completava? Quem desvincula
- * recusa só nesse caso; PIX que cobre outra linha ou que sobra solta.
+ * recusa só nesse caso; PIX que cobre outra linha ou que sobra solta. `pixId`: o PIX do banco ou a linha da
+ * conciliação de cartão (a linha pix da maquininha também completa a forçada, #166).
  */
 export function pixCompletaForcadaParcial(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[], pixId: string): boolean {
   const com = cobrir(pgtos, linhasDoAlvo, pixDoBanco).faltaNasForcadas
-  const sem = cobrir(pgtos, linhasDoAlvo, pixDoBanco.filter(r => r.id !== pixId)).faltaNasForcadas
+  const sem = cobrir(pgtos, linhasDoAlvo.filter(c => c.id !== pixId), pixDoBanco.filter(r => r.id !== pixId)).faltaNasForcadas
   return sem - com > 0.05
 }
 

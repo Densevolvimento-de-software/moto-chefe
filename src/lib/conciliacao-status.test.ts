@@ -403,6 +403,16 @@ test('pixCompletaForcadaParcial: só o PIX sem o qual a forçada parcial fica se
   assert.equal(pixCompletaForcadaParcial([{ tipo: 'pix', valor: 4000 }], [], [{ id: 'p4', valor: 4000 }], 'p4'), false)
 })
 
+// #166: a linha pix da maquininha (conciliação de cartão) também pode ser o resto da forçada parcial.
+test('pixCompletaForcadaParcial: a linha pix da maquininha que completa a forçada prende; a que cobre outra linha e a de cartão não', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000, conciliadoManual: FORCADA_PARCIAL }, { tipo: 'pix', valor: 3000 }, { tipo: 'cartao_credito', valor: 500 }]
+  const maquininha = (id: string, valor: string) => ({ id, autorizacao: null, valorBruto: valor, tipo: 'pix', operadora: 'mercadopago' })
+  const linhas = [maquininha('mp4', '4000.00'), maquininha('mp3', '3000.00'), { id: 'cartao', autorizacao: null, valorBruto: '500.00', tipo: 'credito' }]
+  assert.equal(pixCompletaForcadaParcial(pgtos, linhas, [], 'mp4'), true)
+  assert.equal(pixCompletaForcadaParcial(pgtos, linhas, [], 'mp3'), false, 'mp3 cobre a linha de 3.000')
+  assert.equal(pixCompletaForcadaParcial(pgtos, linhas, [], 'cartao'), false, 'linha de cartão não cobre PIX')
+})
+
 // #51 (PR6c): pagamento que voltou a pendente porque a linha da maquininha foi estornada diz isso (sem o dia: o importador não grava quando estornou).
 test('estornosDosPagamentos: pendente com estorno do mesmo meio e valor é marcado; conciliado e outro meio não', () => {
   const pgtos: PgtoOS[] = [
