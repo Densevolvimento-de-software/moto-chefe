@@ -6,16 +6,13 @@ import { Loader2, TriangleAlert, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { brl } from '@/lib/dashboard-painel'
+import { emLista } from '@/lib/texto'
 import type { ForcadaQueOPixCompleta } from '@/lib/conciliacao-status'
 import { desfazerForcadaERemoverAction } from '../actions'
 
 type Props = { id: string; rotulo: string; forcada: ForcadaQueOPixCompleta; podeDesfazer: boolean; onDesfeito: () => void }
 
-// "R$ 1,00", "R$ 1,00 e R$ 2,00", "R$ 1,00, R$ 2,00 e R$ 3,00"
-const emReais = (vs: number[]) => {
-  const t = vs.map(brl)
-  return t.length > 1 ? `${t.slice(0, -1).join(', ')} e ${t[t.length - 1]}` : t[0]
-}
+const emReais = (vs: number[]) => emLista(vs.map(brl))
 
 /** As frases da caixa e do diálogo, no singular ou no plural, com o que ESTE PIX cobre do que falta. */
 function frases({ linhas, cobre }: ForcadaQueOPixCompleta, rotulo: string) {
