@@ -301,3 +301,22 @@ test('decisão 13: 2 PIX de 5.000, um forçado (custo 10), PIX de 5.000 no pedid
   await pixVinculado(c.grupoId, { pedido: dois.pedido }, 4_990, 5_000, 10)
   assert.equal(await liquido(dois.venda), 10_000 - 10 - 5 - 5)
 })
+
+// #94 (decisão do Luis registrada na #94): o card "Custo PIX" conta os PIX que entram no custo: os do banco da venda (o do
+// pedido uma vez, na 1ª venda) e os pagamentos PIX forçados; a linha pix da maquininha (tarifa) e PIX de outra Conta não.
+test('quantos PIX entram no custo da venda: PIX do banco, o do pedido só na 1ª venda, e as forçadas; sem maquininha nem outra Conta', async () => {
+  const c = await semearConta()
+  const b = await semearConta()
+  const marca = { motivo: 'Caiu na conta pessoal', porId: c.usuarioId, porNome: 'Aux', em: '2026-11-10T12:00:00.000Z',
+    pix: { valorRecebido: 998, valorBruto: 1_000, custoPix: 2, custoPixTaxa: 0.002 } }
+  const primeira = await vendaMoto(c, 10_000, [{ tipo: 'pix', valor: 1_000, conciliadoManual: marca }, { tipo: 'pix', valor: 9_000 }])
+  const segunda = await vendaMoto(c, 8_000, [], primeira.pedido)
+  await pixVinculado(c.grupoId, { venda: primeira.venda }, 2_994, 3_000, 6)
+  await pixVinculado(c.grupoId, { pedido: primeira.pedido }, 4_990, 5_000, 10)
+  await pixVinculado(b.grupoId, { venda: primeira.venda }, 990, 1_000, 2)
+  await db.execute(sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, valor_bruto, valor_liquido, tipo, venda_id, conciliado)
+    values (${c.grupoId}, 'mercadopago', '2026-11-10', 500, 499, 'pix', ${segunda.venda}, true)`)
+  const qtd = async (venda: string) =>
+    Number((await db.select({ n: sql<string>`${vl.qtdPixDaVendaExpr()}` }).from(vendas).where(eq(vendas.id, venda)))[0].n)
+  assert.deepEqual([await qtd(primeira.venda), await qtd(segunda.venda)], [3, 0])
+})

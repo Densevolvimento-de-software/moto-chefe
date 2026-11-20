@@ -146,6 +146,8 @@ export function taxasDaReceita(p: {
   taxaCartaoOutras: number
   tarifaPixOutras: number
   custoPixMotos: number
+  /** Custo do PIX do banco de OS e venda de peça (#94); fica fora do bruto − líquido delas, que é só da conciliação de cartão. */
+  custoPixOutras: number
 }): { taxasCartao: number; tarifaPix: number; custoPix: number } {
   // Centavos: a subtração em ponto flutuante deixa resíduo (−1e−13) que a tela mostraria como "−R$ 0,00";
   // o + 0 troca o −0 do arredondamento por 0.
@@ -153,7 +155,7 @@ export function taxasDaReceita(p: {
   return {
     taxasCartao: emCentavos(p.brutoMotos - p.liquidoMotos - p.tarifaPixMotos - p.custoPixMotos + p.taxaCartaoOutras),
     tarifaPix: emCentavos(p.tarifaPixMotos + p.tarifaPixOutras),
-    custoPix: emCentavos(p.custoPixMotos),
+    custoPix: emCentavos(p.custoPixMotos + p.custoPixOutras),
   }
 }
 

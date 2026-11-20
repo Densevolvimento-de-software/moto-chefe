@@ -80,16 +80,48 @@ export function tarifaPixDaVendaExpr() {
  * #93) e o das forçadas de PIX (gravado na marca). Só conta PIX do grupo da loja da venda. PIX não conciliado,
  * TED e grupo com taxa 0 têm custo 0. As duas formas montam a mesma conta a partir das colunas da venda.
  */
-function custoPixDaVenda(c: { id: SQL; pedido: SQL; numero: SQL; loja: SQL; pagamentos: SQL }) {
+type ColunasDaVenda = { id: SQL; pedido: SQL; numero: SQL; loja: SQL; pagamentos: SQL }
+
+// Os PIX do banco da venda (alias `pr`): os dela e os do pedido na 1ª venda, do grupo da loja.
+const pixDoBancoDaVenda = (c: ColunasDaVenda) => sql`pr.grupo_id = (SELECT lj.grupo_id FROM lojas lj WHERE lj.id = ${c.loja})
+  AND (pr.venda_id = ${c.id}
+       OR (pr.pedido_id = ${c.pedido}
+           AND ${c.numero} = (SELECT MIN(vp.numero) FROM vendas vp WHERE vp.pedido_venda_id = ${c.pedido})))`
+
+function custoPixDaVenda(c: ColunasDaVenda) {
   return sql`(
-    COALESCE((SELECT SUM(pr.custo_pix::numeric) FROM pix_recebimentos_mcp pr
-              WHERE pr.grupo_id = (SELECT lj.grupo_id FROM lojas lj WHERE lj.id = ${c.loja})
-                AND (pr.venda_id = ${c.id}
-                     OR (pr.pedido_id = ${c.pedido}
-                         AND ${c.numero} = (SELECT MIN(vp.numero) FROM vendas vp WHERE vp.pedido_venda_id = ${c.pedido})))), 0)
+    COALESCE((SELECT SUM(pr.custo_pix::numeric) FROM pix_recebimentos_mcp pr WHERE ${pixDoBancoDaVenda(c)}), 0)
     + ${custoDasForcadasPix(c.pagamentos, { pedido: c.pedido, loja: c.loja })}
   )`
 }
+
+/** Quantos pagamentos PIX forçados (com a marca do PIX, #92) há na coluna `pagamentos`. */
+const qtdForcadasPix = (pagamentos: SQL) => sql`(SELECT COUNT(*) FROM jsonb_array_elements(COALESCE(${pagamentos}, '[]'::jsonb)) pg
+  WHERE pg->'conciliadoManual'->'pix' IS NOT NULL)`
+
+/**
+ * Quantos PIX entram no custo do PIX da venda (#94, decisão do Luis na #94): os PIX do banco da conta acima (o do pedido
+ * uma vez, na 1ª venda) e os pagamentos PIX forçados. A linha pix da maquininha não entra: é tarifa.
+ */
+export const qtdPixDaVendaExpr = () => {
+  const c = colunasDaVenda()
+  return sql`((SELECT COUNT(*) FROM pix_recebimentos_mcp pr WHERE ${pixDoBancoDaVenda(c)}) + ${qtdForcadasPix(c.pagamentos)})`
+}
+
+/**
+ * Custo do PIX de uma OS ou venda de peça (#94) e quantos PIX entram nele: os PIX do banco ligados ao registro, do grupo
+ * da loja dele, e as forçadas de PIX (sem pedido: o custo gravado conta inteiro). `a`: a tabela ou o alias na consulta.
+ */
+function pixDoRegistro(coluna: 'os_id' | 'peca_venda_id', a: string) {
+  const col = (c: string) => sql.raw(`${a}.${c}`)
+  const doBanco = sql`pr.${sql.raw(coluna)} = ${col('id')} AND pr.grupo_id = (SELECT lj.grupo_id FROM lojas lj WHERE lj.id = ${col('loja_id')})`
+  return {
+    custo: sql`(COALESCE((SELECT SUM(pr.custo_pix::numeric) FROM pix_recebimentos_mcp pr WHERE ${doBanco}), 0) + ${custoDasForcadasPix(col('pagamentos'))})`,
+    qtd: sql`((SELECT COUNT(*) FROM pix_recebimentos_mcp pr WHERE ${doBanco}) + ${qtdForcadasPix(col('pagamentos'))})`,
+  }
+}
+export const pixDaOs = (a = '"ordens_servico"') => pixDoRegistro('os_id', a)
+export const pixDaPeca = (a = '"vendas_pecas"') => pixDoRegistro('peca_venda_id', a)
 
 /**
  * Custo das forçadas de PIX que conta no líquido: o gravado nas marcas (conciliadoManual.pix.custoPix, #92) menos a
@@ -123,10 +155,11 @@ export const pixDasVendasDoPedido = (pedido: SQL, grupo: SQL, exceto?: SQL) => s
     AND pf->>'tipo' = ANY(${sql.param([...PAGAMENTO_PIX])}::text[])${exceto ? sql` AND vf.id <> ${exceto}` : sql``})`
 
 // Qualificado à mão: numa query sem join, ${vendas.id} sai sem a tabela e casaria com o id da tabela de dentro.
-export const custoPixDaVendaExpr = () => custoPixDaVenda({
+const colunasDaVenda = (): ColunasDaVenda => ({
   id: sql.raw('"vendas"."id"'), pedido: sql.raw('"vendas"."pedido_venda_id"'), numero: sql.raw('"vendas"."numero"'),
   loja: sql.raw('"vendas"."loja_id"'), pagamentos: sql.raw('"vendas"."pagamentos"'),
 })
+export const custoPixDaVendaExpr = () => custoPixDaVenda(colunasDaVenda())
 
 /** A mesma conta para o SQL cru com alias (`v` = alias de vendas na query externa). */
 function custoPixDaVendaSql(v = 'v') {
@@ -150,7 +183,7 @@ export async function custosDaVenda(vendaId: string, daConta: SQL | undefined) {
   const liquido = Number(r.liquido)
   const { taxasCartao, tarifaPix, custoPix } = taxasDaReceita({
     brutoMotos: Number(r.bruto), liquidoMotos: liquido, tarifaPixMotos: Number(r.tarifaPix), custoPixMotos: Number(r.custoPix),
-    taxaCartaoOutras: 0, tarifaPixOutras: 0,
+    taxaCartaoOutras: 0, tarifaPixOutras: 0, custoPixOutras: 0,
   })
   return { taxaCartao: taxasCartao, tarifaPix, custoPix, liquido }
 }
