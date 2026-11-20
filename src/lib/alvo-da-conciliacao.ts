@@ -137,8 +137,10 @@ export async function pedidoTemPixComCusto(alvo: AlvoConciliacao, exec: Executor
  * liga ao pedido passa a carregar o custo, e o mesmo dinheiro não leva dois. Só nas lojas dadas. Devolve quantas.
  */
 export async function semCustoNasForcadasDoPedido(pedidoId: string, lojaIdsGrupo: string[], exec: ExecutorDoAlvo): Promise<number> {
+  // Trava sempre na mesma ordem: dois vínculos no mesmo pedido não se travam um ao outro.
   const daVenda = await exec.select({ id: vendas.id }).from(vendas)
     .where(and(eq(vendas.pedidoVendaId, pedidoId), inArray(vendas.lojaId, lojaIdsGrupo)))
+    .orderBy(vendas.id)
   return daVenda.reduce(async (soma, { id }) => {
     const antes = await soma
     const alvo = { tipo: 'moto' as const, id }

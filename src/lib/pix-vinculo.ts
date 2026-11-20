@@ -39,11 +39,11 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
   // A taxa é a do grupo do PIX agora; o que se grava não muda se ela mudar depois.
   const custo = custoDoPixVinculado(pix.tipoOperacao, Number(pix.valor), await custoPixTaxaDoGrupo(grupoId))
   // PIX com custo no pedido: o custo das forçadas de PIX das vendas dele sai, na mesma transação (#93, S2).
-  const zeraForcadas = vinculo.tipo === 'pedido' && custo.custoPix > 0
+  const pedidoComCusto = vinculo.tipo === 'pedido' && custo.custoPix > 0 ? vinculo.pedidoId : null
   // As lojas antes: dentro da transação, o db pegaria uma 2ª conexão do pool.
-  const lojaIds = zeraForcadas ? (await lojasDoGrupo(grupoId)).map(l => l.id) : []
+  const lojaIds = pedidoComCusto ? (await lojasDoGrupo(grupoId)).map(l => l.id) : []
   return db.transaction(async tx => {
-    const forcadasSemCusto = zeraForcadas && vinculo.tipo === 'pedido' ? await semCustoNasForcadasDoPedido(vinculo.pedidoId, lojaIds, tx) : 0
+    const forcadasSemCusto = pedidoComCusto ? await semCustoNasForcadasDoPedido(pedidoComCusto, lojaIds, tx) : 0
     const ligados = await tx.update(pixRecebimentosMcp)
       .set({
         tipoCorrespondencia: vinculo.tipo,
