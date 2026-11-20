@@ -1,6 +1,7 @@
 // Custo do PIX (CONTEXT.md): o banco credita o valor do PIX menos uma porcentagem do grupo.
 // A conta é a mesma da taxa de cartão (preco-minimo.ts); aqui ela ganha os nomes do PIX.
 import { centavos } from './centavos'
+import { brl } from './dashboard-painel'
 import { parseNumeroBR } from './numero-br'
 import { brutoParaReceber, liquidoDoBruto } from './preco-minimo'
 
@@ -91,4 +92,28 @@ const CUSTO_ALTO_NA_FORCADA = 0.01
 export function avisoDeCustoAlto(custo: CustoDoPix, taxaDoGrupo: number): string | null {
   if (custo.custoPixTaxa <= CUSTO_ALTO_NA_FORCADA) return null
   return `Custo de ${percentualDoPix(custo.custoPixTaxa)} bem acima do custo do PIX do grupo (${percentualDoPix(taxaDoGrupo)}). Confira o valor que entrou.`
+}
+
+/**
+ * O pedido da venda: valor bruto dos PIX com custo ligados a ele (do grupo da loja) e a base das forçadas de PIX de
+ * todas as vendas dele. O SQL do líquido (`queries/valor-liquido.ts`) faz a mesma conta.
+ */
+export type CoberturaDoPedido = { pixDoPedido: number; forcadasDoPedido: number }
+
+/**
+ * Quanto do custo gravado na forçada de PIX conta no líquido (decisão 10 do Luis, #93): a parte que o PIX do pedido
+ * cobre já leva o custo dele e não conta de novo. Desvinculado o PIX, volta a contar inteiro.
+ */
+export function custoDaForcadaQueConta(custoGravado: number, c: CoberturaDoPedido): { conta: number; coberto: number } {
+  const fracao = c.pixDoPedido > 0 && c.forcadasDoPedido > 0 ? Math.min(1, c.pixDoPedido / c.forcadasDoPedido) : 0
+  const conta = centavos(custoGravado * (1 - fracao))
+  return { conta, coberto: centavos(custoGravado - conta) }
+}
+
+/** A linha da forçada na aba Pagamento (decisão 11 do Luis, #93): o custo que conta e a parte do PIX do pedido. */
+export function textoDoCustoDaForcada({ conta, coberto }: { conta: number; coberto: number }): string | null {
+  if (conta === 0 && coberto === 0) return null
+  if (conta === 0) return 'Custo já entra pelo PIX do pedido'
+  if (coberto === 0) return `Custo do PIX ${brl(conta)}`
+  return `Custo do PIX ${brl(conta)} (${brl(coberto)} já entra pelo PIX do pedido)`
 }

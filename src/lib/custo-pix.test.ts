@@ -1,7 +1,7 @@
 // Custo do PIX (#89): o banco credita o valor do PIX menos a porcentagem do grupo.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { avisoDeCustoAlto, creditoDoPix, custoDoPixForcado, esperadoComTaxa, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa, lerValorRecebido, percentualDoPix } from './custo-pix'
+import { avisoDeCustoAlto, creditoDoPix, custoDaForcadaQueConta, custoDoPixForcado, textoDoCustoDaForcada, esperadoComTaxa, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa, lerValorRecebido, percentualDoPix } from './custo-pix'
 
 test('crédito de R$ 9.980,00 com 0,20%: o PIX foi de R$ 10.000,00 e custou R$ 20,00', () => {
   assert.deepEqual(custoDoPixRecebido(9980, 0.002), { bruto: 10000, custo: 20 })
@@ -110,4 +110,46 @@ test('avisoDeCustoAlto: acima de 1% avisa com o custo e o do grupo; até 1% não
 
 test('percentualDoPix: duas a quatro casas, vírgula', () => {
   assert.deepEqual([0.002, 0.002998, 0.401].map(percentualDoPix), ['0,20%', '0,2998%', '40,10%'])
+})
+
+// Decisão 10 do Luis (#93): da forçada de PIX só deixa de contar a parte coberta pelo PIX com custo ligado ao pedido.
+// Fração coberta = min(1, PIX do pedido / forçadas do pedido); conta = custo gravado × (1 − fração), ao centavo.
+test('custoDaForcadaQueConta: PIX do pedido cobre 10% das forçadas, a forçada de R$ 20 conta R$ 18', () => {
+  assert.deepEqual(custoDaForcadaQueConta(20, { pixDoPedido: 1000, forcadasDoPedido: 10_000 }), { conta: 18, coberto: 2 })
+})
+
+test('custoDaForcadaQueConta: PIX do pedido igual ou maior que as forçadas, nada conta (o efeito do B6)', () => {
+  assert.deepEqual(custoDaForcadaQueConta(20, { pixDoPedido: 10_000, forcadasDoPedido: 10_000 }), { conta: 0, coberto: 20 })
+  assert.deepEqual(custoDaForcadaQueConta(20, { pixDoPedido: 12_000, forcadasDoPedido: 10_000 }), { conta: 0, coberto: 20 })
+})
+
+test('custoDaForcadaQueConta: sem PIX com custo no pedido (desvinculado), conta o custo inteiro; sem base, também', () => {
+  assert.deepEqual(custoDaForcadaQueConta(20, { pixDoPedido: 0, forcadasDoPedido: 10_000 }), { conta: 20, coberto: 0 })
+  assert.deepEqual(custoDaForcadaQueConta(0, { pixDoPedido: 1000, forcadasDoPedido: 0 }), { conta: 0, coberto: 0 })
+})
+
+test('custoDaForcadaQueConta: duas vendas do pedido dividem a mesma fração, proporcional a cada forçada', () => {
+  const pedido = { pixDoPedido: 5000, forcadasDoPedido: 6000 + 4000 }
+  assert.deepEqual([custoDaForcadaQueConta(12, pedido), custoDaForcadaQueConta(8, pedido)], [{ conta: 6, coberto: 6 }, { conta: 4, coberto: 4 }])
+})
+
+test('custoDaForcadaQueConta: ao centavo, conta + coberto é o custo gravado e a soma do que conta não passa do gravado', () => {
+  const gravados = [0.05, 0.03, 19.99, 0.01]
+  const pedido = { pixDoPedido: 1, forcadasDoPedido: 3 }
+  const partes = gravados.map(g => custoDaForcadaQueConta(g, pedido))
+  partes.forEach((p, i) => {
+    assert.equal(Math.round((p.conta + p.coberto) * 100), Math.round(gravados[i] * 100), `forçada ${i}`)
+    assert.ok(p.conta >= 0 && p.conta <= gravados[i], `forçada ${i}: ${p.conta}`)
+    assert.equal(Math.round(p.conta * 100), p.conta * 100, `forçada ${i} em centavos`)
+  })
+  assert.ok(partes.reduce((s, p) => s + p.conta, 0) <= gravados.reduce((s, g) => s + g, 0))
+})
+
+// Decisão 11 do Luis (#93): a linha da forçada na aba Pagamento mostra o custo que conta, pela mesma conta.
+test('textoDoCustoDaForcada: o que conta, a parte do PIX do pedido, ou nada quando não há custo', () => {
+  const sp = (t: string | null) => t?.replace(/\s/g, ' ') ?? null
+  assert.equal(sp(textoDoCustoDaForcada({ conta: 18, coberto: 2 })), 'Custo do PIX R$ 18,00 (R$ 2,00 já entra pelo PIX do pedido)')
+  assert.equal(sp(textoDoCustoDaForcada({ conta: 0, coberto: 20 })), 'Custo já entra pelo PIX do pedido')
+  assert.equal(sp(textoDoCustoDaForcada({ conta: 20, coberto: 0 })), 'Custo do PIX R$ 20,00')
+  assert.equal(textoDoCustoDaForcada({ conta: 0, coberto: 0 }), null)
 })
