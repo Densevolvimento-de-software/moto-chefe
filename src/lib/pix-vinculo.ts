@@ -5,9 +5,9 @@ import { custoDoPixVinculado } from './custo-pix'
 import { custoPixTaxaDoGrupo } from './custo-pix-grupo'
 import { db } from './db'
 import { pixRecebimentosMcp } from './db/schema'
-import { COMPLETA_FORCADA, pixCompletaForcadaParcial } from './conciliacao-status'
-import { cartoesDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from './alvo-da-conciliacao'
-import { alvoDasColunas, type Alvos } from './conciliacao-alvo'
+import { COMPLETA_FORCADA, pixCompletaForcadaParcial, resumoDaForcadaQueOPixCompleta, semForcadasQueOPixCompleta, type ForcadaQueOPixCompleta } from './conciliacao-status'
+import { cartoesDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from './alvo-da-conciliacao'
+import { alvoDasColunas, type Alvos, type AlvoConciliacao } from './conciliacao-alvo'
 import { lojasDoGrupo } from './conta'
 import { ehTransferenciaInterna } from './pix-internos'
 import { RecusaUsuario } from './resultado-action'
@@ -93,10 +93,46 @@ export async function desvincularPix(pixId: string, grupoId: string, fraseSeComp
     if (!vinculo) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
     if (await completaForcada(pixId, lojaIds, vinculo, tx)) throw new RecusaUsuario(fraseSeCompleta)
 
-    const soltos = await tx.update(pixRecebimentosMcp)
-      .set(PIX_SOLTO)
-      .where(doGrupo(pixId, grupoId))
-      .returning({ id: pixRecebimentosMcp.id })
-    if (soltos.length === 0) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
+    await soltarPix(pixId, grupoId, tx)
   })
+}
+
+async function soltarPix(pixId: string, grupoId: string, tx: ExecutorDoAlvo) {
+  const soltos = await tx.update(pixRecebimentosMcp)
+    .set(PIX_SOLTO)
+    .where(doGrupo(pixId, grupoId))
+    .returning({ id: pixRecebimentosMcp.id })
+  if (soltos.length === 0) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
+}
+
+/**
+ * Desfaz só as forçadas parciais de PIX que este PIX completa (a função pura decide, nunca a tela) e solta o PIX, na
+ * mesma transação e com a mesma trava do alvo do desvincular. Devolve o alvo, para revalidar as telas dele. Quem
+ * pode (quem gere a conciliação) a action confere.
+ */
+export async function desfazerForcadaEDesvincularPix(pixId: string, grupoId: string): Promise<AlvoConciliacao | null> {
+  const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
+  return db.transaction(async tx => {
+    const vinculo = await vinculoDoPix(pixId, grupoId, tx)
+    if (!vinculo) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
+    const alvo = alvoDasColunas(vinculo)
+    const doAlvo = await alvoComPagamentos(vinculo, lojaIds, tx)
+    if (alvo && doAlvo) {
+      const semForcadas = semForcadasQueOPixCompleta(doAlvo.pgtos, doAlvo.cartoes, doAlvo.pix, pixId)
+      if (semForcadas !== doAlvo.pgtos) await gravarPagamentosDoAlvo(alvo, lojaIds, semForcadas, tx)
+    }
+    await soltarPix(pixId, grupoId, tx)
+    return alvo
+  })
+}
+
+/**
+ * O que a caixa da /pix-mcp mostra: as forçadas parciais que este PIX completa, lidas com o PIX e os pagamentos no
+ * grupo dado. PIX de outra Conta, inexistente ou que não completa nada: null, igual.
+ */
+export async function forcadaQueOPixCompleta(pixId: string, grupoId: string): Promise<ForcadaQueOPixCompleta | null> {
+  const vinculo = await vinculoDoPix(pixId, grupoId, db)
+  if (!vinculo) return null
+  const doAlvo = await alvoComPagamentos(vinculo, (await lojasDoGrupo(grupoId)).map(l => l.id), db)
+  return doAlvo ? resumoDaForcadaQueOPixCompleta(doAlvo.pgtos, doAlvo.cartoes, doAlvo.pix, pixId) : null
 }

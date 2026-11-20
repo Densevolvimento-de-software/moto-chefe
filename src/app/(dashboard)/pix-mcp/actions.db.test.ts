@@ -7,6 +7,7 @@ import { sql } from 'drizzle-orm'
 import { semearUsuario, type Base } from '@/test/semear-conta'
 import { semearContaComAlvos, semearCustoPixDoGrupo, semearPixRecebido } from '@/test/semear-alvos-conciliacao'
 import { sessaoDe, type Sessao } from '@/test/sessao'
+import { ate, sessaoQueSegura } from '@/test/corrida'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -229,6 +230,110 @@ test('remover o PIX que completa a forçada parcial é recusado (o vendedor é m
   assert.equal((await vinculoDe(completa)).venda_id, a.ids.venda)
   assert.deepEqual(await actions.removerCorrespondenciaAction(outra), { ok: true, dados: undefined })
   assert.deepEqual(await vinculoDe(outra), LIVRE)
+})
+
+// B2 da #92: desfazer a forçada e desvincular de uma vez na /pix-mcp. Desfazer a forçada é de quem gere a
+// conciliação, como na /conciliacao (#79; decisão do Luis registrada na #92).
+test('vendedor chamando direto o desfazer e desvincular recebe Sem permissão, e nada muda', async () => {
+  const a = await contaComNumeros()
+  const { completa } = await vendaComForcadaParcial(a)
+  usuario = await sessao(a, 'vendedor')
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(completa), { ok: false, erro: 'Sem permissão' })
+  assert.equal(await forcadasDe(a.ids.venda), 1)
+  assert.equal((await vinculoDe(completa)).venda_id, a.ids.venda)
+})
+
+// Duas linhas PIX forçadas só em parte: a de 1.000 (base 600) completada por um PIX de 400, a de 300 (base 200)
+// por um PIX de 100.
+async function vendaComDuasForcadasParciais(a: Awaited<ReturnType<typeof contaComNumeros>>) {
+  const marca = (valorBruto: number) => ({ motivo: 'Resto caiu na conta pessoal', porId: 'u1', porNome: 'Gestor', em: '2026-11-19T12:00:00.000Z',
+    pix: { valorRecebido: valorBruto, valorBruto, custoPix: 0, custoPixTaxa: 0 } })
+  await db.execute(sql`update vendas set pagamentos = ${JSON.stringify([
+    { tipo: 'pix', valor: 1000, conciliadoManual: marca(600) }, { tipo: 'pix', valor: 300, conciliadoManual: marca(200) },
+  ])}::jsonb where id = ${a.ids.venda}`)
+  const ligar = async (valor: number) => {
+    const id = await semearPixRecebido(db, a.grupoId, { valor })
+    await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'venda', venda_id = ${a.ids.venda}, valor_bruto = ${valor} where id = ${id}`)
+    return id
+  }
+  return { de400: await ligar(400), de100: await ligar(100) }
+}
+const marcasDe = async (vendaId: string) =>
+  ((await execRows(sql`select p ? 'conciliadoManual' as m from jsonb_array_elements((select pagamentos from vendas where id = ${vendaId})) p`)) as { m: boolean }[]).map(r => r.m)
+
+test('aux_adm desfaz só a forçada que o PIX completa e desvincula; a outra forçada parcial e o outro PIX ficam', async () => {
+  const a = await contaComNumeros()
+  const { de400, de100 } = await vendaComDuasForcadasParciais(a)
+  usuario = await sessao(a, 'aux_adm')
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(de400), { ok: true, dados: undefined })
+  assert.deepEqual(await marcasDe(a.ids.venda), [false, true])
+  assert.deepEqual(await vinculoDe(de400), LIVRE)
+  assert.equal((await vinculoDe(de100)).venda_id, a.ids.venda)
+})
+
+test('desfazer e desvincular um PIX que não completa forçada nenhuma: só desvincula, nenhuma marca muda', async () => {
+  const a = await contaComNumeros()
+  const { outra } = await vendaComForcadaParcial(a)
+  usuario = await sessao(a, 'aux_adm')
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(outra), { ok: true, dados: undefined })
+  assert.equal(await forcadasDe(a.ids.venda), 1)
+  assert.deepEqual(await vinculoDe(outra), LIVRE)
+})
+
+test('desfazer e desvincular numa transação: se soltar o PIX falha, a marca da forçada fica', async () => {
+  const a = await contaComNumeros()
+  const { completa } = await vendaComForcadaParcial(a)
+  // Só este PIX: os arquivos do test:db rodam em paralelo no mesmo banco.
+  await db.execute(sql.raw(`create or replace function pix_92_falha() returns trigger language plpgsql as $$ begin raise exception 'falha simulada'; end $$;
+    create trigger pix_92_falha before update on pix_recebimentos_mcp for each row when (old.id = '${completa}'::uuid) execute function pix_92_falha();`))
+  try {
+    usuario = await sessao(a, 'aux_adm')
+    await assert.rejects(actions.desfazerForcadaERemoverAction(completa), (e: Error) => /falha simulada/.test(String(e.cause)))
+    assert.equal(await forcadasDe(a.ids.venda), 1)
+    assert.equal((await vinculoDe(completa)).venda_id, a.ids.venda)
+  } finally {
+    await db.execute(sql.raw('drop trigger if exists pix_92_falha on pix_recebimentos_mcp; drop function if exists pix_92_falha();'))
+  }
+})
+
+test('desfazer a forçada e desvincular: PIX de outra Conta recebe a frase do inexistente, e a Conta dona fica intacta', async () => {
+  const a = await contaComNumeros()
+  const { completa } = await vendaComForcadaParcial(a)
+  const b = await contaComNumeros()
+  usuario = await sessao(b, 'aux_adm')
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(completa), PIX_NAO_ENCONTRADO)
+  assert.equal(await forcadasDe(a.ids.venda), 1)
+  assert.equal((await vinculoDe(completa)).venda_id, a.ids.venda)
+})
+
+// A caixa da /pix-mcp: o resumo sai do servidor com as lojas do grupo do PIX.
+test('resumo da forçada que o PIX completa: o do próprio grupo; PIX de outra Conta, inexistente ou que não completa = vazio', async () => {
+  const a = await contaComNumeros()
+  const { completa, outra } = await vendaComForcadaParcial(a)
+  usuario = await sessao(a, 'vendedor')
+  assert.deepEqual(await actions.forcadaDoPixAction(completa), { ok: true, dados: { valor: 1000, marcado: 600, cobre: 400 } })
+  assert.deepEqual(await actions.forcadaDoPixAction(outra), { ok: true, dados: null })
+  assert.deepEqual(await actions.forcadaDoPixAction(randomUUID()), { ok: true, dados: null })
+  const b = await contaComNumeros()
+  usuario = await sessao(b, 'aux_adm')
+  assert.deepEqual(await actions.forcadaDoPixAction(completa), { ok: true, dados: null })
+})
+
+test('desfazer e desvincular espera a trava do alvo (quem forçar ou desvincular no mesmo alvo espera a vez)', async () => {
+  const a = await contaComNumeros()
+  const { completa } = await vendaComForcadaParcial(a)
+  usuario = await sessao(a, 'aux_adm')
+  const s = await sessaoQueSegura(url!)
+  try {
+    await s.travar('select id from vendas where id = $1 for update', [a.ids.venda])
+    const r = actions.desfazerForcadaERemoverAction(completa)
+    await ate(async () => (await s.esperandoPor([s.pid])).length === 1, 'o desfazer esperando a trava da venda')
+    assert.equal(await forcadasDe(a.ids.venda), 1, 'nada muda enquanto espera')
+    await s.soltar()
+    assert.deepEqual(await r, { ok: true, dados: undefined })
+  } finally { await s.fim() }
+  assert.equal(await forcadasDe(a.ids.venda), 0)
+  assert.deepEqual(await vinculoDe(completa), LIVRE)
 })
 
 test('a trava lê os pagamentos só nas lojas do grupo do PIX: alvo de outro grupo não é lido nem alterado', async () => {
