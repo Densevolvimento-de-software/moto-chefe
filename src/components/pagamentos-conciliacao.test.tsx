@@ -444,24 +444,24 @@ const forcadaPix = (base: number, custoPix: number) => ({ ...FORCADO, pix: { val
 
 test('linha da forçada de PIX: o custo que conta, a parte do PIX do pedido, ou que já entra todo por ele', async () => {
   const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }]
-  await montar('aux_adm', pgtos, [], [], [], { cobertura: { pixDoPedido: 1000, forcadasDasOutras: 0 } })
+  await montar('aux_adm', pgtos, [], [], [], { cobertura: { pixDoPedido: 1000, pixDasOutras: 0 } })
   assert.deepEqual(custoDaLinha(), ['Custo do PIX R$ 18,00 (R$ 2,00 já entra pelo PIX do pedido)'])
-  await montar('aux_adm', pgtos, [], [], [], { cobertura: { pixDoPedido: 1000, forcadasDasOutras: 10_000 } })
+  await montar('aux_adm', pgtos, [], [], [], { cobertura: { pixDoPedido: 1000, pixDasOutras: 10_000 } })
   assert.deepEqual(custoDaLinha().slice(-1), ['Custo do PIX R$ 19,00 (R$ 1,00 já entra pelo PIX do pedido)'])
 })
 
 test('linha da forçada de PIX: PIX do pedido cobrindo tudo, sem PIX no pedido, e forçada sem custo', async () => {
-  await montar('aux_adm', [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }], [], [], [], { cobertura: { pixDoPedido: 10_000, forcadasDasOutras: 0 } })
+  await montar('aux_adm', [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }], [], [], [], { cobertura: { pixDoPedido: 10_000, pixDasOutras: 0 } })
   assert.deepEqual(custoDaLinha(), ['Custo já entra pelo PIX do pedido'])
   await montar('aux_adm', [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }])
   assert.deepEqual(custoDaLinha().slice(-1), ['Custo do PIX R$ 20,00'])
-  await montar('aux_adm', [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }], [], [], [], { cobertura: { pixDoPedido: 1000, forcadasDasOutras: 0 } })
+  await montar('aux_adm', [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }], [], [], [], { cobertura: { pixDoPedido: 1000, pixDasOutras: 0 } })
   assert.equal(custoDaLinha().length, 2, 'forçada sem custo não tem linha de custo')
 })
 
 test('forçar PIX com PIX com custo no pedido: o aviso mostra quanto do custo conta, pela mesma conta', async () => {
   paraOAlvo.mock.mockImplementation(async () => COM_CUSTO)
-  const t = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }], [], [], [], { cobertura: { pixDoPedido: 3000, forcadasDasOutras: 0 } })
+  const t = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }], [], [], [], { cobertura: { pixDoPedido: 3000, pixDasOutras: 0 } })
   await t.tocar(linha('PIX'))
   await t.clique('Forçar')
   assert.ok(tela().includes('Custo do PIX R$ 14,00 (R$ 6,00 já entra pelo PIX do pedido)'), tela())

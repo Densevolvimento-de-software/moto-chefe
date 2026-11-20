@@ -2,7 +2,7 @@
 // A conta é a mesma da taxa de cartão (preco-minimo.ts); aqui ela ganha os nomes do PIX.
 import { centavos } from './centavos'
 import { brl } from './dashboard-painel'
-import type { PgtoOS } from './conciliacao-status'
+import { PAGAMENTO_PIX, type PgtoOS } from './conciliacao-status'
 import { parseNumeroBR } from './numero-br'
 import { brutoParaReceber, liquidoDoBruto } from './preco-minimo'
 
@@ -96,17 +96,18 @@ export function avisoDeCustoAlto(custo: CustoDoPix, taxaDoGrupo: number): string
 }
 
 /**
- * O pedido da venda: valor bruto dos PIX com custo ligados a ele (do grupo da loja) e a base das forçadas de PIX de
- * todas as vendas dele. O SQL do líquido (`queries/valor-liquido.ts`) faz a mesma conta.
+ * O pedido da venda: valor bruto dos PIX com custo ligados a ele (do grupo da loja) e a soma dos pagamentos PIX de
+ * todas as vendas dele, forçados ou não (decisão 13 do Luis, #93). O SQL do líquido (`queries/valor-liquido.ts`) faz a
+ * mesma conta.
  */
-export type CoberturaDoPedido = { pixDoPedido: number; forcadasDoPedido: number }
+export type CoberturaDoPedido = { pixDoPedido: number; pixDasVendas: number }
 
 /**
  * Quanto do custo gravado na forçada de PIX conta no líquido (decisão 10 do Luis, #93): a parte que o PIX do pedido
  * cobre já leva o custo dele e não conta de novo. Desvinculado o PIX, volta a contar inteiro.
  */
 export function custoDaForcadaQueConta(custoGravado: number, c: CoberturaDoPedido): { conta: number; coberto: number } {
-  const [custo, p, f] = [custoGravado, c.pixDoPedido, c.forcadasDoPedido].map(v => Math.round(v * 100))
+  const [custo, p, f] = [custoGravado, c.pixDoPedido, c.pixDasVendas].map(v => Math.round(v * 100))
   // custo × (1 − p/f) em centavos inteiros, meio centavo para cima: a mesma conta do SQL, sem resto de ponto flutuante.
   const conta = p <= 0 || f <= 0 ? custo : p >= f ? 0 : Math.floor((2 * custo * (f - p) + f) / (2 * f))
   return { conta: conta / 100, coberto: (custo - conta) / 100 }
@@ -121,15 +122,13 @@ export function textoDoCustoDaForcada({ conta, coberto }: { conta: number; cober
 }
 
 /**
- * O que o servidor manda à tela sobre o pedido da venda (decisão 11 do Luis, #93): o P e a base das forçadas de PIX
- * das OUTRAS vendas dele. As da própria venda a tela tem atualizadas nos pagamentos.
+ * O que o servidor manda à tela sobre o pedido da venda (decisão 11 do Luis, #93): o P e a soma dos pagamentos PIX
+ * das OUTRAS vendas dele. Os da própria venda a tela tem atualizados.
  */
-export type CoberturaDaVenda = { pixDoPedido: number; forcadasDasOutras: number }
+export type CoberturaDaVenda = { pixDoPedido: number; pixDasOutras: number }
 
-/** A cobertura do pedido vista da venda: as forçadas das outras vendas + as desta + `aMais`, a base que está sendo forçada. */
-export function coberturaComEstaVenda(
-  c: CoberturaDaVenda | null, pagamentos: readonly Pick<PgtoOS, 'conciliadoManual'>[], aMais = 0,
-): CoberturaDoPedido {
-  const destaVenda = pagamentos.reduce((s, p) => s + (p.conciliadoManual?.pix?.valorBruto ?? 0), 0)
-  return { pixDoPedido: c?.pixDoPedido ?? 0, forcadasDoPedido: (c?.forcadasDasOutras ?? 0) + destaVenda + aMais }
+/** A cobertura do pedido vista da venda: os pagamentos PIX das outras vendas + os desta, forçados ou não. */
+export function coberturaComEstaVenda(c: CoberturaDaVenda | null, pagamentos: readonly Pick<PgtoOS, 'tipo' | 'valor'>[]): CoberturaDoPedido {
+  const destaVenda = pagamentos.filter(p => PAGAMENTO_PIX.has(p.tipo)).reduce((s, p) => s + p.valor, 0)
+  return { pixDoPedido: c?.pixDoPedido ?? 0, pixDasVendas: (c?.pixDasOutras ?? 0) + destaVenda }
 }

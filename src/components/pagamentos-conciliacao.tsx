@@ -125,9 +125,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   // Pagamento que voltou a pendente porque a linha da maquininha foi estornada no Mercado Pago (#51).
   const estornados = estornosDosPagamentos(pagamentos, conciliados, dados.estornos)
   // Custo da forçada de PIX que conta no líquido, pela mesma conta do servidor (decisão 11 do Luis, #93).
-  // `aMais`: a base que está sendo forçada.
-  const textoDoCusto = (custoGravado: number, aMais = 0) =>
-    textoDoCustoDaForcada(custoDaForcadaQueConta(custoGravado, coberturaComEstaVenda(dados.cobertura ?? null, pagamentos, aMais)))
+  const textoDoCusto = (custoGravado: number) =>
+    textoDoCustoDaForcada(custoDaForcadaQueConta(custoGravado, coberturaComEstaVenda(dados.cobertura ?? null, pagamentos)))
   // Sem a cobertura, o custo gravado pode não ser o que conta: a linha espera por ela, e a falha aparece.
   const textoDaLinhaForcada = (custoGravado: number) =>
     custoGravado <= 0 ? null
@@ -437,7 +436,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                 <div className="space-y-3 border-t border-border p-3">
                   {forcandoIdx === i ? (
                     <FormularioDoForcado
-                      p={p} i={i} coberto={coberto} taxaDoGrupo={contextoPix?.taxa ?? 0} custoQueConta={(custo, base) => (dados.cobertura?.pixDoPedido ?? 0) > 0 ? textoDoCusto(custo, base) : null} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
+                      p={p} i={i} coberto={coberto} taxaDoGrupo={contextoPix?.taxa ?? 0} custoQueConta={custo => (dados.cobertura?.pixDoPedido ?? 0) > 0 ? textoDoCusto(custo) : null} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
                       salvando={salvando} onCancelar={() => setForcandoIdx(null)} onConfirmar={forcar}
                     />
                   ) : (
@@ -529,7 +528,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
 function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, custoQueConta, motivo, onMotivo, recebido, onRecebido, salvando, onCancelar, onConfirmar }: {
   p: PgtoOS; i: number; coberto: number; taxaDoGrupo: number
   /** Com PIX com custo no pedido: quanto do custo desta forçada conta no líquido (decisão 11 do Luis, #93). */
-  custoQueConta: (custoPix: number, base: number) => string | null
+  custoQueConta: (custoPix: number) => string | null
   motivo: string; onMotivo: (v: string) => void
   recebido: string; onRecebido: (v: string) => void
   salvando: boolean; onCancelar: () => void; onConfirmar: (baseVista?: number) => void
@@ -538,7 +537,7 @@ function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, custoQueConta, motivo
   const pixForcado = ehPix ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto }) : null
   const podeConfirmar = motivo.trim().length >= 3 && typeof pixForcado !== 'string'
   const avisoCusto = pixForcado && typeof pixForcado !== 'string' ? avisoDeCustoAlto(pixForcado, taxaDoGrupo) : null
-  const textoCusto = pixForcado && typeof pixForcado !== 'string' ? custoQueConta(pixForcado.custoPix, pixForcado.valorBruto) : null
+  const textoCusto = pixForcado && typeof pixForcado !== 'string' ? custoQueConta(pixForcado.custoPix) : null
   const confirmar = () => onConfirmar(pixForcado && typeof pixForcado !== 'string' ? pixForcado.valorBruto : undefined)
   return (
     <div className="space-y-2 rounded-lg bg-warning/10 p-3">

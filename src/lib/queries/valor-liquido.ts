@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { taxasDaReceita } from '@/lib/dre'
 import { vendas, conciliacoesCartao } from '@/lib/db/schema'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
+import { PAGAMENTO_PIX } from '@/lib/conciliacao-status'
 
 /**
  * Valor da venda com o que já foi conciliado trocado pelo que entrou de fato: a parte paga em cartão vira o
@@ -105,17 +106,21 @@ export function custoDasForcadasPix(pagamentos: SQL, pedidoDaVenda?: { pedido: S
                                   ELSE FLOOR((2 * ${custo} * (cob.f - cob.p) + cob.f) / (2 * cob.f)) END) / 100
               FROM jsonb_array_elements(COALESCE(${pagamentos}, '[]'::jsonb)) pg
               CROSS JOIN (SELECT ROUND(${pixComCustoDoPedido(pedidoDaVenda.pedido, grupo)} * 100) AS p,
-                                 ROUND(${basesForcadasDoPedido(pedidoDaVenda.pedido, grupo)} * 100) AS f) cob), 0)`
+                                 ROUND(${pixDasVendasDoPedido(pedidoDaVenda.pedido, grupo)} * 100) AS f) cob), 0)`
 }
 
 /** Valor bruto dos PIX com custo ligados ao pedido, do grupo dado: o P da cobertura (decisão 10 do Luis, #93). */
 export const pixComCustoDoPedido = (pedido: SQL, grupo: SQL) => sql`(SELECT COALESCE(SUM(pr.valor_bruto::numeric), 0)
   FROM pix_recebimentos_mcp pr WHERE pr.pedido_id = ${pedido} AND pr.custo_pix > 0 AND pr.grupo_id = ${grupo})`
 
-/** Base das forçadas de PIX das vendas do pedido, nas lojas do grupo: o F da cobertura. `exceto`: venda que fica de fora. */
-export const basesForcadasDoPedido = (pedido: SQL, grupo: SQL, exceto?: SQL) => sql`(SELECT COALESCE(SUM((pf->'conciliadoManual'->'pix'->>'valorBruto')::numeric), 0)
+/**
+ * Pagamentos PIX das vendas do pedido, forçados ou não (decisão 13 do Luis, #93), nas lojas do grupo: o F da
+ * cobertura. Os tipos vêm de PAGAMENTO_PIX, a lista da tela. `exceto`: venda que fica de fora.
+ */
+export const pixDasVendasDoPedido = (pedido: SQL, grupo: SQL, exceto?: SQL) => sql`(SELECT COALESCE(SUM((pf->>'valor')::numeric), 0)
   FROM vendas vf CROSS JOIN LATERAL jsonb_array_elements(COALESCE(vf.pagamentos, '[]'::jsonb)) pf
-  WHERE vf.pedido_venda_id = ${pedido} AND vf.loja_id IN (SELECT id FROM lojas WHERE grupo_id = ${grupo})${exceto ? sql` AND vf.id <> ${exceto}` : sql``})`
+  WHERE vf.pedido_venda_id = ${pedido} AND vf.loja_id IN (SELECT id FROM lojas WHERE grupo_id = ${grupo})
+    AND pf->>'tipo' = ANY(${sql.param([...PAGAMENTO_PIX])}::text[])${exceto ? sql` AND vf.id <> ${exceto}` : sql``})`
 
 // Qualificado à mão: numa query sem join, ${vendas.id} sai sem a tabela e casaria com o id da tabela de dentro.
 export const custoPixDaVendaExpr = () => custoPixDaVenda({

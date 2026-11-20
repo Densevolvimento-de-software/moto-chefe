@@ -442,14 +442,14 @@ test('forçar PIX de venda cujo pedido já tem PIX com custo: a marca grava o cu
   await ligarNoPedido(b.grupoId)
   await ligarNoPedido(a.grupoId, 0, 'TED')
   assert.equal(await actions.buscarPixParaOAlvo(alvo, 1000).then(r => r.taxa), 0.002)
-  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 0, forcadasDasOutras: 0 })
+  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 0, pixDasOutras: 0 })
   // PIX do próprio grupo no pedido: a forçada grava o custo dela do mesmo jeito.
   await ligarNoPedido(a.grupoId)
-  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 3000, forcadasDasOutras: 0 })
+  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 3000, pixDasOutras: 0 })
   assert.equal((await actions.forcarConciliacaoAction(alvo, 0, MOTIVO, 998, 1000)).ok, true)
   assert.deepEqual((await marcaDe('moto', a.alvos.moto))?.pix, { valorRecebido: 998, valorBruto: 1000, custoPix: 2, custoPixTaxa: 0.002 })
   // A forçada desta venda não entra nas "outras": a tela soma a dela pelos pagamentos.
-  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 3000, forcadasDasOutras: 0 })
+  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 3000, pixDasOutras: 0 })
   usuario = sessao(b, 'aux_adm')
   assert.equal(await actions.buscarCoberturaDoPedido(alvo), null)
   assert.equal(await actions.buscarCoberturaDoPedido({ tipo: 'moto', id: randomUUID() }), null)

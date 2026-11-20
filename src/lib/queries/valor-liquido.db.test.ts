@@ -277,7 +277,7 @@ test('empate de meio centavo: o líquido conta 1,01 da forçada de 2,01 coberta 
   const c = await semearConta()
   const { venda, pedido } = await vendaMoto(c, 2_000, [{ tipo: 'pix', valor: 2_000, conciliadoManual: marcaPix(c, 2_000, 2.01) }])
   await pixVinculado(c.grupoId, { pedido }, 995, 1_000, 5)
-  const { conta } = custoPix.custoDaForcadaQueConta(2.01, { pixDoPedido: 1_000, forcadasDoPedido: 2_000 })
+  const { conta } = custoPix.custoDaForcadaQueConta(2.01, { pixDoPedido: 1_000, pixDasVendas: 2_000 })
   assert.equal(conta, 1.01)
   assert.equal(await liquido(venda), 2_000 - 5 - 1.01)
 })
@@ -289,4 +289,15 @@ test('TED ou PIX sem custo no pedido não cobre: a forçada conta o custo inteir
   await pixVinculado(c.grupoId, { pedido }, 3_000, 3_000, 0, 'TED')
   await pixVinculado(c.grupoId, { pedido }, 3_000, 3_000, 0)
   assert.equal(await liquido(venda), 1_000 - 2)
+})
+
+// Decisão 13 do Luis (#93): F soma os pagamentos PIX de todas as vendas do pedido, forçados ou não.
+test('decisão 13: 2 PIX de 5.000, um forçado (custo 10), PIX de 5.000 no pedido: a forçada conta 5; as duas forçadas, 5 cada', async () => {
+  const c = await semearConta()
+  const um = await vendaMoto(c, 10_000, [{ tipo: 'pix', valor: 5_000, conciliadoManual: marcaPix(c, 5_000, 10) }, { tipo: 'pix', valor: 5_000 }])
+  await pixVinculado(c.grupoId, { pedido: um.pedido }, 4_990, 5_000, 10)
+  assert.equal(await liquido(um.venda), 10_000 - 10 - 5)
+  const dois = await vendaMoto(c, 10_000, [{ tipo: 'pix', valor: 5_000, conciliadoManual: marcaPix(c, 5_000, 10) }, { tipo: 'pix', valor: 5_000, conciliadoManual: marcaPix(c, 5_000, 10) }])
+  await pixVinculado(c.grupoId, { pedido: dois.pedido }, 4_990, 5_000, 10)
+  assert.equal(await liquido(dois.venda), 10_000 - 10 - 5 - 5)
 })

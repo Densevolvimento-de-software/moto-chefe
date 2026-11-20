@@ -9,7 +9,7 @@ import { pagamentosEfetivosOS, type PgtoOS } from './conciliacao-status'
 import type { AlvoConciliacao } from './conciliacao-alvo'
 import { colunasQueLigamAoAlvo } from './alvo-conciliado'
 import { CARTAO_ESTORNADO } from './conciliacao-cartao'
-import { basesForcadasDoPedido, pixComCustoDoPedido } from './queries/valor-liquido'
+import { pixComCustoDoPedido, pixDasVendasDoPedido } from './queries/valor-liquido'
 import type { CoberturaDaVenda } from './custo-pix'
 
 export type ExecutorDoAlvo = Pick<typeof db, 'select' | 'update'>
@@ -123,9 +123,9 @@ export async function gravarPagamentosDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo
 export async function coberturaDoPedidoDaVenda(vendaId: string): Promise<CoberturaDaVenda | null> {
   const [pedido, grupo] = [sql.raw('v.pedido_venda_id'), sql.raw('lj.grupo_id')]
   const [r] = (await execRows(sql`select ${pixComCustoDoPedido(pedido, grupo)} as pix,
-      ${basesForcadasDoPedido(pedido, grupo, sql.raw('v.id'))} as outras
+      ${pixDasVendasDoPedido(pedido, grupo, sql.raw('v.id'))} as outras
     from vendas v join lojas lj on lj.id = v.loja_id where v.id = ${vendaId}`)) as { pix: string; outras: string }[]
-  return r ? { pixDoPedido: Number(r.pix), forcadasDasOutras: Number(r.outras) } : null
+  return r ? { pixDoPedido: Number(r.pix), pixDasOutras: Number(r.outras) } : null
 }
 
 /**
