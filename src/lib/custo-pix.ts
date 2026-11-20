@@ -129,6 +129,6 @@ export type CoberturaDaVenda = { pixDoPedido: number; pixDasOutras: number }
 
 /** A cobertura do pedido vista da venda: os pagamentos PIX das outras vendas + os desta, forçados ou não. */
 export function coberturaComEstaVenda(c: CoberturaDaVenda | null, pagamentos: readonly Pick<PgtoOS, 'tipo' | 'valor'>[]): CoberturaDoPedido {
-  const destaVenda = pagamentos.filter(p => PAGAMENTO_PIX.has(p.tipo)).reduce((s, p) => s + p.valor, 0)
+  const destaVenda = pagamentos.filter(p => PAGAMENTO_PIX.has(p.tipo)).reduce((s, p) => s + (Number(p.valor) || 0), 0)
   return { pixDoPedido: c?.pixDoPedido ?? 0, pixDasVendas: (c?.pixDasOutras ?? 0) + destaVenda }
 }
