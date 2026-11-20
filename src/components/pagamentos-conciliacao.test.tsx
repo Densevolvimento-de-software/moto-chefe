@@ -71,9 +71,11 @@ const linhas = () => [...document.querySelectorAll<HTMLButtonElement>('button[ar
 const linha = (tipo: string) => linhas().find(b => (b.textContent ?? '').startsWith(tipo))
 
 type Conc = { id: string; autorizacao: string | null; valorBruto: string; valorLiquido: string | null; operadora: string; tipo: string; dataTransacao: string }
-async function montar(papel: string, pagamentos: PgtoOS[], pixRecs: PixRec[] = [], estornos: EstornoDoAlvo[] = [], concs: Conc[] = [], cobertura: Cobertura = null) {
+// `cobertura` undefined: ainda carregando; `coberturaFalhou`: a busca da cobertura falhou.
+type Estado = { cobertura?: Cobertura; coberturaFalhou?: boolean }
+async function montar(papel: string, pagamentos: PgtoOS[], pixRecs: PixRec[] = [], estornos: EstornoDoAlvo[] = [], concs: Conc[] = [], estado: Estado = { cobertura: null }) {
   const { PagamentosConciliacao } = await import('./pagamentos-conciliacao')
-  const dados = { concs, pixRecs, estornos, cobertura, loading: false, recarregar: async () => {} }
+  const dados = { concs, pixRecs, estornos, cobertura: estado.cobertura, coberturaFalhou: estado.coberturaFalhou ?? false, loading: false, recarregar: async () => {} }
   const tela = await montarDialogo(PagamentosConciliacao, { alvo: ALVO, pagamentos, dados, papel })
   desmontagens.push(tela.desmontar)
   const tocar = (el: Element | undefined) => tela.act(async () => { clicar(el); await esperar(50) })
@@ -442,25 +444,35 @@ const forcadaPix = (base: number, custoPix: number) => ({ ...FORCADO, pix: { val
 
 test('linha da forçada de PIX: o custo que conta, a parte do PIX do pedido, ou que já entra todo por ele', async () => {
   const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }]
-  await montar('aux_adm', pgtos, [], [], [], { pixDoPedido: 1000, forcadasDasOutras: 0 })
+  await montar('aux_adm', pgtos, [], [], [], { cobertura: { pixDoPedido: 1000, forcadasDasOutras: 0 } })
   assert.deepEqual(custoDaLinha(), ['Custo do PIX R$ 18,00 (R$ 2,00 já entra pelo PIX do pedido)'])
-  await montar('aux_adm', pgtos, [], [], [], { pixDoPedido: 1000, forcadasDasOutras: 10_000 })
+  await montar('aux_adm', pgtos, [], [], [], { cobertura: { pixDoPedido: 1000, forcadasDasOutras: 10_000 } })
   assert.deepEqual(custoDaLinha().slice(-1), ['Custo do PIX R$ 19,00 (R$ 1,00 já entra pelo PIX do pedido)'])
 })
 
 test('linha da forçada de PIX: PIX do pedido cobrindo tudo, sem PIX no pedido, e forçada sem custo', async () => {
-  await montar('aux_adm', [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }], [], [], [], { pixDoPedido: 10_000, forcadasDasOutras: 0 })
+  await montar('aux_adm', [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }], [], [], [], { cobertura: { pixDoPedido: 10_000, forcadasDasOutras: 0 } })
   assert.deepEqual(custoDaLinha(), ['Custo já entra pelo PIX do pedido'])
   await montar('aux_adm', [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }])
   assert.deepEqual(custoDaLinha().slice(-1), ['Custo do PIX R$ 20,00'])
-  await montar('aux_adm', [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }], [], [], [], { pixDoPedido: 1000, forcadasDasOutras: 0 })
+  await montar('aux_adm', [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }], [], [], [], { cobertura: { pixDoPedido: 1000, forcadasDasOutras: 0 } })
   assert.equal(custoDaLinha().length, 2, 'forçada sem custo não tem linha de custo')
 })
 
 test('forçar PIX com PIX com custo no pedido: o aviso mostra quanto do custo conta, pela mesma conta', async () => {
   paraOAlvo.mock.mockImplementation(async () => COM_CUSTO)
-  const t = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }], [], [], [], { pixDoPedido: 3000, forcadasDasOutras: 0 })
+  const t = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }], [], [], [], { cobertura: { pixDoPedido: 3000, forcadasDasOutras: 0 } })
   await t.tocar(linha('PIX'))
   await t.clique('Forçar')
   assert.ok(tela().includes('Custo do PIX R$ 14,00 (R$ 6,00 já entra pelo PIX do pedido)'), tela())
+})
+
+// P3 da revisão: antes de a cobertura chegar a linha não mostra o custo gravado (que pode não ser o que conta); se a
+// busca falha, a linha diz que não deu para carregar.
+test('linha da forçada de PIX: sem custo enquanto a cobertura carrega, e o aviso quando ela falha', async () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }]
+  await montar('aux_adm', pgtos, [], [], [], { cobertura: undefined })
+  assert.deepEqual(custoDaLinha(), [])
+  await montar('aux_adm', pgtos, [], [], [], { coberturaFalhou: true })
+  assert.deepEqual(custoDaLinha(), ['Não deu para carregar o custo do PIX.'])
 })

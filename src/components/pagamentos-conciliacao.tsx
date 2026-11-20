@@ -49,7 +49,9 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
   const [concs, setConcs]     = useState<Conc[]>([])
   const [pixRecs, setPixRecs] = useState<PixRec[]>([])
   const [estornos, setEstornos] = useState<EstornoDoAlvo[]>([])
-  const [cobertura, setCobertura] = useState<CoberturaDaVenda | null>(null)
+  // undefined: ainda não chegou. A falha dela não derruba o resto do painel, mas aparece na linha da forçada.
+  const [cobertura, setCobertura] = useState<CoberturaDaVenda | null | undefined>(undefined)
+  const [coberturaFalhou, setCoberturaFalhou] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const { tipo, id } = alvo
@@ -57,16 +59,18 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
   const recarregar = useCallback(async () => {
     setLoading(true)
     try {
-      const [c, px, est, cob] = await Promise.all([
+      const [c, px, est] = await Promise.all([
         buscarConciliacoesDoAlvo({ tipo, id }),
         buscarPixDoAlvo({ tipo, id }),
         buscarEstornosDoAlvo({ tipo, id }),
-        buscarCoberturaDoPedido({ tipo, id }),
+        buscarCoberturaDoPedido({ tipo, id }).then(
+          cob => { setCobertura(cob); setCoberturaFalhou(false) },
+          () => setCoberturaFalhou(true),
+        ),
       ])
       setConcs(c)
       setPixRecs(px)
       setEstornos(est)
-      setCobertura(cob)
     } finally {
       setLoading(false)
     }
@@ -76,7 +80,7 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
     if (ativo) recarregar()
   }, [ativo, recarregar])
 
-  return { concs, pixRecs, estornos, cobertura, loading, recarregar }
+  return { concs, pixRecs, estornos, cobertura, coberturaFalhou, loading, recarregar }
 }
 
 type Props = {
@@ -123,7 +127,13 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   // Custo da forçada de PIX que conta no líquido, pela mesma conta do servidor (decisão 11 do Luis, #93).
   // `aMais`: a base que está sendo forçada.
   const textoDoCusto = (custoGravado: number, aMais = 0) =>
-    textoDoCustoDaForcada(custoDaForcadaQueConta(custoGravado, coberturaComEstaVenda(dados.cobertura, pagamentos, aMais)))
+    textoDoCustoDaForcada(custoDaForcadaQueConta(custoGravado, coberturaComEstaVenda(dados.cobertura ?? null, pagamentos, aMais)))
+  // Sem a cobertura, o custo gravado pode não ser o que conta: a linha espera por ela, e a falha aparece.
+  const textoDaLinhaForcada = (custoGravado: number) =>
+    custoGravado <= 0 ? null
+    : dados.coberturaFalhou ? 'Não deu para carregar o custo do PIX.'
+    : dados.cobertura === undefined ? null
+    : textoDoCusto(custoGravado)
 
   function limparBusca() {
     setCandidatos([])
@@ -342,7 +352,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     const parcial    = pendente && cobertura.coberto > 0.005
     const situacao = situacaoDe({ precisa, loading, forcado, conciliado, parcial })
     const pix = cobertura.pixId ? pixRecs.find(r => r.id === cobertura.pixId) : undefined
-    const custoDaForcada = forcado && p.conciliadoManual?.pix ? textoDoCusto(p.conciliadoManual.pix.custoPix) : null
+    const custoDaForcada = forcado && p.conciliadoManual?.pix ? textoDaLinhaForcada(p.conciliadoManual.pix.custoPix) : null
     return { p, i, situacao, coberto: cobertura.coberto, pix, pixDaMaquininha: cobertura.pixDaMaquininha, custoDaForcada }
   }).filter(l => !somenteConciliaveis || l.situacao !== 'livre')
   const ordem: Record<Situacao, number> = { pendente: 0, parcial: 1, carregando: 2, forcado: 3, conciliado: 4, livre: 5 }
