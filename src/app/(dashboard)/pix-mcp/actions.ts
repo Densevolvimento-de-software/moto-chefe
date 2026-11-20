@@ -76,15 +76,16 @@ async function removerCorrespondencia(id: string) {
 
 // B2 da #92: o PIX completa uma forçada parcial; desfaz a forçada e desvincula de uma vez. Desfazer a forçada é de
 // quem gere a conciliação, como na /conciliacao (#79; decisão do Luis registrada na #92).
-export async function desfazerForcadaERemoverAction(id: string) {
-  return acao(() => desfazerForcadaERemover(id))
+/** `resumoVisto`: o que a caixa mostrou, só para conferir; se mudou, a ação é recusada. */
+export async function desfazerForcadaERemoverAction(id: string, resumoVisto?: unknown) {
+  return acao(() => desfazerForcadaERemover(id, resumoVisto))
 }
-async function desfazerForcadaERemover(id: string) {
+async function desfazerForcadaERemover(id: string, resumoVisto: unknown) {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
   // A forçada muda o status da venda, OS ou peça nas listas; revalida também a /pix-mcp.
-  revalidarTelasDaConciliacao(await desfazerForcadaEDesvincularPix(id, grupo.id))
+  revalidarTelasDaConciliacao(await desfazerForcadaEDesvincularPix(id, grupo.id, resumoVisto ?? null))
 }
 
 /** O que a caixa mostra quando o desvincular é recusado porque o PIX completa uma forçada parcial. */

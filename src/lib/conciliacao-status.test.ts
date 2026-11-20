@@ -7,6 +7,7 @@ import {
   matchPagamentos,
   pixCompletaForcadaParcial,
   forcadasQueOPixCompleta,
+  mesmoResumoDaForcada,
   resumoDaForcadaQueOPixCompleta,
   semForcadasQueOPixCompleta,
   estornosDosPagamentos,
@@ -538,4 +539,14 @@ test('semForcadasQueOPixCompleta: tira só o que basta (menor soma dos restos), 
   // C2: restos de 300 e 400, P de 5.000 e Q de 400; sem P, tirar uma basta: a de resto menor.
   const c2: PgtoOS[] = [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(700) }, { tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(600) }]
   assert.deepEqual(marcadas(semForcadasQueOPixCompleta(c2, [], [{ id: 'p', valor: 5000 }, { id: 'q', valor: 400 }], 'p')), [false, true])
+})
+
+// #92 (28): o resumo que a tela mostrou só confere; qualquer diferença (ou forma estranha) é "mudou".
+test('mesmoResumoDaForcada: igual em centavos; valor, linha a mais ou forma estranha diferem', () => {
+  const r = { linhas: [{ valor: 1000, marcado: 600 }], cobre: 400 }
+  assert.equal(mesmoResumoDaForcada(r, { linhas: [{ valor: 1000, marcado: 600.001 }], cobre: 400 }), true)
+  assert.equal(mesmoResumoDaForcada(null, null), true)
+  for (const visto of [{ linhas: [{ valor: 1000, marcado: 600 }], cobre: 300 }, { linhas: [{ valor: 1000, marcado: 700 }], cobre: 400 },
+    { linhas: [{ valor: 1000, marcado: 600 }, { valor: 500, marcado: 100 }], cobre: 400 }, null, undefined, 'x', { linhas: 'x', cobre: 400 }])
+    assert.equal(mesmoResumoDaForcada(r, visto), false, JSON.stringify(visto))
 })

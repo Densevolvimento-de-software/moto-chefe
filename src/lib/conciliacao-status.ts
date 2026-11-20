@@ -75,7 +75,8 @@ export const COMPLETA_FORCADA_PEDIR_A_GESTOR = 'Este PIX completa um pagamento m
 export const PAGAMENTO_JA_FORCADO = 'Este pagamento já foi marcado como recebido. Desfaça antes de marcar de novo.'
 // A base que a tela mostrou não é a de agora: um PIX vinculou ou soltou entre abrir e confirmar (decisão do Luis registrada na #92).
 export const LANCAMENTOS_MUDARAM = 'Os lançamentos deste pagamento mudaram. Confira e marque de novo.'
-const mesmaBase = (base: number, vista: unknown) => typeof vista === 'number' && Math.abs(base - vista) < 0.005
+// O valor que veio da tela é número e bate com o do servidor em centavos.
+const mesmosCentavos = (a: number, b: unknown) => typeof b === 'number' && Math.abs(a - b) < 0.005
 
 /** Os pagamentos com o da posição `idx` marcado como recebido na mão, ou a frase da recusa. */
 export function comForcado(
@@ -91,7 +92,7 @@ export function comForcado(
   const autoria = { motivo: texto, porId: autor.porId, porNome: autor.porNome, em: autor.em }
   const pix = PAGAMENTO_PIX.has(alvo.tipo) ? pixDaForcada(alvo.valor, recebimento) : undefined
   if (typeof pix === 'string') return { ok: false, erro: pix }
-  if (pix && !mesmaBase(pix.valorBruto, recebimento?.baseVista)) return { ok: false, erro: LANCAMENTOS_MUDARAM }
+  if (pix && !mesmosCentavos(pix.valorBruto, recebimento?.baseVista)) return { ok: false, erro: LANCAMENTOS_MUDARAM }
   const marca: ConciliadoManual = pix ? { ...autoria, pix } : autoria
   return { ok: true, dados: pgtos.map((p, i) => i === idx ? { ...p, conciliadoManual: marca } : p) }
 }
@@ -390,4 +391,18 @@ export function resumoDaForcadaQueOPixCompleta(pgtos: PgtoOS[], linhasDoAlvo: Co
     linhas: idx.map(i => ({ valor: pgtos[i].valor, marcado: centavos(pgtos[i].valor - restoDaForcadaParcial(pgtos[i])) })),
     cobre: centavos(Math.min(restos, valorDele)),
   }
+}
+
+// O resumo que a caixa mostrou só confere (#92, decisão do Luis registrada na #92): o servidor recalcula sob a trava e
+// recusa se difere. Nunca entra no cálculo.
+export const RESUMO_DA_FORCADA_MUDOU = 'Os lançamentos deste pagamento mudaram. Confira e tente de novo.'
+export function mesmoResumoDaForcada(agora: ForcadaQueOPixCompleta | null, visto: unknown): boolean {
+  if (agora === null) return visto === null
+  if (typeof visto !== 'object' || visto === null) return false
+  const { linhas, cobre } = visto as Record<string, unknown>
+  if (!Array.isArray(linhas) || linhas.length !== agora.linhas.length || !mesmosCentavos(agora.cobre, cobre)) return false
+  return agora.linhas.every((l, i) => {
+    const v = linhas[i] as Record<string, unknown> | null
+    return typeof v === 'object' && v !== null && mesmosCentavos(l.valor, v.valor) && mesmosCentavos(l.marcado, v.marcado)
+  })
 }

@@ -61,8 +61,8 @@ export async function desvincularPix(pixId: string, grupoId: string, fraseSeComp
 }
 
 /** Desfaz as forçadas parciais que este PIX completa e o solta (B2 da #92). Devolve o alvo, para revalidar as telas. */
-export const desfazerForcadaEDesvincularPix = (pixId: string, grupoId: string): Promise<AlvoConciliacao | null> =>
-  desfazerForcadaEDesvincular(pixDoBanco(pixId, grupoId), grupoId)
+export const desfazerForcadaEDesvincularPix = (pixId: string, grupoId: string, resumoVisto: unknown): Promise<AlvoConciliacao | null> =>
+  desfazerForcadaEDesvincular(pixDoBanco(pixId, grupoId), grupoId, resumoVisto)
 
 /** O que a caixa da /pix-mcp mostra das forçadas parciais que este PIX completa; null se nenhuma (ou outra Conta). */
 export const forcadaQueOPixCompleta = (pixId: string, grupoId: string): Promise<ForcadaQueOPixCompleta | null> =>

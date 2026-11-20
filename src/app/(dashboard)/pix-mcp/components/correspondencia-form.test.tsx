@@ -9,17 +9,22 @@ import type { ResultadoAction } from '@/lib/resultado-action'
 import type { Correspondencia } from './correspondencia-form'
 import type { ForcadaQueOPixCompleta } from '@/lib/conciliacao-status'
 
-const { desmontar: desmontarDom } = montarDom()
+const { dom, desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
+// A confirmação abre em diálogo no desktop e na gaveta de baixo no celular (useIsDesktop); o JSDOM não tem matchMedia.
+let desktop = true
+const janela = dom.window as unknown as { matchMedia?: unknown }
+janela.matchMedia = () => ({ matches: desktop, addEventListener: () => {}, removeEventListener: () => {} })
+after(() => { delete janela.matchMedia })
 
 const lancar = mock.fn(async (_id: string, _tipo: string, _numero: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const remover = mock.fn(async (_id: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
-const desfazerERemover = mock.fn(async (_id: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
+const desfazerERemover = mock.fn(async (_id: string, _resumoVisto?: unknown): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const forcadaDoPix = mock.fn(async (_id: string): Promise<ResultadoAction<ForcadaQueOPixCompleta | null>> => ({ ok: true, dados: null }))
 const actionsMock = mock.module('@/app/(dashboard)/pix-mcp/actions', { namedExports: {
   lancarCorrespondenciaAction: (i: string, t: string, n: string) => lancar(i, t, n),
   removerCorrespondenciaAction: (i: string) => remover(i),
-  desfazerForcadaERemoverAction: (i: string) => desfazerERemover(i),
+  desfazerForcadaERemoverAction: (i: string, r?: unknown) => desfazerERemover(i, r),
   forcadaDoPixAction: (i: string) => forcadaDoPix(i),
 } })
 const erros: string[] = []
@@ -33,6 +38,7 @@ after(() => { actionsMock.restore(); sonnerMock.restore() })
 const desmontagens: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const f of [lancar, remover, desfazerERemover, forcadaDoPix]) { f.mock.resetCalls(); f.mock.restore() }
+  desktop = true
   erros.length = 0
   sucessos.length = 0
   for (const desmontar of desmontagens.splice(0)) await desmontar()
@@ -114,7 +120,7 @@ test('quem gere a conciliação: a recusa vira a caixa com os valores; confirmar
   assert.ok(tela().includes('O pagamento PIX de R$ 1.000,00 da OS #42 deixa de estar marcado como recebido, e este PIX fica livre para vincular de novo.'), tela())
   assert.equal(desfazerERemover.mock.callCount(), 0, 'só depois de confirmar')
   await clique('Desfazer e desvincular', 80)
-  assert.deepEqual(desfazerERemover.mock.calls.map(c => c.arguments), [['pix-1']])
+  assert.deepEqual(desfazerERemover.mock.calls.map(c => c.arguments), [['pix-1', RESUMO]])
   assert.deepEqual(sucessos, ['Forçada desfeita e correspondência desvinculada'])
   assert.deepEqual(erros, [])
 })
@@ -183,4 +189,41 @@ test('falha interna no desfazer e desvincular mostra a frase genérica, nunca a 
   await clique('Desfazer e desvincular', 80)
   assert.deepEqual(erros, ['Erro ao desvincular'])
   assert.deepEqual(sucessos, [])
+})
+
+// Decisão do Luis registrada na #92 (27): no celular a confirmação é a gaveta de baixo do repo, como no protótipo v2.
+const gavetaAberta = () => document.querySelector('[data-slot="sheet-content"]') !== null
+
+test('celular: a confirmação abre na gaveta de baixo e confirmar desfaz e desvincula', async () => {
+  desktop = false
+  const { desvincular, clique } = await montar(LIGADO, true)
+  remover.mock.mockImplementation(async () => ({ ok: false, erro: COMPLETA }))
+  forcadaDoPix.mock.mockImplementation(async () => ({ ok: true, dados: RESUMO }))
+  await desvincular()
+  await clique('Desfazer a forçada e desvincular')
+  assert.deepEqual([gavetaAberta(), dialogoAberto()], [true, false])
+  assert.equal(document.querySelector('[data-slot="sheet-title"]')?.textContent, 'Desfazer a forçada e desvincular?')
+  assert.ok(tela().includes('O pagamento PIX de R$ 1.000,00 da OS #42 deixa de estar marcado como recebido, e este PIX fica livre para vincular de novo.'), tela())
+  await clique('Desfazer e desvincular', 80)
+  assert.deepEqual(desfazerERemover.mock.calls.map(c => c.arguments), [['pix-1', RESUMO]])
+  assert.deepEqual(sucessos, ['Forçada desfeita e correspondência desvinculada'])
+})
+
+test('celular: enquanto envia, os botões da gaveta travam e o Escape não fecha', async () => {
+  desktop = false
+  const { desvincular, clique, act } = await montar(LIGADO, true)
+  remover.mock.mockImplementation(async () => ({ ok: false, erro: COMPLETA }))
+  forcadaDoPix.mock.mockImplementation(async () => ({ ok: true, dados: RESUMO }))
+  let responder: (r: ResultadoAction) => void = () => {}
+  desfazerERemover.mock.mockImplementation(() => new Promise<ResultadoAction>(r => { responder = r }))
+  await desvincular()
+  await clique('Desfazer a forçada e desvincular')
+  await clique('Desfazer e desvincular')
+  assert.deepEqual([botao('Cancelar')?.disabled, botao('Desfazendo…')?.disabled], [true, true])
+  await act(async () => {
+    document.querySelector('[data-slot="sheet-content"]')!.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await esperar(50)
+  })
+  assert.equal(gavetaAberta(), true)
+  await act(async () => { responder({ ok: true, dados: undefined }); await esperar(50) })
 })

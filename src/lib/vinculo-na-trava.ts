@@ -6,7 +6,7 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { db } from './db'
 import { conciliacoesCartao, pixRecebimentosMcp } from './db/schema'
 import {
-  COMPLETA_FORCADA, pixCompletaForcadaParcial, resumoDaForcadaQueOPixCompleta, semForcadasQueOPixCompleta, type ForcadaQueOPixCompleta,
+  COMPLETA_FORCADA, RESUMO_DA_FORCADA_MUDOU, mesmoResumoDaForcada, pixCompletaForcadaParcial, resumoDaForcadaQueOPixCompleta, semForcadasQueOPixCompleta, type ForcadaQueOPixCompleta,
 } from './conciliacao-status'
 import { cartoesDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from './alvo-da-conciliacao'
 import { alvoDasColunas, semAlvos, type Alvos, type AlvoConciliacao } from './conciliacao-alvo'
@@ -104,12 +104,16 @@ export function desvincularNaTrava(item: ItemDoAlvo, grupoId: string, fraseSeCom
 
 /**
  * Desfaz só as forçadas parciais de PIX que este item completa (a função pura decide, nunca a tela) e solta o item, na
- * mesma transação e com a mesma trava do alvo do desvincular. Quem pode (quem gere a conciliação) a action confere.
+ * mesma transação e com a mesma trava do alvo do desvincular. `resumoVisto`: o que a tela mostrou, só para conferir;
+ * se mudou, recusa (decisão do Luis na #92, a mesma na #166). Quem pode (quem gere a conciliação) a action confere.
  */
-export function desfazerForcadaEDesvincular(item: ItemDoAlvo, grupoId: string) {
+export function desfazerForcadaEDesvincular(item: ItemDoAlvo, grupoId: string, resumoVisto: unknown) {
   return soltarNaTravaDoAlvo(item, grupoId, async (tx, vinculo, lojaIds) => {
     const alvo = alvoDasColunas(vinculo)
     const doAlvo = await alvoComPagamentos(vinculo, lojaIds, tx)
+    // O que a tela mostrou tem de ser o de agora, lido sob a trava; senão o confirmar agiria em outra coisa.
+    const agora = doAlvo ? resumoDaForcadaQueOPixCompleta(doAlvo.pgtos, doAlvo.cartoes, doAlvo.pix, item.id) : null
+    if (!mesmoResumoDaForcada(agora, resumoVisto)) throw new RecusaUsuario(RESUMO_DA_FORCADA_MUDOU)
     if (!alvo || !doAlvo) return
     const semForcadas = semForcadasQueOPixCompleta(doAlvo.pgtos, doAlvo.cartoes, doAlvo.pix, item.id)
     if (semForcadas !== doAlvo.pgtos) await gravarPagamentosDoAlvo(alvo, lojaIds, semForcadas, tx)

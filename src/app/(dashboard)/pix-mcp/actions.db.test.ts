@@ -234,6 +234,10 @@ test('remover o PIX que completa a forçada parcial é recusado (o vendedor é m
   assert.deepEqual(await vinculoDe(outra), LIVRE)
 })
 
+// O resumo que a caixa mostrou, lido como a tela lê; o servidor confere e recusa se mudou (#92, item 28).
+const resumoVisto = async (pix: string) => { const r = await actions.forcadaDoPixAction(pix); return r.ok ? r.dados : null }
+const MUDOU = { ok: false, erro: 'Os lançamentos deste pagamento mudaram. Confira e tente de novo.' }
+
 // B2 da #92: desfazer a forçada e desvincular de uma vez na /pix-mcp. Desfazer a forçada é de quem gere a
 // conciliação, como na /conciliacao (#79; decisão do Luis registrada na #92).
 test('vendedor chamando direto o desfazer e desvincular recebe Sem permissão, e nada muda', async () => {
@@ -267,7 +271,7 @@ test('aux_adm desfaz só a forçada que o PIX completa e desvincula; a outra for
   const a = await contaComNumeros()
   const { de400, de100 } = await vendaComDuasForcadasParciais(a)
   usuario = await sessao(a, 'aux_adm')
-  assert.deepEqual(await actions.desfazerForcadaERemoverAction(de400), { ok: true, dados: undefined })
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(de400, await resumoVisto(de400)), { ok: true, dados: undefined })
   assert.deepEqual(await marcasDe(a.ids.venda), [false, true])
   assert.deepEqual(await vinculoDe(de400), LIVRE)
   assert.equal((await vinculoDe(de100)).venda_id, a.ids.venda)
@@ -277,7 +281,7 @@ test('desfazer e desvincular um PIX que não completa forçada nenhuma: só desv
   const a = await contaComNumeros()
   const { outra } = await vendaComForcadaParcial(a)
   usuario = await sessao(a, 'aux_adm')
-  assert.deepEqual(await actions.desfazerForcadaERemoverAction(outra), { ok: true, dados: undefined })
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(outra, await resumoVisto(outra)), { ok: true, dados: undefined })
   assert.equal(await forcadasDe(a.ids.venda), 1)
   assert.deepEqual(await vinculoDe(outra), LIVRE)
 })
@@ -290,7 +294,7 @@ test('desfazer e desvincular numa transação: se soltar o PIX falha, a marca da
     create trigger pix_92_falha before update on pix_recebimentos_mcp for each row when (old.id = '${completa}'::uuid) execute function pix_92_falha();`))
   try {
     usuario = await sessao(a, 'aux_adm')
-    await assert.rejects(actions.desfazerForcadaERemoverAction(completa), (e: Error) => /falha simulada/.test(String(e.cause)))
+    await assert.rejects(actions.desfazerForcadaERemoverAction(completa, await resumoVisto(completa)), (e: Error) => /falha simulada/.test(String(e.cause)))
     assert.equal(await forcadasDe(a.ids.venda), 1)
     assert.equal((await vinculoDe(completa)).venda_id, a.ids.venda)
   } finally {
@@ -323,7 +327,7 @@ test('desfazer e desvincular o PIX que completa duas forçadas que casam com ele
   const a = await contaComNumeros()
   const pix = await vendaCom(a, [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaDe(900) }, { tipo: 'pix', valor: 500, conciliadoManual: marcaDe(100) }], 500)
   usuario = await sessao(a, 'aux_adm')
-  assert.deepEqual(await actions.desfazerForcadaERemoverAction(pix), { ok: true, dados: undefined })
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(pix, await resumoVisto(pix)), { ok: true, dados: undefined })
   assert.deepEqual(await marcasDe(a.ids.venda), [false, false])
   assert.deepEqual(await vinculoDe(pix), LIVRE)
 })
@@ -332,7 +336,7 @@ test('desfazer e desvincular: a forçada cheia ao lado da parcial fica', async (
   const a = await contaComNumeros()
   const pix = await vendaCom(a, [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaDe(600) }, { tipo: 'pix', valor: 300, conciliadoManual: marcaDe() }], 400)
   usuario = await sessao(a, 'aux_adm')
-  assert.deepEqual(await actions.desfazerForcadaERemoverAction(pix), { ok: true, dados: undefined })
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(pix, await resumoVisto(pix)), { ok: true, dados: undefined })
   assert.deepEqual(await marcasDe(a.ids.venda), [false, true])
 })
 
@@ -346,7 +350,7 @@ test('desfazer e desvincular lê os pagamentos já com a trava: o que outro pedi
     // Outro pedido, com a venda travada, marca a 2ª linha como recebida (forçada cheia).
     await s.travar(`update vendas set pagamentos = jsonb_set(pagamentos, '{1,conciliadoManual}', $2::jsonb) where id = $1`,
       [a.ids.venda, JSON.stringify({ motivo: 'Outro pedido', porId: 'u2', porNome: 'Gestor', em: '2026-11-19T12:00:00.000Z' })])
-    const r = actions.desfazerForcadaERemoverAction(completa)
+    const r = actions.desfazerForcadaERemoverAction(completa, await resumoVisto(completa))
     await ate(async () => (await s.esperandoPor([s.pid])).length === 1, 'o desfazer esperando a trava da venda')
     await s.soltar()
     assert.deepEqual(await r, { ok: true, dados: undefined })
@@ -374,6 +378,21 @@ test('desvincular confere o vínculo ao soltar: religado a outro alvo no meio, o
   assert.deepEqual([v.tipo_correspondencia, v.os_id], ['os', a.ids.os])
 })
 
+// Decisão do Luis registrada na #92 (28): o confirmar age no que a caixa mostrou; se mudou, recusa e nada muda.
+test('desfazer e desvincular com o resumo de antes (pedido forjado ou a forçada mudou no meio): recusa e nada muda', async () => {
+  const a = await contaComNumeros()
+  const { completa } = await vendaComForcadaParcial(a)
+  usuario = await sessao(a, 'aux_adm')
+  const visto = await resumoVisto(completa)
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(completa, { linhas: [{ valor: 1000, marcado: 600 }], cobre: 300 }), MUDOU)
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(completa, null), MUDOU)
+  // A forçada que a caixa mostrou foi desfeita no painel e outra (base 700) foi feita no meio.
+  await db.execute(sql`update vendas set pagamentos = jsonb_set(pagamentos, '{0,conciliadoManual,pix,valorBruto}', '700') where id = ${a.ids.venda}`)
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(completa, visto), MUDOU)
+  assert.equal(await forcadasDe(a.ids.venda), 1)
+  assert.equal((await vinculoDe(completa)).venda_id, a.ids.venda)
+})
+
 // A caixa da /pix-mcp: o resumo sai do servidor com as lojas do grupo do PIX.
 test('resumo da forçada que o PIX completa: o do próprio grupo; PIX de outra Conta, inexistente ou que não completa = vazio', async () => {
   const a = await contaComNumeros()
@@ -394,7 +413,7 @@ test('desfazer e desvincular espera a trava do alvo (quem forçar ou desvincular
   const s = await sessaoQueSegura(url!)
   try {
     await s.travar('select id from vendas where id = $1 for update', [a.ids.venda])
-    const r = actions.desfazerForcadaERemoverAction(completa)
+    const r = actions.desfazerForcadaERemoverAction(completa, await resumoVisto(completa))
     await ate(async () => (await s.esperandoPor([s.pid])).length === 1, 'o desfazer esperando a trava da venda')
     assert.equal(await forcadasDe(a.ids.venda), 1, 'nada muda enquanto espera')
     await s.soltar()
