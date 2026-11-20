@@ -347,14 +347,15 @@ async function desvincularVenda(conciliacaoId: string) {
 
 // #166 (variante 2 do protótipo): a linha completa uma forçada parcial; quem gere desfaz a forçada e desvincula de uma
 // vez, depois de confirmar no diálogo. Desfazer a forçada é de quem gere a conciliação (#79).
-export async function desfazerForcadaEDesvincularLinhaAction(conciliacaoId: string) {
-  return acao(() => desfazerForcadaEDesvincularLinha(conciliacaoId))
+/** `resumoVisto`: o que o diálogo mostrou, só para conferir; se mudou, a ação é recusada. */
+export async function desfazerForcadaEDesvincularLinhaAction(conciliacaoId: string, resumoVisto?: unknown) {
+  return acao(() => desfazerForcadaEDesvincularLinha(conciliacaoId, resumoVisto))
 }
-async function desfazerForcadaEDesvincularLinha(conciliacaoId: string) {
+async function desfazerForcadaEDesvincularLinha(conciliacaoId: string, resumoVisto: unknown) {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
-  revalidarTelasDaConciliacao(await desfazerForcadaEDesvincular(linhaDoCartao(conciliacaoId, grupo.id), grupo.id))
+  revalidarTelasDaConciliacao(await desfazerForcadaEDesvincular(linhaDoCartao(conciliacaoId, grupo.id), grupo.id, resumoVisto ?? null))
 }
 
 /** O que o diálogo mostra quando o desvincular é recusado porque a linha completa uma forçada parcial. */

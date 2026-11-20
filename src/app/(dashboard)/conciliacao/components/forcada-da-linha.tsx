@@ -16,13 +16,14 @@ const TITULO = 'Esta linha completa um pagamento marcado como recebido'
 type Props = { conciliacaoId: string; rotulo: string; forcada: ForcadaQueOPixCompleta }
 
 /** Desfaz a forçada e desvincula; `enviando` trava os botões e o fechar (o pedido já saiu). */
-function useDesfazer(conciliacaoId: string, onDesfeito: () => void, onEnviando?: (enviando: boolean) => void) {
+function useDesfazer({ conciliacaoId, forcada }: Pick<Props, 'conciliacaoId' | 'forcada'>, onDesfeito: () => void, onEnviando?: (enviando: boolean) => void) {
   const [enviando, setEnviando] = useState(false)
   const marcar = (v: boolean) => { setEnviando(v); onEnviando?.(v) }
   async function desfazer() {
     marcar(true)
     try {
-      const r = await desfazerForcadaEDesvincularLinhaAction(conciliacaoId)
+      // O resumo que a tela mostrou vai só para o servidor conferir que nada mudou.
+      const r = await desfazerForcadaEDesvincularLinhaAction(conciliacaoId, forcada)
       if (!r.ok) { toast.error(r.erro); return }
       onDesfeito()
       toast.success('Forçada desfeita e linha desvinculada')
@@ -44,7 +45,7 @@ const Confirmar = ({ enviando, onClick }: { enviando: boolean; onClick: () => vo
 
 /** Na tabela: o diálogo que explica e confirma. */
 export function DialogoDaForcada({ conciliacaoId, rotulo, forcada, onFechar }: Props & { onFechar: () => void }) {
-  const { enviando, desfazer } = useDesfazer(conciliacaoId, onFechar)
+  const { enviando, desfazer } = useDesfazer({ conciliacaoId, forcada }, onFechar)
   const texto = frasesDaForcada(forcada, rotulo, 'esta linha')
   return (
     <Dialog open onOpenChange={aberto => { if (!aberto && !enviando) onFechar() }} disablePointerDismissal>
@@ -67,7 +68,7 @@ export function DialogoDaForcada({ conciliacaoId, rotulo, forcada, onFechar }: P
 export function FolhaDaForcada({ conciliacaoId, rotulo, forcada, onCancelar, onEnviando }: Props & {
   onCancelar: () => void; onEnviando: (enviando: boolean) => void
 }) {
-  const { enviando, desfazer } = useDesfazer(conciliacaoId, onCancelar, onEnviando)
+  const { enviando, desfazer } = useDesfazer({ conciliacaoId, forcada }, onCancelar, onEnviando)
   const texto = frasesDaForcada(forcada, rotulo, 'esta linha')
   return (
     <div className="space-y-4">

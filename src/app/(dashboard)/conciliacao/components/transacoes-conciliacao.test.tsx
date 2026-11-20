@@ -19,7 +19,7 @@ const SUGERIDA = {
 const sugeridas = mock.fn(async () => [SUGERIDA] as unknown[])
 type Resultado = { ok: true; dados: unknown } | { ok: false; erro: string }
 const forcadaDaLinha = mock.fn(async (_id: string): Promise<Resultado> => ({ ok: true, dados: null }))
-const desfazerEDesvincular = mock.fn(async (_id: string): Promise<Resultado> => ({ ok: true, dados: undefined }))
+const desfazerEDesvincular = mock.fn(async (_id: string, _visto?: unknown): Promise<Resultado> => ({ ok: true, dados: undefined }))
 const erros: string[] = []
 const sucessos: string[] = []
 const mocks = [
@@ -27,7 +27,7 @@ const mocks = [
     namedExports: {
       buscarVendasParaVincular: () => sugeridas(), buscarVendaManual: async () => [],
       vincularVendaAction: vincular, desvincularVendaAction: desvincular,
-      forcadaDaLinhaAction: (c: string) => forcadaDaLinha(c), desfazerForcadaEDesvincularLinhaAction: (c: string) => desfazerEDesvincular(c),
+      forcadaDaLinhaAction: (c: string) => forcadaDaLinha(c), desfazerForcadaEDesvincularLinhaAction: (c: string, v?: unknown) => desfazerEDesvincular(c, v),
     },
   }),
   mock.module('sonner', { namedExports: { toast: { error: (m: string) => { erros.push(m) }, success: (m: string) => { sucessos.push(m) } } } }),
@@ -221,7 +221,7 @@ test('tabela: a recusa abre direto o diálogo com os valores; confirmar desfaz e
   assert.deepEqual(erros, [])
   assert.equal(desfazerEDesvincular.mock.callCount(), 0, 'só depois de confirmar')
   await t.clique('Desfazer e desvincular', 80)
-  assert.deepEqual(desfazerEDesvincular.mock.calls.map(c => c.arguments), [['c2']])
+  assert.deepEqual(desfazerEDesvincular.mock.calls.map(c => c.arguments), [['c2', RESUMO]], 'manda o resumo que mostrou, só para conferir')
   assert.deepEqual(sucessos, ['Forçada desfeita e linha desvinculada'])
   await t.act(async () => { await esperar(DEPOIS_DA_ANIMACAO_MS) })
   assert.equal(dialogoAberto(), false)
@@ -262,7 +262,7 @@ test('folha: a recusa troca a folha pela confirmação; Cancelar volta aos detal
   assert.equal(texto(folha()?.querySelector('[data-slot="sheet-title"]')), 'R$ 8.900,00')
   await t.clique('Desvincular da venda', 80)
   await t.clique('Desfazer e desvincular', 80)
-  assert.deepEqual(desfazerEDesvincular.mock.calls.map(c => c.arguments), [['c2']])
+  assert.deepEqual(desfazerEDesvincular.mock.calls.map(c => c.arguments), [['c2', RESUMO]], 'manda o resumo que mostrou, só para conferir')
   assert.deepEqual(sucessos, ['Forçada desfeita e linha desvinculada'])
 })
 

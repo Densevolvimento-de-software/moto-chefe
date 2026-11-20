@@ -527,8 +527,9 @@ for (const tipo of ALVO_TIPOS) {
     await comPagamentos(tipo, a.alvos[tipo], [
       { tipo: 'pix', valor: 1000, conciliadoManual: marcaParcial(600) }, { tipo: 'cartao_credito', valor: 500, conciliadoManual: FORCADO_CARTAO(usuario) },
     ])
-    assert.deepEqual((await actions.forcadaDaLinhaAction(linha)), { ok: true, dados: { linhas: [{ valor: 1000, marcado: 600 }], cobre: 400 } })
-    assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha), OK)
+    const visto = { linhas: [{ valor: 1000, marcado: 600 }], cobre: 400 }
+    assert.deepEqual((await actions.forcadaDaLinhaAction(linha)), { ok: true, dados: visto })
+    assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha, visto), OK)
     assert.equal(await linhaLigada(linha), false)
     const [pix, cartao] = await pagamentosDe(tipo, a.alvos[tipo])
     assert.equal(pix.conciliadoManual, undefined)
@@ -541,7 +542,7 @@ test('desfazer e desvincular uma linha que não completa forçada nenhuma: só d
   usuario = sessao(a, 'aux_adm')
   const linha = await maquininha(a, 'moto', 400)
   assert.deepEqual(await actions.forcadaDaLinhaAction(linha), { ok: true, dados: null })
-  assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha), OK)
+  assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha, null), OK)
   assert.equal(await linhaLigada(linha), false)
 })
 
@@ -564,4 +565,18 @@ test('desfazer e desvincular: vendedor recebe Sem permissão; Conta B, estornada
   assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(estornada), NAO_ENCONTRADA)
   assert.equal(await linhaLigada(linha), true)
   assert.ok((await marcaDe('moto', a.alvos.moto))?.pix)
+})
+
+test('desfazer e desvincular com o resumo que a tela viu diferente do de agora: recusa e nada muda', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  const linha = await maquininha(a, 'os', 400)
+  await comPagamentos('os', a.alvos.os, [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaParcial(600) }])
+  const MUDOU = { ok: false, erro: 'Os lançamentos deste pagamento mudaram. Confira e tente de novo.' }
+  // A tela viu outra marca (500), ou nenhuma forçada; e o pedido forjado sem resumo.
+  assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha, { linhas: [{ valor: 1000, marcado: 500 }], cobre: 400 }), MUDOU)
+  assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha, null), MUDOU)
+  assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha), MUDOU)
+  assert.equal(await linhaLigada(linha), true)
+  assert.ok((await marcaDe('os', a.alvos.os))?.pix)
 })
