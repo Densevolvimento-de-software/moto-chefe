@@ -14,6 +14,7 @@ if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw n
 process.env.DATABASE_URL = url
 
 let db: typeof import('@/lib/db')['db']
+let linhas: typeof import('@/lib/db')['execRows']
 // Os Detalhes da venda leem os custos pela action de vendas: só a sessão e o que ela importa de fora são simulados.
 let usuario: Sessao
 const mocks = [
@@ -34,7 +35,7 @@ let dashboard: typeof import('@/lib/queries/dashboard')
 let folha: typeof import('@/lib/queries/folha')
 
 before(async () => {
-  ;({ db } = await import('@/lib/db'))
+  ;({ db, execRows: linhas } = await import('@/lib/db'))
   vl = await import('@/lib/queries/valor-liquido')
   ;({ vendas } = await import('@/lib/db/schema'))
   dre = await import('@/lib/queries/dre')
@@ -50,8 +51,6 @@ after(async () => {
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
 })
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const linhas = async (q: ReturnType<typeof sql>) => ((await db.execute(q)) as unknown as { rows: any[] }).rows
 
 async function semearConta() {
   const suf = randomUUID()

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearGrupo, semearLoja, type Base } from '@/test/semear-conta'
-import { semearContaComAlvos, semearLinhaDaMaquininha, semearPixRecebido, semearVendaPeca } from '@/test/semear-alvos-conciliacao'
+import { semearContaComAlvos, semearLinhaDaMaquininha, semearPixRecebido, semearVendaPeca, semearCustoPixDoGrupo } from '@/test/semear-alvos-conciliacao'
 import { ALVO_TIPOS } from '@/lib/conciliacao-alvo'
 import type { AlvoConciliacao } from './actions'
 import type { PgtoOS } from '@/lib/conciliacao-status'
@@ -428,20 +428,18 @@ test('PIX vinculado que completa uma forçada parcial não se desvincula: pede p
 
 // B6 (decisão do Luis registrada na #93): o pedido da venda já tem PIX ligado com custo; a forçada de um PIX da
 // venda não grava custo, e a busca diz à tela para não mostrar custo. PIX de outra Conta no pedido não conta.
-test('forçar PIX de venda cujo pedido já tem PIX com custo: a marca vai sem custo; PIX de outra Conta no pedido não conta', async () => {
+test('forçar PIX de venda cujo pedido já tem PIX com custo: a marca vai sem custo; PIX de outra Conta ou sem custo no pedido não conta', async () => {
   const a = await contaComAlvos()
   usuario = sessao(a, 'aux_adm')
-  await db.execute(sql`insert into configuracao_taxas (grupo_id, custo_pix_taxa) values (${a.grupoId}, 0.002)
-    on conflict (grupo_id) do update set custo_pix_taxa = excluded.custo_pix_taxa`)
+  await semearCustoPixDoGrupo(db, a.grupoId, 0.002)
   const alvo = { tipo: 'moto' as const, id: a.alvos.moto }
   const pedido = (await execRows(sql`select pedido_venda_id as p from vendas where id = ${a.alvos.moto}`))[0].p
-  const ligarNoPedido = async (grupoId: string) => {
-    const pix = await semearPixRecebido(db, grupoId, { valor: 2994 })
-    await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'pedido', pedido_id = ${pedido}, valor_bruto = 3000, custo_pix = 6, custo_pix_taxa = 0.002 where id = ${pix}`)
-  }
-  // PIX de outra Conta apontando para o pedido: não desliga o custo.
+  const ligarNoPedido = (grupoId: string, custoPix = 6, tipoOperacao = 'PIX') =>
+    semearPixRecebido(db, grupoId, { valor: 3000 - custoPix, tipoOperacao, vinculado: { pedido, valorBruto: 3000, custoPix } })
+  // PIX de outra Conta apontando para o pedido, e uma TED (custo 0) do próprio grupo no pedido: não desligam o custo.
   const b = await contaComAlvos()
   await ligarNoPedido(b.grupoId)
+  await ligarNoPedido(a.grupoId, 0, 'TED')
   assert.deepEqual(await actions.buscarPixParaOAlvo(alvo, 1000).then(r => [r.semCusto, r.taxa]), [false, 0.002])
   // PIX do próprio grupo no pedido: a forçada vai sem custo.
   await ligarNoPedido(a.grupoId)
