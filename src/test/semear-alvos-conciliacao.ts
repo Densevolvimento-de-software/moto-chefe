@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { idDoInsert, semearContaBase, semearModelo, semearUsuario, type Base, type Executor } from '@/test/semear-conta'
-import type { AlvoTipo } from '@/lib/conciliacao-alvo'
+import { colunasDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 
 /**
  * Os três alvos da conciliação (venda de moto, venda de peça e OS) com `pagamentos`, para os testes
@@ -52,6 +52,16 @@ export function semearPixRecebido(tx: Executor, grupoId: string, o: {
       ${o.tipoOperacao === undefined ? 'PIX' : o.tipoOperacao},
       ${v ? (v.venda ? 'venda' : 'pedido') : null}, ${v?.venda ?? null}, ${v?.pedido ?? null},
       ${v?.valorBruto ?? null}, ${v?.custoPix ?? null}, ${v ? (v.valorBruto > 0 ? v.custoPix / v.valorBruto : 0) : null}) returning id`)
+}
+
+/**
+ * Linha da conciliação de cartão ligada ao alvo e conciliada. `tipo` 'pix' é o Pix da maquininha Mercado Pago;
+ * 'credito' ou 'debito', cartão.
+ */
+export function semearLinhaDaMaquininha(tx: Executor, grupoId: string, o: { valor: number; alvo: AlvoConciliacao; tipo?: string }) {
+  const { vendaId, pecaVendaId, osId } = colunasDoAlvo(o.alvo)
+  return idDoInsert(tx, sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, valor_bruto, tipo, venda_id, peca_venda_id, os_id, conciliado)
+    values (${grupoId}, 'mercadopago', '2026-11-19', ${o.valor}, ${o.tipo ?? 'pix'}, ${vendaId}, ${pecaVendaId}, ${osId}, true) returning id`)
 }
 
 /** Conta nova com uma venda de moto, uma OS e uma venda de peça, todas com os mesmos `pagamentos`. */

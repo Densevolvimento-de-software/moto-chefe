@@ -7,6 +7,7 @@ import {
   matchPagamentos,
   pixCompletaForcadaParcial,
   pixDaForcada,
+  forcadasQueOPixCompleta,
   mesmoResumoDaForcada,
   resumoDaForcadaQueOPixCompleta,
   semForcadasQueOPixCompleta,
@@ -407,6 +408,16 @@ test('pixCompletaForcadaParcial: só o PIX sem o qual a forçada parcial fica se
   assert.equal(pixCompletaForcadaParcial([{ tipo: 'pix', valor: 4000 }], [], [{ id: 'p4', valor: 4000 }], 'p4'), false)
 })
 
+// #166: a linha pix da maquininha (conciliação de cartão) também pode ser o resto da forçada parcial.
+test('pixCompletaForcadaParcial: a linha pix da maquininha que completa a forçada prende; a que cobre outra linha e a de cartão não', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10000, conciliadoManual: FORCADA_PARCIAL }, { tipo: 'pix', valor: 3000 }, { tipo: 'cartao_credito', valor: 500 }]
+  const maquininha = (id: string, valor: string) => ({ id, autorizacao: null, valorBruto: valor, tipo: 'pix', operadora: 'mercadopago' })
+  const linhas = [maquininha('mp4', '4000.00'), maquininha('mp3', '3000.00'), { id: 'cartao', autorizacao: null, valorBruto: '500.00', tipo: 'credito' }]
+  assert.equal(pixCompletaForcadaParcial(pgtos, linhas, [], 'mp4'), true)
+  assert.equal(pixCompletaForcadaParcial(pgtos, linhas, [], 'mp3'), false, 'mp3 cobre o pagamento de 3.000')
+  assert.equal(pixCompletaForcadaParcial(pgtos, linhas, [], 'cartao'), false, 'linha de cartão não cobre PIX')
+})
+
 // #51 (PR6c): pagamento que voltou a pendente porque a linha da maquininha foi estornada diz isso (sem o dia: o importador não grava quando estornou).
 test('estornosDosPagamentos: pendente com estorno do mesmo meio e valor é marcado; conciliado e outro meio não', () => {
   const pgtos: PgtoOS[] = [
@@ -511,6 +522,20 @@ test('resumoDaForcadaQueOPixCompleta: cada pagamento e quanto foi marcado, e qua
   // Um PIX que completa duas: as duas linhas, separadas.
   assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, [], [{ id: 'p45', valor: 4500 }, { id: 'p3', valor: 3000 }], 'p45'),
     { linhas: [{ valor: 10000, marcado: 6000 }, { valor: 2000, marcado: 1500 }], cobre: 4500 })
+})
+
+// #166: a linha pix da maquininha (conciliação de cartão) completa a forçada como o PIX do banco.
+test('forçada que a linha pix da maquininha completa: sai a marca dela, e o resumo diz quanto a linha cobre', () => {
+  const linhas = [{ id: 'mp4', autorizacao: null, valorBruto: '4000.00', tipo: 'pix', operadora: 'mercadopago' }]
+  assert.deepEqual(forcadasQueOPixCompleta(DUAS_PARCIAIS, linhas, [], 'mp4'), [0])
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(DUAS_PARCIAIS, linhas, [], 'mp4')), [false, true, false])
+  assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, linhas, [], 'mp4'), { linhas: [{ valor: 10000, marcado: 6000 }], cobre: 4000 })
+})
+
+test('resumo da linha pix da maquininha que cobre só parte do que falta: cobre o valor da linha, não o resto todo', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(600) }]
+  const linhas = [{ id: 'mp3', autorizacao: null, valorBruto: '300.00', tipo: 'pix', operadora: 'mercadopago' }]
+  assert.deepEqual(resumoDaForcadaQueOPixCompleta(pgtos, linhas, [{ id: 'b1', valor: 100 }], 'mp3'), { linhas: [{ valor: 1000, marcado: 600 }], cobre: 300 })
 })
 
 // F1 (#189 r2): sai o mínimo que basta, não o conjunto de soma mais perto do PIX.

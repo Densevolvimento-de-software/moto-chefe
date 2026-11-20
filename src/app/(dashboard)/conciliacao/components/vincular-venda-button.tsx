@@ -4,13 +4,15 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Link2, Link2Off, Loader2, CheckCircle2, Search } from 'lucide-react'
-import { buscarVendasParaVincular, buscarVendaManual, vincularVendaAction, desvincularVendaAction } from '../actions'
+import { buscarVendasParaVincular, buscarVendaManual, vincularVendaAction, desvincularVendaAction, forcadaDaLinhaAction } from '../actions'
+import { ConfirmarForcadaDaLinha } from './forcada-da-linha'
 import { dataPuraBr } from '@/lib/data-venda'
 import { brl } from '@/lib/dashboard-painel'
 import { cn } from '@/lib/utils'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
-import { tiposDoPagamentoDaLinha } from '@/lib/conciliacao-status'
-import type { AlvoTipo } from '@/lib/conciliacao-alvo'
+import { COMPLETA_FORCADA, tiposDoPagamentoDaLinha, type ForcadaQueOPixCompleta } from '@/lib/conciliacao-status'
+import { rotuloDoAlvoNaFrase } from '@/lib/forcada-frases'
+import { siglaDoAlvo, type AlvoTipo } from '@/lib/conciliacao-alvo'
 
 type Venda = Awaited<ReturnType<typeof buscarVendasParaVincular>>[number]
 type PgtoItem = { tipo: string; valor: number | string; operadora?: string; parcelas?: number; autorizacao?: string }
@@ -44,8 +46,9 @@ const CLASSE_DO_VINCULAR: Record<Tamanho | 'tabela', string> = {
 
 /** "PA" (venda de peça) ou "OS" antes do número; venda de moto não tem. */
 export function ChipDoAlvo({ tipo, className }: { tipo?: AlvoTipo; className?: string }) {
-  if (tipo !== 'peca' && tipo !== 'os') return null
-  return <span className={cn('text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5', className)}>{tipo === 'peca' ? 'PA' : 'OS'}</span>
+  const sigla = siglaDoAlvo(tipo)
+  if (!sigla) return null
+  return <span className={cn('text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5', className)}>{sigla}</span>
 }
 
 /**
@@ -64,15 +67,34 @@ export function RotuloDoAlvo({ numero, clienteNome, tipo, estornada = false }: {
   )
 }
 
-/** Tira o vínculo da linha. 'largo': botão da folha do celular; sem tamanho, só o ícone da tabela. */
-export function BotaoDesvincular({ conciliacaoId, tamanho }: { conciliacaoId: string; tamanho?: 'largo' }) {
+/**
+ * Tira o vínculo da linha. 'largo': botão da folha do celular; sem tamanho, só o ícone da tabela. Se a linha completa
+ * uma forçada parcial de PIX (#166), a recusa abre a confirmação de desfazer e desvincular: na tabela, o diálogo; na
+ * folha, quem a mostra é a folha (`onForcada`). `rotulo`: o alvo na frase ("venda #31902").
+ */
+export function BotaoDesvincular({ conciliacaoId, rotulo, tamanho, onForcada }: {
+  conciliacaoId: string; rotulo: string; tamanho?: 'largo'; onForcada?: (forcada: ForcadaQueOPixCompleta) => void
+}) {
   const [pending, startTransition] = useTransition()
+  const [forcada, setForcada] = useState<ForcadaQueOPixCompleta | null>(null)
+
+  // A recusa da forçada sem resumo (a forçada mudou entre um pedido e outro) fica como estava: a frase no toast.
+  async function abrirConfirmacao(erro: string) {
+    const f = await forcadaDaLinhaAction(conciliacaoId)
+    if (!f.ok || !f.dados) { toast.error(erro); return }
+    if (onForcada) onForcada(f.dados)
+    else setForcada(f.dados)
+  }
 
   function desvincular() {
     startTransition(async () => {
       try {
         const r = await desvincularVendaAction(conciliacaoId)
-        if (!r.ok) { toast.error(r.erro); return }
+        if (!r.ok) {
+          if (r.erro === COMPLETA_FORCADA) await abrirConfirmacao(r.erro)
+          else toast.error(r.erro)
+          return
+        }
         toast.success('Vínculo removido')
       } catch {
         toast.error('Erro ao desvincular')
@@ -82,22 +104,31 @@ export function BotaoDesvincular({ conciliacaoId, tamanho }: { conciliacaoId: st
 
   const px = tamanho ? 16 : 12
   const icone = pending ? <Loader2 size={px} className="animate-spin" /> : <Link2Off size={px} />
+  const dialogo = forcada && (
+    <ConfirmarForcadaDaLinha modo="dialogo" conciliacaoId={conciliacaoId} rotulo={rotulo} forcada={forcada} onFechar={() => setForcada(null)} />
+  )
   if (tamanho) {
     return (
-      <Button variant="outline" onClick={desvincular} disabled={pending} className="h-11 w-full text-destructive">
-        {icone} Desvincular da venda
-      </Button>
+      <>
+        <Button variant="outline" onClick={desvincular} disabled={pending} className="h-11 w-full text-destructive">
+          {icone} Desvincular da venda
+        </Button>
+        {dialogo}
+      </>
     )
   }
   return (
-    <button
-      onClick={desvincular}
-      disabled={pending}
-      title="Desvincular"
-      className="text-muted-foreground hover:text-destructive transition-colors"
-    >
-      {icone}
-    </button>
+    <>
+      <button
+        onClick={desvincular}
+        disabled={pending}
+        title="Desvincular"
+        className="text-muted-foreground hover:text-destructive transition-colors"
+      >
+        {icone}
+      </button>
+      {dialogo}
+    </>
   )
 }
 
@@ -211,7 +242,7 @@ export function VincularVendaButton({ conciliacaoId, dataRef, valorRef, vendaVin
     return (
       <div className="flex items-center gap-1.5">
         <RotuloDoAlvo numero={vendaVinculada.numero} clienteNome={vendaVinculada.clienteNome} tipo={tipoVinculado} />
-        <BotaoDesvincular conciliacaoId={conciliacaoId} />
+        <BotaoDesvincular conciliacaoId={conciliacaoId} rotulo={rotuloDoAlvoNaFrase(tipoVinculado, vendaVinculada.numero)} />
       </div>
     )
   }
