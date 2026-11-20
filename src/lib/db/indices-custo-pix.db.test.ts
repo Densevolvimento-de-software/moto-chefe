@@ -1,6 +1,6 @@
 // Teste de banco (#93): o custo do PIX entra no líquido de cada venda por uma subconsulta em pix_recebimentos_mcp
 // (pela venda ou pelo pedido dela) e no MIN(numero) das vendas do pedido. Sem índice, cada venda varre a tabela
-// inteira (na cópia da produção, o líquido de um ano foi de 2,8 ms para 334 ms). Com a varredura desligada, o plano
+// inteira (o líquido de um ano ficou cerca de 100 vezes mais lento). Com a varredura desligada, o plano
 // das três buscas tem de usar os índices da migração 0200.
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
