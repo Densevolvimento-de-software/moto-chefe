@@ -340,3 +340,37 @@ export function estornosDosPagamentos(pgtos: PgtoOS[], cobertura: CoberturaPgto[
     return { marcados: [...acc.marcados, Boolean(e)], usados: e ? new Set([...acc.usados, e.id]) : acc.usados }
   }, { marcados: [], usados: new Set() }).marcados
 }
+
+const semAMarca = (pgtos: PgtoOS[], idx: number): PgtoOS[] => {
+  const r = semForcado(pgtos, idx)
+  return r.ok ? r.dados : pgtos
+}
+
+/**
+ * Os pagamentos sem a marca das forçadas parciais de PIX que este PIX completa (#92), para desfazê-las junto
+ * com o desvincular. Uma linha basta: a de menor resto. Senão, da de maior resto para a menor, até o PIX
+ * deixar de completar. PIX que não completa nada devolve os mesmos pagamentos.
+ */
+export function semForcadasQueOPixCompleta(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[], pixId: string): PgtoOS[] {
+  const completa = (ps: PgtoOS[]) => pixCompletaForcadaParcial(ps, linhasDoAlvo, pixDoBanco, pixId)
+  if (!completa(pgtos)) return pgtos
+  const parciais = pgtos.map((p, i) => ({ i, resto: restoDaForcadaParcial(p) })).filter(({ resto }) => resto > 0)
+  const basta = [...parciais].sort((x, y) => x.resto - y.resto).find(({ i }) => !completa(semAMarca(pgtos, i)))
+  if (basta) return semAMarca(pgtos, basta.i)
+  return [...parciais].sort((x, y) => y.resto - x.resto).reduce((ps, { i }) => (completa(ps) ? semAMarca(ps, i) : ps), pgtos)
+}
+
+/** O que a caixa da /pix-mcp mostra das forçadas parciais que um PIX completa (#92). */
+export type ForcadaQueOPixCompleta = { valor: number; marcado: number; cobre: number }
+
+/** Soma das linhas cuja marca sai junto com este PIX: o pagamento, quanto foi marcado e o resto que ele cobre. */
+export function resumoDaForcadaQueOPixCompleta(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[], pixId: string): ForcadaQueOPixCompleta | null {
+  const sem = semForcadasQueOPixCompleta(pgtos, linhasDoAlvo, pixDoBanco, pixId)
+  const desfeitas = pgtos.filter((p, i) => p.conciliadoManual && !sem[i]?.conciliadoManual)
+  if (desfeitas.length === 0) return null
+  return desfeitas.reduce((r, p) => ({
+    valor: centavos(r.valor + p.valor),
+    marcado: centavos(r.marcado + p.valor - restoDaForcadaParcial(p)),
+    cobre: centavos(r.cobre + restoDaForcadaParcial(p)),
+  }), { valor: 0, marcado: 0, cobre: 0 })
+}

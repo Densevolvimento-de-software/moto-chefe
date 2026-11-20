@@ -6,6 +6,8 @@ import {
   semForcado,
   matchPagamentos,
   pixCompletaForcadaParcial,
+  resumoDaForcadaQueOPixCompleta,
+  semForcadasQueOPixCompleta,
   estornosDosPagamentos,
   precisaConciliar,
   valorConciliadoManual,
@@ -440,4 +442,39 @@ test('comForcado de PIX: base que a tela mostrou diferente da do servidor (ou se
   for (const baseVista of [undefined, '600', Number.NaN])
     assert.deepEqual(comForcado(PIX_E_DINHEIRO, 0, 'Resto caiu', AUTOR, { valorRecebido: 598.8, coberto: 400, baseVista }), mudaram, String(baseVista))
   assert.equal(comForcado(PIX_E_DINHEIRO, 0, 'Resto caiu', AUTOR, { valorRecebido: 598.8, coberto: 400, baseVista: 600.004 }).ok, true, 'mesma base em centavos')
+})
+
+// Desfazer junto com o desvincular (#92): sai só a marca das forçadas parciais que este PIX completa.
+const PARCIAL_1500: ConciliadoManual = { ...FORCADO, pix: { valorRecebido: 1497, valorBruto: 1500, custoPix: 3, custoPixTaxa: 0.002 } }
+const DUAS_PARCIAIS: PgtoOS[] = [
+  { tipo: 'pix', valor: 10000, conciliadoManual: FORCADA_PARCIAL },
+  { tipo: 'pix', valor: 2000, conciliadoManual: PARCIAL_1500 },
+  { tipo: 'pix', valor: 3000 },
+]
+const marcadas = (pgtos: PgtoOS[]) => pgtos.map(p => Boolean(p.conciliadoManual))
+
+test('semForcadasQueOPixCompleta: tira só a marca da forçada parcial que este PIX completa', () => {
+  const pix = [{ id: 'p4', valor: 4000 }, { id: 'p05', valor: 500 }, { id: 'p3', valor: 3000 }]
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p4')), [false, true, false])
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p05')), [true, false, false])
+})
+
+test('semForcadasQueOPixCompleta: PIX que não completa forçada nenhuma não muda nada', () => {
+  const pix = [{ id: 'p4', valor: 4000 }, { id: 'p05', valor: 500 }, { id: 'p3', valor: 3000 }]
+  assert.equal(semForcadasQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p3'), DUAS_PARCIAIS)
+})
+
+test('semForcadasQueOPixCompleta: um PIX que completa as duas forçadas tira as duas marcas', () => {
+  const pix = [{ id: 'p45', valor: 4500 }, { id: 'p3', valor: 3000 }]
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p45')), [false, false, false])
+})
+
+test('resumoDaForcadaQueOPixCompleta: pagamento, quanto foi marcado e quanto este PIX cobre; null se não completa', () => {
+  const pix = [{ id: 'p4', valor: 4000 }, { id: 'p05', valor: 500 }, { id: 'p3', valor: 3000 }]
+  assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p4'), { valor: 10000, marcado: 6000, cobre: 4000 })
+  assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p05'), { valor: 2000, marcado: 1500, cobre: 500 })
+  assert.equal(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p3'), null)
+  // Um PIX que completa as duas: soma das duas linhas.
+  assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, [], [{ id: 'p45', valor: 4500 }, { id: 'p3', valor: 3000 }], 'p45'),
+    { valor: 12000, marcado: 7500, cobre: 4500 })
 })
