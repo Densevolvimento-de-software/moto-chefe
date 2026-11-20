@@ -18,6 +18,7 @@
 
 import { centavos } from './centavos'
 import { parcelasComTaxa, type PgtoCalc } from './preco-minimo'
+import { emLista } from './texto'
 
 /** A partir daqui existe registro de desconto — antes o fluxo de aprovação não existia. */
 export const DESCONTO_REGISTRADO_DESDE = '2026-07-10'
@@ -66,8 +67,6 @@ export type QuadroAbaixoDoMinimo = {
 
 type PedidoDeAprovacao = LinhaDesconto & { dadosVenda: unknown }
 
-const PARCELAS_EM_LISTA = new Intl.ListFormat('pt-BR', { type: 'conjunction' })
-
 // dados_venda é o formulário inteiro gravado em jsonb; pedido antigo ou de outro fluxo pode vir sem pagamentos.
 function pagamentosDoPedido(dadosVenda: unknown): PgtoCalc[] {
   const pagamentos = (dadosVenda as { pagamentos?: unknown } | null)?.pagamentos
@@ -78,7 +77,7 @@ function rotuloDoLiquido(pagamentos: PgtoCalc[], liquido: number, venda: number)
   const parcelas = parcelasComTaxa(pagamentos)
   // Líquido igual à venda: a tabela não tinha taxa para essas parcelas, então não há "12x" a explicar.
   if (parcelas.length === 0 || liquido >= venda) return 'Líquido'
-  return `Líquido (${PARCELAS_EM_LISTA.format(parcelas.map(n => `${n}x`))})`
+  return `Líquido (${emLista(parcelas.map(n => `${n}x`))})`
 }
 
 /** Null sem snapshot (pagamento sensível, pedido antigo), como calcDesconto. */

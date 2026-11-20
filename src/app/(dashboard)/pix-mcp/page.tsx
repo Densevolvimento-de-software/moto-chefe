@@ -11,6 +11,7 @@ import { rotulosDoVinculoPix } from '@/lib/rotulos-alvo'
 import { nomesDeUsuariosVisiveis } from '@/lib/conta'
 import { PixTopo } from './components/pix-topo'
 import { PixLista, type LinhaPix } from './components/pix-lista'
+import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { hojeBrt, primeiroDiaDoMesBrt } from '@/lib/data-venda'
 import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-periodo'
@@ -150,7 +151,7 @@ export default async function PixMcpPage({
         rotuloSync={ultimaSync ? rotuloSyncBrt(ultimaSync) : 'Ainda não sincronizado'}
         sincronizarAoAbrir={sincronizarAoAbrir}
       />
-      <PixLista linhas={linhasLista} />
+      <PixLista linhas={linhasLista} podeDesfazerForcada={podeGerirConciliacao(usuario.papel)} />
     </div>
   )
 }

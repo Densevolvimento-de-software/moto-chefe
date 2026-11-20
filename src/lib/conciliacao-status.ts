@@ -67,7 +67,7 @@ export type AutorDoForcado = Pick<ConciliadoManual, 'porId' | 'porNome' | 'em'>
  */
 export type RecebimentoDaForcada = { valorRecebido: unknown; coberto: number; baseVista?: unknown }
 
-/** Recusa de desvincular o PIX que completa uma forçada parcial; quem gere desfaz a forçada pelo painel da venda. */
+/** Recusa de desvincular o PIX que completa uma forçada parcial; quem gere desfaz pelo painel da venda ou pela /pix-mcp. */
 export const COMPLETA_FORCADA = 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.'
 // Para quem não gere a conciliação (não pode desfazer a forçada).
 export const COMPLETA_FORCADA_PEDIR_A_GESTOR = 'Este PIX completa um pagamento marcado como recebido. Peça a quem gere a conciliação para desfazer a forçada.'
@@ -340,4 +340,52 @@ export function estornosDosPagamentos(pgtos: PgtoOS[], cobertura: CoberturaPgto[
     const e = cobertura[i]?.conciliado ? undefined : estornos.find(x => !acc.usados.has(x.id) && estornoCobre(p, x))
     return { marcados: [...acc.marcados, Boolean(e)], usados: e ? new Set([...acc.usados, e.id]) : acc.usados }
   }, { marcados: [], usados: new Set() }).marcados
+}
+
+const semAMarca = (pgtos: PgtoOS[], idx: number): PgtoOS[] => {
+  const r = semForcado(pgtos, idx)
+  return r.ok ? r.dados : pgtos
+}
+
+// Todos os subconjuntos não vazios; acima de 10 linhas forçadas em parte num mesmo alvo, só o conjunto inteiro.
+const subconjuntos = (xs: number[]): number[][] =>
+  xs.length > 10 ? [xs] : xs.reduce<number[][]>((acc, x) => [...acc, ...acc.map(s => [...s, x])], [[]]).filter(s => s.length > 0)
+
+/**
+ * As linhas forçadas só em parte cuja marca sai junto quando este PIX solta (#92). Serve o conjunto que, sem o PIX
+ * e sem essas marcas, não deixa nenhuma forçada que fica com falta maior que a de hoje (critério que o bot do
+ * #189 pediu: soltar o PIX nunca deixa marca sem o dinheiro). Entre os que servem, o de menor soma dos restos,
+ * depois o de menos linhas: sai só o que basta. Vazio se o PIX não completa nenhuma.
+ */
+export function forcadasQueOPixCompleta(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[], pixId: string): number[] {
+  const falta = (ps: PgtoOS[], pix: PixMatch[]) => cobrir(ps, linhasDoAlvo, pix).faltaNasForcadas
+  const hoje = falta(pgtos, pixDoBanco)
+  const semOPix = pixDoBanco.filter(r => r.id !== pixId)
+  if (falta(pgtos, semOPix) - hoje <= 0.05) return []
+  const parciais = pgtos.flatMap((p, i) => (restoDaForcadaParcial(p) > 0 ? [i] : []))
+  const restos = (s: number[]) => s.reduce((a, i) => a + restoDaForcadaParcial(pgtos[i]), 0)
+  const servem = subconjuntos(parciais).filter(s => falta(s.reduce(semAMarca, pgtos), semOPix) - hoje <= 0.05)
+  const melhor = [...servem].sort((x, y) => restos(x) - restos(y) || x.length - y.length)[0]
+  return melhor ?? parciais
+}
+
+/** Os pagamentos sem as marcas de forcadasQueOPixCompleta; PIX que não completa nada devolve os mesmos pagamentos. */
+export function semForcadasQueOPixCompleta(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[], pixId: string): PgtoOS[] {
+  const idx = forcadasQueOPixCompleta(pgtos, linhasDoAlvo, pixDoBanco, pixId)
+  return idx.length ? idx.reduce(semAMarca, pgtos) : pgtos
+}
+
+/** O que a caixa da /pix-mcp mostra das forçadas parciais que um PIX completa (#92). */
+export type ForcadaQueOPixCompleta = { linhas: { valor: number; marcado: number }[]; cobre: number }
+
+/** Cada pagamento cuja marca sai junto com este PIX e quanto foi marcado; `cobre`: o que ESTE PIX cobre dos restos. */
+export function resumoDaForcadaQueOPixCompleta(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[], pixId: string): ForcadaQueOPixCompleta | null {
+  const idx = forcadasQueOPixCompleta(pgtos, linhasDoAlvo, pixDoBanco, pixId)
+  if (idx.length === 0) return null
+  const oPix = pixDoBanco.find(r => r.id === pixId)
+  const restos = idx.reduce((a, i) => a + restoDaForcadaParcial(pgtos[i]), 0)
+  return {
+    linhas: idx.map(i => ({ valor: pgtos[i].valor, marcado: centavos(pgtos[i].valor - restoDaForcadaParcial(pgtos[i])) })),
+    cobre: centavos(Math.min(restos, oPix ? valorQueCobre(oPix) : restos)),
+  }
 }
