@@ -15,6 +15,7 @@ import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { alvoValido, colunasDoAlvo, semAlvos, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 import { ehUuid } from '@/lib/uuid'
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
+import { CONCILIACAO_NAO_ENCONTRADA, desfazerForcadaEDesvincular, desvincularNaTrava, forcadaQueOItemCompleta, linhaDoCartao } from '@/lib/vinculo-na-trava'
 import { esperadoComTaxa, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
 import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
 import { comForcado, matchPagamentos, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
@@ -310,10 +311,6 @@ async function importarRelatorio(formData: FormData) {
   return { importadas, duplicadas, conciliadas, semCodigo, incompletas }
 }
 
-// Linha de outro grupo, inexistente ou estornada recebem a mesma frase: estornada não se vincula
-// (vincular poria o valor devolvido de volta nas somas), e a frase não revela mais que "não achei".
-const CONCILIACAO_NAO_ENCONTRADA = 'Conciliação não encontrada'
-
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404, #129).
 export async function vincularVendaAction(conciliacaoId: string, alvo: AlvoConciliacao) {
   return acao(() => vincularVenda(conciliacaoId, alvo))
@@ -340,17 +337,32 @@ async function desvincularVenda(conciliacaoId: string) {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
+  // A linha pix da maquininha pode ser o resto de uma forçada parcial de PIX (#166), como o PIX do banco.
+  revalidarTelasDaConciliacao(await desvincularNaTrava(linhaDoCartao(conciliacaoId, grupo.id), grupo.id))
+}
 
-  const atualizadas = ehUuid(conciliacaoId)
-    ? await db.update(conciliacoesCartao)
-      .set({ ...semAlvos(), conciliado: false, conciliadoEm: null })
-      // Estornada mantém o vínculo com a venda: desvincular recebe a mesma frase de linha inexistente.
-      .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
-      .returning({ id: conciliacoesCartao.id })
-    : []
-  if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
+// #166 (variante 2 do protótipo): a linha completa uma forçada parcial; quem gere desfaz a forçada e desvincula de uma
+// vez, depois de confirmar no diálogo. Desfazer a forçada é de quem gere a conciliação (#79).
+/** `resumoVisto`: o que o diálogo mostrou, só para conferir; se mudou, a ação é recusada. */
+export async function desfazerForcadaEDesvincularLinhaAction(conciliacaoId: string, resumoVisto?: unknown) {
+  return acao(() => desfazerForcadaEDesvincularLinha(conciliacaoId, resumoVisto))
+}
+async function desfazerForcadaEDesvincularLinha(conciliacaoId: string, resumoVisto: unknown) {
+  const usuario = await getUsuarioLogado()
+  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  const grupo = await getGrupoAtivo(usuario)
+  revalidarTelasDaConciliacao(await desfazerForcadaEDesvincular(linhaDoCartao(conciliacaoId, grupo.id), grupo.id, resumoVisto ?? null))
+}
 
-  revalidarTelasDaConciliacao()
+/** O que o diálogo mostra quando o desvincular é recusado porque a linha completa uma forçada parcial. */
+export async function forcadaDaLinhaAction(conciliacaoId: string) {
+  return acao(() => forcadaDaLinha(conciliacaoId))
+}
+async function forcadaDaLinha(conciliacaoId: string) {
+  const usuario = await getUsuarioLogado()
+  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  const grupo = await getGrupoAtivo(usuario)
+  return forcadaQueOItemCompleta(linhaDoCartao(conciliacaoId, grupo.id), grupo.id)
 }
 
 /** Linhas pendentes no valor do pagamento; `linha`: a que cobre o pagamento (cartão ou a pix da maquininha). */
