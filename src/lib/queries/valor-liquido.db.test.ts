@@ -189,3 +189,20 @@ test('painel do vendedor e folha: o líquido da comissão não desconta o custo 
   assert.equal(Number(comissao.l), 17_888)
   assert.equal(await liquido(venda), 17_868)
 })
+
+// S1 (decisão do Luis registrada na #93): no painel do vendedor, ranking, modelos e últimas vendas usam a base da
+// comissão (sem o custo do PIX), como o KPI e o simulador; para o sócio, o líquido real.
+test('painel do vendedor: ranking, modelos e últimas vendas pela base da comissão; para o sócio, o líquido real', async () => {
+  const c = await semearConta()
+  const { venda } = await vendaMoto(c, 18_500, [{ tipo: 'pix', valor: 10_000 }, { tipo: 'cartao_credito', valor: 8_500 }])
+  await cartaoConciliado(c, venda, 8_500, 7_888)
+  await pixVinculado(c.grupoId, { venda }, 9_980, 10_000, 20)
+  const filtros = { dataInicio: '2026-11-01', dataFim: '2026-11-30', lojaId: [c.lojaId] }
+  const doVendedor = { baseDaComissao: true }
+  const fat = (r: { faturamento: number | string }[]) => r.map(x => Number(x.faturamento))
+  assert.deepEqual(fat(await dashboard.getRankingVendedores(filtros, doVendedor)), [17_888])
+  assert.deepEqual(fat(await dashboard.getModelosMaisVendidos(filtros, doVendedor)), [17_888])
+  assert.deepEqual((await dashboard.getUltimasVendas(filtros, 5, doVendedor)).map(v => Number(v.valor)), [17_888])
+  assert.deepEqual(fat(await dashboard.getRankingVendedores(filtros)), [17_868])
+  assert.deepEqual((await dashboard.getUltimasVendas(filtros)).map(v => Number(v.valor)), [17_868])
+})
