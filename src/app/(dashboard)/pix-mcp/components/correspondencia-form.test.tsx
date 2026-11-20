@@ -172,3 +172,15 @@ test('a caixa some quando o PIX fica livre e não volta ao religar (U1)', async 
   await redesenhar(LIGADO)
   assert.equal(tela().includes('Este PIX completa um pagamento marcado como recebido'), false, tela())
 })
+
+test('falha interna no desfazer e desvincular mostra a frase genérica, nunca a mensagem crua', async () => {
+  const { desvincular, clique } = await montar(LIGADO, true)
+  remover.mock.mockImplementation(async () => ({ ok: false, erro: COMPLETA }))
+  forcadaDoPix.mock.mockImplementation(async () => ({ ok: true, dados: RESUMO }))
+  desfazerERemover.mock.mockImplementation(async () => { throw FALHA_INTERNA })
+  await desvincular()
+  await clique('Desfazer a forçada e desvincular')
+  await clique('Desfazer e desvincular', 80)
+  assert.deepEqual(erros, ['Erro ao desvincular'])
+  assert.deepEqual(sucessos, [])
+})
