@@ -10,7 +10,7 @@ import { brl } from '@/lib/dashboard-painel'
 import { dataPuraBr, diaMesBr } from '@/lib/data-venda'
 import type { LinhaNaTela } from '@/lib/conciliacao-linha-tela'
 import { BotaoDesvincular, ChipDoAlvo, RotuloDoAlvo, VincularVendaButton } from './vincular-venda-button'
-import { FolhaDaForcada } from './forcada-da-linha'
+import { ConfirmarForcadaDaLinha } from './forcada-da-linha'
 import { rotuloDoAlvoNaFrase } from '@/lib/forcada-frases'
 import type { ForcadaQueOPixCompleta } from '@/lib/conciliacao-status'
 
@@ -185,8 +185,8 @@ function FolhaDaLinha({ l, podeVincular, onTravar }: FolhaProps & { onTravar: (t
   const [forcada, setForcada] = useState<ForcadaQueOPixCompleta | null>(null)
   if (forcada && l.alvo) {
     return (
-      <FolhaDaForcada conciliacaoId={l.id} rotulo={rotuloDoAlvoNaFrase(l.alvo.tipo, l.alvo.numero)} forcada={forcada}
-        onCancelar={() => setForcada(null)} onEnviando={onTravar} />
+      <ConfirmarForcadaDaLinha modo="folha" conciliacaoId={l.id} rotulo={rotuloDoAlvoNaFrase(l.alvo.tipo, l.alvo.numero)} forcada={forcada}
+        onFechar={() => setForcada(null)} onEnviando={onTravar} />
     )
   }
   return (

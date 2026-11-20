@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Link2, Link2Off, Loader2, CheckCircle2, Search } from 'lucide-react'
 import { buscarVendasParaVincular, buscarVendaManual, vincularVendaAction, desvincularVendaAction, forcadaDaLinhaAction } from '../actions'
-import { DialogoDaForcada } from './forcada-da-linha'
+import { ConfirmarForcadaDaLinha } from './forcada-da-linha'
 import { dataPuraBr } from '@/lib/data-venda'
 import { brl } from '@/lib/dashboard-painel'
 import { cn } from '@/lib/utils'
@@ -120,7 +120,7 @@ export function BotaoDesvincular({ conciliacaoId, rotulo, tamanho, onForcada }: 
       >
         {icone}
       </button>
-      {forcada && <DialogoDaForcada conciliacaoId={conciliacaoId} rotulo={rotulo} forcada={forcada} onFechar={() => setForcada(null)} />}
+      {forcada && <ConfirmarForcadaDaLinha modo="dialogo" conciliacaoId={conciliacaoId} rotulo={rotulo} forcada={forcada} onFechar={() => setForcada(null)} />}
     </>
   )
 }
