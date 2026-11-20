@@ -93,14 +93,22 @@ export async function desvincularPix(pixId: string, grupoId: string, fraseSeComp
     if (!vinculo) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
     if (await completaForcada(pixId, lojaIds, vinculo, tx)) throw new RecusaUsuario(fraseSeCompleta)
 
-    await soltarPix(pixId, grupoId, tx)
+    await soltarPix(pixId, grupoId, vinculo, tx)
   })
 }
 
-async function soltarPix(pixId: string, grupoId: string, tx: ExecutorDoAlvo) {
+// O vínculo lido no começo vai no where: religado a outro alvo enquanto este esperava a trava, o PIX não é solto
+// do alvo novo (a recusa é a do PIX não encontrado).
+const mesmoVinculo = (v: Alvos) => and(
+  v.vendaId ? eq(pixRecebimentosMcp.vendaId, v.vendaId) : isNull(pixRecebimentosMcp.vendaId),
+  v.osId ? eq(pixRecebimentosMcp.osId, v.osId) : isNull(pixRecebimentosMcp.osId),
+  v.pecaVendaId ? eq(pixRecebimentosMcp.pecaVendaId, v.pecaVendaId) : isNull(pixRecebimentosMcp.pecaVendaId),
+)
+
+async function soltarPix(pixId: string, grupoId: string, vinculo: Alvos, tx: ExecutorDoAlvo) {
   const soltos = await tx.update(pixRecebimentosMcp)
     .set(PIX_SOLTO)
-    .where(doGrupo(pixId, grupoId))
+    .where(and(doGrupo(pixId, grupoId), mesmoVinculo(vinculo)))
     .returning({ id: pixRecebimentosMcp.id })
   if (soltos.length === 0) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
 }
@@ -121,7 +129,7 @@ export async function desfazerForcadaEDesvincularPix(pixId: string, grupoId: str
       const semForcadas = semForcadasQueOPixCompleta(doAlvo.pgtos, doAlvo.cartoes, doAlvo.pix, pixId)
       if (semForcadas !== doAlvo.pgtos) await gravarPagamentosDoAlvo(alvo, lojaIds, semForcadas, tx)
     }
-    await soltarPix(pixId, grupoId, tx)
+    await soltarPix(pixId, grupoId, vinculo, tx)
     return alvo
   })
 }

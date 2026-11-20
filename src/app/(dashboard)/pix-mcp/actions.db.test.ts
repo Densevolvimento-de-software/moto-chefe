@@ -352,6 +352,26 @@ test('desfazer e desvincular lê os pagamentos já com a trava: o que outro pedi
   assert.deepEqual(await marcasDe(a.ids.venda), [false, true])
 })
 
+// N1: o PIX religado a outro alvo enquanto o desvincular esperava a trava não é solto do alvo novo.
+test('desvincular confere o vínculo ao soltar: religado a outro alvo no meio, o PIX fica no alvo novo', async () => {
+  const a = await contaComNumeros()
+  const pix = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'venda', venda_id = ${a.ids.venda} where id = ${pix}`)
+  usuario = await sessao(a, 'aux_adm')
+  const s = await sessaoQueSegura(url!)
+  let r: Promise<unknown> = Promise.resolve()
+  try {
+    await s.travar('select id from vendas where id = $1 for update', [a.ids.venda])
+    r = actions.removerCorrespondenciaAction(pix)
+    await ate(async () => (await s.esperandoPor([s.pid])).length === 1, 'o desvincular esperando a trava da venda')
+    await s.travar(`update pix_recebimentos_mcp set tipo_correspondencia = 'os', venda_id = null, os_id = $2 where id = $1`, [pix, a.ids.os])
+    await s.soltar()
+    assert.deepEqual(await r, PIX_NAO_ENCONTRADO)
+  } finally { await s.fim() }
+  const v = await vinculoDe(pix)
+  assert.deepEqual([v.tipo_correspondencia, v.os_id], ['os', a.ids.os])
+})
+
 // A caixa da /pix-mcp: o resumo sai do servidor com as lojas do grupo do PIX.
 test('resumo da forçada que o PIX completa: o do próprio grupo; PIX de outra Conta, inexistente ou que não completa = vazio', async () => {
   const a = await contaComNumeros()
