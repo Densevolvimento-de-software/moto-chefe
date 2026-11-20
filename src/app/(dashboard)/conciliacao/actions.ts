@@ -663,8 +663,7 @@ export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number
     // Quanto os lançamentos do alvo já cobrem do pagamento, pela mesma conta do painel: o PIX parcial força o que falta.
     const coberto = matchPagamentos(pgtos, await cartoesDoAlvo(alvo, tx), await pixDoAlvo(alvo, tx))[idx]?.coberto ?? 0
     const autor = { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }
-    const semCusto = await pedidoTemPixComCusto(alvo, tx)
-    return ouRecusa(comForcado(pgtos, idx, motivo, autor, { valorRecebido, coberto, baseVista, semCusto }))
+    return ouRecusa(comForcado(pgtos, idx, motivo, autor, { valorRecebido, coberto, baseVista }))
   }))
 }
 

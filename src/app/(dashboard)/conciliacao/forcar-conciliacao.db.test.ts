@@ -426,9 +426,10 @@ test('PIX vinculado que completa uma forçada parcial não se desvincula: pede p
   assert.equal((await actions.desvincularPixAlvoAction(pix)).ok, true)
 })
 
-// B6 (decisão do Luis registrada na #93): o pedido da venda já tem PIX ligado com custo; a forçada de um PIX da
-// venda não grava custo, e a busca diz à tela para não mostrar custo. PIX de outra Conta no pedido não conta.
-test('forçar PIX de venda cujo pedido já tem PIX com custo: a marca vai sem custo; PIX de outra Conta ou sem custo no pedido não conta', async () => {
+// Decisão 9 do Luis (#93, muda o B6): a forçada sempre grava o custo dela, mesmo com PIX com custo no pedido; o
+// líquido é que não conta a parte coberta (valor-liquido.db.test.ts). A busca ainda diz se o pedido tem PIX com
+// custo, e PIX de outra Conta ou sem custo no pedido não conta.
+test('forçar PIX de venda cujo pedido já tem PIX com custo: a marca grava o custo dela; PIX de outra Conta ou sem custo no pedido não conta', async () => {
   const a = await contaComAlvos()
   usuario = sessao(a, 'aux_adm')
   await semearCustoPixDoGrupo(db, a.grupoId, 0.002)
@@ -441,11 +442,11 @@ test('forçar PIX de venda cujo pedido já tem PIX com custo: a marca vai sem cu
   await ligarNoPedido(b.grupoId)
   await ligarNoPedido(a.grupoId, 0, 'TED')
   assert.deepEqual(await actions.buscarPixParaOAlvo(alvo, 1000).then(r => [r.semCusto, r.taxa]), [false, 0.002])
-  // PIX do próprio grupo no pedido: a forçada vai sem custo.
+  // PIX do próprio grupo no pedido: a forçada grava o custo dela do mesmo jeito.
   await ligarNoPedido(a.grupoId)
   assert.deepEqual(await actions.buscarPixParaOAlvo(alvo, 1000).then(r => r.semCusto), true)
   assert.equal((await actions.forcarConciliacaoAction(alvo, 0, MOTIVO, 998, 1000)).ok, true)
-  assert.deepEqual((await marcaDe('moto', a.alvos.moto))?.pix, { valorRecebido: 998, valorBruto: 1000, custoPix: 0, custoPixTaxa: 0 })
+  assert.deepEqual((await marcaDe('moto', a.alvos.moto))?.pix, { valorRecebido: 998, valorBruto: 1000, custoPix: 2, custoPixTaxa: 0.002 })
   await db.execute(sql`delete from configuracao_taxas where grupo_id = ${a.grupoId}`)
 })
 

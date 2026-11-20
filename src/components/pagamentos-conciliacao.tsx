@@ -215,7 +215,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     if (!PAGAMENTO_PIX.has(p.tipo)) return
     const base = baseDaForcada(p.valor, coberto)
     // Sem custo (o pedido já tem PIX com custo, #93): entrou o valor cheio.
-    setRecebido(formatarNumeroBR(contextoPix?.semCusto ? base : esperadoComTaxa(base, contextoPix?.taxa ?? 0) ?? base))
+    setRecebido(formatarNumeroBR(esperadoComTaxa(base, contextoPix?.taxa ?? 0) ?? base))
   }
 
   // `baseVista`: a base que o formulário mostrou; o servidor recusa se os lançamentos mudaram desde então.
@@ -513,7 +513,7 @@ function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, semCusto, motivo, onM
   salvando: boolean; onCancelar: () => void; onConfirmar: (baseVista?: number) => void
 }) {
   const ehPix = PAGAMENTO_PIX.has(p.tipo)
-  const pixForcado = ehPix ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto, semCusto }) : null
+  const pixForcado = ehPix ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto }) : null
   const podeConfirmar = motivo.trim().length >= 3 && typeof pixForcado !== 'string'
   const avisoCusto = pixForcado && typeof pixForcado !== 'string' ? avisoDeCustoAlto(pixForcado, taxaDoGrupo) : null
   const confirmar = () => onConfirmar(pixForcado && typeof pixForcado !== 'string' ? pixForcado.valorBruto : undefined)

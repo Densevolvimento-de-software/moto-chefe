@@ -314,16 +314,15 @@ test('forçar PIX parcial: parte do que falta, o campo vem com o esperado dessa 
   assert.deepEqual(forcar.mock.calls.map(c => c.arguments.slice(3)), [[598.8, 600]])
 })
 
-// B6 (decisão do Luis registrada na #93): o pedido da venda já tem PIX com custo; o forçar vem com o valor cheio,
-// sem custo, e diz por quê.
-test('forçar PIX quando o pedido já tem PIX com custo: valor cheio, custo 0 e o aviso do motivo', async () => {
+// Decisão 9 do Luis (#93, muda o B6): com PIX com custo no pedido, o forçar vem como qualquer outro (o esperado com
+// a taxa) e a forçada grava o custo dela; o líquido é que não conta a parte coberta.
+test('forçar PIX quando o pedido já tem PIX com custo: o esperado com a taxa e o custo da forçada, como sempre', async () => {
   paraOAlvo.mock.mockImplementation(async () => ({ ...COM_CUSTO, semCusto: true }))
   const t = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }])
   await t.tocar(linha('PIX'))
   await t.clique('Forçar')
-  assert.equal(campoRecebido()?.value, '10.000,00')
-  assert.deepEqual(contaDoPix(), [['Valor do PIX', 'R$ 10.000,00'], ['Custo (0,00%)', 'R$ 0,00'], ['Entrou', 'R$ 10.000,00']])
-  assert.ok(tela().includes('O custo do PIX já entra pelo PIX do pedido desta venda.'), tela())
+  assert.equal(campoRecebido()?.value, '9.980,00')
+  assert.deepEqual(contaDoPix(), [['Valor do PIX', 'R$ 10.000,00'], ['Custo (0,20%)', 'R$ 20,00'], ['Entrou', 'R$ 9.980,00']])
 })
 
 test('forçar cartão: sem o campo do valor que entrou, e nada de valor na action', async () => {
