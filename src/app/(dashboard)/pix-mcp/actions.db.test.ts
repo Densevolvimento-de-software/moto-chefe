@@ -334,6 +334,24 @@ test('desfazer e desvincular: a forçada cheia ao lado da parcial fica', async (
   assert.deepEqual(await marcasDe(a.ids.venda), [false, true])
 })
 
+test('desfazer e desvincular lê os pagamentos já com a trava: o que outro pedido gravou enquanto ele esperava fica', async () => {
+  const a = await contaComNumeros()
+  const { completa } = await vendaComForcadaParcial(a)
+  usuario = await sessao(a, 'aux_adm')
+  const s = await sessaoQueSegura(url!)
+  try {
+    await s.travar('select id from vendas where id = $1 for update', [a.ids.venda])
+    // Outro pedido, com a venda travada, marca a 2ª linha como recebida (forçada cheia).
+    await s.travar(`update vendas set pagamentos = jsonb_set(pagamentos, '{1,conciliadoManual}', $2::jsonb) where id = $1`,
+      [a.ids.venda, JSON.stringify({ motivo: 'Outro pedido', porId: 'u2', porNome: 'Gestor', em: '2026-11-19T12:00:00.000Z' })])
+    const r = actions.desfazerForcadaERemoverAction(completa)
+    await ate(async () => (await s.esperandoPor([s.pid])).length === 1, 'o desfazer esperando a trava da venda')
+    await s.soltar()
+    assert.deepEqual(await r, { ok: true, dados: undefined })
+  } finally { await s.fim() }
+  assert.deepEqual(await marcasDe(a.ids.venda), [false, true])
+})
+
 // A caixa da /pix-mcp: o resumo sai do servidor com as lojas do grupo do PIX.
 test('resumo da forçada que o PIX completa: o do próprio grupo; PIX de outra Conta, inexistente ou que não completa = vazio', async () => {
   const a = await contaComNumeros()
