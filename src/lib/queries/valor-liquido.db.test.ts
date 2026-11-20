@@ -14,11 +14,15 @@ process.env.DATABASE_URL = url
 let db: typeof import('@/lib/db')['db']
 let vl: typeof import('@/lib/queries/valor-liquido')
 let vendas: typeof import('@/lib/db/schema')['vendas']
+let dre: typeof import('@/lib/queries/dre')
+let contabil: typeof import('@/lib/queries/export-contabil')
 
 before(async () => {
   ;({ db } = await import('@/lib/db'))
   vl = await import('@/lib/queries/valor-liquido')
   ;({ vendas } = await import('@/lib/db/schema'))
+  dre = await import('@/lib/queries/dre')
+  contabil = await import('@/lib/queries/export-contabil')
 })
 after(async () => {
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
@@ -112,4 +116,22 @@ test('Conta A × B: PIX da Conta A apontando para a venda da B não desconta nad
   const { venda } = await vendaMoto(b, 10_000, [{ tipo: 'pix', valor: 10_000 }])
   await pixVinculado(a.grupoId, { venda }, 9_980, 10_000, 20)
   assert.equal(await liquido(venda), 10_000)
+})
+
+// Decisão do Luis registrada na #93: no DRE o custo do PIX é linha própria; "Taxas de cartão" não muda, e as
+// deduções somam o bruto − líquido. A contabilidade soma o custo do PIX nas taxas e no líquido.
+test('DRE e contabilidade: custo do PIX em linha própria, taxa de cartão igual, e a soma das partes bate', async () => {
+  const c = await semearConta()
+  const { venda } = await vendaMoto(c, 18_500, [{ tipo: 'pix', valor: 10_000 }, { tipo: 'cartao_credito', valor: 8_500 }])
+  await cartaoConciliado(c, venda, 8_500, 7_888)
+  await pixVinculado(c.grupoId, { venda }, 9_980, 10_000, 20)
+  const { colunas } = await dre.dreDoMes({ grupoId: c.grupoId, lojaIds: [c.lojaId], ano: 2026, mes: 11 })
+  const e = colunas.find(x => x.chave === c.lojaId)!.entrada
+  assert.deepEqual([e.taxasCartao, e.tarifaPix, e.custoPix], [612, 0, 20])
+  assert.equal(e.taxasCartao + e.tarifaPix + e.custoPix, 18_500 - await liquido(venda))
+  const [mes] = await dre.dreEvolucao({ grupoId: c.grupoId, lojaIds: [c.lojaId], ano: 2026, mes: 11, meses: 1 })
+  assert.deepEqual([mes.entrada.taxasCartao, mes.entrada.custoPix], [612, 20])
+  const exp = await contabil.dadosExportContabil({ grupo: { id: c.grupoId, nome: 'G' }, lojaIds: [c.lojaId], competencias: [{ ano: 2026, mes: 11 }] })
+  const linha = exp.vendas.find(v => v.valorBruto === 18_500)!
+  assert.deepEqual([linha.taxas, linha.valorLiquido], [632, 17_868])
 })

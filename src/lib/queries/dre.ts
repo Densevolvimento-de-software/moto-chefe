@@ -6,7 +6,7 @@ import {
 } from '@/lib/db/schema'
 import { and, eq, gte, inArray, lt, ne, sql } from 'drizzle-orm'
 import { rotuloMesCurtoAA } from '@/lib/data-venda'
-import { tarifaPixDaVendaExpr, valorLiquidoExpr } from './valor-liquido'
+import { custoPixDaVendaExpr, tarifaPixDaVendaExpr, valorLiquidoExpr } from './valor-liquido'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 import { taxaDaLinhaOutras } from './taxas-receita'
 import { somaCustoMotoExpr } from './custo-moto'
@@ -90,6 +90,7 @@ export async function dreDoMes(opts: {
         bruto:   sql<string>`COALESCE(SUM(${vendas.valor}::numeric), 0)`,
         liquido: sql<string>`COALESCE(SUM(${valorLiquidoExpr()}), 0)`,
         tarifaPix: sql<string>`COALESCE(SUM(${tarifaPixDaVendaExpr()}), 0)`,
+        custoPix: sql<string>`COALESCE(SUM(${custoPixDaVendaExpr()}), 0)`,
         // Mesmo custo do /financeiro, com a queda para a precificação: o
         // resultado operacional do DRE tem que bater com o Lucro Líquido de lá.
         custo:   sql<string>`${somaCustoMotoExpr()}`,
@@ -184,7 +185,7 @@ export async function dreDoMes(opts: {
       receitaPecas: num(pecas?.total) + num(os?.pecas),
       ...taxasDaReceita({
         brutoMotos: bruto, liquidoMotos: num(v?.liquido), tarifaPixMotos: num(v?.tarifaPix),
-        taxaCartaoOutras: num(outras?.taxa), tarifaPixOutras: num(outras?.tarifa_pix),
+        taxaCartaoOutras: num(outras?.taxa), tarifaPixOutras: num(outras?.tarifa_pix), custoPixMotos: num(v?.custoPix),
       }),
       cmvMotos: num(v?.custo),
       despesasPorGrupo: porGrupo,
@@ -243,6 +244,7 @@ export async function dreEvolucao(opts: {
         bruto:   sql<string>`COALESCE(SUM(${vendas.valor}::numeric), 0)`,
         liquido: sql<string>`COALESCE(SUM(${valorLiquidoExpr()}), 0)`,
         tarifaPix: sql<string>`COALESCE(SUM(${tarifaPixDaVendaExpr()}), 0)`,
+        custoPix: sql<string>`COALESCE(SUM(${custoPixDaVendaExpr()}), 0)`,
         custo:   sql<string>`${somaCustoMotoExpr()}`,
       })
       .from(vendas)
@@ -331,7 +333,7 @@ export async function dreEvolucao(opts: {
         receitaPecas: num(pc.get(chave)?.total) + num(os.get(chave)?.pecas),
         ...taxasDaReceita({
           brutoMotos: bruto, liquidoMotos: num(v.get(chave)?.liquido), tarifaPixMotos: num(v.get(chave)?.tarifaPix),
-          taxaCartaoOutras: num(tx.get(chave)?.taxa), tarifaPixOutras: num(tx.get(chave)?.tarifa_pix),
+          taxaCartaoOutras: num(tx.get(chave)?.taxa), tarifaPixOutras: num(tx.get(chave)?.tarifa_pix), custoPixMotos: num(v.get(chave)?.custoPix),
         }),
         cmvMotos: num(v.get(chave)?.custo),
         despesasPorGrupo: porGrupo,

@@ -14,6 +14,7 @@ const BASE: EntradaDre = {
   receitaPecas: 5_644,
   taxasCartao: 38_204,
   tarifaPix: 0,
+  custoPix: 0,
   cmvMotos: 915_205,
   despesasPorGrupo: { pessoal: 102_300, ocupacao: 41_200, administrativas: 31_400 },
 }
@@ -153,19 +154,36 @@ test('somar entradas soma a tarifa do PIX', () => {
 
 test('taxas da receita: a parte Pix do bruto − líquido das motos e das outras receitas vira tarifa', () => {
   assert.deepEqual(
-    taxasDaReceita({ brutoMotos: 10_000, liquidoMotos: 9_796, tarifaPixMotos: 4, taxaCartaoOutras: 9, tarifaPixOutras: 5 }),
-    { taxasCartao: 209, tarifaPix: 9 },
+    taxasDaReceita({ brutoMotos: 10_000, liquidoMotos: 9_796, tarifaPixMotos: 4, taxaCartaoOutras: 9, tarifaPixOutras: 5, custoPixMotos: 0 }),
+    { taxasCartao: 209, tarifaPix: 9, custoPix: 0 },
   )
 })
 
 test('taxas da receita sem resíduo de ponto flutuante quando o recorte só tem Pix com centavos', () => {
   // 1000,56 − 1000,19 − 0,37 em float dá −1,09e−13: a tela mostraria "−R$ 0,00" em vez de zero.
   assert.deepEqual(
-    taxasDaReceita({ brutoMotos: 1000.56, liquidoMotos: 1000.19, tarifaPixMotos: 0.37, taxaCartaoOutras: 0, tarifaPixOutras: 0 }),
-    { taxasCartao: 0, tarifaPix: 0.37 },
+    taxasDaReceita({ brutoMotos: 1000.56, liquidoMotos: 1000.19, tarifaPixMotos: 0.37, taxaCartaoOutras: 0, tarifaPixOutras: 0, custoPixMotos: 0 }),
+    { taxasCartao: 0, tarifaPix: 0.37, custoPix: 0 },
   )
   assert.deepEqual(
-    taxasDaReceita({ brutoMotos: 0.3, liquidoMotos: 0.1, tarifaPixMotos: 0.1, taxaCartaoOutras: 0.1, tarifaPixOutras: 0.2 }),
-    { taxasCartao: 0.2, tarifaPix: 0.3 },
+    taxasDaReceita({ brutoMotos: 0.3, liquidoMotos: 0.1, tarifaPixMotos: 0.1, taxaCartaoOutras: 0.1, tarifaPixOutras: 0.2, custoPixMotos: 0 }),
+    { taxasCartao: 0.2, tarifaPix: 0.3, custoPix: 0 },
   )
+})
+
+// #93 (decisão do Luis registrada na #93): o custo do PIX do banco é linha própria no DRE, fora das taxas de cartão.
+test('taxas da receita: o custo do PIX das motos sai do bruto − líquido e vira linha própria; a soma bate', () => {
+  const r = taxasDaReceita({ brutoMotos: 18_500, liquidoMotos: 17_868, tarifaPixMotos: 0, custoPixMotos: 20, taxaCartaoOutras: 0, tarifaPixOutras: 0 })
+  assert.deepEqual(r, { taxasCartao: 612, tarifaPix: 0, custoPix: 20 })
+  assert.equal(r.taxasCartao + r.tarifaPix + r.custoPix, 18_500 - 17_868)
+})
+
+test('custo do PIX é linha própria logo após a tarifa do PIX na maquininha e sai da receita líquida', () => {
+  const l = montarDre({ ...BASE, tarifaPix: 1_250, custoPix: 320 })
+  const chaves = l.map(x => x.chave)
+  assert.equal(chaves[chaves.indexOf('tarifa_pix') + 1], 'custo_pix')
+  const linha = l.find(x => x.chave === 'custo_pix')
+  assert.deepEqual([linha?.rotulo, linha?.tipo, linha?.valor], ['(−) Custo do PIX', 'deducao', 320])
+  assert.equal(valor(l, 'receita_liquida'), 1_526_094 - 38_204 - 1_250 - 320)
+  assert.equal(somarEntradas({ ...BASE, custoPix: 100 }, { ...BASE, custoPix: 25 }).custoPix, 125)
 })

@@ -23,7 +23,7 @@ import { somarDespesas, valorDespesa, type MotivoForaDoCalculo } from '@/lib/des
 import { configDespesas } from '@/lib/queries/config-despesas'
 import { calcularResultadoPorLoja } from '@/lib/resultado-por-loja'
 import { despesaDaLojaFiltrada } from '@/lib/despesa-loja-filtrada'
-import { tarifaPixDaVendaExpr, valorLiquidoExpr } from '@/lib/queries/valor-liquido'
+import { custoPixDaVendaExpr, tarifaPixDaVendaExpr, valorLiquidoExpr } from '@/lib/queries/valor-liquido'
 import { taxasDaReceita } from '@/lib/dre'
 import { taxasOutrasDoPeriodo } from '@/lib/queries/taxas-receita'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
@@ -75,6 +75,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
         totalVendas: sql<string>`COALESCE(SUM(${vendas.valor}), '0')`,
         totalLiquido: sql<string>`COALESCE(SUM(${valorLiquidoExpr()}), '0')`,
         tarifaPix: sql<string>`COALESCE(SUM(${tarifaPixDaVendaExpr()}), '0')`,
+        custoPix: sql<string>`COALESCE(SUM(${custoPixDaVendaExpr()}), '0')`,
         totalCusto: sql<string>`${somaCustoMotoExpr()}`,
         qtdSemCusto: sql<string>`${qtdSemCustoExpr()}`,
         qtdVendas: count(),
@@ -341,15 +342,17 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   const faturamentoPecas = totalPecasAvulsas + totalPecasOS
   const faturamentoBruto = receitaVendas + totalServicosOS + faturamentoPecas
 
-  const { taxasCartao, tarifaPix } = taxasDaReceita({
+  const { taxasCartao, tarifaPix, custoPix } = taxasDaReceita({
     brutoMotos: receitaVendas,
     liquidoMotos: receitaLiquida,
     tarifaPixMotos: Number(totaisVendas[0]?.tarifaPix ?? 0),
+    custoPixMotos: Number(totaisVendas[0]?.custoPix ?? 0),
     taxaCartaoOutras: taxasOutras.taxaCartao,
     tarifaPixOutras: taxasOutras.tarifaPix,
   })
 
-  const faturamentoLiquido = faturamentoBruto - taxasCartao - tarifaPix
+  // O custo do PIX (#93) sai daqui e de "Taxas Cartão"; o card dele vem na #94 (decisão do Luis registrada na #93).
+  const faturamentoLiquido = faturamentoBruto - taxasCartao - tarifaPix - custoPix
 
   // Compra de mercadoria. Fica FORA do lucro de propósito: o custo da moto vendida já
   // está em "Custo Total", e comprar estoque não é despesa do mês — é dinheiro que
