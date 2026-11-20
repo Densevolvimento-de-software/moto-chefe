@@ -531,6 +531,12 @@ test('forçada que a linha pix da maquininha completa: sai a marca dela, e o res
   assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, linhas, [], 'mp4'), { linhas: [{ valor: 10000, marcado: 6000 }], cobre: 4000 })
 })
 
+test('resumo da linha pix da maquininha que cobre só parte do que falta: cobre o valor da linha, não o resto todo', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(600) }]
+  const linhas = [{ id: 'mp3', autorizacao: null, valorBruto: '300.00', tipo: 'pix', operadora: 'mercadopago' }]
+  assert.deepEqual(resumoDaForcadaQueOPixCompleta(pgtos, linhas, [{ id: 'b1', valor: 100 }], 'mp3'), { linhas: [{ valor: 1000, marcado: 600 }], cobre: 300 })
+})
+
 // F1 (#189 r2): sai o mínimo que basta, não o conjunto de soma mais perto do PIX.
 test('semForcadasQueOPixCompleta: tira só o que basta (menor soma dos restos), mesmo com um PIX grande', () => {
   // C1: o PIX P de 1.000 e o Q de 400 cobrem os restos de 600 e 400; sem P, tirar a de resto 600 basta.
