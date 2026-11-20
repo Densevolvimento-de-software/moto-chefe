@@ -7,7 +7,6 @@ import {
   matchPagamentos,
   pixCompletaForcadaParcial,
   pixDaForcada,
-  semCustoNasForcadasPix,
   forcadasQueOPixCompleta,
   mesmoResumoDaForcada,
   resumoDaForcadaQueOPixCompleta,
@@ -566,22 +565,4 @@ test('comForcado de PIX sem custo (o pedido já tem PIX com custo): custo e taxa
   assert.ok(r.ok)
   assert.deepEqual(r.dados[0].conciliadoManual?.pix, { valorRecebido: 998, valorBruto: 1000, custoPix: 0, custoPixTaxa: 0 })
   assert.deepEqual(pixDaForcada(1000, { valorRecebido: 998, coberto: 0, semCusto: true }), { valorRecebido: 998, valorBruto: 1000, custoPix: 0, custoPixTaxa: 0 })
-})
-
-// S2 (decisão do Luis registrada na #93): ligar ao pedido um PIX com custo zera o custo das forçadas de PIX das
-// vendas dele; o resto da marca (o que entrou, o valor do PIX) fica.
-test('semCustoNasForcadasPix: zera o custo das marcas de PIX que têm custo e conta quantas; sem nenhuma, os mesmos pagamentos', () => {
-  const pgtos: PgtoOS[] = [
-    { tipo: 'pix', valor: 5990, conciliadoManual: { ...FORCADO, pix: { valorRecebido: 5978.02, valorBruto: 5990, custoPix: 11.98, custoPixTaxa: 0.002 } } },
-    { tipo: 'pix', valor: 1000, conciliadoManual: { ...FORCADO, pix: { valorRecebido: 1000, valorBruto: 1000, custoPix: 0, custoPixTaxa: 0 } } },
-    { tipo: 'cartao_credito', valor: 500, conciliadoManual: FORCADO },
-  ]
-  const r = semCustoNasForcadasPix(pgtos)
-  assert.equal(r.zeradas, 1)
-  assert.deepEqual(r.pgtos[0].conciliadoManual?.pix, { valorRecebido: 5978.02, valorBruto: 5990, custoPix: 0, custoPixTaxa: 0 })
-  assert.deepEqual(r.pgtos.slice(1), pgtos.slice(1))
-  const semCusto = pgtos.slice(1)
-  const nenhuma = semCustoNasForcadasPix(semCusto)
-  assert.equal(nenhuma.zeradas, 0)
-  assert.equal(nenhuma.pgtos, semCusto, 'os mesmos pagamentos: nada a gravar')
 })

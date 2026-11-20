@@ -3,9 +3,9 @@
 // do grupo dentro da consulta. `exec`: o db, ou a transação de quem confere e grava junto.
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { PgSelect } from 'drizzle-orm/pg-core'
-import { db } from './db'
+import { db, execRows } from './db'
 import { conciliacoesCartao, ordensServico, pixRecebimentosMcp, vendas, vendasPecas } from './db/schema'
-import { pagamentosEfetivosOS, type PgtoOS, semCustoNasForcadasPix } from './conciliacao-status'
+import { pagamentosEfetivosOS, type PgtoOS } from './conciliacao-status'
 import type { AlvoConciliacao } from './conciliacao-alvo'
 import { colunasQueLigamAoAlvo } from './alvo-conciliado'
 import { CARTAO_ESTORNADO } from './conciliacao-cartao'
@@ -133,21 +133,13 @@ export async function pedidoTemPixComCusto(alvo: AlvoConciliacao, exec: Executor
 }
 
 /**
- * Zera o custo das forçadas de PIX das vendas do pedido, com cada venda travada (#93, S2): o PIX com custo que se
- * liga ao pedido passa a carregar o custo, e o mesmo dinheiro não leva dois. Só nas lojas dadas. Devolve quantas.
+ * Quantas forçadas de PIX com custo as vendas do pedido têm, nas lojas do grupo (#93, decisões 9 e 10): ligar ao
+ * pedido um PIX com custo faz a parte coberta delas deixar de contar, e a tela avisa. Só lê.
  */
-export async function semCustoNasForcadasDoPedido(pedidoId: string, lojaIdsGrupo: string[], exec: ExecutorDoAlvo): Promise<number> {
-  // Trava sempre na mesma ordem: dois vínculos no mesmo pedido não se travam um ao outro.
-  const daVenda = await exec.select({ id: vendas.id }).from(vendas)
-    .where(and(eq(vendas.pedidoVendaId, pedidoId), inArray(vendas.lojaId, lojaIdsGrupo)))
-    .orderBy(vendas.id)
-  return daVenda.reduce(async (soma, { id }) => {
-    const antes = await soma
-    const alvo = { tipo: 'moto' as const, id }
-    const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo, exec, true)
-    if (!pgtos) return antes
-    const r = semCustoNasForcadasPix(pgtos)
-    if (r.zeradas > 0) await gravarPagamentosDoAlvo(alvo, lojaIdsGrupo, r.pgtos, exec)
-    return antes + r.zeradas
-  }, Promise.resolve(0))
+export async function forcadasPixComCustoDoPedido(pedidoId: string, grupoId: string): Promise<number> {
+  const [r] = (await execRows(sql`select count(*)::int as n
+    from vendas v cross join lateral jsonb_array_elements(coalesce(v.pagamentos, '[]'::jsonb)) pg
+    where v.pedido_venda_id = ${pedidoId} and v.loja_id in (select id from lojas where grupo_id = ${grupoId})
+      and (pg->'conciliadoManual'->'pix'->>'custoPix')::numeric > 0`)) as { n: number }[]
+  return r?.n ?? 0
 }

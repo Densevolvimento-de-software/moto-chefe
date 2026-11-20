@@ -104,10 +104,10 @@ export function CorrespondenciaForm({ id, correspondencia, podeDesfazerForcada }
       try {
         const r = await lancarCorrespondenciaAction(id, tipo, numero.trim())
         if (!r.ok) { toast.error(r.erro); return }
-        // Ligado ao pedido com custo: as forçadas de PIX das vendas dele perderam o custo (#93, S2).
-        const n = r.dados?.forcadasSemCusto ?? 0
+        // Ligado ao pedido com custo: a parte coberta das forçadas de PIX do pedido deixa de contar (#93).
+        const n = r.dados?.forcadasComCusto ?? 0
         toast.success(n > 0
-          ? `Correspondência lançada. O custo do PIX saiu de ${plural(n, 'forçada', 'forçadas')} deste pedido: agora ele entra por este PIX.`
+          ? `Correspondência lançada. O custo do PIX de ${plural(n, 'forçada', 'forçadas')} deste pedido deixa de contar na parte que este PIX cobre.`
           : 'Correspondência lançada')
         setNumero('')
       } catch {

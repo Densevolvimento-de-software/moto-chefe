@@ -214,6 +214,17 @@ test('painel do vendedor: ranking, modelos e últimas vendas pela base da comiss
 const marcaPix = (c: Conta, base: number, custoPix: number) => ({ motivo: 'Caiu na conta pessoal', porId: c.usuarioId, porNome: 'Aux',
   em: '2026-11-10T12:00:00.000Z', pix: { valorRecebido: base - custoPix, valorBruto: base, custoPix, custoPixTaxa: custoPix / base } })
 
+test('ordem direta: forçada de R$ 10.000 (custo 20), depois PIX de R$ 1.000 (custo 5) no pedido: conta 18 + 5; desvinculado, volta a 20', async () => {
+  const c = await semearConta()
+  const { venda, pedido } = await vendaMoto(c, 10_000, [{ tipo: 'pix', valor: 10_000, conciliadoManual: marcaPix(c, 10_000, 20) }])
+  await semearCustoPixDoGrupo(db, c.grupoId, 0.005)
+  const pix = await semearPixRecebido(db, c.grupoId, { valor: 995 })
+  await vinculo.vincularPix(pix, c.grupoId, { tipo: 'pedido', pedidoId: pedido }, c.usuarioId)
+  assert.equal(await liquido(venda), 10_000 - 5 - 18)
+  await vinculo.desvincularPix(pix, c.grupoId)
+  assert.equal(await liquido(venda), 10_000 - 20)
+})
+
 test('ordem inversa: PIX com custo no pedido cobrindo tudo, depois a forçada com custo: não conta; desvinculado, conta', async () => {
   const c = await semearConta()
   const { venda, pedido } = await vendaMoto(c, 1_000, [{ tipo: 'pix', valor: 1_000 }])

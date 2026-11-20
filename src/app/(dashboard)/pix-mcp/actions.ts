@@ -29,8 +29,8 @@ async function lancarCorrespondencia(id: string, tipo: Tipo, numero: string) {
 
   const vinculo = await vinculoPeloNumero(tipo, String(numero), lojaIdsGrupo, grupo.nome)
   const r = await vincularPix(id, grupo.id, vinculo, usuario.id)
-  // Forçadas que perderam o custo mudam o líquido das vendas do pedido: as telas da conciliação revalidam juntas.
-  if (r.forcadasSemCusto > 0) revalidarTelasDaConciliacao(null)
+  // Com forçadas de custo no pedido, o líquido das vendas dele muda: as telas da conciliação revalidam juntas.
+  if (r.forcadasComCusto > 0) revalidarTelasDaConciliacao(null)
   else revalidatePath('/pix-mcp')
   return r
 }
