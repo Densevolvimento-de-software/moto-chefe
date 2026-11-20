@@ -20,10 +20,13 @@ afterEach(async () => {
   for (const d of desmontagens.splice(0)) await d()
 })
 
-async function montar(dados: Custos | null, revisao = 'r1') {
+// O que a conciliação da venda tem no diálogo: lançamentos ligados e pagamentos (com as marcas de forçada).
+type Conciliacao = { concs: { id: string }[]; pixRecs: { id: string }[]; pagamentos: { tipo: string; valor: number; conciliadoManual?: unknown }[] }
+const SEM_NADA: Conciliacao = { concs: [], pixRecs: [], pagamentos: [{ tipo: 'pix', valor: 1000 }] }
+async function montar(dados: Custos | null, conciliacao: Conciliacao = SEM_NADA) {
   custos.mock.mockImplementation(async () => ({ ok: true, dados }))
   const { CustosDaVenda } = await import('./custos-da-venda')
-  const tela = await montarDialogo(CustosDaVenda, { vendaId: 'v-1', revisao })
+  const tela = await montarDialogo(CustosDaVenda, { vendaId: 'v-1', ...conciliacao })
   desmontagens.push(tela.desmontar)
   await tela.act(() => esperar(30))
   return tela
@@ -54,18 +57,35 @@ test('sem custo nenhum (ou venda que não abre), o bloco não aparece', async ()
 test('falha ao carregar não some calada: a tela diz que não deu para carregar (D1)', async () => {
   custos.mock.mockImplementation(async () => { throw new Error('connect ECONNREFUSED 10.0.0.1:5432') })
   const { CustosDaVenda } = await import('./custos-da-venda')
-  const tela = await montarDialogo(CustosDaVenda, { vendaId: 'v-1', revisao: 'r1' })
+  const tela = await montarDialogo(CustosDaVenda, { vendaId: 'v-1', ...SEM_NADA })
   desmontagens.push(tela.desmontar)
   await tela.act(() => esperar(30))
   assert.ok(texto().includes('Não deu para carregar o valor líquido.'), texto())
   assert.equal(texto().includes('ECONNREFUSED'), false)
 })
 
-test('vincular ou forçar no mesmo diálogo refaz a conta (B4): nova revisão, nova consulta', async () => {
-  const tela = await montar({ taxaCartao: 612, tarifaPix: 0, custoPix: 0, liquido: 17_888 })
-  custos.mock.mockImplementation(async () => ({ ok: true, dados: { taxaCartao: 612, tarifaPix: 0, custoPix: 20, liquido: 17_868 } }))
-  await tela.redesenhar({ vendaId: 'v-1', revisao: 'r2' })
+test('vincular um PIX ou forçar um pagamento no mesmo diálogo refaz a conta (B4); sem mudança, não', async () => {
+  const tela = await montar({ taxaCartao: 0, tarifaPix: 0, custoPix: 20, liquido: 9_980 })
+  const chamadas = () => custos.mock.callCount()
+  await tela.redesenhar({ vendaId: 'v-1', ...SEM_NADA })
   await tela.act(() => esperar(30))
-  assert.equal(custos.mock.callCount(), 2)
-  assert.deepEqual(sublinhas(), ['Taxa do cartão R$ 612,00', 'Custo do PIX R$ 20,00'])
+  assert.equal(chamadas(), 1, 'nada mudou, nada refaz')
+  await tela.redesenhar({ vendaId: 'v-1', ...SEM_NADA, pixRecs: [{ id: 'pix-1' }] })
+  await tela.act(() => esperar(30))
+  assert.equal(chamadas(), 2, 'PIX vinculado')
+  await tela.redesenhar({ vendaId: 'v-1', ...SEM_NADA, pixRecs: [{ id: 'pix-1' }], pagamentos: [{ tipo: 'pix', valor: 1000, conciliadoManual: { motivo: 'x' } }] })
+  await tela.act(() => esperar(30))
+  assert.equal(chamadas(), 3, 'pagamento forçado')
+  await tela.redesenhar({ vendaId: 'v-1', ...SEM_NADA, concs: [{ id: 'c-1' }], pixRecs: [{ id: 'pix-1' }], pagamentos: [{ tipo: 'pix', valor: 1000, conciliadoManual: { motivo: 'x' } }] })
+  await tela.act(() => esperar(30))
+  assert.equal(chamadas(), 4, 'cartão conciliado')
+})
+
+test('a action recusa (ok: false): a tela diz que não deu para carregar (T2)', async () => {
+  custos.mock.mockImplementation(async () => ({ ok: false, erro: 'Sem permissão' }))
+  const { CustosDaVenda } = await import('./custos-da-venda')
+  const tela = await montarDialogo(CustosDaVenda, { vendaId: 'v-1', ...SEM_NADA })
+  desmontagens.push(tela.desmontar)
+  await tela.act(() => esperar(30))
+  assert.ok(texto().includes('Não deu para carregar o valor líquido.'), texto())
 })

@@ -10,8 +10,11 @@ type Custos = { taxaCartao: number; tarifaPix: number; custoPix: number; liquido
  * Valor líquido nos Detalhes da venda (#93, variante B): os números vêm do servidor, pelas mesmas contas do
  * líquido e do DRE; aqui só se mostram. Cada custo em sublinha própria; sem custo nenhum, nada aparece.
  */
-// `revisao`: muda quando a conciliação da venda muda no mesmo diálogo (vincular, forçar, desfazer), para refazer a conta.
-export function CustosDaVenda({ vendaId, revisao }: { vendaId: string; revisao: string }) {
+type Conciliacao = { concs: { id: string }[]; pixRecs: { id: string }[]; pagamentos: { conciliadoManual?: unknown }[] }
+
+// A conta refaz quando a conciliação da venda muda no mesmo diálogo: lançamento ligado ou solto, marca de forçada.
+export function CustosDaVenda({ vendaId, concs, pixRecs, pagamentos }: { vendaId: string } & Conciliacao) {
+  const revisao = [concs.map(c => c.id).join(), pixRecs.map(p => p.id).join(), pagamentos.map(p => (p.conciliadoManual ? 1 : 0)).join()].join('|')
   const [custos, setCustos] = useState<Custos | null>(null)
   const [falhou, setFalhou] = useState(false)
 
