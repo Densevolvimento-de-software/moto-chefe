@@ -5,27 +5,11 @@ import { toast } from 'sonner'
 import { Loader2, TriangleAlert, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { brl } from '@/lib/dashboard-painel'
-import { emLista } from '@/lib/texto'
+import { frasesDaForcada } from '@/lib/forcada-frases'
 import type { ForcadaQueOPixCompleta } from '@/lib/conciliacao-status'
 import { desfazerForcadaERemoverAction } from '../actions'
 
 type Props = { id: string; rotulo: string; forcada: ForcadaQueOPixCompleta; podeDesfazer: boolean; onDesfeito: () => void }
-
-const emReais = (vs: number[]) => emLista(vs.map(brl))
-
-/** As frases da caixa e do diálogo, no singular ou no plural, com o que ESTE PIX cobre do que falta. */
-function frases({ linhas, cobre }: ForcadaQueOPixCompleta, rotulo: string) {
-  const varias = linhas.length > 1
-  const pagamentos = `${varias ? 'Os pagamentos PIX' : 'O pagamento PIX'} de ${emReais(linhas.map(l => l.valor))} da ${rotulo}`
-  const falta = linhas.reduce((a, l) => a + l.valor - l.marcado, 0)
-  const cobreTudo = Math.abs(falta - cobre) < 0.005
-  return {
-    caixa: `${pagamentos} ${varias ? 'foram marcados como recebidos' : 'foi marcado como recebido'} com ${emReais(linhas.map(l => l.marcado))}. `
-      + (cobreTudo ? `Este PIX cobre os ${brl(cobre)} que faltam.` : `Este PIX cobre ${brl(cobre)} dos ${brl(falta)} que faltam.`),
-    dialogo: `${pagamentos} ${varias ? 'deixam de estar marcados como recebidos' : 'deixa de estar marcado como recebido'}, e este PIX fica livre para vincular de novo.`,
-  }
-}
 
 /**
  * O PIX completa um pagamento marcado como recebido só em parte (#92, variante 2 do protótipo): a caixa diz quanto,
@@ -34,7 +18,7 @@ function frases({ linhas, cobre }: ForcadaQueOPixCompleta, rotulo: string) {
 export function ForcadaDoPix({ id, rotulo, forcada, podeDesfazer, onDesfeito }: Props) {
   const [confirmando, setConfirmando] = useState(false)
   const [enviando, setEnviando] = useState(false)
-  const texto = frases(forcada, rotulo)
+  const texto = frasesDaForcada(forcada, rotulo)
 
   async function desfazer() {
     setEnviando(true)
