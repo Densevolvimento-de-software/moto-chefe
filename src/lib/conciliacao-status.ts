@@ -108,7 +108,8 @@ export function pixDaForcada(valorDoPagamento: number, recebimento?: Recebimento
   const base = baseDaForcada(valorDoPagamento, recebimento?.coberto ?? 0)
   if (base <= 0) return 'Esse pagamento já está conciliado'
   // Sem custo: o pedido da venda já tem PIX ligado com custo, e o mesmo dinheiro não leva dois (#93, B6).
-  return { valorRecebido, ...custoDoPixForcado(base, recebimento?.semCusto ? base : valorRecebido) }
+  if (recebimento?.semCusto) return { valorRecebido, valorBruto: base, custoPix: 0, custoPixTaxa: 0 }
+  return { valorRecebido, ...custoDoPixForcado(base, valorRecebido) }
 }
 
 /** Os pagamentos sem a marcação de forçado na posição `idx`, ou a frase da recusa. */
