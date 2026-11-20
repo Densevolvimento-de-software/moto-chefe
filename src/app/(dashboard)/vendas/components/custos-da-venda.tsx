@@ -10,15 +10,22 @@ type Custos = { taxaCartao: number; tarifaPix: number; custoPix: number; liquido
  * Valor líquido nos Detalhes da venda (#93, variante B): os números vêm do servidor, pelas mesmas contas do
  * líquido e do DRE; aqui só se mostram. Cada custo em sublinha própria; sem custo nenhum, nada aparece.
  */
-export function CustosDaVenda({ vendaId }: { vendaId: string }) {
+// `revisao`: muda quando a conciliação da venda muda no mesmo diálogo (vincular, forçar, desfazer), para refazer a conta.
+export function CustosDaVenda({ vendaId, revisao }: { vendaId: string; revisao: string }) {
   const [custos, setCustos] = useState<Custos | null>(null)
+  const [falhou, setFalhou] = useState(false)
 
   useEffect(() => {
     let vivo = true
-    custosDaVendaAction(vendaId).then(r => { if (vivo && r.ok) setCustos(r.dados) }, () => {})
+    custosDaVendaAction(vendaId).then(
+      r => { if (!vivo) return; setFalhou(!r.ok); setCustos(r.ok ? r.dados : null) },
+      () => { if (vivo) setFalhou(true) },
+    )
     return () => { vivo = false }
-  }, [vendaId])
+  }, [vendaId, revisao])
 
+  // Sem a frase crua do erro: só que não deu (#578).
+  if (falhou) return <p className="py-2.5 text-xs text-muted-foreground">Não deu para carregar o valor líquido.</p>
   if (!custos) return null
   const sublinhas = ([['Taxa do cartão', custos.taxaCartao], ['Tarifa do PIX na maquininha', custos.tarifaPix], ['Custo do PIX', custos.custoPix]] as const)
     .filter(([, v]) => v > 0)

@@ -88,6 +88,8 @@ export function DetalhesVendaDialog({ venda: v, papel, desconto, gatilho }: Prop
   // Só carrega lançamentos quando há algo a conciliar — venda em dinheiro não
   // precisa bater com nada. Ver src/components/pagamentos-conciliacao.tsx.
   const dados = useConciliacaoAlvo({ tipo: 'moto', id: v.id }, open && (temCartao || temPix))
+  // O que muda o líquido no próprio diálogo: lançamentos ligados e marcas de forçada.
+  const revisaoDaConciliacao = [dados.concs.map(c => c.id).join(), dados.pixRecs.map(p => p.id).join(), pagamentos.map(p => (p.conciliadoManual ? 1 : 0)).join()].join('|')
 
   const endereco = [
     [v.clienteLogradouro, v.clienteNumero, v.clienteComplemento, v.clienteBairro].filter(Boolean).join(', '),
@@ -166,7 +168,7 @@ export function DetalhesVendaDialog({ venda: v, papel, desconto, gatilho }: Prop
                       </span>
                     ) : 'Ainda não emitida'}
                   </Par>
-                  {(temCartao || temPix) && <CustosDaVenda vendaId={v.id} />}
+                  {(temCartao || temPix) && <CustosDaVenda vendaId={v.id} revisao={revisaoDaConciliacao} />}
                   {desconto && (
                     <div className="py-3">
                       <div className="border-l-2 border-destructive py-0.5 pl-3">

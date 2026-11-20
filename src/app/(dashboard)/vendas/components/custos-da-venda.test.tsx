@@ -20,10 +20,10 @@ afterEach(async () => {
   for (const d of desmontagens.splice(0)) await d()
 })
 
-async function montar(dados: Custos | null) {
+async function montar(dados: Custos | null, revisao = 'r1') {
   custos.mock.mockImplementation(async () => ({ ok: true, dados }))
   const { CustosDaVenda } = await import('./custos-da-venda')
-  const tela = await montarDialogo(CustosDaVenda, { vendaId: 'v-1' })
+  const tela = await montarDialogo(CustosDaVenda, { vendaId: 'v-1', revisao })
   desmontagens.push(tela.desmontar)
   await tela.act(() => esperar(30))
   return tela
@@ -49,4 +49,23 @@ test('sem custo nenhum (ou venda que não abre), o bloco não aparece', async ()
   assert.equal(texto().includes('Valor líquido'), false)
   await montar(null)
   assert.equal(texto().includes('Valor líquido'), false)
+})
+
+test('falha ao carregar não some calada: a tela diz que não deu para carregar (D1)', async () => {
+  custos.mock.mockImplementation(async () => { throw new Error('connect ECONNREFUSED 10.0.0.1:5432') })
+  const { CustosDaVenda } = await import('./custos-da-venda')
+  const tela = await montarDialogo(CustosDaVenda, { vendaId: 'v-1', revisao: 'r1' })
+  desmontagens.push(tela.desmontar)
+  await tela.act(() => esperar(30))
+  assert.ok(texto().includes('Não deu para carregar o valor líquido.'), texto())
+  assert.equal(texto().includes('ECONNREFUSED'), false)
+})
+
+test('vincular ou forçar no mesmo diálogo refaz a conta (B4): nova revisão, nova consulta', async () => {
+  const tela = await montar({ taxaCartao: 612, tarifaPix: 0, custoPix: 0, liquido: 17_888 })
+  custos.mock.mockImplementation(async () => ({ ok: true, dados: { taxaCartao: 612, tarifaPix: 0, custoPix: 20, liquido: 17_868 } }))
+  await tela.redesenhar({ vendaId: 'v-1', revisao: 'r2' })
+  await tela.act(() => esperar(30))
+  assert.equal(custos.mock.callCount(), 2)
+  assert.deepEqual(sublinhas(), ['Taxa do cartão R$ 612,00', 'Custo do PIX R$ 20,00'])
 })
