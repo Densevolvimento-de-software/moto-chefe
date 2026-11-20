@@ -1,4 +1,4 @@
-import { eq, sql, type SQL } from 'drizzle-orm'
+import { and, eq, sql, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { taxasDaReceita } from '@/lib/dre'
 import { vendas, conciliacoesCartao } from '@/lib/db/schema'
@@ -114,16 +114,16 @@ export function custoPixDaVendaSql(v = 'v') {
 
 /**
  * Os custos de recebimento de uma venda para os Detalhes da venda (#93), pelas mesmas expressões do líquido e a
- * mesma divisão do DRE (taxasDaReceita): a soma das três é o bruto − líquido. Lê só pelo id: quem chama já
- * conferiu que a venda é da Conta.
+ * mesma divisão do DRE (taxasDaReceita): a soma das três é o bruto − líquido. `daConta`: o filtro de vendas da Conta
+ * de quem pede (vendasDoEscopo; undefined só para o admin_geral), no where junto do id.
  */
-export async function custosDaVenda(vendaId: string) {
+export async function custosDaVenda(vendaId: string, daConta: SQL | undefined) {
   const [r] = await db.select({
       bruto: vendas.valor,
       liquido: sql<string>`${valorLiquidoExpr()}`,
       tarifaPix: sql<string>`${tarifaPixDaVendaExpr()}`,
       custoPix: sql<string>`${custoPixDaVendaExpr()}`,
-    }).from(vendas).where(eq(vendas.id, vendaId)).limit(1)
+    }).from(vendas).where(and(eq(vendas.id, vendaId), daConta)).limit(1)
   if (!r) return null
   const liquido = Number(r.liquido)
   const { taxasCartao, tarifaPix, custoPix } = taxasDaReceita({

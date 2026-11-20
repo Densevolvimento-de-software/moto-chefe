@@ -41,7 +41,7 @@ import { aprovacaoDoUsuario } from '@/lib/aprovacao-do-usuario'
 import { voltarMotoAoEstoque } from '@/lib/motos-vendidas-sem-venda'
 import { vendedorDaConta } from '@/lib/vendedor-da-conta'
 import { reservaDoUsuario } from '@/lib/reserva-do-usuario'
-import { vendaDoUsuario } from '@/lib/venda-do-usuario'
+import { vendaDoUsuario, vendasDoEscopo } from '@/lib/venda-do-usuario'
 import { ehUuid } from '@/lib/uuid'
 import { custosDaVenda } from '@/lib/queries/valor-liquido'
 import { apagarVendaTx } from '@/lib/apagar-venda'
@@ -1904,5 +1904,6 @@ async function custosDaVendaDoUsuario(vendaId: string) {
   const usuario = await getUsuarioLogado()
   // Venda de outra Conta ou inexistente: o mesmo vazio (#404).
   const venda = ehUuid(vendaId) ? await vendaDoUsuario(usuario, eq(vendas.id, vendaId)) : null
-  return venda ? custosDaVenda(venda.id) : null
+  const daConta = vendasDoEscopo(usuario)
+  return venda && daConta !== null ? custosDaVenda(venda.id, daConta) : null
 }
