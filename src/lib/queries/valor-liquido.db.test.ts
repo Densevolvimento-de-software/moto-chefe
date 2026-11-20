@@ -29,6 +29,7 @@ let dre: typeof import('@/lib/queries/dre')
 let contabil: typeof import('@/lib/queries/export-contabil')
 let fechamento: typeof import('@/lib/queries/fechamento')
 let dreLib: typeof import('@/lib/dre')
+let dashboard: typeof import('@/lib/queries/dashboard')
 
 before(async () => {
   ;({ db } = await import('@/lib/db'))
@@ -38,6 +39,7 @@ before(async () => {
   contabil = await import('@/lib/queries/export-contabil')
   fechamento = await import('@/lib/queries/fechamento')
   dreLib = await import('@/lib/dre')
+  dashboard = await import('@/lib/queries/dashboard')
   acoesVendas = await import('@/app/(dashboard)/vendas/actions')
 })
 after(async () => {
@@ -180,4 +182,18 @@ test('fechamento: o DRE resumido tem a linha do custo do PIX e bruta − deduç�
   const ateLiquida = linhas.slice(1, linhas.findIndex(l => l.chave === 'receita_liquida'))
   assert.equal(v('receita_bruta')! - ateLiquida.reduce((a, l) => a + l.valor, 0), v('receita_liquida'))
   assert.equal(v('receita_liquida'), 17_868)
+})
+
+// C3 (decisão do Luis registrada na #93; final com o Cesar na #191): a comissão não desconta o custo do PIX por ora.
+// O painel do vendedor (a base do simulador de comissão) usa a mesma conta da folha: sem o custo do PIX.
+test('painel do vendedor e folha: o líquido da comissão não desconta o custo do PIX; o do sócio desconta', async () => {
+  const c = await semearConta()
+  const { venda } = await vendaMoto(c, 18_500, [{ tipo: 'pix', valor: 10_000 }, { tipo: 'cartao_credito', valor: 8_500 }])
+  await cartaoConciliado(c, venda, 8_500, 7_888)
+  await pixVinculado(c.grupoId, { venda }, 9_980, 10_000, 20)
+  const filtros = { dataInicio: '2026-11-01', dataFim: '2026-11-30', lojaId: [c.lojaId] }
+  assert.equal((await dashboard.getKPIs(filtros, { useLiquidoValue: true })).faturamento, 17_888)
+  const [comissao] = await db.select({ l: sql<string>`${vl.valorLiquidoDaComissaoExpr()}` }).from(vendas).where(eq(vendas.id, venda))
+  assert.equal(Number(comissao.l), 17_888)
+  assert.equal(await liquido(venda), 17_868)
 })

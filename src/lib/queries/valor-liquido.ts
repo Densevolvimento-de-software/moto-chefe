@@ -19,9 +19,16 @@ import { LINHA_PIX } from '@/lib/conciliacao-cartao'
  * do que dá para manter em sincronia.
  */
 export function valorLiquidoExpr() {
+  return sql`(${valorLiquidoDaComissaoExpr()} - ${custoPixDaVendaExpr()})`
+}
+
+/**
+ * O líquido sem o custo do PIX: a base da comissão e da premiação OTE (a folha e o painel do vendedor). Decisão do
+ * Luis registrada na #93: a comissão não desconta o custo do PIX por ora; a decisão final é com o Cesar (#191).
+ */
+export function valorLiquidoDaComissaoExpr() {
   return sql`(
     ${vendas.valor}::numeric
-    - ${custoPixDaVendaExpr()}
     - COALESCE((SELECT SUM(${conciliacoesCartao.valorBruto}::numeric)
                 FROM ${conciliacoesCartao}
                 WHERE ${conciliacoesCartao.vendaId} = ${vendas.id}
@@ -125,3 +132,4 @@ export async function custosDaVenda(vendaId: string) {
   })
   return { taxaCartao: taxasCartao, tarifaPix, custoPix, liquido }
 }
+

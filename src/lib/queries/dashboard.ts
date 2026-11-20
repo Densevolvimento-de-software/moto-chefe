@@ -4,7 +4,7 @@ import { eq, and, gte, lte, ne, sql, count, sum, inArray, or, avg, desc, SQL } f
 import type { Column } from 'drizzle-orm'
 import { calcStatusMultiPagamento, pagamentosEfetivosOS } from '@/lib/conciliacao-status'
 import { STATUS_OS_ABERTA } from '@/lib/os-transicao'
-import { valorLiquidoExpr } from './valor-liquido'
+import { valorLiquidoDaComissaoExpr, valorLiquidoExpr } from './valor-liquido'
 import { motoNoShowroom } from './showroom'
 import { inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
@@ -61,7 +61,7 @@ export async function getKPIs(filtros: Filtros, opts?: { useLiquidoValue?: boole
   )
 
   // Uma única query com UNION ALL — 1 round-trip ao banco em vez de 5
-  const valorV = useLiquido ? valorLiquidoExpr() : sql`${vendas.valor}`
+  const valorV = useLiquido ? valorLiquidoDaComissaoExpr() : sql`${vendas.valor}`
   const rows = await execRows(sql`
     SELECT 'v'  AS t, count(*)::int AS n, coalesce(sum(${valorV}), 0)::numeric AS val FROM ${vendas} WHERE ${vendasCond}
     UNION ALL
@@ -109,7 +109,7 @@ export async function getVendasPorDia(filtros: Filtros, opts?: { useLiquidoValue
     .select({
       dia: diaBrt,
       total: count(),
-      valor: opts?.useLiquidoValue ? sql<string>`sum(${valorLiquidoExpr()})` : sum(vendas.valor),
+      valor: opts?.useLiquidoValue ? sql<string>`sum(${valorLiquidoDaComissaoExpr()})` : sum(vendas.valor),
     })
     .from(vendas)
     .where(and(...conditions))
@@ -331,7 +331,7 @@ export async function getPrecoMedioVendas(filtros: Filtros, opts?: { useLiquidoV
   if (vendedorId) conditions.push(eq(vendas.vendedorId, vendedorId))
 
   const mediaExpr = opts?.useLiquidoValue
-    ? sql<number>`AVG(${valorLiquidoExpr()})`
+    ? sql<number>`AVG(${valorLiquidoDaComissaoExpr()})`
     : avg(vendas.valor)
 
   const [result] = await db
