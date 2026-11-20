@@ -459,6 +459,25 @@ for (const tipo of ALVO_TIPOS) {
     assert.equal(await linhaLigada(completa), true)
   })
 
+  test(`${tipo}: PIX do banco e linha pix da maquininha, cada um bastaria para a forçada parcial: o 2º desvincular espera e recusa`, async () => {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    const [pix, linha] = [await ligar(a, tipo, 400), await maquininha(a, tipo, 400)]
+    await comPagamentos(tipo, a.alvos[tipo], [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaParcial(600) }])
+    const s = await sessaoQueSegura(url!)
+    try {
+      // Segura o PIX do banco: o 1º desvincular trava o alvo, confere e para ao soltar o PIX.
+      await s.travar('select id from pix_recebimentos_mcp where id = $1 for update', [pix])
+      const r1 = actions.desvincularPixAlvoAction(pix)
+      const d1 = await novoEsperando(s, [s.pid])
+      const r2 = actions.desvincularVendaAction(linha)
+      await novoEsperando(s, [d1])
+      await s.soltar()
+      assert.deepEqual(await Promise.all([r1, r2]), [OK, COMPLETA])
+    } finally { await s.fim() }
+    assert.equal(await linhaLigada(linha), true)
+  })
+
   test(`${tipo}: forçar durante o desvincular da linha pix da maquininha espera a trava do alvo e recusa`, async () => {
     const a = await contaComAlvos()
     usuario = sessao(a, 'aux_adm')

@@ -409,7 +409,7 @@ test('pixCompletaForcadaParcial: a linha pix da maquininha que completa a força
   const maquininha = (id: string, valor: string) => ({ id, autorizacao: null, valorBruto: valor, tipo: 'pix', operadora: 'mercadopago' })
   const linhas = [maquininha('mp4', '4000.00'), maquininha('mp3', '3000.00'), { id: 'cartao', autorizacao: null, valorBruto: '500.00', tipo: 'credito' }]
   assert.equal(pixCompletaForcadaParcial(pgtos, linhas, [], 'mp4'), true)
-  assert.equal(pixCompletaForcadaParcial(pgtos, linhas, [], 'mp3'), false, 'mp3 cobre a linha de 3.000')
+  assert.equal(pixCompletaForcadaParcial(pgtos, linhas, [], 'mp3'), false, 'mp3 cobre o pagamento de 3.000')
   assert.equal(pixCompletaForcadaParcial(pgtos, linhas, [], 'cartao'), false, 'linha de cartão não cobre PIX')
 })
 
