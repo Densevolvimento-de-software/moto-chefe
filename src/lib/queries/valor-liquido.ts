@@ -86,17 +86,31 @@ function custoPixDaVenda(c: { id: SQL; pedido: SQL; numero: SQL; loja: SQL; paga
                 AND (pr.venda_id = ${c.id}
                      OR (pr.pedido_id = ${c.pedido}
                          AND ${c.numero} = (SELECT MIN(vp.numero) FROM vendas vp WHERE vp.pedido_venda_id = ${c.pedido})))), 0)
-    + ${custoDasForcadasPix(c.pagamentos)}
+    + ${custoDasForcadasPix(c.pagamentos, { pedido: c.pedido, loja: c.loja })}
   )`
 }
 
 /**
- * Custo das forçadas de PIX gravado nas marcas dos pagamentos (#92): soma de conciliadoManual.pix.custoPix.
- * `pagamentos` é a coluna jsonb do registro (venda, OS ou venda de peça). Exportada para a #94 (OS e peças).
+ * Custo das forçadas de PIX que conta no líquido: o gravado nas marcas (conciliadoManual.pix.custoPix, #92) menos a
+ * parte que os PIX com custo ligados ao pedido da venda cobrem. É a conta de `custoDaForcadaQueConta`
+ * (`src/lib/custo-pix.ts`, decisão 10 do Luis na #93), forçada a forçada, ao centavo.
+ * `pagamentos` é a coluna jsonb do registro; OS e venda de peça (#94) não têm pedido e contam o custo inteiro.
  */
-export function custoDasForcadasPix(pagamentos: SQL) {
-  return sql`COALESCE((SELECT SUM((pg->'conciliadoManual'->'pix'->>'custoPix')::numeric)
+export function custoDasForcadasPix(pagamentos: SQL, pedidoDaVenda?: { pedido: SQL; loja: SQL }) {
+  const fracao = pedidoDaVenda ? fracaoCobertaPeloPedido(pedidoDaVenda) : sql`0`
+  return sql`COALESCE((SELECT SUM(ROUND((pg->'conciliadoManual'->'pix'->>'custoPix')::numeric * (1 - ${fracao}), 2))
               FROM jsonb_array_elements(COALESCE(${pagamentos}, '[]'::jsonb)) pg), 0)`
+}
+
+/** min(1, PIX com custo do grupo da loja ligados ao pedido / base das forçadas de PIX das vendas do pedido); sem um dos dois, 0. */
+function fracaoCobertaPeloPedido({ pedido, loja }: { pedido: SQL; loja: SQL }) {
+  const grupo = sql`(SELECT lj.grupo_id FROM lojas lj WHERE lj.id = ${loja})`
+  return sql`(SELECT CASE WHEN f.total > 0 AND p.total > 0 THEN LEAST(1, p.total / f.total) ELSE 0 END
+    FROM (SELECT COALESCE(SUM(pr.valor_bruto::numeric), 0) AS total FROM pix_recebimentos_mcp pr
+            WHERE pr.pedido_id = ${pedido} AND pr.custo_pix > 0 AND pr.grupo_id = ${grupo}) p,
+         (SELECT COALESCE(SUM((pf->'conciliadoManual'->'pix'->>'valorBruto')::numeric), 0) AS total
+            FROM vendas vf CROSS JOIN LATERAL jsonb_array_elements(COALESCE(vf.pagamentos, '[]'::jsonb)) pf
+            WHERE vf.pedido_venda_id = ${pedido} AND vf.loja_id IN (SELECT id FROM lojas WHERE grupo_id = ${grupo})) f)`
 }
 
 // Qualificado à mão: numa query sem join, ${vendas.id} sai sem a tabela e casaria com o id da tabela de dentro.

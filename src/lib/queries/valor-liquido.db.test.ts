@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { eq, sql } from 'drizzle-orm'
 import { semearContaBase, semearModelo, semearUsuario } from '@/test/semear-conta'
-import { semearPixRecebido, semearVendaMoto, type Pagamentos } from '@/test/semear-alvos-conciliacao'
+import { semearCustoPixDoGrupo, semearPixRecebido, semearVendaMoto, type Pagamentos } from '@/test/semear-alvos-conciliacao'
 import { sessaoDe, type Sessao } from '@/test/sessao'
 
 const url = process.env.TEST_DATABASE_URL
@@ -33,6 +33,7 @@ let fechamento: typeof import('@/lib/queries/fechamento')
 let dreLib: typeof import('@/lib/dre')
 let dashboard: typeof import('@/lib/queries/dashboard')
 let folha: typeof import('@/lib/queries/folha')
+let vinculo: typeof import('@/lib/pix-vinculo')
 
 before(async () => {
   ;({ db, execRows: linhas } = await import('@/lib/db'))
@@ -44,6 +45,7 @@ before(async () => {
   dreLib = await import('@/lib/dre')
   dashboard = await import('@/lib/queries/dashboard')
   folha = await import('@/lib/queries/folha')
+  vinculo = await import('@/lib/pix-vinculo')
   acoesVendas = await import('@/app/(dashboard)/vendas/actions')
 })
 after(async () => {
@@ -205,4 +207,36 @@ test('painel do vendedor: ranking, modelos e últimas vendas pela base da comiss
   assert.deepEqual((await dashboard.getUltimasVendas(filtros, 5, doVendedor)).map(v => Number(v.valor)), [17_888])
   assert.deepEqual(fat(await dashboard.getRankingVendedores(filtros)), [17_868])
   assert.deepEqual((await dashboard.getUltimasVendas(filtros)).map(v => Number(v.valor)), [17_868])
+})
+
+// Decisões 9 e 10 do Luis (#93): a forçada guarda o custo dela; da forçada só deixa de contar a parte que os PIX com
+// custo ligados ao pedido cobrem (min(1, PIX do pedido / forçadas do pedido)). Desvincular o PIX devolve o custo.
+const marcaPix = (c: Conta, base: number, custoPix: number) => ({ motivo: 'Caiu na conta pessoal', porId: c.usuarioId, porNome: 'Aux',
+  em: '2026-11-10T12:00:00.000Z', pix: { valorRecebido: base - custoPix, valorBruto: base, custoPix, custoPixTaxa: custoPix / base } })
+
+test('ordem inversa: PIX com custo no pedido cobrindo tudo, depois a forçada com custo: não conta; desvinculado, conta', async () => {
+  const c = await semearConta()
+  const { venda, pedido } = await vendaMoto(c, 1_000, [{ tipo: 'pix', valor: 1_000 }])
+  const pix = await pixVinculado(c.grupoId, { pedido }, 2_994, 3_000, 6)
+  await db.execute(sql`update vendas set pagamentos = ${JSON.stringify([{ tipo: 'pix', valor: 1_000, conciliadoManual: marcaPix(c, 1_000, 2) }])}::jsonb where id = ${venda}`)
+  assert.equal(await liquido(venda), 1_000 - 6)
+  await vinculo.desvincularPix(pix, c.grupoId)
+  assert.equal(await liquido(venda), 1_000 - 2)
+})
+
+test('duas vendas do pedido dividem a fração: PIX de 5.000 no pedido, forçadas de 6.000 (custo 12) e 4.000 (custo 8) contam 6 e 4', async () => {
+  const c = await semearConta()
+  const primeira = await vendaMoto(c, 6_000, [{ tipo: 'pix', valor: 6_000, conciliadoManual: marcaPix(c, 6_000, 12) }])
+  const segunda = await vendaMoto(c, 4_000, [{ tipo: 'pix', valor: 4_000, conciliadoManual: marcaPix(c, 4_000, 8) }], primeira.pedido)
+  await pixVinculado(c.grupoId, { pedido: primeira.pedido }, 4_990, 5_000, 10)
+  // O custo do PIX do pedido fica inteiro na 1ª venda (Q1).
+  assert.deepEqual([await liquido(primeira.venda), await liquido(segunda.venda)], [6_000 - 10 - 6, 4_000 - 4])
+})
+
+test('Conta A × B: PIX da Conta A ligado ao pedido da B não cobre a forçada da B', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  const { venda, pedido } = await vendaMoto(b, 1_000, [{ tipo: 'pix', valor: 1_000, conciliadoManual: marcaPix(b, 1_000, 2) }])
+  await pixVinculado(a.grupoId, { pedido }, 2_994, 3_000, 6)
+  assert.equal(await liquido(venda), 1_000 - 2)
 })
