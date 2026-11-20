@@ -510,3 +510,13 @@ test('resumoDaForcadaQueOPixCompleta: cada pagamento e quanto foi marcado, e qua
   assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, [], [{ id: 'p45', valor: 4500 }, { id: 'p3', valor: 3000 }], 'p45'),
     { linhas: [{ valor: 10000, marcado: 6000 }, { valor: 2000, marcado: 1500 }], cobre: 4500 })
 })
+
+// F1 (#189 r2): sai o mínimo que basta, não o conjunto de soma mais perto do PIX.
+test('semForcadasQueOPixCompleta: tira só o que basta (menor soma dos restos), mesmo com um PIX grande', () => {
+  // C1: o PIX P de 1.000 e o Q de 400 cobrem os restos de 600 e 400; sem P, tirar a de resto 600 basta.
+  const c1: PgtoOS[] = [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(400) }, { tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(600) }]
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(c1, [], [{ id: 'p', valor: 1000 }, { id: 'q', valor: 400 }], 'p')), [false, true])
+  // C2: restos de 300 e 400, P de 5.000 e Q de 400; sem P, tirar uma basta: a de resto menor.
+  const c2: PgtoOS[] = [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(700) }, { tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(600) }]
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(c2, [], [{ id: 'p', valor: 5000 }, { id: 'q', valor: 400 }], 'p')), [false, true])
+})

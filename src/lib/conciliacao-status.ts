@@ -353,20 +353,18 @@ const subconjuntos = (xs: number[]): number[][] =>
 /**
  * As linhas forçadas só em parte cuja marca sai junto quando este PIX solta (#92). Serve o conjunto que, sem o PIX
  * e sem essas marcas, não deixa nenhuma forçada que fica com falta maior que a de hoje (critério que o bot do
- * #189 pediu: soltar o PIX nunca deixa marca sem o dinheiro). Entre os que servem, o de soma dos restos mais
- * perto do valor do PIX (as que ele de fato completa), depois o menor. Vazio se o PIX não completa nenhuma.
+ * #189 pediu: soltar o PIX nunca deixa marca sem o dinheiro). Entre os que servem, o de menor soma dos restos,
+ * depois o de menos linhas: sai só o que basta. Vazio se o PIX não completa nenhuma.
  */
 export function forcadasQueOPixCompleta(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[], pixId: string): number[] {
   const falta = (ps: PgtoOS[], pix: PixMatch[]) => cobrir(ps, linhasDoAlvo, pix).faltaNasForcadas
   const hoje = falta(pgtos, pixDoBanco)
   const semOPix = pixDoBanco.filter(r => r.id !== pixId)
   if (falta(pgtos, semOPix) - hoje <= 0.05) return []
-  const oPix = pixDoBanco.find(r => r.id === pixId)
-  const valorDoPix = oPix ? valorQueCobre(oPix) : 0
   const parciais = pgtos.flatMap((p, i) => (restoDaForcadaParcial(p) > 0 ? [i] : []))
   const restos = (s: number[]) => s.reduce((a, i) => a + restoDaForcadaParcial(pgtos[i]), 0)
   const servem = subconjuntos(parciais).filter(s => falta(s.reduce(semAMarca, pgtos), semOPix) - hoje <= 0.05)
-  const melhor = [...servem].sort((x, y) => Math.abs(restos(x) - valorDoPix) - Math.abs(restos(y) - valorDoPix) || x.length - y.length)[0]
+  const melhor = [...servem].sort((x, y) => restos(x) - restos(y) || x.length - y.length)[0]
   return melhor ?? parciais
 }
 
