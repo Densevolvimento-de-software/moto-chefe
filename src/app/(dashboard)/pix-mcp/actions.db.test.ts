@@ -155,7 +155,7 @@ test('PIX já vinculado não recebe outra correspondência por cima', async () =
   assert.deepEqual(await vinculoDe(pix), comoFicou)
 })
 
-test('mecânico recebe Sem permissão ao lançar e ao remover, e nada grava', async () => {
+test('mecânico recebe Sem permissão ao lançar, ao remover, no resumo da forçada e no desfazer, e nada grava', async () => {
   const a = await contaComNumeros()
   usuario = await sessao(a, 'aux_adm')
   const ligado = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
@@ -165,6 +165,8 @@ test('mecânico recebe Sem permissão ao lançar e ao remover, e nada grava', as
   usuario = await sessao(a, 'mecanico')
   assert.deepEqual(await actions.lancarCorrespondenciaAction(livre, 'os', a.numeros.os), { ok: false, erro: 'Sem permissão' })
   assert.deepEqual(await actions.removerCorrespondenciaAction(ligado), { ok: false, erro: 'Sem permissão' })
+  assert.deepEqual(await actions.forcadaDoPixAction(ligado), { ok: false, erro: 'Sem permissão' })
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(ligado), { ok: false, erro: 'Sem permissão' })
   assert.deepEqual(await vinculoDe(livre), LIVRE)
   assert.deepEqual(await vinculoDe(ligado), comoFicou)
 })
