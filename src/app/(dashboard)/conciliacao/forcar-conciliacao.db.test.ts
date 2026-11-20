@@ -426,3 +426,28 @@ test('PIX vinculado que completa uma forçada parcial não se desvincula: pede p
   assert.equal((await actions.desfazerConciliacaoForcadaAction({ tipo: 'peca', id: a.alvos.peca }, 0)).ok, true)
   assert.equal((await actions.desvincularPixAlvoAction(pix)).ok, true)
 })
+
+// B6 (decisão do Luis registrada na #93): o pedido da venda já tem PIX ligado com custo; a forçada de um PIX da
+// venda não grava custo, e a busca diz à tela para não mostrar custo. PIX de outra Conta no pedido não conta.
+test('forçar PIX de venda cujo pedido já tem PIX com custo: a marca vai sem custo; PIX de outra Conta no pedido não conta', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  await db.execute(sql`insert into configuracao_taxas (grupo_id, custo_pix_taxa) values (${a.grupoId}, 0.002)
+    on conflict (grupo_id) do update set custo_pix_taxa = excluded.custo_pix_taxa`)
+  const alvo = { tipo: 'moto' as const, id: a.alvos.moto }
+  const pedido = (await execRows(sql`select pedido_venda_id as p from vendas where id = ${a.alvos.moto}`))[0].p
+  const ligarNoPedido = async (grupoId: string) => {
+    const pix = await semearPixRecebido(db, grupoId, { valor: 2994 })
+    await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'pedido', pedido_id = ${pedido}, valor_bruto = 3000, custo_pix = 6, custo_pix_taxa = 0.002 where id = ${pix}`)
+  }
+  // PIX de outra Conta apontando para o pedido: não desliga o custo.
+  const b = await contaComAlvos()
+  await ligarNoPedido(b.grupoId)
+  assert.deepEqual(await actions.buscarPixParaOAlvo(alvo, 1000).then(r => [r.semCusto, r.taxa]), [false, 0.002])
+  // PIX do próprio grupo no pedido: a forçada vai sem custo.
+  await ligarNoPedido(a.grupoId)
+  assert.deepEqual(await actions.buscarPixParaOAlvo(alvo, 1000).then(r => r.semCusto), true)
+  assert.equal((await actions.forcarConciliacaoAction(alvo, 0, MOTIVO, 998, 1000)).ok, true)
+  assert.deepEqual((await marcaDe('moto', a.alvos.moto))?.pix, { valorRecebido: 998, valorBruto: 1000, custoPix: 0, custoPixTaxa: 0 })
+  await db.execute(sql`delete from configuracao_taxas where grupo_id = ${a.grupoId}`)
+})

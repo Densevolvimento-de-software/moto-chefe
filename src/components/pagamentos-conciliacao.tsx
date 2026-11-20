@@ -98,7 +98,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const [candidatosPix, setCandidatosPix] = useState<PixLivre[]>([])
   const [buscaLoading, setBuscaLoading] = useState(false)
   // Só para PIX: o valor esperado no banco (sem o custo do PIX do grupo) e se o alvo é do grupo ativo.
-  const [contextoPix, setContextoPix] = useState<{ esperado: number | null; taxa: number; noGrupoAtivo: boolean } | null>(null)
+  const [contextoPix, setContextoPix] = useState<{ esperado: number | null; taxa: number; semCusto: boolean; noGrupoAtivo: boolean } | null>(null)
   const [vinculando, setVinculando]     = useState(false)
 
   const [buscaLivre, setBuscaLivre]         = useState('')
@@ -137,11 +137,11 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
       if (ehPix) {
         // PIX entra pela maquininha Mercado Pago (#51) ou pelo banco (#90): procura nas duas. Fora do grupo ativo
         // nenhuma lista: o servidor não vincula o alvo de outro grupo.
-        const [maquininha, { esperado, taxa, noGrupoAtivo, pix }] = await Promise.all([
+        const [maquininha, { esperado, taxa, semCusto, noGrupoAtivo, pix }] = await Promise.all([
           buscarConciliacoesPorValor(valor, 'pix'),
           buscarPixParaOAlvo(alvo, valor),
         ])
-        setContextoPix({ esperado, taxa, noGrupoAtivo })
+        setContextoPix({ esperado, taxa, semCusto, noGrupoAtivo })
         setCandidatos(noGrupoAtivo ? maquininha : [])
         setCandidatosPix(pix)
       } else {
@@ -214,7 +214,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     setMotivo('')
     if (!PAGAMENTO_PIX.has(p.tipo)) return
     const base = baseDaForcada(p.valor, coberto)
-    setRecebido(formatarNumeroBR(esperadoComTaxa(base, contextoPix?.taxa ?? 0) ?? base))
+    // Sem custo (o pedido já tem PIX com custo, #93): entrou o valor cheio.
+    setRecebido(formatarNumeroBR(contextoPix?.semCusto ? base : esperadoComTaxa(base, contextoPix?.taxa ?? 0) ?? base))
   }
 
   // `baseVista`: a base que o formulário mostrou; o servidor recusa se os lançamentos mudaram desde então.
@@ -416,7 +417,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                 <div className="space-y-3 border-t border-border p-3">
                   {forcandoIdx === i ? (
                     <FormularioDoForcado
-                      p={p} i={i} coberto={coberto} taxaDoGrupo={contextoPix?.taxa ?? 0} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
+                      p={p} i={i} coberto={coberto} taxaDoGrupo={contextoPix?.taxa ?? 0} semCusto={contextoPix?.semCusto ?? false} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
                       salvando={salvando} onCancelar={() => setForcandoIdx(null)} onConfirmar={forcar}
                     />
                   ) : (
@@ -505,14 +506,14 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
 }
 
 // O formulário do Forçar: motivo para todos; para PIX, também o valor que entrou e a conta do custo (#92).
-function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, motivo, onMotivo, recebido, onRecebido, salvando, onCancelar, onConfirmar }: {
-  p: PgtoOS; i: number; coberto: number; taxaDoGrupo: number
+function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, semCusto, motivo, onMotivo, recebido, onRecebido, salvando, onCancelar, onConfirmar }: {
+  p: PgtoOS; i: number; coberto: number; taxaDoGrupo: number; semCusto: boolean
   motivo: string; onMotivo: (v: string) => void
   recebido: string; onRecebido: (v: string) => void
   salvando: boolean; onCancelar: () => void; onConfirmar: (baseVista?: number) => void
 }) {
   const ehPix = PAGAMENTO_PIX.has(p.tipo)
-  const pixForcado = ehPix ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto }) : null
+  const pixForcado = ehPix ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto, semCusto }) : null
   const podeConfirmar = motivo.trim().length >= 3 && typeof pixForcado !== 'string'
   const avisoCusto = pixForcado && typeof pixForcado !== 'string' ? avisoDeCustoAlto(pixForcado, taxaDoGrupo) : null
   const confirmar = () => onConfirmar(pixForcado && typeof pixForcado !== 'string' ? pixForcado.valorBruto : undefined)
@@ -551,6 +552,7 @@ function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, motivo, onMotivo, rec
                 <p className="text-xs text-warning">Entrou mais que o pagamento: fica sem custo do PIX.</p>
               )}
               {avisoCusto && <p className="text-xs text-warning">{avisoCusto}</p>}
+              {semCusto && <p className="text-xs text-muted-foreground">O custo do PIX já entra pelo PIX do pedido desta venda.</p>}
             </>
           )}
         </div>

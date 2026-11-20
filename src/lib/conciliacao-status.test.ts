@@ -6,6 +6,7 @@ import {
   semForcado,
   matchPagamentos,
   pixCompletaForcadaParcial,
+  pixDaForcada,
   mesmoResumoDaForcada,
   resumoDaForcadaQueOPixCompleta,
   semForcadasQueOPixCompleta,
@@ -530,4 +531,13 @@ test('mesmoResumoDaForcada: igual em centavos; valor, linha a mais ou forma estr
   for (const visto of [{ linhas: [{ valor: 1000, marcado: 600 }], cobre: 300 }, { linhas: [{ valor: 1000, marcado: 700 }], cobre: 400 },
     { linhas: [{ valor: 1000, marcado: 600 }, { valor: 500, marcado: 100 }], cobre: 400 }, null, undefined, 'x', { linhas: 'x', cobre: 400 }])
     assert.equal(mesmoResumoDaForcada(r, visto), false, JSON.stringify(visto))
+})
+
+// B6 (decisão do Luis registrada na #93): se o pedido da venda já tem PIX ligado com custo, a forçada não grava
+// custo (o mesmo dinheiro não tem dois custos): a marca guarda o que entrou e o valor do PIX, com custo 0.
+test('comForcado de PIX sem custo (o pedido já tem PIX com custo): custo e taxa 0 na marca', () => {
+  const r = comForcado(PIX_E_DINHEIRO, 0, 'Caiu na conta pessoal', AUTOR, { valorRecebido: 998, coberto: 0, baseVista: 1000, semCusto: true })
+  assert.ok(r.ok)
+  assert.deepEqual(r.dados[0].conciliadoManual?.pix, { valorRecebido: 998, valorBruto: 1000, custoPix: 0, custoPixTaxa: 0 })
+  assert.deepEqual(pixDaForcada(1000, { valorRecebido: 998, coberto: 0, semCusto: true }), { valorRecebido: 998, valorBruto: 1000, custoPix: 0, custoPixTaxa: 0 })
 })

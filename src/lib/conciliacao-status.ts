@@ -65,7 +65,8 @@ export type AutorDoForcado = Pick<ConciliadoManual, 'porId' | 'porNome' | 'em'>
  * lançamentos já cobrem (a forçada parte do que falta, decisão do Luis registrada na #92). A action lê a cobertura
  * no banco; a tela usa a do painel.
  */
-export type RecebimentoDaForcada = { valorRecebido: unknown; coberto: number; baseVista?: unknown }
+// `semCusto`: o servidor decide (o pedido da venda já tem PIX com custo); a tela recebe o mesmo da busca do PIX.
+export type RecebimentoDaForcada = { valorRecebido: unknown; coberto: number; baseVista?: unknown; semCusto?: boolean }
 
 /** Recusa de desvincular o PIX que completa uma forçada parcial; quem gere desfaz pelo painel da venda ou pela /pix-mcp. */
 export const COMPLETA_FORCADA = 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.'
@@ -106,7 +107,8 @@ export function pixDaForcada(valorDoPagamento: number, recebimento?: Recebimento
   if (valorRecebido === null) return VALOR_RECEBIDO_INVALIDO
   const base = baseDaForcada(valorDoPagamento, recebimento?.coberto ?? 0)
   if (base <= 0) return 'Esse pagamento já está conciliado'
-  return { valorRecebido, ...custoDoPixForcado(base, valorRecebido) }
+  // Sem custo: o pedido da venda já tem PIX ligado com custo, e o mesmo dinheiro não leva dois (#93, B6).
+  return { valorRecebido, ...custoDoPixForcado(base, recebimento?.semCusto ? base : valorRecebido) }
 }
 
 /** Os pagamentos sem a marcação de forçado na posição `idx`, ou a frase da recusa. */

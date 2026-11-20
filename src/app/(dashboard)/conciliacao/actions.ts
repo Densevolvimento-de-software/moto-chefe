@@ -29,7 +29,7 @@ import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
 import { grupos } from '@/lib/db/schema'
 import { revalidatePath } from 'next/cache'
 import { revalidarTelasDaConciliacao } from '@/lib/revalidar-conciliacao'
-import { cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from '@/lib/alvo-da-conciliacao'
+import { pedidoTemPixComCusto, cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from '@/lib/alvo-da-conciliacao'
 import { lojasDoEscopo } from '@/lib/conta'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
@@ -549,17 +549,19 @@ async function pixLivresDoGrupo(grupoId: string, filtro: SQL | undefined): Promi
  * a linha PIX pelo esperado, a TED ou linha sem tipo pelo valor cheio. Fora do grupo ativo não lista nada:
  * vincular e forçar só valem no grupo do PIX.
  */
-export async function buscarPixParaOAlvo(alvo: AlvoConciliacao, valor: number): Promise<{ esperado: number | null; taxa: number; noGrupoAtivo: boolean; pix: PixLivre[] }> {
+export async function buscarPixParaOAlvo(alvo: AlvoConciliacao, valor: number): Promise<{ esperado: number | null; taxa: number; semCusto: boolean; noGrupoAtivo: boolean; pix: PixLivre[] }> {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
   const [noGrupoAtivo, taxa] = await Promise.all([alvoNoGrupoAtivo(usuario, alvo), custoPixTaxaDoGrupo(grupo.id)])
   // A taxa vai junto para a tela preencher o forçar de PIX com o esperado do que falta (#92).
   const esperado = esperadoComTaxa(valor, taxa)
-  if (!noGrupoAtivo) return { esperado, taxa, noGrupoAtivo, pix: [] }
+  if (!noGrupoAtivo) return { esperado, taxa, semCusto: false, noGrupoAtivo, pix: [] }
+  // O pedido já tem PIX com custo: a forçada de PIX desta venda vai sem custo, e a tela mostra igual (#93, B6).
+  const semCusto = await pedidoTemPixComCusto(alvo)
   const filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric
     - CASE WHEN ${pixRecebimentosMcp.tipoOperacao} = ${OPERACAO_COM_CUSTO} THEN ${esperado ?? valor}::numeric ELSE ${valor}::numeric END) <= 5`
-  return { esperado, taxa, noGrupoAtivo, pix: await pixLivresDoGrupo(grupo.id, filtro) }
+  return { esperado, taxa, semCusto, noGrupoAtivo, pix: await pixLivresDoGrupo(grupo.id, filtro) }
 }
 
 /** Busca digitada de PIX livres: pagador, descrição, data (AAAA-MM-DD) ou valor, como o crédito aparece no extrato. */
@@ -649,7 +651,8 @@ export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number
     // Quanto os lançamentos do alvo já cobrem do pagamento, pela mesma conta do painel: o PIX parcial força o que falta.
     const coberto = matchPagamentos(pgtos, await cartoesDoAlvo(alvo, tx), await pixDoAlvo(alvo, tx))[idx]?.coberto ?? 0
     const autor = { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }
-    return ouRecusa(comForcado(pgtos, idx, motivo, autor, { valorRecebido, coberto, baseVista }))
+    const semCusto = await pedidoTemPixComCusto(alvo, tx)
+    return ouRecusa(comForcado(pgtos, idx, motivo, autor, { valorRecebido, coberto, baseVista, semCusto }))
   }))
 }
 

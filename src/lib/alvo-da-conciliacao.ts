@@ -1,7 +1,7 @@
 // Leituras e gravação dos pagamentos e lançamentos de um alvo da conciliação (venda de moto, OS ou venda
 // de peça). Quem chama já conferiu que o alvo abre para o usuário; pagamentos e gravação levam as lojas
 // do grupo dentro da consulta. `exec`: o db, ou a transação de quem confere e grava junto.
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { PgSelect } from 'drizzle-orm/pg-core'
 import { db } from './db'
 import { conciliacoesCartao, ordensServico, pixRecebimentosMcp, vendas, vendasPecas } from './db/schema'
@@ -115,4 +115,19 @@ export async function gravarPagamentosDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo
     await exec.update(vendas).set({ pagamentos: pgtos })
       .where(and(eq(vendas.id, alvo.id), inArray(vendas.lojaId, lojaIdsGrupo)))
   }
+}
+
+/**
+ * O pedido da venda já tem PIX ligado com custo, do grupo da loja da venda (#93, B6)? Nesse caso a forçada de um
+ * PIX da venda não grava custo: o mesmo dinheiro não leva dois. Só venda de moto tem pedido. Quem chama já
+ * conferiu que o alvo é do grupo.
+ */
+export async function pedidoTemPixComCusto(alvo: AlvoConciliacao, exec: ExecutorDoAlvo = db): Promise<boolean> {
+  if (alvo.tipo !== 'moto') return false
+  // Qualificado à mão: numa query sem join, ${vendas.lojaId} sairia sem a tabela dentro da subconsulta.
+  const [r] = await exec.select({
+      tem: sql<boolean>`exists (select 1 from pix_recebimentos_mcp pr join lojas lj on lj.id = ${sql.raw('"vendas"."loja_id"')}
+        where pr.pedido_id = ${sql.raw('"vendas"."pedido_venda_id"')} and pr.grupo_id = lj.grupo_id and pr.custo_pix > 0)`,
+    }).from(vendas).where(eq(vendas.id, alvo.id)).limit(1)
+  return Boolean(r?.tem)
 }
