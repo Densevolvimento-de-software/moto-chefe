@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatarCpfCnpj, tipoPessoaDoDocumento } from '@/lib/documento'
+import { emLista } from '@/lib/texto'
 import { fraseDaRecusa, telaDaRecusa, type GrupoCorrecao } from '@/lib/notagateway/recusa'
 import { camposFaltando, type DadosRenave, type OrigemRenave } from '@/lib/notagateway/veiculo'
 import type { CorrecaoNf } from '@/lib/notagateway/correcao'
@@ -54,7 +55,7 @@ export function NfeRecusa({ nota, previa, pending, erro, renave, renaveOrigem, o
   })
 
   const faltamRenave = renave ? camposFaltando(renave).length : 0
-  const corrigidos = new Intl.ListFormat('pt-BR', { type: 'conjunction' }).format([
+  const corrigidos = emLista([
     `a venda nº ${previa.vendaNumero}`,
     ...(previa.ficha ? ['a ficha fiscal da moto'] : []),
     ...(previa.exigeRenave ? ['os dados do veículo'] : []),

@@ -6,6 +6,9 @@ import {
   semForcado,
   matchPagamentos,
   pixCompletaForcadaParcial,
+  mesmoResumoDaForcada,
+  resumoDaForcadaQueOPixCompleta,
+  semForcadasQueOPixCompleta,
   estornosDosPagamentos,
   precisaConciliar,
   valorConciliadoManual,
@@ -440,4 +443,91 @@ test('comForcado de PIX: base que a tela mostrou diferente da do servidor (ou se
   for (const baseVista of [undefined, '600', Number.NaN])
     assert.deepEqual(comForcado(PIX_E_DINHEIRO, 0, 'Resto caiu', AUTOR, { valorRecebido: 598.8, coberto: 400, baseVista }), mudaram, String(baseVista))
   assert.equal(comForcado(PIX_E_DINHEIRO, 0, 'Resto caiu', AUTOR, { valorRecebido: 598.8, coberto: 400, baseVista: 600.004 }).ok, true, 'mesma base em centavos')
+})
+
+// Desfazer junto com o desvincular (#92): sai só a marca das forçadas parciais que este PIX completa.
+const PARCIAL_1500: ConciliadoManual = { ...FORCADO, pix: { valorRecebido: 1497, valorBruto: 1500, custoPix: 3, custoPixTaxa: 0.002 } }
+const DUAS_PARCIAIS: PgtoOS[] = [
+  { tipo: 'pix', valor: 10000, conciliadoManual: FORCADA_PARCIAL },
+  { tipo: 'pix', valor: 2000, conciliadoManual: PARCIAL_1500 },
+  { tipo: 'pix', valor: 3000 },
+]
+const marcadas = (pgtos: PgtoOS[]) => pgtos.map(p => Boolean(p.conciliadoManual))
+
+test('semForcadasQueOPixCompleta: tira só a marca da forçada parcial que este PIX completa', () => {
+  const pix = [{ id: 'p4', valor: 4000 }, { id: 'p05', valor: 500 }, { id: 'p3', valor: 3000 }]
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p4')), [false, true, false])
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p05')), [true, false, false])
+})
+
+test('semForcadasQueOPixCompleta: PIX que não completa forçada nenhuma não muda nada', () => {
+  const pix = [{ id: 'p4', valor: 4000 }, { id: 'p05', valor: 500 }, { id: 'p3', valor: 3000 }]
+  assert.equal(semForcadasQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p3'), DUAS_PARCIAIS)
+})
+
+test('semForcadasQueOPixCompleta: um PIX que completa as duas forçadas tira as duas marcas', () => {
+  const pix = [{ id: 'p45', valor: 4500 }, { id: 'p3', valor: 3000 }]
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p45')), [false, false, false])
+})
+
+// Bot do #189 (B-P1): duas forçadas parciais disputam o mesmo PIX; soltar o PIX não pode deixar nenhuma marca sem dinheiro.
+const marcaCom = (valorBruto: number): ConciliadoManual => ({ ...FORCADO, pix: { valorRecebido: valorBruto, valorBruto, custoPix: 0, custoPixTaxa: 0 } })
+test('semForcadasQueOPixCompleta: o PIX completa duas forçadas que casam com ele pelo valor; as duas saem', () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(900) }, { tipo: 'pix', valor: 500, conciliadoManual: marcaCom(100) }]
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(pgtos, [], [{ id: 'p', valor: 500 }], 'p')), [false, false])
+})
+
+// B-P2: sai a forçada que o PIX completa, não a que outro PIX cobre.
+test('semForcadasQueOPixCompleta: tira as forçadas que este PIX completa, não a coberta por outro PIX', () => {
+  const pgtos: PgtoOS[] = [
+    { tipo: 'pix', valor: 10000, conciliadoManual: marcaCom(5000) },
+    { tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(600) },
+    { tipo: 'pix', valor: 800, conciliadoManual: marcaCom(500) },
+  ]
+  const pix = [{ id: 'x', valor: 5000 }, { id: 'p', valor: 700 }]
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(pgtos, [], pix, 'p')), [true, false, false])
+})
+
+// T-M3: forçada cheia (sem a parte pix, ou de cartão) ao lado da parcial fica.
+test('semForcadasQueOPixCompleta: forçadas cheias ao lado da parcial ficam', () => {
+  const pgtos: PgtoOS[] = [
+    { tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(600) },
+    { tipo: 'cartao_credito', valor: 500, conciliadoManual: FORCADO },
+    { tipo: 'pix', valor: 300, conciliadoManual: FORCADO },
+  ]
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(pgtos, [], [{ id: 'p', valor: 400 }], 'p')), [false, true, true])
+})
+
+test('resumoDaForcadaQueOPixCompleta: cada pagamento e quanto foi marcado, e quanto ESTE PIX cobre; null se não completa', () => {
+  const pix = [{ id: 'p4', valor: 4000 }, { id: 'p05', valor: 500 }, { id: 'p3', valor: 3000 }]
+  assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p4'), { linhas: [{ valor: 10000, marcado: 6000 }], cobre: 4000 })
+  assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p05'), { linhas: [{ valor: 2000, marcado: 1500 }], cobre: 500 })
+  assert.equal(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, [], pix, 'p3'), null)
+  // Dois PIX de 2.000 completam a mesma forçada (resto 4.000): cada um cobre 2.000.
+  const umaParcial: PgtoOS[] = [{ tipo: 'pix', valor: 10000, conciliadoManual: FORCADA_PARCIAL }]
+  assert.deepEqual(resumoDaForcadaQueOPixCompleta(umaParcial, [], [{ id: 'a', valor: 2000 }, { id: 'b', valor: 2000 }], 'a'),
+    { linhas: [{ valor: 10000, marcado: 6000 }], cobre: 2000 })
+  // Um PIX que completa duas: as duas linhas, separadas.
+  assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, [], [{ id: 'p45', valor: 4500 }, { id: 'p3', valor: 3000 }], 'p45'),
+    { linhas: [{ valor: 10000, marcado: 6000 }, { valor: 2000, marcado: 1500 }], cobre: 4500 })
+})
+
+// F1 (#189 r2): sai o mínimo que basta, não o conjunto de soma mais perto do PIX.
+test('semForcadasQueOPixCompleta: tira só o que basta (menor soma dos restos), mesmo com um PIX grande', () => {
+  // C1: o PIX P de 1.000 e o Q de 400 cobrem os restos de 600 e 400; sem P, tirar a de resto 600 basta.
+  const c1: PgtoOS[] = [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(400) }, { tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(600) }]
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(c1, [], [{ id: 'p', valor: 1000 }, { id: 'q', valor: 400 }], 'p')), [false, true])
+  // C2: restos de 300 e 400, P de 5.000 e Q de 400; sem P, tirar uma basta: a de resto menor.
+  const c2: PgtoOS[] = [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(700) }, { tipo: 'pix', valor: 1000, conciliadoManual: marcaCom(600) }]
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(c2, [], [{ id: 'p', valor: 5000 }, { id: 'q', valor: 400 }], 'p')), [false, true])
+})
+
+// #92 (28): o resumo que a tela mostrou só confere; qualquer diferença (ou forma estranha) é "mudou".
+test('mesmoResumoDaForcada: igual em centavos; valor, linha a mais ou forma estranha diferem', () => {
+  const r = { linhas: [{ valor: 1000, marcado: 600 }], cobre: 400 }
+  assert.equal(mesmoResumoDaForcada(r, { linhas: [{ valor: 1000, marcado: 600.001 }], cobre: 400 }), true)
+  assert.equal(mesmoResumoDaForcada(null, null), true)
+  for (const visto of [{ linhas: [{ valor: 1000, marcado: 600 }], cobre: 300 }, { linhas: [{ valor: 1000, marcado: 700 }], cobre: 400 },
+    { linhas: [{ valor: 1000, marcado: 600 }, { valor: 500, marcado: 100 }], cobre: 400 }, null, undefined, 'x', { linhas: 'x', cobre: 400 }])
+    assert.equal(mesmoResumoDaForcada(r, visto), false, JSON.stringify(visto))
 })

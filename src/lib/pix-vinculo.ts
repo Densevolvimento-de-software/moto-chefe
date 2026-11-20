@@ -5,9 +5,9 @@ import { custoDoPixVinculado } from './custo-pix'
 import { custoPixTaxaDoGrupo } from './custo-pix-grupo'
 import { db } from './db'
 import { pixRecebimentosMcp } from './db/schema'
-import { COMPLETA_FORCADA, pixCompletaForcadaParcial } from './conciliacao-status'
-import { cartoesDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from './alvo-da-conciliacao'
-import { alvoDasColunas, type Alvos } from './conciliacao-alvo'
+import { COMPLETA_FORCADA, RESUMO_DA_FORCADA_MUDOU, mesmoResumoDaForcada, pixCompletaForcadaParcial, resumoDaForcadaQueOPixCompleta, semForcadasQueOPixCompleta, type ForcadaQueOPixCompleta } from './conciliacao-status'
+import { cartoesDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from './alvo-da-conciliacao'
+import { alvoDasColunas, type Alvos, type AlvoConciliacao } from './conciliacao-alvo'
 import { lojasDoGrupo } from './conta'
 import { ehTransferenciaInterna } from './pix-internos'
 import { RecusaUsuario } from './resultado-action'
@@ -60,10 +60,10 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
 
 // O alvo do PIX com os pagamentos lidos (e a linha travada) só nas lojas do grupo do PIX (pedido não tem forçada).
 // Cartões e PIX do alvo só depois: eles leem pelo id.
-async function alvoComPagamentos(v: Alvos, lojaIds: string[], tx: ExecutorDoAlvo) {
+async function alvoComPagamentos(v: Alvos, lojaIds: string[], tx: ExecutorDoAlvo, travar = true) {
   const alvo = alvoDasColunas(v)
   if (!alvo) return null
-  const pgtos = await pagamentosDoAlvo(alvo, lojaIds, tx, true)
+  const pgtos = await pagamentosDoAlvo(alvo, lojaIds, tx, travar)
   if (!pgtos) return null
   return { pgtos, cartoes: await cartoesDoAlvo(alvo, tx), pix: await pixDoAlvo(alvo, tx) }
 }
@@ -86,17 +86,70 @@ async function completaForcada(pixId: string, lojaIds: string[], v: Alvos, tx: E
 // solta numa transação com a linha do alvo travada: dois desvincular, ou forçar e desvincular, no mesmo alvo não
 // conferem ao mesmo tempo (cada um veria o PIX do outro e a forçada ficaria sem o dinheiro).
 export async function desvincularPix(pixId: string, grupoId: string, fraseSeCompleta = COMPLETA_FORCADA): Promise<void> {
+  await soltarNaTravaDoAlvo(pixId, grupoId, async (tx, vinculo, lojaIds) => {
+    if (await completaForcada(pixId, lojaIds, vinculo, tx)) throw new RecusaUsuario(fraseSeCompleta)
+  })
+}
+
+/**
+ * Lê o vínculo do PIX no grupo, roda `antes` e solta o PIX, tudo numa transação: quem lê os pagamentos do alvo dentro
+ * dela (alvoComPagamentos) trava a linha dele até o fim. Devolve o alvo, para revalidar as telas dele.
+ */
+async function soltarNaTravaDoAlvo(pixId: string, grupoId: string,
+  antes: (tx: ExecutorDoAlvo, vinculo: Alvos, lojaIds: string[]) => Promise<void>): Promise<AlvoConciliacao | null> {
   // As lojas antes: dentro da transação, o db pegaria uma 2ª conexão do pool.
   const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
-  await db.transaction(async tx => {
+  return db.transaction(async tx => {
     const vinculo = await vinculoDoPix(pixId, grupoId, tx)
     if (!vinculo) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
-    if (await completaForcada(pixId, lojaIds, vinculo, tx)) throw new RecusaUsuario(fraseSeCompleta)
-
-    const soltos = await tx.update(pixRecebimentosMcp)
-      .set(PIX_SOLTO)
-      .where(doGrupo(pixId, grupoId))
-      .returning({ id: pixRecebimentosMcp.id })
-    if (soltos.length === 0) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
+    await antes(tx, vinculo, lojaIds)
+    await soltarPix(pixId, grupoId, vinculo, tx)
+    return alvoDasColunas(vinculo)
   })
+}
+
+// O vínculo lido no começo vai no where: religado a outro alvo enquanto este esperava a trava, o PIX não é solto
+// do alvo novo (a recusa é a do PIX não encontrado).
+const mesmoVinculo = (v: Alvos) => and(
+  v.vendaId ? eq(pixRecebimentosMcp.vendaId, v.vendaId) : isNull(pixRecebimentosMcp.vendaId),
+  v.osId ? eq(pixRecebimentosMcp.osId, v.osId) : isNull(pixRecebimentosMcp.osId),
+  v.pecaVendaId ? eq(pixRecebimentosMcp.pecaVendaId, v.pecaVendaId) : isNull(pixRecebimentosMcp.pecaVendaId),
+)
+
+async function soltarPix(pixId: string, grupoId: string, vinculo: Alvos, tx: ExecutorDoAlvo) {
+  const soltos = await tx.update(pixRecebimentosMcp)
+    .set(PIX_SOLTO)
+    .where(and(doGrupo(pixId, grupoId), mesmoVinculo(vinculo)))
+    .returning({ id: pixRecebimentosMcp.id })
+  if (soltos.length === 0) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
+}
+
+/**
+ * Desfaz só as forçadas parciais de PIX que este PIX completa (a função pura decide, nunca a tela) e solta o PIX, na
+ * mesma transação e com a mesma trava do alvo do desvincular. Devolve o alvo, para revalidar as telas dele. Quem
+ * pode (quem gere a conciliação) a action confere.
+ */
+export function desfazerForcadaEDesvincularPix(pixId: string, grupoId: string, resumoVisto: unknown): Promise<AlvoConciliacao | null> {
+  return soltarNaTravaDoAlvo(pixId, grupoId, async (tx, vinculo, lojaIds) => {
+    const alvo = alvoDasColunas(vinculo)
+    const doAlvo = await alvoComPagamentos(vinculo, lojaIds, tx)
+    // O que a caixa mostrou tem de ser o de agora, lido sob a trava; senão o confirmar agiria em outra coisa.
+    const agora = doAlvo ? resumoDaForcadaQueOPixCompleta(doAlvo.pgtos, doAlvo.cartoes, doAlvo.pix, pixId) : null
+    if (!mesmoResumoDaForcada(agora, resumoVisto)) throw new RecusaUsuario(RESUMO_DA_FORCADA_MUDOU)
+    if (!alvo || !doAlvo) return
+    const semForcadas = semForcadasQueOPixCompleta(doAlvo.pgtos, doAlvo.cartoes, doAlvo.pix, pixId)
+    if (semForcadas !== doAlvo.pgtos) await gravarPagamentosDoAlvo(alvo, lojaIds, semForcadas, tx)
+  })
+}
+
+/**
+ * O que a caixa da /pix-mcp mostra: as forçadas parciais que este PIX completa, lidas com o PIX e os pagamentos no
+ * grupo dado. PIX de outra Conta, inexistente ou que não completa nada: null, igual.
+ */
+export async function forcadaQueOPixCompleta(pixId: string, grupoId: string): Promise<ForcadaQueOPixCompleta | null> {
+  const vinculo = await vinculoDoPix(pixId, grupoId, db)
+  if (!vinculo) return null
+  // Só leitura para a tela: sem trava.
+  const doAlvo = await alvoComPagamentos(vinculo, (await lojasDoGrupo(grupoId)).map(l => l.id), db, false)
+  return doAlvo ? resumoDaForcadaQueOPixCompleta(doAlvo.pgtos, doAlvo.cartoes, doAlvo.pix, pixId) : null
 }

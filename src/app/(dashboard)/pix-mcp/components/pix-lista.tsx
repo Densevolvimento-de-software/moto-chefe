@@ -42,7 +42,10 @@ function Vazio() {
 }
 
 /** Celular: um cartão por transação, com o vínculo na própria linha. */
-function Cartoes({ linhas }: { linhas: LinhaPix[] }) {
+// `podeDesfazerForcada`: quem gere a conciliação desfaz a forçada parcial que o PIX completa (#92).
+type Props = { linhas: LinhaPix[]; podeDesfazerForcada: boolean }
+
+function Cartoes({ linhas, podeDesfazerForcada }: Props) {
   return (
     <ul className="space-y-3 lg:hidden">
       {linhas.map(l => (
@@ -53,7 +56,7 @@ function Cartoes({ linhas }: { linhas: LinhaPix[] }) {
           </div>
           <p className="text-xs text-muted-foreground">{l.data} · {l.tipo}</p>
           <div className="mt-2">
-            {l.interna ? <EstadoTexto l={l} /> : <CorrespondenciaForm id={l.id} correspondencia={l.correspondencia} />}
+            {l.interna ? <EstadoTexto l={l} /> : <CorrespondenciaForm id={l.id} correspondencia={l.correspondencia} podeDesfazerForcada={podeDesfazerForcada} />}
           </div>
         </li>
       ))}
@@ -62,7 +65,7 @@ function Cartoes({ linhas }: { linhas: LinhaPix[] }) {
 }
 
 /** Desktop (lg+), no padrão de Vendas: lista num cartão e, ao clicar numa linha, o painel flutuante à direita. */
-function ListaComPainel({ linhas }: { linhas: LinhaPix[] }) {
+function ListaComPainel({ linhas, podeDesfazerForcada }: Props) {
   const [sel, setSel] = useState<string | null>(null)
   // Se a seleção some (mudou o período), o painel fecha.
   const atual = linhas.find(l => l.id === sel)
@@ -103,7 +106,7 @@ function ListaComPainel({ linhas }: { linhas: LinhaPix[] }) {
             <div className="space-y-1.5 border-t border-border pt-4">
               <p className="text-sm font-medium">{atual.correspondencia.tipo ? 'Correspondência' : 'Vincular a'}</p>
               {/* key: o estado do formulário (tipo e número digitados) não pode vazar de uma transação para outra. */}
-              <CorrespondenciaForm key={atual.id} id={atual.id} correspondencia={atual.correspondencia} />
+              <CorrespondenciaForm key={atual.id} id={atual.id} correspondencia={atual.correspondencia} podeDesfazerForcada={podeDesfazerForcada} />
             </div>
           )}
         </PainelLateral>
@@ -112,12 +115,12 @@ function ListaComPainel({ linhas }: { linhas: LinhaPix[] }) {
   )
 }
 
-export function PixLista({ linhas }: { linhas: LinhaPix[] }) {
+export function PixLista({ linhas, podeDesfazerForcada }: Props) {
   if (linhas.length === 0) return <Vazio />
   return (
     <>
-      <Cartoes linhas={linhas} />
-      <ListaComPainel linhas={linhas} />
+      <Cartoes linhas={linhas} podeDesfazerForcada={podeDesfazerForcada} />
+      <ListaComPainel linhas={linhas} podeDesfazerForcada={podeDesfazerForcada} />
     </>
   )
 }
