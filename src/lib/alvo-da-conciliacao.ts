@@ -118,18 +118,22 @@ export async function gravarPagamentosDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo
 }
 
 /**
- * O pedido da venda já tem PIX ligado com custo, do grupo da loja da venda (#93, B6)? Nesse caso a forçada de um
- * PIX da venda não grava custo: o mesmo dinheiro não leva dois. Só venda de moto tem pedido. Quem chama já
- * conferiu que o alvo é do grupo.
+ * O que a linha da forçada de PIX precisa para a conta de `custoDaForcadaQueConta` (decisão 11 do Luis, #93): o valor
+ * bruto dos PIX com custo ligados ao pedido da venda e a base das forçadas de PIX das OUTRAS vendas dele, nas lojas do
+ * grupo da loja da venda. As forçadas da própria venda a tela soma dos pagamentos, que já tem atualizados.
  */
-export async function pedidoTemPixComCusto(alvo: AlvoConciliacao, exec: ExecutorDoAlvo = db): Promise<boolean> {
-  if (alvo.tipo !== 'moto') return false
-  // Qualificado à mão: numa query sem join, ${vendas.lojaId} sairia sem a tabela dentro da subconsulta.
-  const [r] = await exec.select({
-      tem: sql<boolean>`exists (select 1 from pix_recebimentos_mcp pr join lojas lj on lj.id = ${sql.raw('"vendas"."loja_id"')}
-        where pr.pedido_id = ${sql.raw('"vendas"."pedido_venda_id"')} and pr.grupo_id = lj.grupo_id and pr.custo_pix > 0)`,
-    }).from(vendas).where(eq(vendas.id, alvo.id)).limit(1)
-  return Boolean(r?.tem)
+export type CoberturaDaVenda = { pixDoPedido: number; forcadasDasOutras: number }
+
+export async function coberturaDoPedidoDaVenda(vendaId: string): Promise<CoberturaDaVenda | null> {
+  const [r] = (await execRows(sql`select
+      (select coalesce(sum(pr.valor_bruto::numeric), 0) from pix_recebimentos_mcp pr
+        where pr.pedido_id = v.pedido_venda_id and pr.custo_pix > 0 and pr.grupo_id = lj.grupo_id) as pix,
+      (select coalesce(sum((pf->'conciliadoManual'->'pix'->>'valorBruto')::numeric), 0)
+        from vendas vf cross join lateral jsonb_array_elements(coalesce(vf.pagamentos, '[]'::jsonb)) pf
+        where vf.pedido_venda_id = v.pedido_venda_id and vf.id <> v.id
+          and vf.loja_id in (select id from lojas where grupo_id = lj.grupo_id)) as outras
+    from vendas v join lojas lj on lj.id = v.loja_id where v.id = ${vendaId}`)) as { pix: string; outras: string }[]
+  return r ? { pixDoPedido: Number(r.pix), forcadasDasOutras: Number(r.outras) } : null
 }
 
 /**

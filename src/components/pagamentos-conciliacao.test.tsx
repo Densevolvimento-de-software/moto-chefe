@@ -18,7 +18,8 @@ type Actions = typeof import('@/app/(dashboard)/conciliacao/actions')
 type ParaOAlvo = Awaited<ReturnType<Actions['buscarPixParaOAlvo']>>
 type PixRec = Awaited<ReturnType<Actions['buscarPixDoAlvo']>>[number]
 const buscarPixLivres = mock.fn(async (_query: string): Promise<PixLivre[]> => [])
-const paraOAlvo = mock.fn(async (_alvo: AlvoConciliacao, _valor: number): Promise<ParaOAlvo> => ({ esperado: null, taxa: 0, semCusto: false, noGrupoAtivo: true, pix: [] }))
+const paraOAlvo = mock.fn(async (_alvo: AlvoConciliacao, _valor: number): Promise<ParaOAlvo> => ({ esperado: null, taxa: 0, noGrupoAtivo: true, pix: [] }))
+type Cobertura = Awaited<ReturnType<Actions['buscarCoberturaDoPedido']>>
 const vincularPix = mock.fn(async (_pixId: string, _alvo: AlvoConciliacao): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const buscarConciliacoesPorValor = mock.fn(async (..._a: unknown[]): Promise<unknown[]> => [])
 const buscarConciliacoesLivres = mock.fn(async (..._a: unknown[]): Promise<unknown[]> => [])
@@ -70,9 +71,9 @@ const linhas = () => [...document.querySelectorAll<HTMLButtonElement>('button[ar
 const linha = (tipo: string) => linhas().find(b => (b.textContent ?? '').startsWith(tipo))
 
 type Conc = { id: string; autorizacao: string | null; valorBruto: string; valorLiquido: string | null; operadora: string; tipo: string; dataTransacao: string }
-async function montar(papel: string, pagamentos: PgtoOS[], pixRecs: PixRec[] = [], estornos: EstornoDoAlvo[] = [], concs: Conc[] = []) {
+async function montar(papel: string, pagamentos: PgtoOS[], pixRecs: PixRec[] = [], estornos: EstornoDoAlvo[] = [], concs: Conc[] = [], cobertura: Cobertura = null) {
   const { PagamentosConciliacao } = await import('./pagamentos-conciliacao')
-  const dados = { concs, pixRecs, estornos, loading: false, recarregar: async () => {} }
+  const dados = { concs, pixRecs, estornos, cobertura, loading: false, recarregar: async () => {} }
   const tela = await montarDialogo(PagamentosConciliacao, { alvo: ALVO, pagamentos, dados, papel })
   desmontagens.push(tela.desmontar)
   const tocar = (el: Element | undefined) => tela.act(async () => { clicar(el); await esperar(50) })
@@ -156,7 +157,7 @@ test('vendedor não abre a linha pendente nem vê o Desfazer forçado', async ()
 const PIX_LIVRE: PixLivre = { id: 'pix-1', data: new Date('2026-11-12T14:32:00Z'), valor: '1000.00', pagadorNome: 'Pagador Exemplo', descricao: null }
 
 test('vincular o PIX sugerido envia o PIX e o alvo; a recusa aparece com a frase da action', async () => {
-  paraOAlvo.mock.mockImplementation(async () => ({ esperado: null, taxa: 0, semCusto: false, noGrupoAtivo: true, pix: [PIX_LIVRE] }))
+  paraOAlvo.mock.mockImplementation(async () => ({ esperado: null, taxa: 0, noGrupoAtivo: true, pix: [PIX_LIVRE] }))
   const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 1000 }])
   await tocar(linha('PIX'))
   const vincular = () => tocar(document.querySelector('button[aria-label^="Vincular PIX de Pagador Exemplo"]') ?? undefined)
@@ -179,7 +180,7 @@ const pixRec = (o: Partial<PixRec>): PixRec => ({ id: 'p1', dataPagamento: new D
   observacao: null, valorBruto: '10000.00', custoPix: '20.00', custoPixTaxa: '0.002000', ...o })
 
 test('PIX pendente no grupo com custo: procura perto do valor sem o custo e diz por quê', async () => {
-  paraOAlvo.mock.mockImplementation(async () => ({ esperado: 9980, taxa: 0.002, semCusto: false, noGrupoAtivo: true, pix: [{ ...PIX_LIVRE, valor: '9980.00' }] }))
+  paraOAlvo.mock.mockImplementation(async () => ({ esperado: 9980, taxa: 0.002, noGrupoAtivo: true, pix: [{ ...PIX_LIVRE, valor: '9980.00' }] }))
   const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }])
   await tocar(linha('PIX'))
   assert.deepEqual(paraOAlvo.mock.calls.map(c => c.arguments), [[ALVO, 10000]])
@@ -188,7 +189,7 @@ test('PIX pendente no grupo com custo: procura perto do valor sem o custo e diz 
 })
 
 test('PIX pendente no grupo sem custo: o texto de hoje, pelo valor do pagamento', async () => {
-  paraOAlvo.mock.mockImplementation(async () => ({ esperado: null, taxa: 0, semCusto: false, noGrupoAtivo: true, pix: [PIX_LIVRE] }))
+  paraOAlvo.mock.mockImplementation(async () => ({ esperado: null, taxa: 0, noGrupoAtivo: true, pix: [PIX_LIVRE] }))
   const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 1000 }])
   await tocar(linha('PIX'))
   assert.ok(tela().includes('PIX de valor próximo a R$ 1.000,00 ainda sem vínculo:'), tela())
@@ -196,7 +197,7 @@ test('PIX pendente no grupo sem custo: o texto de hoje, pelo valor do pagamento'
 })
 
 test('PIX de venda de outro grupo: pede para trocar o grupo ativo e não procura nem oferece Vincular nem Forçar', async () => {
-  paraOAlvo.mock.mockImplementation(async () => ({ esperado: 9980, taxa: 0.002, semCusto: false, noGrupoAtivo: false, pix: [] }))
+  paraOAlvo.mock.mockImplementation(async () => ({ esperado: 9980, taxa: 0.002, noGrupoAtivo: false, pix: [] }))
   const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }])
   await tocar(linha('PIX'))
   assert.ok(tela().includes('Este pagamento é de outro grupo. Troque o grupo ativo para procurar e vincular o PIX.'), tela())
@@ -249,7 +250,7 @@ test('vincular a linha de cartão sugerida envia a linha e o alvo; a recusa apar
 
 // ─── Forçar PIX com o valor que entrou na conta (#92, variante B) ───────────────────────────────────
 const campoRecebido = () => document.querySelector<HTMLInputElement>('input[aria-label="Valor que entrou na conta"]')
-const COM_CUSTO: ParaOAlvo = { esperado: 9980, taxa: 0.002, semCusto: false, noGrupoAtivo: true, pix: [] }
+const COM_CUSTO: ParaOAlvo = { esperado: 9980, taxa: 0.002, noGrupoAtivo: true, pix: [] }
 async function abrirForcarPix(pagamentos: PgtoOS[], pixRecs: PixRec[] = []) {
   paraOAlvo.mock.mockImplementation(async () => COM_CUSTO)
   const t = await montar('aux_adm', pagamentos, pixRecs)
@@ -317,7 +318,7 @@ test('forçar PIX parcial: parte do que falta, o campo vem com o esperado dessa 
 // Decisão 9 do Luis (#93, muda o B6): com PIX com custo no pedido, o forçar vem como qualquer outro (o esperado com
 // a taxa) e a forçada grava o custo dela; o líquido é que não conta a parte coberta.
 test('forçar PIX quando o pedido já tem PIX com custo: o esperado com a taxa e o custo da forçada, como sempre', async () => {
-  paraOAlvo.mock.mockImplementation(async () => ({ ...COM_CUSTO, semCusto: true }))
+  paraOAlvo.mock.mockImplementation(async () => COM_CUSTO)
   const t = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }])
   await t.tocar(linha('PIX'))
   await t.clique('Forçar')
@@ -377,7 +378,7 @@ test('PIX pendente procura na maquininha e no banco; lista única com a origem; 
     id: 'mp-1', operadora: 'mercadopago', autorizacao: null, nsu: '9900004821', valorBruto: '3550.00',
     dataTransacao: '2026-11-06', tipo: 'pix', rawData: null,
   }])
-  paraOAlvo.mock.mockImplementation(async () => ({ esperado: null, taxa: 0, semCusto: false, noGrupoAtivo: true, pix: [{
+  paraOAlvo.mock.mockImplementation(async () => ({ esperado: null, taxa: 0, noGrupoAtivo: true, pix: [{
     id: 'bco-1', data: new Date('2026-11-06T17:32:00.000Z'), valor: '3548.00', pagadorNome: 'MARIA SOUZA', descricao: 'PIX recebido',
   } as PixLivre] }))
   const t = await montar('aux_adm', [{ tipo: 'pix', valor: 3550 }])
@@ -432,4 +433,34 @@ test('PIX sem nada nas duas origens: o vazio diz onde procurou; a busca livre pr
   await t.tocar(botao('Buscar'))
   assert.deepEqual(buscarConciliacoesLivres.mock.calls.map(c => c.arguments), [['MARIA', 'pix']])
   assert.deepEqual(buscarPixLivres.mock.calls.map(c => c.arguments), [['MARIA']])
+})
+
+// Decisão 11 do Luis (#93): a linha da forçada de PIX mostra o custo que conta no líquido, pela mesma conta
+// (custoDaForcadaQueConta): as forçadas das outras vendas do pedido vêm do servidor; as desta venda, dos pagamentos.
+const custoDaLinha = () => [...document.querySelectorAll('[data-custo-forcada]')].map(e => (e.textContent ?? '').replace(/\s/g, ' '))
+const forcadaPix = (base: number, custoPix: number) => ({ ...FORCADO, pix: { valorRecebido: base - custoPix, valorBruto: base, custoPix, custoPixTaxa: custoPix / base } })
+
+test('linha da forçada de PIX: o custo que conta, a parte do PIX do pedido, ou que já entra todo por ele', async () => {
+  const pgtos: PgtoOS[] = [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }]
+  await montar('aux_adm', pgtos, [], [], [], { pixDoPedido: 1000, forcadasDasOutras: 0 })
+  assert.deepEqual(custoDaLinha(), ['Custo do PIX R$ 18,00 (R$ 2,00 já entra pelo PIX do pedido)'])
+  await montar('aux_adm', pgtos, [], [], [], { pixDoPedido: 1000, forcadasDasOutras: 10_000 })
+  assert.deepEqual(custoDaLinha().slice(-1), ['Custo do PIX R$ 19,00 (R$ 1,00 já entra pelo PIX do pedido)'])
+})
+
+test('linha da forçada de PIX: PIX do pedido cobrindo tudo, sem PIX no pedido, e forçada sem custo', async () => {
+  await montar('aux_adm', [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }], [], [], [], { pixDoPedido: 10_000, forcadasDasOutras: 0 })
+  assert.deepEqual(custoDaLinha(), ['Custo já entra pelo PIX do pedido'])
+  await montar('aux_adm', [{ tipo: 'pix', valor: 10_000, conciliadoManual: forcadaPix(10_000, 20) }])
+  assert.deepEqual(custoDaLinha().slice(-1), ['Custo do PIX R$ 20,00'])
+  await montar('aux_adm', [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }], [], [], [], { pixDoPedido: 1000, forcadasDasOutras: 0 })
+  assert.equal(custoDaLinha().length, 2, 'forçada sem custo não tem linha de custo')
+})
+
+test('forçar PIX com PIX com custo no pedido: o aviso mostra quanto do custo conta, pela mesma conta', async () => {
+  paraOAlvo.mock.mockImplementation(async () => COM_CUSTO)
+  const t = await montar('aux_adm', [{ tipo: 'pix', valor: 10000 }], [], [], [], { pixDoPedido: 3000, forcadasDasOutras: 0 })
+  await t.tocar(linha('PIX'))
+  await t.clique('Forçar')
+  assert.ok(tela().includes('Custo do PIX R$ 14,00 (R$ 6,00 já entra pelo PIX do pedido)'), tela())
 })

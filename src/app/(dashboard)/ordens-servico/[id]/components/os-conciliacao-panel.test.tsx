@@ -15,6 +15,7 @@ const actionsMock = mock.module('@/app/(dashboard)/conciliacao/actions', { named
   buscarPixDoAlvo: () => pixDoAlvo(),
   buscarConciliacoesDoAlvo: async () => [],
   buscarEstornosDoAlvo: async () => [],
+  buscarCoberturaDoPedido: async () => null,
   buscarConciliacoesPorValor: async () => [],
   buscarConciliacoesLivres: async () => [],
   buscarPixLivres: async () => [],

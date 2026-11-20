@@ -4,7 +4,8 @@ import { toast } from 'sonner'
 import { ChevronDown, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PAGAMENTO_PIX, baseDaForcada, estornosDosPagamentos, matchPagamentos, pixDaForcada, precisaConciliar, type EstornoDoAlvo, type PgtoOS } from '@/lib/conciliacao-status'
-import { avisoDeCustoAlto, esperadoComTaxa, percentualDoPix, type CustoDoPix } from '@/lib/custo-pix'
+import { avisoDeCustoAlto, custoDaForcadaQueConta, esperadoComTaxa, percentualDoPix, textoDoCustoDaForcada, type CustoDoPix } from '@/lib/custo-pix'
+import type { CoberturaDaVenda } from '@/lib/alvo-da-conciliacao'
 import { formatarNumeroBR, parseNumeroBR } from '@/lib/numero-br'
 import { nomeOperadora } from '@/lib/operadoras'
 import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
@@ -16,6 +17,7 @@ import {
   buscarConciliacoesLivres,
   buscarPixLivres,
   buscarPixParaOAlvo,
+  buscarCoberturaDoPedido,
   vincularVendaAction,
   vincularPixAlvoAction,
   forcarConciliacaoAction,
@@ -48,6 +50,7 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
   const [concs, setConcs]     = useState<Conc[]>([])
   const [pixRecs, setPixRecs] = useState<PixRec[]>([])
   const [estornos, setEstornos] = useState<EstornoDoAlvo[]>([])
+  const [cobertura, setCobertura] = useState<CoberturaDaVenda | null>(null)
   const [loading, setLoading] = useState(false)
 
   const { tipo, id } = alvo
@@ -55,14 +58,16 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
   const recarregar = useCallback(async () => {
     setLoading(true)
     try {
-      const [c, px, est] = await Promise.all([
+      const [c, px, est, cob] = await Promise.all([
         buscarConciliacoesDoAlvo({ tipo, id }),
         buscarPixDoAlvo({ tipo, id }),
         buscarEstornosDoAlvo({ tipo, id }),
+        buscarCoberturaDoPedido({ tipo, id }),
       ])
       setConcs(c)
       setPixRecs(px)
       setEstornos(est)
+      setCobertura(cob)
     } finally {
       setLoading(false)
     }
@@ -72,7 +77,7 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
     if (ativo) recarregar()
   }, [ativo, recarregar])
 
-  return { concs, pixRecs, estornos, loading, recarregar }
+  return { concs, pixRecs, estornos, cobertura, loading, recarregar }
 }
 
 type Props = {
@@ -98,7 +103,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const [candidatosPix, setCandidatosPix] = useState<PixLivre[]>([])
   const [buscaLoading, setBuscaLoading] = useState(false)
   // Só para PIX: o valor esperado no banco (sem o custo do PIX do grupo) e se o alvo é do grupo ativo.
-  const [contextoPix, setContextoPix] = useState<{ esperado: number | null; taxa: number; semCusto: boolean; noGrupoAtivo: boolean } | null>(null)
+  const [contextoPix, setContextoPix] = useState<{ esperado: number | null; taxa: number; noGrupoAtivo: boolean } | null>(null)
   const [vinculando, setVinculando]     = useState(false)
 
   const [buscaLivre, setBuscaLivre]         = useState('')
@@ -116,6 +121,13 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const conciliados = matchPagamentos(pagamentos, concs, pixRecs)
   // Pagamento que voltou a pendente porque a linha da maquininha foi estornada no Mercado Pago (#51).
   const estornados = estornosDosPagamentos(pagamentos, conciliados, dados.estornos)
+  // Custo da forçada de PIX que conta no líquido, pela mesma conta do servidor (decisão 11 do Luis, #93): as forçadas
+  // das outras vendas do pedido vêm do servidor; as desta venda, dos pagamentos. `aMais`: a base que está sendo forçada.
+  const basesForcadas = pagamentos.reduce((s, p) => s + (p.conciliadoManual?.pix?.valorBruto ?? 0), 0)
+  const textoDoCusto = (custoGravado: number, aMais = 0) => textoDoCustoDaForcada(custoDaForcadaQueConta(custoGravado, {
+    pixDoPedido: dados.cobertura?.pixDoPedido ?? 0,
+    forcadasDoPedido: (dados.cobertura?.forcadasDasOutras ?? 0) + basesForcadas + aMais,
+  }))
 
   function limparBusca() {
     setCandidatos([])
@@ -137,11 +149,11 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
       if (ehPix) {
         // PIX entra pela maquininha Mercado Pago (#51) ou pelo banco (#90): procura nas duas. Fora do grupo ativo
         // nenhuma lista: o servidor não vincula o alvo de outro grupo.
-        const [maquininha, { esperado, taxa, semCusto, noGrupoAtivo, pix }] = await Promise.all([
+        const [maquininha, { esperado, taxa, noGrupoAtivo, pix }] = await Promise.all([
           buscarConciliacoesPorValor(valor, 'pix'),
           buscarPixParaOAlvo(alvo, valor),
         ])
-        setContextoPix({ esperado, taxa, semCusto, noGrupoAtivo })
+        setContextoPix({ esperado, taxa, noGrupoAtivo })
         setCandidatos(noGrupoAtivo ? maquininha : [])
         setCandidatosPix(pix)
       } else {
@@ -334,7 +346,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     const parcial    = pendente && cobertura.coberto > 0.005
     const situacao = situacaoDe({ precisa, loading, forcado, conciliado, parcial })
     const pix = cobertura.pixId ? pixRecs.find(r => r.id === cobertura.pixId) : undefined
-    return { p, i, situacao, coberto: cobertura.coberto, pix, pixDaMaquininha: cobertura.pixDaMaquininha }
+    const custoDaForcada = forcado && p.conciliadoManual?.pix ? textoDoCusto(p.conciliadoManual.pix.custoPix) : null
+    return { p, i, situacao, coberto: cobertura.coberto, pix, pixDaMaquininha: cobertura.pixDaMaquininha, custoDaForcada }
   }).filter(l => !somenteConciliaveis || l.situacao !== 'livre')
   const ordem: Record<Situacao, number> = { pendente: 0, parcial: 1, carregando: 2, forcado: 3, conciliado: 4, livre: 5 }
   itens.sort((x, y) => ordem[x.situacao] - ordem[y.situacao] || x.i - y.i)
@@ -364,7 +377,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
       )}
 
       <ul className="space-y-2">
-        {itens.map(({ p, i, situacao, coberto, pix, pixDaMaquininha }) => {
+        {itens.map(({ p, i, situacao, coberto, pix, pixDaMaquininha, custoDaForcada }) => {
           const resolvivel = RESOLVIVEL.has(situacao)
           const mostraBusca = buscandoIdx === i && podeGerir && p.tipo !== 'financiamento'
           const aberto = resolvivel && (buscandoIdx === i || forcandoIdx === i)
@@ -403,6 +416,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                 )}
               </button>
 
+              {custoDaForcada && <p data-custo-forcada className="mx-3 mb-3 text-xs text-muted-foreground">{custoDaForcada}</p>}
+
               {situacao === 'conciliado' && pix && Number(pix.custoPixTaxa) > 0 && <ContaDoPixComCusto className="mx-3 mb-3" valorBruto={Number(pix.valorBruto ?? pix.valor)} custoPix={Number(pix.custoPix ?? 0)} custoPixTaxa={Number(pix.custoPixTaxa)} entrou={Number(pix.valor)} />}
 
               {situacao === 'forcado' && podeGerir && (
@@ -417,7 +432,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                 <div className="space-y-3 border-t border-border p-3">
                   {forcandoIdx === i ? (
                     <FormularioDoForcado
-                      p={p} i={i} coberto={coberto} taxaDoGrupo={contextoPix?.taxa ?? 0} semCusto={contextoPix?.semCusto ?? false} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
+                      p={p} i={i} coberto={coberto} taxaDoGrupo={contextoPix?.taxa ?? 0} custoQueConta={(custo, base) => (dados.cobertura?.pixDoPedido ?? 0) > 0 ? textoDoCusto(custo, base) : null} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
                       salvando={salvando} onCancelar={() => setForcandoIdx(null)} onConfirmar={forcar}
                     />
                   ) : (
@@ -506,8 +521,10 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
 }
 
 // O formulário do Forçar: motivo para todos; para PIX, também o valor que entrou e a conta do custo (#92).
-function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, semCusto, motivo, onMotivo, recebido, onRecebido, salvando, onCancelar, onConfirmar }: {
-  p: PgtoOS; i: number; coberto: number; taxaDoGrupo: number; semCusto: boolean
+function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, custoQueConta, motivo, onMotivo, recebido, onRecebido, salvando, onCancelar, onConfirmar }: {
+  p: PgtoOS; i: number; coberto: number; taxaDoGrupo: number
+  /** Com PIX com custo no pedido: quanto do custo desta forçada conta no líquido (decisão 11 do Luis, #93). */
+  custoQueConta: (custoPix: number, base: number) => string | null
   motivo: string; onMotivo: (v: string) => void
   recebido: string; onRecebido: (v: string) => void
   salvando: boolean; onCancelar: () => void; onConfirmar: (baseVista?: number) => void
@@ -516,6 +533,7 @@ function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, semCusto, motivo, onM
   const pixForcado = ehPix ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto }) : null
   const podeConfirmar = motivo.trim().length >= 3 && typeof pixForcado !== 'string'
   const avisoCusto = pixForcado && typeof pixForcado !== 'string' ? avisoDeCustoAlto(pixForcado, taxaDoGrupo) : null
+  const textoCusto = pixForcado && typeof pixForcado !== 'string' ? custoQueConta(pixForcado.custoPix, pixForcado.valorBruto) : null
   const confirmar = () => onConfirmar(pixForcado && typeof pixForcado !== 'string' ? pixForcado.valorBruto : undefined)
   return (
     <div className="space-y-2 rounded-lg bg-warning/10 p-3">
@@ -552,7 +570,7 @@ function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, semCusto, motivo, onM
                 <p className="text-xs text-warning">Entrou mais que o pagamento: fica sem custo do PIX.</p>
               )}
               {avisoCusto && <p className="text-xs text-warning">{avisoCusto}</p>}
-              {semCusto && <p className="text-xs text-muted-foreground">O custo do PIX já entra pelo PIX do pedido desta venda.</p>}
+              {textoCusto && <p className="text-xs text-muted-foreground">{textoCusto}</p>}
             </>
           )}
         </div>

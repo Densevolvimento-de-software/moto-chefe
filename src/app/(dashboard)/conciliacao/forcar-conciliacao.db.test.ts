@@ -427,8 +427,8 @@ test('PIX vinculado que completa uma forçada parcial não se desvincula: pede p
 })
 
 // Decisão 9 do Luis (#93, muda o B6): a forçada sempre grava o custo dela, mesmo com PIX com custo no pedido; o
-// líquido é que não conta a parte coberta (valor-liquido.db.test.ts). A busca ainda diz se o pedido tem PIX com
-// custo, e PIX de outra Conta ou sem custo no pedido não conta.
+// líquido é que não conta a parte coberta (valor-liquido.db.test.ts). A cobertura que a tela usa (decisão 11) soma só
+// PIX com custo da própria Conta no pedido; quem não abre a venda recebe null, como venda inexistente.
 test('forçar PIX de venda cujo pedido já tem PIX com custo: a marca grava o custo dela; PIX de outra Conta ou sem custo no pedido não conta', async () => {
   const a = await contaComAlvos()
   usuario = sessao(a, 'aux_adm')
@@ -441,12 +441,18 @@ test('forçar PIX de venda cujo pedido já tem PIX com custo: a marca grava o cu
   const b = await contaComAlvos()
   await ligarNoPedido(b.grupoId)
   await ligarNoPedido(a.grupoId, 0, 'TED')
-  assert.deepEqual(await actions.buscarPixParaOAlvo(alvo, 1000).then(r => [r.semCusto, r.taxa]), [false, 0.002])
+  assert.equal(await actions.buscarPixParaOAlvo(alvo, 1000).then(r => r.taxa), 0.002)
+  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 0, forcadasDasOutras: 0 })
   // PIX do próprio grupo no pedido: a forçada grava o custo dela do mesmo jeito.
   await ligarNoPedido(a.grupoId)
-  assert.deepEqual(await actions.buscarPixParaOAlvo(alvo, 1000).then(r => r.semCusto), true)
+  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 3000, forcadasDasOutras: 0 })
   assert.equal((await actions.forcarConciliacaoAction(alvo, 0, MOTIVO, 998, 1000)).ok, true)
   assert.deepEqual((await marcaDe('moto', a.alvos.moto))?.pix, { valorRecebido: 998, valorBruto: 1000, custoPix: 2, custoPixTaxa: 0.002 })
+  // A forçada desta venda não entra nas "outras": a tela soma a dela pelos pagamentos.
+  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 3000, forcadasDasOutras: 0 })
+  usuario = sessao(b, 'aux_adm')
+  assert.equal(await actions.buscarCoberturaDoPedido(alvo), null)
+  assert.equal(await actions.buscarCoberturaDoPedido({ tipo: 'moto', id: randomUUID() }), null)
   await db.execute(sql`delete from configuracao_taxas where grupo_id = ${a.grupoId}`)
 })
 

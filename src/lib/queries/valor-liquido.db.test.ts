@@ -34,6 +34,8 @@ let dreLib: typeof import('@/lib/dre')
 let dashboard: typeof import('@/lib/queries/dashboard')
 let folha: typeof import('@/lib/queries/folha')
 let vinculo: typeof import('@/lib/pix-vinculo')
+let alvos: typeof import('@/lib/alvo-da-conciliacao')
+let custoPix: typeof import('@/lib/custo-pix')
 
 before(async () => {
   ;({ db, execRows: linhas } = await import('@/lib/db'))
@@ -46,6 +48,8 @@ before(async () => {
   dashboard = await import('@/lib/queries/dashboard')
   folha = await import('@/lib/queries/folha')
   vinculo = await import('@/lib/pix-vinculo')
+  alvos = await import('@/lib/alvo-da-conciliacao')
+  custoPix = await import('@/lib/custo-pix')
   acoesVendas = await import('@/app/(dashboard)/vendas/actions')
 })
 after(async () => {
@@ -250,4 +254,19 @@ test('Conta A × B: PIX da Conta A ligado ao pedido da B não cobre a forçada d
   const { venda, pedido } = await vendaMoto(b, 1_000, [{ tipo: 'pix', valor: 1_000, conciliadoManual: marcaPix(b, 1_000, 2) }])
   await pixVinculado(a.grupoId, { pedido }, 2_994, 3_000, 6)
   assert.equal(await liquido(venda), 1_000 - 2)
+})
+
+// Decisão 11 do Luis (#93): a tela recebe a cobertura do pedido (PIX com custo e forçadas das outras vendas) e soma as
+// forçadas da própria venda; pela função pura, dá o mesmo custo que o SQL do líquido desconta.
+test('cobertura da tela + função pura = o custo das forçadas que o líquido desconta, venda a venda', async () => {
+  const c = await semearConta()
+  const primeira = await vendaMoto(c, 6_000, [{ tipo: 'pix', valor: 6_000, conciliadoManual: marcaPix(c, 6_000, 12.37) }])
+  const segunda = await vendaMoto(c, 4_000, [{ tipo: 'pix', valor: 4_000, conciliadoManual: marcaPix(c, 4_000, 8.11) }], primeira.pedido)
+  await pixVinculado(c.grupoId, { pedido: primeira.pedido }, 2_994, 3_000, 6)
+  for (const [venda, base, gravado, doPedido] of [[primeira.venda, 6_000, 12.37, 6], [segunda.venda, 4_000, 8.11, 0]] as const) {
+    const cob = await alvos.coberturaDoPedidoDaVenda(venda)
+    assert.ok(cob)
+    const { conta } = custoPix.custoDaForcadaQueConta(gravado, { pixDoPedido: cob.pixDoPedido, forcadasDoPedido: cob.forcadasDasOutras + base })
+    assert.equal(Math.round((base - doPedido - conta) * 100), Math.round(await liquido(venda) * 100), venda)
+  }
 })
