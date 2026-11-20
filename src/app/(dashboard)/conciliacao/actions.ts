@@ -311,9 +311,6 @@ async function importarRelatorio(formData: FormData) {
   return { importadas, duplicadas, conciliadas, semCodigo, incompletas }
 }
 
-// Linha de outro grupo, inexistente ou estornada recebem a mesma frase: estornada não se vincula
-// (vincular poria o valor devolvido de volta nas somas), e a frase não revela mais que "não achei".
-
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404, #129).
 export async function vincularVendaAction(conciliacaoId: string, alvo: AlvoConciliacao) {
   return acao(() => vincularVenda(conciliacaoId, alvo))

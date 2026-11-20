@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 import { COMPLETA_FORCADA, tiposDoPagamentoDaLinha, type ForcadaQueOPixCompleta } from '@/lib/conciliacao-status'
 import { rotuloDoAlvoNaFrase } from '@/lib/forcada-frases'
-import type { AlvoTipo } from '@/lib/conciliacao-alvo'
+import { siglaDoAlvo, type AlvoTipo } from '@/lib/conciliacao-alvo'
 
 type Venda = Awaited<ReturnType<typeof buscarVendasParaVincular>>[number]
 type PgtoItem = { tipo: string; valor: number | string; operadora?: string; parcelas?: number; autorizacao?: string }
@@ -46,8 +46,9 @@ const CLASSE_DO_VINCULAR: Record<Tamanho | 'tabela', string> = {
 
 /** "PA" (venda de peça) ou "OS" antes do número; venda de moto não tem. */
 export function ChipDoAlvo({ tipo, className }: { tipo?: AlvoTipo; className?: string }) {
-  if (tipo !== 'peca' && tipo !== 'os') return null
-  return <span className={cn('text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5', className)}>{tipo === 'peca' ? 'PA' : 'OS'}</span>
+  const sigla = siglaDoAlvo(tipo)
+  if (!sigla) return null
+  return <span className={cn('text-xs font-semibold text-info bg-info/10 rounded px-1 py-0.5', className)}>{sigla}</span>
 }
 
 /**
@@ -103,11 +104,17 @@ export function BotaoDesvincular({ conciliacaoId, rotulo, tamanho, onForcada }: 
 
   const px = tamanho ? 16 : 12
   const icone = pending ? <Loader2 size={px} className="animate-spin" /> : <Link2Off size={px} />
+  const dialogo = forcada && (
+    <ConfirmarForcadaDaLinha modo="dialogo" conciliacaoId={conciliacaoId} rotulo={rotulo} forcada={forcada} onFechar={() => setForcada(null)} />
+  )
   if (tamanho) {
     return (
-      <Button variant="outline" onClick={desvincular} disabled={pending} className="h-11 w-full text-destructive">
-        {icone} Desvincular da venda
-      </Button>
+      <>
+        <Button variant="outline" onClick={desvincular} disabled={pending} className="h-11 w-full text-destructive">
+          {icone} Desvincular da venda
+        </Button>
+        {dialogo}
+      </>
     )
   }
   return (
@@ -120,7 +127,7 @@ export function BotaoDesvincular({ conciliacaoId, rotulo, tamanho, onForcada }: 
       >
         {icone}
       </button>
-      {forcada && <ConfirmarForcadaDaLinha modo="dialogo" conciliacaoId={conciliacaoId} rotulo={rotulo} forcada={forcada} onFechar={() => setForcada(null)} />}
+      {dialogo}
     </>
   )
 }

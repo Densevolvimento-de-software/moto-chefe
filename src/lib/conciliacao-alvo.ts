@@ -10,6 +10,9 @@ export type AlvoConciliacao = { tipo: AlvoTipo; id: string }
 export type Alvos = { vendaId: string | null; pecaVendaId: string | null; osId: string | null }
 export const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
 
+/** "PA" (venda de peça) ou "OS" antes do número; venda de moto não tem. */
+export const siglaDoAlvo = (tipo?: AlvoTipo): 'PA' | 'OS' | null => (tipo === 'peca' ? 'PA' : tipo === 'os' ? 'OS' : null)
+
 export const ehAlvoTipo = (x: unknown): x is AlvoTipo => (ALVO_TIPOS as readonly unknown[]).includes(x)
 
 export function alvoValido(alvo: unknown): alvo is AlvoConciliacao {

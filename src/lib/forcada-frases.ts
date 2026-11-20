@@ -3,7 +3,7 @@
 import { brl } from './dashboard-painel'
 import { emLista } from './texto'
 import type { ForcadaQueOPixCompleta } from './conciliacao-status'
-import type { AlvoTipo } from './conciliacao-alvo'
+import { siglaDoAlvo, type AlvoTipo } from './conciliacao-alvo'
 
 const emReais = (vs: number[]) => emLista(vs.map(brl))
 
@@ -23,6 +23,5 @@ export function frasesDaForcada({ linhas, cobre }: ForcadaQueOPixCompleta, rotul
   }
 }
 
-/** O alvo da linha de cartão na frase: "venda #31902", "OS #12", "PA #5" (o chip da /conciliacao). */
-export const rotuloDoAlvoNaFrase = (tipo: AlvoTipo | undefined, numero: number) =>
-  tipo === 'os' ? `OS #${numero}` : tipo === 'peca' ? `PA #${numero}` : `venda #${numero}`
+/** O alvo da linha de cartão na frase: "venda #31902", "OS #12", "PA #5" (a sigla do chip da /conciliacao). */
+export const rotuloDoAlvoNaFrase = (tipo: AlvoTipo | undefined, numero: number) => `${siglaDoAlvo(tipo) ?? 'venda'} #${numero}`

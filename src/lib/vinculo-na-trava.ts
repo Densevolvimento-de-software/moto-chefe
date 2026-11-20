@@ -35,13 +35,15 @@ const COLUNAS_DO_VINCULO = Object.keys(semAlvos()) as (keyof Alvos)[]
 const mesmoVinculo = (t: ColunasDoVinculo, v: Alvos) => and(...COLUNAS_DO_VINCULO.map(c => (v[c] ? eq(t[c], v[c]) : isNull(t[c]))))
 
 export const PIX_NAO_ENCONTRADO = 'PIX não encontrado no grupo ativo'
+// Linha de outro grupo, inexistente ou estornada recebem a mesma frase: estornada não se vincula nem se desvincula
+// (mexer nela poria o valor devolvido de volta nas somas), e a frase não revela mais que "não achei".
 export const CONCILIACAO_NAO_ENCONTRADA = 'Conciliação não encontrada'
 
 /** O PIX recebido do banco pelo id, só no grupo. */
-export const pixDoGrupo = (pixId: string, grupoId: string) => and(eq(pixRecebimentosMcp.id, pixId), eq(pixRecebimentosMcp.grupoId, grupoId))
+export const pixDoGrupo = (pixId: string, grupoId: string): SQL => and(eq(pixRecebimentosMcp.id, pixId), eq(pixRecebimentosMcp.grupoId, grupoId))!
 
 // O item lido e solto pelo mesmo `where` (id, grupo e o que mais o item exige); id que não é uuid não vai ao banco.
-function item(t: typeof pixRecebimentosMcp | typeof conciliacoesCartao, id: string, onde: SQL | undefined, naoEncontrado: string,
+function item(t: typeof pixRecebimentosMcp | typeof conciliacoesCartao, id: string, onde: SQL, naoEncontrado: string,
   solto: Parameters<ReturnType<ExecutorDoAlvo['update']>['set']>[0]): ItemDoAlvo {
   return {
     id,
@@ -60,7 +62,7 @@ export const pixDoBanco = (pixId: string, grupoId: string): ItemDoAlvo =>
 /** A linha da conciliação de cartão, no grupo; estornada mantém o vínculo e recebe a frase de inexistente. */
 export const linhaDoCartao = (conciliacaoId: string, grupoId: string): ItemDoAlvo =>
   item(conciliacoesCartao, conciliacaoId,
-    and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupoId), cartaoNaoEstornado),
+    and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupoId), cartaoNaoEstornado)!,
     CONCILIACAO_NAO_ENCONTRADA, { ...semAlvos(), conciliado: false, conciliadoEm: null })
 
 // O alvo do item com os pagamentos lidos (e a linha travada, se pedido) só nas lojas do grupo (pedido não tem forçada).
