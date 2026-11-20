@@ -1,7 +1,7 @@
 // Custo do PIX (#89): o banco credita o valor do PIX menos a porcentagem do grupo.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { avisoDeCustoAlto, coberturaComEstaVenda, creditoDoPix, custoDaForcadaQueConta, custoDoPixForcado, textoDoCustoDaForcada, esperadoComTaxa, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa, lerValorRecebido, percentualDoPix } from './custo-pix'
+import { avisoDeCustoAlto, coberturaComEstaVenda, creditoDoPix, custoDaForcadaQueConta, custoDoPixForcado, textoDoCustoDaForcada, esperadoComTaxa, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa, lerValorRecebido, percentualDoBruto, percentualDoPix } from './custo-pix'
 
 test('crédito de R$ 9.980,00 com 0,20%: o PIX foi de R$ 10.000,00 e custou R$ 20,00', () => {
   assert.deepEqual(custoDoPixRecebido(9980, 0.002), { bruto: 10000, custo: 20 })
@@ -106,6 +106,10 @@ test('avisoDeCustoAlto: acima de 1% avisa com o custo e o do grupo; até 1% não
   assert.equal(avisoDeCustoAlto(custoDoPixForcado(10000, 9900), 0.002), null, 'exatamente 1%')
   assert.equal(avisoDeCustoAlto(custoDoPixForcado(10000, 9899), 0), 'Custo de 1,01% bem acima do custo do PIX do grupo (0,00%). Confira o valor que entrou.')
   assert.equal(avisoDeCustoAlto(custoDoPixForcado(10000, 9980), 0.002), null)
+})
+
+test('percentualDoBruto: pt-BR, uma a duas casas (o custo do PIX costuma ficar abaixo de 0,1%)', () => {
+  assert.deepEqual([percentualDoBruto(9_874.2, 400_000), percentualDoBruto(318.4, 400_000), percentualDoBruto(10, 1_000)], ['2,47%', '0,08%', '1,0%'])
 })
 
 test('percentualDoPix: duas a quatro casas, vírgula', () => {

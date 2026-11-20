@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   montarDre, somarEntradas, grupoOuOutras, rotuloGrupo,
-  GRUPOS_DRE, ENTRADA_VAZIA, dreResumido, montarMatriz, taxasDaReceita, type EntradaDre,
+  GRUPOS_DRE, ENTRADA_VAZIA, deducoesDoFinanceiro, dreResumido, montarMatriz, receitaLiquidaDe, taxasDaReceita, type EntradaDre,
 } from './dre'
 
 const valor = (linhas: ReturnType<typeof montarDre>, chave: string) =>
@@ -154,7 +154,7 @@ test('somar entradas soma a tarifa do PIX', () => {
 
 test('taxas da receita: a parte Pix do bruto − líquido das motos e das outras receitas vira tarifa', () => {
   assert.deepEqual(
-    taxasDaReceita({ brutoMotos: 10_000, liquidoMotos: 9_796, tarifaPixMotos: 4, taxaCartaoOutras: 9, tarifaPixOutras: 5, custoPixMotos: 0 }),
+    taxasDaReceita({ brutoMotos: 10_000, liquidoMotos: 9_796, tarifaPixMotos: 4, taxaCartaoOutras: 9, tarifaPixOutras: 5, custoPixMotos: 0, custoPixOutras: 0 }),
     { taxasCartao: 209, tarifaPix: 9, custoPix: 0 },
   )
 })
@@ -162,18 +162,18 @@ test('taxas da receita: a parte Pix do bruto − líquido das motos e das outras
 test('taxas da receita sem resíduo de ponto flutuante quando o recorte só tem Pix com centavos', () => {
   // 1000,56 − 1000,19 − 0,37 em float dá −1,09e−13: a tela mostraria "−R$ 0,00" em vez de zero.
   assert.deepEqual(
-    taxasDaReceita({ brutoMotos: 1000.56, liquidoMotos: 1000.19, tarifaPixMotos: 0.37, taxaCartaoOutras: 0, tarifaPixOutras: 0, custoPixMotos: 0 }),
+    taxasDaReceita({ brutoMotos: 1000.56, liquidoMotos: 1000.19, tarifaPixMotos: 0.37, taxaCartaoOutras: 0, tarifaPixOutras: 0, custoPixMotos: 0, custoPixOutras: 0 }),
     { taxasCartao: 0, tarifaPix: 0.37, custoPix: 0 },
   )
   assert.deepEqual(
-    taxasDaReceita({ brutoMotos: 0.3, liquidoMotos: 0.1, tarifaPixMotos: 0.1, taxaCartaoOutras: 0.1, tarifaPixOutras: 0.2, custoPixMotos: 0 }),
+    taxasDaReceita({ brutoMotos: 0.3, liquidoMotos: 0.1, tarifaPixMotos: 0.1, taxaCartaoOutras: 0.1, tarifaPixOutras: 0.2, custoPixMotos: 0, custoPixOutras: 0 }),
     { taxasCartao: 0.2, tarifaPix: 0.3, custoPix: 0 },
   )
 })
 
 // #93 (decisão do Luis registrada na #93): o custo do PIX do banco é linha própria no DRE, fora das taxas de cartão.
 test('taxas da receita: o custo do PIX das motos sai do bruto − líquido e vira linha própria; a soma bate', () => {
-  const r = taxasDaReceita({ brutoMotos: 18_500, liquidoMotos: 17_868, tarifaPixMotos: 0, custoPixMotos: 20, taxaCartaoOutras: 0, tarifaPixOutras: 0 })
+  const r = taxasDaReceita({ brutoMotos: 18_500, liquidoMotos: 17_868, tarifaPixMotos: 0, custoPixMotos: 20, custoPixOutras: 0, taxaCartaoOutras: 0, tarifaPixOutras: 0 })
   assert.deepEqual(r, { taxasCartao: 612, tarifaPix: 0, custoPix: 20 })
   assert.equal(r.taxasCartao + r.tarifaPix + r.custoPix, 18_500 - 17_868)
 })
@@ -197,4 +197,28 @@ test('DRE resumido: as linhas de primeiro nível do DRE, com o custo do PIX, e a
   const deducoes = r.slice(1, r.findIndex(l => l.chave === 'receita_liquida')).filter(l => l.deducao).reduce((a, l) => a + l.valor, 0)
   assert.equal(v('receita_bruta') - deducoes, v('receita_liquida'))
   assert.deepEqual(r.find(l => l.chave === 'custo_pix'), { chave: 'custo_pix', rotulo: '(−) Custo do PIX', deducao: true, valor: 57.98 })
+})
+
+// #94 (decisão do Luis registrada na #94): o custo do PIX de OS e peça entra na mesma linha, junto do das motos.
+test('taxas da receita: o custo do PIX de OS e peça soma na linha do custo do PIX, sem mexer na taxa de cartão', () => {
+  assert.deepEqual(
+    taxasDaReceita({ brutoMotos: 10_000, liquidoMotos: 9_776, tarifaPixMotos: 4, custoPixMotos: 20, taxaCartaoOutras: 9, tarifaPixOutras: 5, custoPixOutras: 4.4 }),
+    { taxasCartao: 209, tarifaPix: 9, custoPix: 24.4 },
+  )
+})
+
+// #94: o Faturamento Líquido do Financeiro e a receita líquida do DRE são a mesma conta; o card conta os PIX de motos e
+// das outras receitas.
+test('deduções do Financeiro: o líquido desconta cartão, tarifa e custo do PIX (motos e outras), e a contagem soma as duas', () => {
+  const d = deducoesDoFinanceiro({
+    faturamentoBruto: 11_300, brutoMotos: 10_000, liquidoMotos: 9_776, tarifaPixMotos: 4, custoPixMotos: 20,
+    taxaCartaoOutras: 9, tarifaPixOutras: 5, custoPixOutras: 4.4, qtdPixMotos: 3, qtdPixOutras: 2,
+  })
+  assert.deepEqual(d, { taxasCartao: 209, tarifaPix: 9, custoPix: 24.4, qtdPix: 5, faturamentoLiquido: 11_057.6 })
+})
+
+test('receita líquida do DRE pela mesma conta: bruto − cartão − tarifa − custo do PIX', () => {
+  const linhas = montarDre({ ...BASE, receitaMotos: 1_000, receitaServicos: 0, receitaPecas: 0, taxasCartao: 30, tarifaPix: 2, custoPix: 1.5 })
+  assert.equal(valor(linhas, 'receita_liquida'), receitaLiquidaDe(1_000, { taxasCartao: 30, tarifaPix: 2, custoPix: 1.5 }))
+  assert.equal(receitaLiquidaDe(1_000, { taxasCartao: 30, tarifaPix: 2, custoPix: 1.5 }), 966.5)
 })

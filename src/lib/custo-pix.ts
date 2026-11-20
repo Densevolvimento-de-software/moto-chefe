@@ -86,6 +86,10 @@ export function custoDoPixForcado(base: number, recebido: number): CustoDoPix {
 export const percentualDoPix = (taxa: number) =>
   `${(taxa * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}%`
 
+/** Quanto uma dedução é do faturamento bruto, nos cards do Financeiro (#94): "2,47%", "0,08%". */
+export const percentualDoBruto = (valor: number, bruto: number) =>
+  `${((valor / bruto) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}%`
+
 // Acima disso o custo da forçada costuma ser erro de digitação no valor que entrou (decisão do Luis registrada na #92).
 const CUSTO_ALTO_NA_FORCADA = 0.01
 

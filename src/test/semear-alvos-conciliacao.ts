@@ -43,14 +43,15 @@ export function semearOs(tx: Executor, b: Pick<Balcao, 'lojaId' | 'usuarioId' | 
  */
 export function semearPixRecebido(tx: Executor, grupoId: string, o: {
   valor: number; pagadorNome?: string; tipoOperacao?: string | null
-  vinculado?: { venda?: string; pedido?: string; valorBruto: number; custoPix: number }
+  vinculado?: { venda?: string; pedido?: string; os?: string; peca?: string; valorBruto: number; custoPix: number }
 }) {
   const v = o.vinculado
+  const tipo = !v ? null : v.venda ? 'venda' : v.os ? 'os' : v.peca ? 'peca' : 'pedido'
   return idDoInsert(tx, sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor, pagador_nome, tipo_operacao,
-      tipo_correspondencia, venda_id, pedido_id, valor_bruto, custo_pix, custo_pix_taxa)
+      tipo_correspondencia, venda_id, pedido_id, os_id, peca_venda_id, valor_bruto, custo_pix, custo_pix_taxa)
     values (${grupoId}, 'conta-sintetica', 'Banco sintético', ${randomUUID()}, now(), ${o.valor}, ${o.pagadorNome ?? 'Pagador sintético'},
       ${o.tipoOperacao === undefined ? 'PIX' : o.tipoOperacao},
-      ${v ? (v.venda ? 'venda' : 'pedido') : null}, ${v?.venda ?? null}, ${v?.pedido ?? null},
+      ${tipo}, ${v?.venda ?? null}, ${v?.pedido ?? null}, ${v?.os ?? null}, ${v?.peca ?? null},
       ${v?.valorBruto ?? null}, ${v?.custoPix ?? null}, ${v ? (v.valorBruto > 0 ? v.custoPix / v.valorBruto : 0) : null}) returning id`)
 }
 
