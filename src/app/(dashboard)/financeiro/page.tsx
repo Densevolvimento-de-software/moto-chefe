@@ -8,6 +8,7 @@ import { vendas, lojas, usuarios, motos, modelos, despesas, despesasOpenFinance,
 import { eq, ne, and, gte, lte, sql, count, inArray } from 'drizzle-orm'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardDeducao, pixConciliados } from './components/card-deducao'
 import { FinanceiroFiltros } from './components/financeiro-filtros'
 import { ResumoLojas } from './components/resumo-lojas'
 import { ResumoVendedores } from './components/resumo-vendedores'
@@ -23,7 +24,7 @@ import { somarDespesas, valorDespesa, type MotivoForaDoCalculo } from '@/lib/des
 import { configDespesas } from '@/lib/queries/config-despesas'
 import { calcularResultadoPorLoja } from '@/lib/resultado-por-loja'
 import { despesaDaLojaFiltrada } from '@/lib/despesa-loja-filtrada'
-import { custoPixDaVendaExpr, tarifaPixDaVendaExpr, valorLiquidoExpr } from '@/lib/queries/valor-liquido'
+import { custoPixDaVendaExpr, qtdPixDaVendaExpr, tarifaPixDaVendaExpr, valorLiquidoExpr } from '@/lib/queries/valor-liquido'
 import { taxasDaReceita } from '@/lib/dre'
 import { taxasOutrasDoPeriodo } from '@/lib/queries/taxas-receita'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
@@ -76,6 +77,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
         totalLiquido: sql<string>`COALESCE(SUM(${valorLiquidoExpr()}), '0')`,
         tarifaPix: sql<string>`COALESCE(SUM(${tarifaPixDaVendaExpr()}), '0')`,
         custoPix: sql<string>`COALESCE(SUM(${custoPixDaVendaExpr()}), '0')`,
+        qtdPix: sql<string>`COALESCE(SUM(${qtdPixDaVendaExpr()}), 0)`,
         totalCusto: sql<string>`${somaCustoMotoExpr()}`,
         qtdSemCusto: sql<string>`${qtdSemCustoExpr()}`,
         qtdVendas: count(),
@@ -347,12 +349,14 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     liquidoMotos: receitaLiquida,
     tarifaPixMotos: Number(totaisVendas[0]?.tarifaPix ?? 0),
     custoPixMotos: Number(totaisVendas[0]?.custoPix ?? 0),
+    custoPixOutras: taxasOutras.custoPix,
     taxaCartaoOutras: taxasOutras.taxaCartao,
     tarifaPixOutras: taxasOutras.tarifaPix,
   })
 
-  // O custo do PIX (#93) sai daqui e de "Taxas Cartão"; o card dele vem na #94 (decisão do Luis registrada na #93).
+  // O custo do PIX (#93, #94) sai daqui e de "Taxas Cartão", com card próprio.
   const faturamentoLiquido = faturamentoBruto - taxasCartao - tarifaPix - custoPix
+  const qtdPix = Number(totaisVendas[0]?.qtdPix ?? 0) + taxasOutras.qtdPix
 
   // Compra de mercadoria. Fica FORA do lucro de propósito: o custo da moto vendida já
   // está em "Custo Total", e comprar estoque não é despesa do mês — é dinheiro que
@@ -474,27 +478,13 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Faturamento Líquido</CardTitle></CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-success">{fmt(faturamentoLiquido)}</p>
-            <p className="text-xs text-muted-foreground">bruto menos taxas de cartão e tarifa do PIX</p>
+            <p className="text-xs text-muted-foreground">bruto menos taxas de cartão, tarifa e custo do PIX</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Taxas Cartão</CardTitle></CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-destructive">-{fmt(taxasCartao)}</p>
-            {faturamentoBruto > 0 && (
-              <p className="text-xs text-muted-foreground">{((taxasCartao / faturamentoBruto) * 100).toFixed(1)}% do bruto</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Tarifa PIX na maquininha</CardTitle></CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-destructive">-{fmt(tarifaPix)}</p>
-            {faturamentoBruto > 0 && (
-              <p className="text-xs text-muted-foreground">{((tarifaPix / faturamentoBruto) * 100).toFixed(1)}% do bruto</p>
-            )}
-          </CardContent>
-        </Card>
+        <CardDeducao titulo="Taxas Cartão" valor={taxasCartao} bruto={faturamentoBruto} />
+        <CardDeducao titulo="Tarifa PIX na maquininha" valor={tarifaPix} bruto={faturamentoBruto} />
+        {/* Variante B do protótipo da #70: card próprio, ao lado de Taxas Cartão (decisão do Luis). */}
+        <CardDeducao titulo="Custo PIX" valor={custoPix} bruto={faturamentoBruto} detalhe={pixConciliados(qtdPix)} />
 
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Despesas Operac.</CardTitle></CardHeader>
