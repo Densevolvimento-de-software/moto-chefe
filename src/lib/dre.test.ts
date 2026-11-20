@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   montarDre, somarEntradas, grupoOuOutras, rotuloGrupo,
-  GRUPOS_DRE, ENTRADA_VAZIA, dreResumido, montarMatriz, taxasDaReceita, type EntradaDre,
+  GRUPOS_DRE, ENTRADA_VAZIA, deducoesDoFinanceiro, dreResumido, montarMatriz, receitaLiquidaDe, taxasDaReceita, type EntradaDre,
 } from './dre'
 
 const valor = (linhas: ReturnType<typeof montarDre>, chave: string) =>
@@ -205,4 +205,20 @@ test('taxas da receita: o custo do PIX de OS e peça soma na linha do custo do P
     taxasDaReceita({ brutoMotos: 10_000, liquidoMotos: 9_776, tarifaPixMotos: 4, custoPixMotos: 20, taxaCartaoOutras: 9, tarifaPixOutras: 5, custoPixOutras: 4.4 }),
     { taxasCartao: 209, tarifaPix: 9, custoPix: 24.4 },
   )
+})
+
+// #94: o Faturamento Líquido do Financeiro e a receita líquida do DRE são a mesma conta; o card conta os PIX de motos e
+// das outras receitas.
+test('deduções do Financeiro: o líquido desconta cartão, tarifa e custo do PIX (motos e outras), e a contagem soma as duas', () => {
+  const d = deducoesDoFinanceiro({
+    faturamentoBruto: 11_300, brutoMotos: 10_000, liquidoMotos: 9_776, tarifaPixMotos: 4, custoPixMotos: 20,
+    taxaCartaoOutras: 9, tarifaPixOutras: 5, custoPixOutras: 4.4, qtdPixMotos: 3, qtdPixOutras: 2,
+  })
+  assert.deepEqual(d, { taxasCartao: 209, tarifaPix: 9, custoPix: 24.4, qtdPix: 5, faturamentoLiquido: 11_057.6 })
+})
+
+test('receita líquida do DRE pela mesma conta: bruto − cartão − tarifa − custo do PIX', () => {
+  const linhas = montarDre({ ...BASE, receitaMotos: 1_000, receitaServicos: 0, receitaPecas: 0, taxasCartao: 30, tarifaPix: 2, custoPix: 1.5 })
+  assert.equal(valor(linhas, 'receita_liquida'), receitaLiquidaDe(1_000, { taxasCartao: 30, tarifaPix: 2, custoPix: 1.5 }))
+  assert.equal(receitaLiquidaDe(1_000, { taxasCartao: 30, tarifaPix: 2, custoPix: 1.5 }), 966.5)
 })

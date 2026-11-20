@@ -53,7 +53,7 @@ export type EntradaDre = {
   taxasCartao: number
   /** Tarifa do Pix da maquininha Mercado Pago (#51): dedução própria, fora das taxas de cartão. */
   tarifaPix: number
-  /** Custo do PIX do banco nas vendas de moto (#93): dedução própria, fora das taxas de cartão. */
+  /** Custo do PIX do banco das vendas de moto (#93), das OS e das vendas de peça (#94): dedução própria, fora das taxas de cartão. */
   custoPix: number
   /** Custo das motos vendidas. Peça e serviço não têm custo cadastrado. */
   cmvMotos: number
@@ -88,7 +88,7 @@ export type LinhaDre = {
  */
 export function montarDre(e: EntradaDre): LinhaDre[] {
   const receitaBruta = e.receitaMotos + e.receitaServicos + e.receitaPecas
-  const receitaLiquida = receitaBruta - e.taxasCartao - e.tarifaPix - e.custoPix
+  const receitaLiquida = receitaLiquidaDe(receitaBruta, e)
   const lucroBruto = receitaLiquida - e.cmvMotos
   const totalDespesas = GRUPOS_DRE.reduce((s, g) => s + (e.despesasPorGrupo[g.valor] ?? 0), 0)
   const resultado = lucroBruto - totalDespesas
@@ -157,6 +157,19 @@ export function taxasDaReceita(p: {
     tarifaPix: emCentavos(p.tarifaPixMotos + p.tarifaPixOutras),
     custoPix: emCentavos(p.custoPixMotos + p.custoPixOutras),
   }
+}
+
+/** Receita líquida: o bruto menos as três deduções (#51, #93, #94). Uma conta só para o DRE e o Financeiro. */
+export const receitaLiquidaDe = (bruto: number, d: { taxasCartao: number; tarifaPix: number; custoPix: number }) =>
+  bruto - d.taxasCartao - d.tarifaPix - d.custoPix
+
+/**
+ * As deduções do Financeiro (#94): as taxas da receita, quantos PIX entram no custo (motos e outras receitas) e o
+ * Faturamento Líquido pela mesma conta da receita líquida do DRE.
+ */
+export function deducoesDoFinanceiro(p: Parameters<typeof taxasDaReceita>[0] & { faturamentoBruto: number; qtdPixMotos: number; qtdPixOutras: number }) {
+  const taxas = taxasDaReceita(p)
+  return { ...taxas, qtdPix: p.qtdPixMotos + p.qtdPixOutras, faturamentoLiquido: receitaLiquidaDe(p.faturamentoBruto, taxas) }
 }
 
 /** Soma duas entradas — usado para a coluna TOTAL e para consolidar meses. */
