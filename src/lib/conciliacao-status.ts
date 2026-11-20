@@ -409,3 +409,20 @@ export function mesmoResumoDaForcada(agora: ForcadaQueOPixCompleta | null, visto
     return typeof v === 'object' && v !== null && mesmosCentavos(l.valor, v.valor) && mesmosCentavos(l.marcado, v.marcado)
   })
 }
+
+/**
+ * Os pagamentos com o custo zerado nas forçadas de PIX que têm custo, e quantas eram (#93, S2): ligar ao pedido um
+ * PIX com custo faz o custo entrar por ele, e o mesmo dinheiro não leva dois. O resto da marca fica. Sem nenhuma,
+ * devolve os mesmos pagamentos.
+ */
+export function semCustoNasForcadasPix(pgtos: PgtoOS[]): { pgtos: PgtoOS[]; zeradas: number } {
+  const temCusto = (p: PgtoOS) => (p.conciliadoManual?.pix?.custoPix ?? 0) > 0
+  const zeradas = pgtos.filter(temCusto).length
+  if (zeradas === 0) return { pgtos, zeradas }
+  return {
+    zeradas,
+    pgtos: pgtos.map(p => (temCusto(p) && p.conciliadoManual?.pix
+      ? { ...p, conciliadoManual: { ...p.conciliadoManual, pix: { ...p.conciliadoManual.pix, custoPix: 0, custoPixTaxa: 0 } } }
+      : p)),
+  }
+}

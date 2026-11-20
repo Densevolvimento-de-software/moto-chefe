@@ -67,7 +67,7 @@ test('aux_adm lança e remove a correspondência por NF, OS, pedido e venda de p
   usuario = await sessao(a, 'aux_adm')
   for (const tipo of TIPOS) {
     const pix = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
-    assert.deepEqual(await actions.lancarCorrespondenciaAction(pix, tipo, a.numeros[tipo]), { ok: true, dados: undefined }, `lança ${tipo}`)
+    assert.deepEqual(await actions.lancarCorrespondenciaAction(pix, tipo, a.numeros[tipo]), { ok: true, dados: { forcadasSemCusto: 0 } }, `lança ${tipo}`)
     const v = await vinculoDe(pix)
     assert.equal(v.tipo_correspondencia, tipo)
     assert.equal(v[COLUNA[tipo]], a.ids[tipo], tipo)
@@ -103,7 +103,7 @@ test('NF e OS com o mesmo número em outra Conta: liga a da própria Conta', asy
   usuario = await sessao(a, 'aux_adm')
   for (const tipo of ['venda', 'os'] as const) {
     const pix = await semearPixRecebido(db, a.grupoId, { valor: 1000 })
-    assert.deepEqual(await actions.lancarCorrespondenciaAction(pix, tipo, a.numeros[tipo]), { ok: true, dados: undefined }, tipo)
+    assert.deepEqual(await actions.lancarCorrespondenciaAction(pix, tipo, a.numeros[tipo]), { ok: true, dados: { forcadasSemCusto: 0 } }, tipo)
     assert.equal((await vinculoDe(pix))[COLUNA[tipo]], a.ids[tipo], tipo)
   }
 })
@@ -434,4 +434,25 @@ test('a trava lê os pagamentos só nas lojas do grupo do PIX: alvo de outro gru
   usuario = await sessao(a, 'aux_adm')
   assert.deepEqual(await actions.removerCorrespondenciaAction(pix), { ok: true, dados: undefined })
   assert.equal(await forcadasDe(b.ids.venda), 1, 'a marca da Conta B fica')
+})
+
+// S2 (decisão do Luis registrada na #93): ligar ao pedido um PIX com custo zera, na mesma transação, o custo das
+// forçadas de PIX das vendas desse pedido; a tela recebe quantas foram zeradas para avisar. PIX sem custo não mexe.
+test('lançar no pedido um PIX com custo zera o custo das forçadas de PIX das vendas dele; sem custo, nada muda', async () => {
+  const a = await contaComNumeros()
+  usuario = await sessao(a, 'aux_adm')
+  const forcada = (custoPix: number) => [{ tipo: 'pix', valor: 1000, conciliadoManual: { motivo: 'Caiu na conta pessoal', porId: 'u1', porNome: 'Gestor',
+    em: '2026-11-19T12:00:00.000Z', pix: { valorRecebido: 1000 - custoPix, valorBruto: 1000, custoPix, custoPixTaxa: custoPix / 1000 } } }]
+  await db.execute(sql`update vendas set pagamentos = ${JSON.stringify(forcada(2))}::jsonb where id = ${a.ids.venda}`)
+  const pixDaVenda = async () => (await um<{ p: Record<string, unknown> }>(sql`select pagamentos->0->'conciliadoManual'->'pix' as p from vendas where id = ${a.ids.venda}`)).p
+  // Grupo sem custo do PIX: o PIX ligado ao pedido não tem custo, e a forçada fica como está.
+  const semCusto = await semearPixRecebido(db, a.grupoId, { valor: 500 })
+  assert.deepEqual(await actions.lancarCorrespondenciaAction(semCusto, 'pedido', a.numeros.pedido), { ok: true, dados: { forcadasSemCusto: 0 } })
+  assert.equal((await pixDaVenda()).custoPix, 2)
+  // Com custo: a forçada perde o custo (o resto da marca fica) e a resposta diz quantas.
+  await custoDoGrupo(a.grupoId, 0.002)
+  const comCusto = await semearPixRecebido(db, a.grupoId, { valor: 2994 })
+  assert.deepEqual(await actions.lancarCorrespondenciaAction(comCusto, 'pedido', a.numeros.pedido), { ok: true, dados: { forcadasSemCusto: 1 } })
+  assert.deepEqual(await pixDaVenda(), { valorRecebido: 998, valorBruto: 1000, custoPix: 0, custoPixTaxa: 0 })
+  assert.equal(Number((await custoDe(comCusto)).custo_pix), 6)
 })

@@ -5,7 +5,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { PgSelect } from 'drizzle-orm/pg-core'
 import { db } from './db'
 import { conciliacoesCartao, ordensServico, pixRecebimentosMcp, vendas, vendasPecas } from './db/schema'
-import { pagamentosEfetivosOS, type PgtoOS } from './conciliacao-status'
+import { pagamentosEfetivosOS, type PgtoOS, semCustoNasForcadasPix } from './conciliacao-status'
 import type { AlvoConciliacao } from './conciliacao-alvo'
 import { colunasQueLigamAoAlvo } from './alvo-conciliado'
 import { CARTAO_ESTORNADO } from './conciliacao-cartao'
@@ -130,4 +130,22 @@ export async function pedidoTemPixComCusto(alvo: AlvoConciliacao, exec: Executor
         where pr.pedido_id = ${sql.raw('"vendas"."pedido_venda_id"')} and pr.grupo_id = lj.grupo_id and pr.custo_pix > 0)`,
     }).from(vendas).where(eq(vendas.id, alvo.id)).limit(1)
   return Boolean(r?.tem)
+}
+
+/**
+ * Zera o custo das forçadas de PIX das vendas do pedido, com cada venda travada (#93, S2): o PIX com custo que se
+ * liga ao pedido passa a carregar o custo, e o mesmo dinheiro não leva dois. Só nas lojas dadas. Devolve quantas.
+ */
+export async function semCustoNasForcadasDoPedido(pedidoId: string, lojaIdsGrupo: string[], exec: ExecutorDoAlvo): Promise<number> {
+  const daVenda = await exec.select({ id: vendas.id }).from(vendas)
+    .where(and(eq(vendas.pedidoVendaId, pedidoId), inArray(vendas.lojaId, lojaIdsGrupo)))
+  return daVenda.reduce(async (soma, { id }) => {
+    const antes = await soma
+    const alvo = { tipo: 'moto' as const, id }
+    const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo, exec, true)
+    if (!pgtos) return antes
+    const r = semCustoNasForcadasPix(pgtos)
+    if (r.zeradas > 0) await gravarPagamentosDoAlvo(alvo, lojaIdsGrupo, r.pgtos, exec)
+    return antes + r.zeradas
+  }, Promise.resolve(0))
 }

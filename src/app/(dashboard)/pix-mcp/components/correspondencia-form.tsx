@@ -9,6 +9,7 @@ import { Unlink } from 'lucide-react'
 import { forcadaDoPixAction, lancarCorrespondenciaAction, removerCorrespondenciaAction } from '../actions'
 import { COMPLETA_FORCADA, COMPLETA_FORCADA_PEDIR_A_GESTOR, type ForcadaQueOPixCompleta } from '@/lib/conciliacao-status'
 import { ForcadaDoPix } from './forcada-do-pix'
+import { plural } from '@/lib/texto'
 import type { VinculoPix } from '@/lib/pix-vinculo'
 
 type Correspondencia = {
@@ -103,7 +104,11 @@ export function CorrespondenciaForm({ id, correspondencia, podeDesfazerForcada }
       try {
         const r = await lancarCorrespondenciaAction(id, tipo, numero.trim())
         if (!r.ok) { toast.error(r.erro); return }
-        toast.success('Correspondência lançada')
+        // Ligado ao pedido com custo: as forçadas de PIX das vendas dele perderam o custo (#93, S2).
+        const n = r.dados?.forcadasSemCusto ?? 0
+        toast.success(n > 0
+          ? `Correspondência lançada. O custo do PIX saiu de ${plural(n, 'forçada', 'forçadas')} deste pedido: agora ele entra por este PIX.`
+          : 'Correspondência lançada')
         setNumero('')
       } catch {
         toast.error('Erro ao lançar correspondência')

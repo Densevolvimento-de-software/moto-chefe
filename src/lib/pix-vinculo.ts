@@ -8,6 +8,8 @@ import { pixRecebimentosMcp } from './db/schema'
 import { COMPLETA_FORCADA, type ForcadaQueOPixCompleta } from './conciliacao-status'
 import type { AlvoConciliacao } from './conciliacao-alvo'
 import { ehTransferenciaInterna } from './pix-internos'
+import { lojasDoGrupo } from './conta'
+import { semCustoNasForcadasDoPedido } from './alvo-da-conciliacao'
 import { RecusaUsuario } from './resultado-action'
 import { ehUuid } from './uuid'
 import { desfazerForcadaEDesvincular, desvincularNaTrava, forcadaQueOItemCompleta, PIX_NAO_ENCONTRADO, pixDoBanco, pixDoGrupo } from './vinculo-na-trava'
@@ -24,7 +26,8 @@ export type VinculoPix =
   | { tipo: 'peca'; pecaVendaId: string }
 
 
-export async function vincularPix(pixId: string, grupoId: string, vinculo: VinculoPix, porId: string): Promise<void> {
+// `forcadasSemCusto`: quantas forçadas de PIX das vendas do pedido perderam o custo (#93, S2), para a tela avisar.
+export async function vincularPix(pixId: string, grupoId: string, vinculo: VinculoPix, porId: string): Promise<{ forcadasSemCusto: number }> {
   const [pix] = ehUuid(pixId)
     ? await db.select({ pagadorNome: pixRecebimentosMcp.pagadorNome, tipo: pixRecebimentosMcp.tipoCorrespondencia, valor: pixRecebimentosMcp.valor, tipoOperacao: pixRecebimentosMcp.tipoOperacao })
       .from(pixRecebimentosMcp).where(pixDoGrupo(pixId, grupoId)).limit(1)
@@ -35,23 +38,31 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
 
   // A taxa é a do grupo do PIX agora; o que se grava não muda se ela mudar depois.
   const custo = custoDoPixVinculado(pix.tipoOperacao, Number(pix.valor), await custoPixTaxaDoGrupo(grupoId))
-  const ligados = await db.update(pixRecebimentosMcp)
-    .set({
-      tipoCorrespondencia: vinculo.tipo,
-      vendaId:      vinculo.tipo === 'venda'  ? vinculo.vendaId     : null,
-      osId:         vinculo.tipo === 'os'     ? vinculo.osId        : null,
-      pedidoId:     vinculo.tipo === 'pedido' ? vinculo.pedidoId    : null,
-      pecaVendaId:  vinculo.tipo === 'peca'   ? vinculo.pecaVendaId : null,
-      lancadoPorId: porId,
-      lancadoEm:    new Date(),
-      valorBruto:   String(custo.valorBruto),
-      custoPix:     String(custo.custoPix),
-      custoPixTaxa: String(custo.custoPixTaxa),
-    })
-    .where(and(pixDoGrupo(pixId, grupoId), isNull(pixRecebimentosMcp.tipoCorrespondencia)))
-    .returning({ id: pixRecebimentosMcp.id })
-  // Outro clique ligou o PIX entre a leitura e a gravação.
-  if (ligados.length === 0) throw new RecusaUsuario(PIX_JA_VINCULADO)
+  // PIX com custo no pedido: o custo das forçadas de PIX das vendas dele sai, na mesma transação (#93, S2).
+  const zeraForcadas = vinculo.tipo === 'pedido' && custo.custoPix > 0
+  // As lojas antes: dentro da transação, o db pegaria uma 2ª conexão do pool.
+  const lojaIds = zeraForcadas ? (await lojasDoGrupo(grupoId)).map(l => l.id) : []
+  return db.transaction(async tx => {
+    const forcadasSemCusto = zeraForcadas && vinculo.tipo === 'pedido' ? await semCustoNasForcadasDoPedido(vinculo.pedidoId, lojaIds, tx) : 0
+    const ligados = await tx.update(pixRecebimentosMcp)
+      .set({
+        tipoCorrespondencia: vinculo.tipo,
+        vendaId:      vinculo.tipo === 'venda'  ? vinculo.vendaId     : null,
+        osId:         vinculo.tipo === 'os'     ? vinculo.osId        : null,
+        pedidoId:     vinculo.tipo === 'pedido' ? vinculo.pedidoId    : null,
+        pecaVendaId:  vinculo.tipo === 'peca'   ? vinculo.pecaVendaId : null,
+        lancadoPorId: porId,
+        lancadoEm:    new Date(),
+        valorBruto:   String(custo.valorBruto),
+        custoPix:     String(custo.custoPix),
+        custoPixTaxa: String(custo.custoPixTaxa),
+      })
+      .where(and(pixDoGrupo(pixId, grupoId), isNull(pixRecebimentosMcp.tipoCorrespondencia)))
+      .returning({ id: pixRecebimentosMcp.id })
+    // Outro clique ligou o PIX entre a leitura e a gravação (a transação desfaz o que zerou).
+    if (ligados.length === 0) throw new RecusaUsuario(PIX_JA_VINCULADO)
+    return { forcadasSemCusto }
+  })
 }
 
 /** Desvincula o PIX do banco com a forçada parcial conferida na trava do alvo (vinculo-na-trava). */
