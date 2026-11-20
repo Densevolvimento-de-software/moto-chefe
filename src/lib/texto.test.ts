@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { comMaiuscula, iniciaisDoNome, normalizar, palavraPara, plural, semZerosAEsquerda } from './texto'
+import { comMaiuscula, iniciaisDoNome, normalizar, palavraPara, plural, semZerosAEsquerda, emLista } from './texto'
 
 test('minusculas, sem acento, espacos colapsados', () => {
   assert.equal(normalizar('  Ática   ROSA  '), 'atica rosa')
@@ -42,4 +42,8 @@ test('comMaiuscula: só a primeira letra, o resto como está', () => {
   assert.equal(comMaiuscula('março de 2026'), 'Março de 2026')
   assert.equal(comMaiuscula('cartão pré-pago'), 'Cartão pré-pago')
   assert.equal(comMaiuscula(''), '')
+})
+
+test('emLista: um, dois e três itens em português', () => {
+  assert.deepEqual([['a'], ['a', 'b'], ['a', 'b', 'c']].map(emLista), ['a', 'a e b', 'a, b e c'])
 })

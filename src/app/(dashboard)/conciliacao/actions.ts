@@ -1,30 +1,37 @@
 'use server'
-import { acao, RecusaUsuario } from '@/lib/resultado-action'
+import { acao, RecusaUsuario, type ResultadoAction } from '@/lib/resultado-action'
 import { maquininhasDoGrupo } from '@/lib/maquininhas'
 import { gruposDoTerminalNaConta } from '@/lib/terminal-da-conta'
 import { db } from '@/lib/db'
 import { cartaoNaoEstornado, cartaoPendente, linhaDoPagamento } from '@/lib/cartao-status'
 import { conciliacoesCartao, pixRecebimentosMcp, vendas, modelos, motos, vendasPecas, ordensServico, clientes } from '@/lib/db/schema'
-import { eq, and, or, desc, gte, sql, isNull, ilike, inArray } from 'drizzle-orm'
+import { eq, and, or, desc, gte, sql, isNull, ilike, inArray, type SQL } from 'drizzle-orm'
 import { getUsuarioLogado } from '@/lib/auth'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-periodo'
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
-import { comForcado, pagamentosEfetivosOS, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
+import { alvoValido, colunasDoAlvo, semAlvos, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
+import { ehUuid } from '@/lib/uuid'
+import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
+import { CONCILIACAO_NAO_ENCONTRADA, desfazerForcadaEDesvincular, desvincularNaTrava, forcadaQueOItemCompleta, linhaDoCartao } from '@/lib/vinculo-na-trava'
+import { esperadoComTaxa, OPERACAO_COM_CUSTO, type CoberturaDaVenda } from '@/lib/custo-pix'
+import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
+import { comForcado, matchPagamentos, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
-import { casarPorAutorizacao, linhaDaTransacao, semAlvos } from '@/lib/conciliacao-casamento'
+import { casarPorAutorizacao, linhaDaTransacao } from '@/lib/conciliacao-casamento'
 import { tiposDoPagamentoDaLinha } from '@/lib/conciliacao-status'
 import { detectarFormato } from '@/lib/conciliacao-formato'
-import { CARTAO_ESTORNADO, ehLinhaProcurada, type LinhaProcurada, type TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
+import { ehLinhaProcurada, type LinhaProcurada, type TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
 import { lerRelatorioCielo } from '@/lib/conciliacao-cielo'
 import { lerRelatorioRede } from '@/lib/conciliacao-rede'
 import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
 import { grupos } from '@/lib/db/schema'
 import { revalidatePath } from 'next/cache'
-import { lojasDoEscopo, type EscopoDoUsuario } from '@/lib/conta'
-import { colunasDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/alvo-conciliado'
+import { revalidarTelasDaConciliacao } from '@/lib/revalidar-conciliacao'
+import { coberturaDoPedidoDaVenda, cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from '@/lib/alvo-da-conciliacao'
+import { lojasDoEscopo } from '@/lib/conta'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 // Linha comum aos leitores de relatório, o que a gravação precisa de cada transação.
@@ -304,80 +311,58 @@ async function importarRelatorio(formData: FormData) {
   return { importadas, duplicadas, conciliadas, semCodigo, incompletas }
 }
 
-// Linha de outro grupo, inexistente ou estornada recebem a mesma frase: estornada não se vincula
-// (vincular poria o valor devolvido de volta nas somas), e a frase não revela mais que "não achei".
-const CONCILIACAO_NAO_ENCONTRADA = 'Conciliação não encontrada'
-
-export async function vincularVendaAction(conciliacaoId: string, alvoId: string, tipo: 'moto' | 'peca' | 'os' = 'moto') {
-  const usuario = await getUsuarioLogado()
-  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+// Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404, #129).
+export async function vincularVendaAction(conciliacaoId: string, alvo: AlvoConciliacao) {
+  return acao(() => vincularVenda(conciliacaoId, alvo))
+}
+async function vincularVenda(conciliacaoId: string, alvo: AlvoConciliacao) {
+  const usuario = await exigirAlvoNoGrupoAtivo(alvo)
   const grupo = await getGrupoAtivo(usuario)
-  const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
-  if (tipo === 'peca') {
-    const [pecaVenda] = await db.select({ id: vendasPecas.id }).from(vendasPecas)
-      .where(and(eq(vendasPecas.id, alvoId), inArray(vendasPecas.lojaId, lojaIdsGrupo))).limit(1)
-    if (!pecaVenda) {
-      throw new Error('Venda de peça não pertence ao grupo ativo')
-    }
-    const atualizadas = await db.update(conciliacoesCartao)
-      .set({ pecaVendaId: alvoId, vendaId: null, osId: null, conciliado: true, conciliadoEm: new Date() })
+  const atualizadas = ehUuid(conciliacaoId)
+    ? await db.update(conciliacoesCartao)
+      .set({ ...colunasDoAlvo(alvo), conciliado: true, conciliadoEm: new Date() })
       .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
       .returning({ id: conciliacoesCartao.id })
-    if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
-    revalidatePath('/conciliacao')
-    return
-  }
+    : []
+  if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
 
-  if (tipo === 'os') {
-    const [os] = await db.select({ id: ordensServico.id }).from(ordensServico)
-      .where(and(eq(ordensServico.id, alvoId), inArray(ordensServico.lojaId, lojaIdsGrupo))).limit(1)
-    if (!os) {
-      throw new Error('Ordem de serviço não pertence ao grupo ativo')
-    }
-    const atualizadas = await db.update(conciliacoesCartao)
-      .set({ osId: alvoId, vendaId: null, pecaVendaId: null, conciliado: true, conciliadoEm: new Date() })
-      .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
-      .returning({ id: conciliacoesCartao.id })
-    if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
-    revalidatePath('/conciliacao')
-    return
-  }
-
-  // Garante que a venda a ser vinculada pertence a uma loja do grupo ativo
-  const [venda] = await db
-    .select({ id: vendas.id })
-    .from(vendas)
-    .where(and(eq(vendas.id, alvoId), inArray(vendas.lojaId, lojaIdsGrupo)))
-    .limit(1)
-  if (!venda) {
-    throw new Error('Venda não pertence ao grupo ativo')
-  }
-
-  const atualizadas = await db.update(conciliacoesCartao)
-    .set({ vendaId: alvoId, pecaVendaId: null, osId: null, conciliado: true, conciliadoEm: new Date() })
-    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
-    .returning({ id: conciliacoesCartao.id })
-
-  if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
-
-  revalidatePath('/conciliacao')
+  revalidarTelasDaConciliacao(alvo)
 }
 
 export async function desvincularVendaAction(conciliacaoId: string) {
+  return acao(() => desvincularVenda(conciliacaoId))
+}
+async function desvincularVenda(conciliacaoId: string) {
   const usuario = await getUsuarioLogado()
-  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
+  // A linha pix da maquininha pode ser o resto de uma forçada parcial de PIX (#166), como o PIX do banco.
+  revalidarTelasDaConciliacao(await desvincularNaTrava(linhaDoCartao(conciliacaoId, grupo.id), grupo.id))
+}
 
-  const atualizadas = await db.update(conciliacoesCartao)
-    .set({ vendaId: null, pecaVendaId: null, osId: null, conciliado: false, conciliadoEm: null })
-    // Estornada mantém o vínculo com a venda: desvincular recebe a mesma frase de linha inexistente.
-    .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
-    .returning({ id: conciliacoesCartao.id })
+// #166 (variante 2 do protótipo): a linha completa uma forçada parcial; quem gere desfaz a forçada e desvincula de uma
+// vez, depois de confirmar no diálogo. Desfazer a forçada é de quem gere a conciliação (#79).
+/** `resumoVisto`: o que o diálogo mostrou, só para conferir; se mudou, a ação é recusada. */
+export async function desfazerForcadaEDesvincularLinhaAction(conciliacaoId: string, resumoVisto?: unknown) {
+  return acao(() => desfazerForcadaEDesvincularLinha(conciliacaoId, resumoVisto))
+}
+async function desfazerForcadaEDesvincularLinha(conciliacaoId: string, resumoVisto: unknown) {
+  const usuario = await getUsuarioLogado()
+  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  const grupo = await getGrupoAtivo(usuario)
+  revalidarTelasDaConciliacao(await desfazerForcadaEDesvincular(linhaDoCartao(conciliacaoId, grupo.id), grupo.id, resumoVisto ?? null))
+}
 
-  if (atualizadas.length === 0) throw new Error(CONCILIACAO_NAO_ENCONTRADA)
-
-  revalidatePath('/conciliacao')
+/** O que o diálogo mostra quando o desvincular é recusado porque a linha completa uma forçada parcial. */
+export async function forcadaDaLinhaAction(conciliacaoId: string) {
+  return acao(() => forcadaDaLinha(conciliacaoId))
+}
+async function forcadaDaLinha(conciliacaoId: string) {
+  const usuario = await getUsuarioLogado()
+  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  const grupo = await getGrupoAtivo(usuario)
+  return forcadaQueOItemCompleta(linhaDoCartao(conciliacaoId, grupo.id), grupo.id)
 }
 
 /** Linhas pendentes no valor do pagamento; `linha`: a que cobre o pagamento (cartão ou a pix da maquininha). */
@@ -418,98 +403,58 @@ export async function buscarConciliacoesPorValor(valor: number, linha: LinhaProc
 // As telas de vendas, peças e OS mostram o mesmo painel de pagamentos, então
 // carregam os lançamentos pelas mesmas funções — ver src/components/pagamentos-conciliacao.tsx.
 
-export type { AlvoTipo, AlvoConciliacao }
+export type { AlvoConciliacao, AlvoTipo }
 
-// O mesmo status de conciliação aparece em várias telas; todas revalidam juntas
-// para nunca divergirem (uma dizendo "pendente" e a outra "conciliada").
-function revalidatePathsConciliacao() {
-  revalidatePath('/vendas')
-  revalidatePath('/pecas')
-  revalidatePath('/ordens-servico')
-  revalidatePath('/dashboard')
-  revalidatePath('/conciliacao')
-  revalidatePath('/pix-mcp')
-}
-
-// Loja do alvo, lida já com o escopo de lojas de quem consulta no where (admin_geral vê todas; sem Conta, nenhuma):
-// alvo de outra Conta e alvo inexistente dão o mesmo null.
-async function lojaIdDoAlvo(usuario: EscopoDoUsuario & { papel: string }, alvo: AlvoConciliacao): Promise<string | null> {
-  const noEscopo = (coluna: AnyPgColumn) => (usuario.papel === 'admin_geral' ? undefined : inArray(coluna, lojasDoEscopo(usuario)))
+// Loja do alvo, já com as lojas permitidas no where: as do grupo ativo (gravação) ou o escopo da Conta (leitura do
+// painel); sem filtro só para o admin_geral. Alvo fora delas e alvo inexistente dão o mesmo null.
+async function lojaIdDoAlvo(alvo: AlvoConciliacao, lojas: Parameters<typeof inArray>[1] | undefined): Promise<string | null> {
+  const naLoja = (coluna: AnyPgColumn) => (lojas ? inArray(coluna, lojas) : undefined)
   if (alvo.tipo === 'peca') {
     const [r] = await db.select({ lojaId: vendasPecas.lojaId }).from(vendasPecas)
-      .where(and(eq(vendasPecas.id, alvo.id), noEscopo(vendasPecas.lojaId))).limit(1)
+      .where(and(eq(vendasPecas.id, alvo.id), naLoja(vendasPecas.lojaId))).limit(1)
     return r?.lojaId ?? null
   }
   if (alvo.tipo === 'os') {
     const [r] = await db.select({ lojaId: ordensServico.lojaId }).from(ordensServico)
-      .where(and(eq(ordensServico.id, alvo.id), noEscopo(ordensServico.lojaId))).limit(1)
+      .where(and(eq(ordensServico.id, alvo.id), naLoja(ordensServico.lojaId))).limit(1)
     return r?.lojaId ?? null
   }
-  const [r] = await db.select({ lojaId: vendas.lojaId }).from(vendas).where(and(eq(vendas.id, alvo.id), noEscopo(vendas.lojaId))).limit(1)
+  const [r] = await db.select({ lojaId: vendas.lojaId }).from(vendas)
+    .where(and(eq(vendas.id, alvo.id), naLoja(vendas.lojaId))).limit(1)
   return r?.lojaId ?? null
 }
 
-// O usuário vê o alvo? Alvo de outra Conta e alvo inexistente dão o mesmo false (a Conta entra no where de
-// `lojaIdDoAlvo`); a regra de grupo por papel (podeVerGrupo) vem depois, sobre uma loja da Conta. As leituras do painel
-// devolvem lista vazia em todos os casos: a resposta não revela que o registro existe.
-async function alvoVisivel(alvo: AlvoConciliacao): Promise<boolean> {
+// Quem não abre o alvo recebe o mesmo que o alvo inexistente (lista vazia): a resposta não revela que o registro
+// existe. Alvo forjado (tipo fora da lista, id que não é uuid) também. A Conta (ou o grupo da persona) entra no where
+// de `lojaIdDoAlvo`; a regra de grupo por papel (podeVerGrupo) vem depois, sobre uma loja da Conta.
+async function abreOAlvo(alvo: AlvoConciliacao): Promise<boolean> {
   const usuario = await getUsuarioLogado()
-  const lojaId  = await lojaIdDoAlvo(usuario, alvo)
+  if (!alvoValido(alvo)) return false
+  const lojaId  = await lojaIdDoAlvo(alvo, usuario.papel === 'admin_geral' ? undefined : lojasDoEscopo(usuario))
   if (!lojaId) return false
   return podeGerirConciliacao(usuario.papel) ? podeAbrirRegistroDaLoja(usuario, lojaId) : lojaId === usuario.lojaId
 }
 
 export async function buscarConciliacoesDoAlvo(alvo: AlvoConciliacao) {
-  if (!(await alvoVisivel(alvo))) return []
-  const coluna = colunasDoAlvo(alvo).cartao
-
-  return db
-    .select({
-      id:            conciliacoesCartao.id,
-      autorizacao:   conciliacoesCartao.autorizacao,
-      valorBruto:    conciliacoesCartao.valorBruto,
-      valorLiquido:  conciliacoesCartao.valorLiquido,
-      operadora:     conciliacoesCartao.operadora,
-      tipo:          conciliacoesCartao.tipo,
-      dataTransacao: conciliacoesCartao.dataTransacao,
-    })
-    .from(conciliacoesCartao)
-    .where(and(eq(coluna, alvo.id), eq(conciliacoesCartao.conciliado, true)))
+  if (!(await abreOAlvo(alvo))) return []
+  return cartoesDoAlvo(alvo)
 }
 
 /** Linhas da maquininha ligadas ao alvo e estornadas no Mercado Pago (#51): o painel diz que o pagamento voltou. */
 export async function buscarEstornosDoAlvo(alvo: AlvoConciliacao) {
-  if (!(await alvoVisivel(alvo))) return []
-  const coluna = colunasDoAlvo(alvo).cartao
-  return db
-    .select({
-      id:            conciliacoesCartao.id,
-      valorBruto:    conciliacoesCartao.valorBruto,
-      tipo:          conciliacoesCartao.tipo,
-    })
-    .from(conciliacoesCartao)
-    .where(and(eq(coluna, alvo.id), eq(conciliacoesCartao.status, CARTAO_ESTORNADO)))
+  if (!(await abreOAlvo(alvo))) return []
+  return estornosDoAlvo(alvo)
 }
 
 export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
-  if (!(await alvoVisivel(alvo))) return []
+  if (!(await abreOAlvo(alvo))) return []
+  return pixDoAlvo(alvo)
+}
 
-  // Fonte única desde 15/09/2026: o PIX do ValidaPix saiu junto com a
-  // integração. Venda de antes de julho/2026, cujo pagamento só existia lá,
-  // aparece aqui sem PIX — o dado está em
-  // backups/pix_recebimentos_validapix_20260915.json.
-  const coluna = colunasDoAlvo(alvo).pix
-
-  return db
-    .select({
-      id:            pixRecebimentosMcp.id,
-      dataPagamento: pixRecebimentosMcp.data,
-      valor:         pixRecebimentosMcp.valor,
-      pagadorNome:   pixRecebimentosMcp.pagadorNome,
-      observacao:    pixRecebimentosMcp.descricao,
-    })
-    .from(pixRecebimentosMcp)
-    .where(eq(coluna, alvo.id))
+/** A cobertura do pedido da venda para a linha da forçada de PIX (decisão 11 do Luis, #93). Só venda; sem acesso, null. */
+export async function buscarCoberturaDoPedido(alvo: AlvoConciliacao): Promise<CoberturaDaVenda | null> {
+  if (alvo.tipo !== 'moto' || !(await abreOAlvo(alvo))) return null
+  return coberturaDoPedidoDaVenda(alvo.id)
 }
 
 // Busca livre: a lupa padrão só acha transação de valor praticamente idêntico. Quando
@@ -576,34 +521,23 @@ export type PixLivre = {
   descricao: string | null
 }
 
-/**
- * PIX livres pra conciliar com o alvo. Sem `query`, procura por valor aproximado
- * (o mesmo ±5 do cartão); com `query`, casa por pagador, descrição, data
- * (AAAA-MM-DD) ou valor.
- */
-export async function buscarPixLivres(valor: number, query?: string): Promise<PixLivre[]> {
+type Usuario = Awaited<ReturnType<typeof getUsuarioLogado>>
+
+/** O alvo só vale nas lojas do grupo ativo, o grupo do PIX: nem outra Conta nem outro grupo da mesma Conta. */
+async function alvoNoGrupoAtivo(usuario: Usuario, alvo: AlvoConciliacao): Promise<boolean> {
+  return alvoValido(alvo) && (await lojaIdDoAlvo(alvo, await listarLojaIdsDoGrupoAtivo(usuario))) !== null
+}
+
+/** Quem grava no alvo (cartão, PIX, forçar): gere a conciliação e o alvo está no grupo ativo; senão recusa. */
+async function exigirAlvoNoGrupoAtivo(alvo: AlvoConciliacao): Promise<Usuario> {
   const usuario = await getUsuarioLogado()
-  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
-  const grupo = await getGrupoAtivo(usuario)
+  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
+  if (!(await alvoNoGrupoAtivo(usuario, alvo))) throw alvoNaoEncontrado(tipoDoAlvo(alvo))
+  return usuario
+}
 
-  const q = (query ?? '').trim()
-  let filtro
-  if (!q) {
-    filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric - ${valor}) <= 5`
-  } else {
-    const valorBusca = parseFloat(q.replace(/\./g, '').replace(',', '.'))
-    if (/^\d{4}-\d{2}-\d{2}$/.test(q)) {
-      filtro = sql`${pixRecebimentosMcp.data}::date = ${q}::date`
-    } else if (Number.isFinite(valorBusca) && valorBusca > 0) {
-      filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric - ${valorBusca}) <= 5`
-    } else {
-      filtro = or(
-        ilike(pixRecebimentosMcp.pagadorNome, `%${q}%`),
-        ilike(pixRecebimentosMcp.descricao, `%${q}%`),
-      )
-    }
-  }
-
+/** PIX livres do grupo (sem vínculo, desde o início da conciliação), sem transferência interna. */
+async function pixLivresDoGrupo(grupoId: string, filtro: SQL | undefined): Promise<PixLivre[]> {
   const linhas = await db
     .select({
       id:          pixRecebimentosMcp.id,
@@ -614,7 +548,7 @@ export async function buscarPixLivres(valor: number, query?: string): Promise<Pi
     })
     .from(pixRecebimentosMcp)
     .where(and(
-      eq(pixRecebimentosMcp.grupoId, grupo.id),
+      eq(pixRecebimentosMcp.grupoId, grupoId),
       gte(pixRecebimentosMcp.data, INICIO_CONCILIACAO_EM),
       isNull(pixRecebimentosMcp.tipoCorrespondencia),
       filtro,
@@ -627,61 +561,67 @@ export async function buscarPixLivres(valor: number, query?: string): Promise<Pi
   return linhas.filter(l => !ehTransferenciaInterna(l.pagadorNome)).slice(0, 15)
 }
 
-export async function vincularPixAlvoAction(pixId: string, alvo: AlvoConciliacao) {
+/**
+ * O que a tela mostra ao abrir um pagamento PIX do alvo (#90): o valor esperado no banco (null sem custo
+ * do PIX no grupo), se o alvo é do grupo ativo e os PIX livres de valor próximo (± R$ 5, o mesmo do cartão):
+ * a linha PIX pelo esperado, a TED ou linha sem tipo pelo valor cheio. Fora do grupo ativo não lista nada:
+ * vincular e forçar só valem no grupo do PIX.
+ */
+export async function buscarPixParaOAlvo(alvo: AlvoConciliacao, valor: number): Promise<{ esperado: number | null; taxa: number; noGrupoAtivo: boolean; pix: PixLivre[] }> {
+  const usuario = await getUsuarioLogado()
+  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+  const grupo = await getGrupoAtivo(usuario)
+  const [noGrupoAtivo, taxa] = await Promise.all([alvoNoGrupoAtivo(usuario, alvo), custoPixTaxaDoGrupo(grupo.id)])
+  // A taxa vai junto para a tela preencher o forçar de PIX com o esperado do que falta (#92).
+  const esperado = esperadoComTaxa(valor, taxa)
+  if (!noGrupoAtivo) return { esperado, taxa, noGrupoAtivo, pix: [] }
+  const filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric
+    - CASE WHEN ${pixRecebimentosMcp.tipoOperacao} = ${OPERACAO_COM_CUSTO} THEN ${esperado ?? valor}::numeric ELSE ${valor}::numeric END) <= 5`
+  return { esperado, taxa, noGrupoAtivo, pix: await pixLivresDoGrupo(grupo.id, filtro) }
+}
+
+/** Busca digitada de PIX livres: pagador, descrição, data (AAAA-MM-DD) ou valor, como o crédito aparece no extrato. */
+export async function buscarPixLivres(query: string): Promise<PixLivre[]> {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
 
-  // Outra Conta, outro grupo e inexistente: a mesma frase (não revela que a venda existe).
-  const lojaId = await lojaIdDoAlvo(usuario, alvo)
-  const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
-  if (!lojaId || !lojaIdsGrupo.includes(lojaId)) throw alvoNaoEncontrado(alvo.tipo)
+  const q = query.trim()
+  const valorBusca = parseFloat(q.replace(/\./g, '').replace(',', '.'))
+  const filtro = /^\d{4}-\d{2}-\d{2}$/.test(q)
+    ? sql`${pixRecebimentosMcp.data}::date = ${q}::date`
+    : Number.isFinite(valorBusca) && valorBusca > 0
+      ? sql`ABS(${pixRecebimentosMcp.valor}::numeric - ${valorBusca}) <= 5`
+      : or(ilike(pixRecebimentosMcp.pagadorNome, `%${q}%`), ilike(pixRecebimentosMcp.descricao, `%${q}%`))
+  return pixLivresDoGrupo(grupo.id, filtro)
+}
 
-  const [pix] = await db
-    .select({ pagadorNome: pixRecebimentosMcp.pagadorNome })
-    .from(pixRecebimentosMcp)
-    .where(and(eq(pixRecebimentosMcp.id, pixId), eq(pixRecebimentosMcp.grupoId, grupo.id)))
-    .limit(1)
-  if (!pix) throw new Error('PIX não encontrado no grupo ativo')
-  if (ehTransferenciaInterna(pix.pagadorNome)) {
-    throw new Error('Essa transferência é interna (maquininha/conta do próprio grupo) e não pode ser conciliada com uma venda')
-  }
+// Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
+export async function vincularPixAlvoAction(pixId: string, alvo: AlvoConciliacao) {
+  return acao(() => vincularPixAlvo(pixId, alvo))
+}
+async function vincularPixAlvo(pixId: string, alvo: AlvoConciliacao) {
+  const usuario = await exigirAlvoNoGrupoAtivo(alvo)
+  const grupo = await getGrupoAtivo(usuario)
 
   // `tipoCorrespondencia` usa 'venda' pra moto — é o enum que /pix-mcp já grava.
-  const tipo = alvo.tipo === 'moto' ? 'venda' : alvo.tipo
+  const vinculo = alvo.tipo === 'peca' ? { tipo: 'peca' as const, pecaVendaId: alvo.id }
+    : alvo.tipo === 'os'               ? { tipo: 'os' as const, osId: alvo.id }
+    :                                    { tipo: 'venda' as const, vendaId: alvo.id }
+  await vincularPix(pixId, grupo.id, vinculo, usuario.id)
 
-  await db.update(pixRecebimentosMcp)
-    .set({
-      tipoCorrespondencia: tipo,
-      vendaId:     alvo.tipo === 'moto' ? alvo.id : null,
-      pecaVendaId: alvo.tipo === 'peca' ? alvo.id : null,
-      osId:        alvo.tipo === 'os'   ? alvo.id : null,
-      pedidoId:    null,
-      lancadoPorId: usuario.id,
-      lancadoEm:   new Date(),
-    })
-    .where(and(eq(pixRecebimentosMcp.id, pixId), eq(pixRecebimentosMcp.grupoId, grupo.id)))
-
-  revalidatePathsConciliacao()
+  revalidarTelasDaConciliacao(alvo)
 }
 
 export async function desvincularPixAlvoAction(pixId: string) {
+  return acao(() => desvincularPixAlvo(pixId))
+}
+async function desvincularPixAlvo(pixId: string) {
   const usuario = await getUsuarioLogado()
-  if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
+  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
-
-  const atualizadas = await db.update(pixRecebimentosMcp)
-    .set({
-      tipoCorrespondencia: null,
-      vendaId: null, pecaVendaId: null, osId: null, pedidoId: null,
-      lancadoPorId: null, lancadoEm: null,
-    })
-    .where(and(eq(pixRecebimentosMcp.id, pixId), eq(pixRecebimentosMcp.grupoId, grupo.id)))
-    .returning({ id: pixRecebimentosMcp.id })
-
-  if (atualizadas.length === 0) throw new Error('PIX não encontrado no grupo ativo')
-
-  revalidatePathsConciliacao()
+  await desvincularPix(pixId, grupo.id)
+  revalidarTelasDaConciliacao()
 }
 
 // ─── Forçar conciliação na mão ───────────────────────────────────────────────
@@ -698,86 +638,41 @@ function alvoNaoEncontrado(tipo: AlvoTipo) {
     :                                         'Venda não encontrada')
 }
 
-// Pagamentos do alvo, só se ele for de uma loja do grupo ativo (escopo dentro da consulta).
-async function pagamentosDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo: string[]): Promise<PgtoOS[] | null> {
-  if (alvo.tipo === 'peca') {
-    const [r] = await db
-      .select({ pagamentos: vendasPecas.pagamentos })
-      .from(vendasPecas)
-      .where(and(eq(vendasPecas.id, alvo.id), inArray(vendasPecas.lojaId, lojaIdsGrupo)))
-      .limit(1)
-    return r ? ((r.pagamentos ?? []) as PgtoOS[]) : null
-  }
-
-  if (alvo.tipo === 'os') {
-    const [r] = await db
-      .select({
-        pagamentos:     ordensServico.pagamentos,
-        formaPagamento: ordensServico.formaPagamento,
-        valorTotal:     ordensServico.valorTotal,
-      })
-      .from(ordensServico)
-      .where(and(eq(ordensServico.id, alvo.id), inArray(ordensServico.lojaId, lojaIdsGrupo)))
-      .limit(1)
-    // OS antiga só tem `formaPagamento` em texto — materializa o array sintetizado
-    // para que a marcação tenha onde morar.
-    return r ? pagamentosEfetivosOS(r.formaPagamento, r.pagamentos, r.valorTotal) : null
-  }
-
-  const [r] = await db
-    .select({ pagamentos: vendas.pagamentos })
-    .from(vendas)
-    .where(and(eq(vendas.id, alvo.id), inArray(vendas.lojaId, lojaIdsGrupo)))
-    .limit(1)
-  return r ? ((r.pagamentos ?? []) as PgtoOS[]) : null
-}
-
-async function alvoParaEdicao(alvo: AlvoConciliacao) {
-  const usuario = await getUsuarioLogado()
-  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
-
+// Lê, muda e grava os pagamentos do alvo numa transação com a linha travada: forçar, desfazer e o desvincular de um
+// PIX (pix-vinculo.ts) no mesmo alvo esperam a vez, e nenhum grava por cima do outro.
+type MudarPagamentos = (pgtos: PgtoOS[], usuario: Usuario, tx: ExecutorDoAlvo) => Promise<PgtoOS[]>
+async function editarPagamentos(alvo: AlvoConciliacao, mudar: MudarPagamentos) {
+  const usuario = await exigirAlvoNoGrupoAtivo(alvo)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
-  const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo)
-  if (!pgtos) throw alvoNaoEncontrado(alvo.tipo)
-  return { usuario, lojaIdsGrupo, pgtos }
+  await db.transaction(async tx => {
+    const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo, tx, true)
+    if (!pgtos) throw alvoNaoEncontrado(alvo.tipo)
+    await gravarPagamentosDoAlvo(alvo, lojaIdsGrupo, await mudar(pgtos, usuario, tx), tx)
+  })
+  revalidarTelasDaConciliacao(alvo)
 }
 
-// Grava com o mesmo escopo da leitura: o update não confia só no id.
-async function gravarPagamentos(alvo: AlvoConciliacao, lojaIdsGrupo: string[], pgtos: PgtoOS[]) {
-  if (alvo.tipo === 'peca') {
-    await db.update(vendasPecas).set({ pagamentos: pgtos })
-      .where(and(eq(vendasPecas.id, alvo.id), inArray(vendasPecas.lojaId, lojaIdsGrupo)))
-  } else if (alvo.tipo === 'os') {
-    await db.update(ordensServico).set({ pagamentos: pgtos })
-      .where(and(eq(ordensServico.id, alvo.id), inArray(ordensServico.lojaId, lojaIdsGrupo)))
-    revalidatePath(`/ordens-servico/${alvo.id}`)
-  } else {
-    await db.update(vendas).set({ pagamentos: pgtos })
-      .where(and(eq(vendas.id, alvo.id), inArray(vendas.lojaId, lojaIdsGrupo)))
-  }
-
-  revalidatePathsConciliacao()
+const ouRecusa = (r: ResultadoAction<PgtoOS[]>) => {
+  if (!r.ok) throw new RecusaUsuario(r.erro)
+  return r.dados
 }
 
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
-export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string) {
-  return acao(() => forcarConciliacao(alvo, idx, motivo))
-}
-async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: string) {
-  const { usuario, lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
-  const r = comForcado(pgtos, idx, motivo, { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() })
-  if (!r.ok) throw new RecusaUsuario(r.erro)
-  await gravarPagamentos(alvo, lojaIdsGrupo, r.dados)
+/**
+ * `valorRecebido`: na forçada de PIX, o que entrou na conta (#92). `baseVista`: a base que a tela mostrou, só para
+ * conferir; a que vale é a do servidor, e se as duas diferem os lançamentos mudaram e a forçada é recusada.
+ */
+export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string, valorRecebido?: number, baseVista?: number) {
+  return acao(() => editarPagamentos(alvo, async (pgtos, usuario, tx) => {
+    // Quanto os lançamentos do alvo já cobrem do pagamento, pela mesma conta do painel: o PIX parcial força o que falta.
+    const coberto = matchPagamentos(pgtos, await cartoesDoAlvo(alvo, tx), await pixDoAlvo(alvo, tx))[idx]?.coberto ?? 0
+    const autor = { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }
+    return ouRecusa(comForcado(pgtos, idx, motivo, autor, { valorRecebido, coberto, baseVista }))
+  }))
 }
 
 export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, idx: number) {
-  return acao(() => desfazerConciliacaoForcada(alvo, idx))
-}
-async function desfazerConciliacaoForcada(alvo: AlvoConciliacao, idx: number) {
-  const { lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
-  const r = semForcado(pgtos, idx)
-  if (!r.ok) throw new RecusaUsuario(r.erro)
-  await gravarPagamentos(alvo, lojaIdsGrupo, r.dados)
+  return acao(() => editarPagamentos(alvo, async pgtos => ouRecusa(semForcado(pgtos, idx))))
 }
 
 export async function buscarVendasParaVincular(conciliacaoId: string) {

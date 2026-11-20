@@ -9,6 +9,7 @@ import { aprovacoesVenda, conciliacoesCartao, lancamentosCaixa, pixRecebimentosM
 import { RecusaUsuario } from '@/lib/resultado-action'
 import { vendaPecaEditavel, type UsuarioDaVenda } from '@/lib/venda-peca-editavel'
 import { moverSaldo } from '@/lib/estoque-pecas-loja'
+import { PIX_SOLTO } from '@/lib/pix-solto'
 
 type Tx = Parameters<Parameters<typeof db['transaction']>[0]>[0]
 
@@ -43,7 +44,7 @@ export async function excluirVendaPecaTx(tx: Tx, usuario: UsuarioDaVenda & { id:
     .set({ pecaVendaId: null, conciliado: false, conciliadoEm: null })
     .where(eq(conciliacoesCartao.pecaVendaId, vendaId))
   await tx.update(pixRecebimentosMcp)
-    .set({ tipoCorrespondencia: null, pecaVendaId: null, lancadoPorId: null, lancadoEm: null })
+    .set(PIX_SOLTO)
     .where(eq(pixRecebimentosMcp.pecaVendaId, vendaId))
 
   // A FK seguraria o DELETE; sem a venda, o dinheiro dela também sai do caixa (#546).

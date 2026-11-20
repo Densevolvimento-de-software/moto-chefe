@@ -54,7 +54,10 @@ async function semearVendaConciliada(tx: Tx, c: Awaited<ReturnType<typeof semear
     values (${venda.id}, ${c.pecaId}, 'Retrovisor', 2, 50)`)
   const [cartao] = await linhas(tx, sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, valor_bruto, peca_venda_id, conciliado)
     values (${c.grupoId}, 'stone', '2026-10-20', 100, ${venda.id}, true) returning id`)
-  return { id: venda.id as string, numero: venda.numero as number, cartaoId: cartao.id as string }
+  const [pix] = await linhas(tx, sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor, peca_venda_id, tipo_correspondencia,
+      lancado_por_id, lancado_em, valor_bruto, custo_pix, custo_pix_taxa)
+    values (${c.grupoId}, 'conta-sintetica', 'banco', gen_random_uuid()::text, now(), 99.80, ${venda.id}, 'peca', ${c.aux.id}, now(), 100, 0.20, 0.002) returning id`)
+  return { id: venda.id as string, numero: venda.numero as number, cartaoId: cartao.id as string, pixId: pix.id as string }
 }
 
 // Uma loja por Conta no cenário: o saldo dela é o da peça (#195).
@@ -74,6 +77,10 @@ test('a própria Conta exclui: estoque volta e a conciliação fica livre', asyn
     assert.equal(await existe(tx, venda.id), false)
     assert.equal(await estoque(tx, a.pecaId), 10)
     assert.deepEqual(await cartaoDb(tx, venda.cartaoId), { peca_venda_id: null, conciliado: false })
+    // #90: o PIX volta livre, sem o valor do PIX, o custo e a taxa gravados no vínculo.
+    assert.deepEqual((await linhas(tx, sql`select peca_venda_id, tipo_correspondencia, lancado_por_id, valor_bruto, custo_pix, custo_pix_taxa
+      from pix_recebimentos_mcp where id = ${venda.pixId}`))[0],
+      { peca_venda_id: null, tipo_correspondencia: null, lancado_por_id: null, valor_bruto: null, custo_pix: null, custo_pix_taxa: null })
   })
 })
 

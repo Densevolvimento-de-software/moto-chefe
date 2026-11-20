@@ -6,7 +6,7 @@ import {
 } from '@/lib/db/schema'
 import { and, eq, gte, inArray, lt, ne, sql } from 'drizzle-orm'
 import { rotuloMesCurtoAA } from '@/lib/data-venda'
-import { tarifaPixDaVendaExpr, valorLiquidoExpr } from './valor-liquido'
+import { custoPixDaVendaExpr, pixDaOs, pixDaPeca, tarifaPixDaVendaExpr, valorLiquidoExpr } from './valor-liquido'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 import { taxaDaLinhaOutras } from './taxas-receita'
 import { somaCustoMotoExpr } from './custo-moto'
@@ -90,6 +90,7 @@ export async function dreDoMes(opts: {
         bruto:   sql<string>`COALESCE(SUM(${vendas.valor}::numeric), 0)`,
         liquido: sql<string>`COALESCE(SUM(${valorLiquidoExpr()}), 0)`,
         tarifaPix: sql<string>`COALESCE(SUM(${tarifaPixDaVendaExpr()}), 0)`,
+        custoPix: sql<string>`COALESCE(SUM(${custoPixDaVendaExpr()}), 0)`,
         // Mesmo custo do /financeiro, com a queda para a precificação: o
         // resultado operacional do DRE tem que bater com o Lucro Líquido de lá.
         custo:   sql<string>`${somaCustoMotoExpr()}`,
@@ -103,6 +104,7 @@ export async function dreDoMes(opts: {
         lojaId:    ordensServico.lojaId,
         servicos:  sql<string>`COALESCE(SUM(${ordensServico.valorServicos}::numeric), 0)`,
         pecas:     sql<string>`COALESCE(SUM(${ordensServico.valorPecas}::numeric), 0)`,
+        custoPix:  sql<string>`COALESCE(SUM(${pixDaOs().custo}), 0)`,
       })
       .from(ordensServico)
       .where(and(
@@ -116,6 +118,7 @@ export async function dreDoMes(opts: {
     db.select({
         lojaId: vendasPecas.lojaId,
         total:  sql<string>`COALESCE(SUM(${vendasPecas.valorTotal}::numeric), 0)`,
+        custoPix: sql<string>`COALESCE(SUM(${pixDaPeca().custo}), 0)`,
       })
       .from(vendasPecas)
       .where(and(
@@ -184,7 +187,8 @@ export async function dreDoMes(opts: {
       receitaPecas: num(pecas?.total) + num(os?.pecas),
       ...taxasDaReceita({
         brutoMotos: bruto, liquidoMotos: num(v?.liquido), tarifaPixMotos: num(v?.tarifaPix),
-        taxaCartaoOutras: num(outras?.taxa), tarifaPixOutras: num(outras?.tarifa_pix),
+        taxaCartaoOutras: num(outras?.taxa), tarifaPixOutras: num(outras?.tarifa_pix), custoPixMotos: num(v?.custoPix),
+        custoPixOutras: num(os?.custoPix) + num(pecas?.custoPix),
       }),
       cmvMotos: num(v?.custo),
       despesasPorGrupo: porGrupo,
@@ -243,6 +247,7 @@ export async function dreEvolucao(opts: {
         bruto:   sql<string>`COALESCE(SUM(${vendas.valor}::numeric), 0)`,
         liquido: sql<string>`COALESCE(SUM(${valorLiquidoExpr()}), 0)`,
         tarifaPix: sql<string>`COALESCE(SUM(${tarifaPixDaVendaExpr()}), 0)`,
+        custoPix: sql<string>`COALESCE(SUM(${custoPixDaVendaExpr()}), 0)`,
         custo:   sql<string>`${somaCustoMotoExpr()}`,
       })
       .from(vendas)
@@ -254,6 +259,7 @@ export async function dreEvolucao(opts: {
         mes:      sql<string>`to_char(${ordensServico.dataConclusao} AT TIME ZONE 'UTC', 'YYYY-FMMM')`,
         servicos: sql<string>`COALESCE(SUM(${ordensServico.valorServicos}::numeric), 0)`,
         pecas:    sql<string>`COALESCE(SUM(${ordensServico.valorPecas}::numeric), 0)`,
+        custoPix: sql<string>`COALESCE(SUM(${pixDaOs().custo}), 0)`,
       })
       .from(ordensServico)
       .where(and(
@@ -267,6 +273,7 @@ export async function dreEvolucao(opts: {
     db.select({
         mes:   sql<string>`to_char(${vendasPecas.dataVenda} AT TIME ZONE 'UTC', 'YYYY-FMMM')`,
         total: sql<string>`COALESCE(SUM(${vendasPecas.valorTotal}::numeric), 0)`,
+        custoPix: sql<string>`COALESCE(SUM(${pixDaPeca().custo}), 0)`,
       })
       .from(vendasPecas)
       .where(and(
@@ -331,7 +338,8 @@ export async function dreEvolucao(opts: {
         receitaPecas: num(pc.get(chave)?.total) + num(os.get(chave)?.pecas),
         ...taxasDaReceita({
           brutoMotos: bruto, liquidoMotos: num(v.get(chave)?.liquido), tarifaPixMotos: num(v.get(chave)?.tarifaPix),
-          taxaCartaoOutras: num(tx.get(chave)?.taxa), tarifaPixOutras: num(tx.get(chave)?.tarifa_pix),
+          taxaCartaoOutras: num(tx.get(chave)?.taxa), tarifaPixOutras: num(tx.get(chave)?.tarifa_pix), custoPixMotos: num(v.get(chave)?.custoPix),
+          custoPixOutras: num(os.get(chave)?.custoPix) + num(pc.get(chave)?.custoPix),
         }),
         cmvMotos: num(v.get(chave)?.custo),
         despesasPorGrupo: porGrupo,

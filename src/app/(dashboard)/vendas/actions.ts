@@ -41,7 +41,9 @@ import { aprovacaoDoUsuario } from '@/lib/aprovacao-do-usuario'
 import { voltarMotoAoEstoque } from '@/lib/motos-vendidas-sem-venda'
 import { vendedorDaConta } from '@/lib/vendedor-da-conta'
 import { reservaDoUsuario } from '@/lib/reserva-do-usuario'
-import { vendaDoUsuario } from '@/lib/venda-do-usuario'
+import { vendaDoUsuario, vendasDoEscopo } from '@/lib/venda-do-usuario'
+import { ehUuid } from '@/lib/uuid'
+import { custosDaVenda } from '@/lib/queries/valor-liquido'
 import { apagarVendaTx } from '@/lib/apagar-venda'
 import { apagarArquivosAssinatura } from '@/lib/assinatura/infra'
 
@@ -1892,4 +1894,16 @@ export async function voltarMotoVendidaSemVendaAoEstoqueAction(motoId: string) {
     revalidatePath('/estoque')
     revalidatePath(`/estoque/${motoId}`)
   })
+}
+
+/** Detalhes da venda (#93): taxa do cartão, tarifa do PIX na maquininha, custo do PIX e líquido, pelo servidor. */
+export async function custosDaVendaAction(vendaId: string) {
+  return acao(() => custosDaVendaDoUsuario(vendaId))
+}
+async function custosDaVendaDoUsuario(vendaId: string) {
+  const usuario = await getUsuarioLogado()
+  // Venda de outra Conta ou inexistente: o mesmo vazio (#404).
+  const venda = ehUuid(vendaId) ? await vendaDoUsuario(usuario, eq(vendas.id, vendaId)) : null
+  const daConta = vendasDoEscopo(usuario)
+  return venda && daConta !== null ? custosDaVenda(venda.id, daConta) : null
 }

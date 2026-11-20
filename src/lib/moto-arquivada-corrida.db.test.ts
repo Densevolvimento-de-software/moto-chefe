@@ -8,7 +8,7 @@
 // actions só o importa), next/cache, Kommo e WhatsApp.
 import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
-import pg from 'pg'
+import { ate, sessaoQueSegura } from '@/test/corrida'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
 
@@ -99,38 +99,26 @@ const cliente = { clienteNome: 'Cliente ' + P, clienteCpf: CPF, clienteCelular: 
   clienteCep: '', clienteLogradouro: '', clienteNumero: '', clienteComplemento: '', clienteBairro: '', clienteCidade: '', clienteEstado: '' }
 const venda = (motoId: string, tipo = 'pix') => ({ motoId, ...cliente, valorTotal: '1000', pagamentos: [{ tipo, valor: 1000 }], origemId: semente.origemId })
 
-// Sessões esperando lock por causa de uma das sessões dadas.
-const esperandoPor = async (pids: number[]) => (await linhas(sql`select pid from pg_stat_activity
-  where pg_blocking_pids(pid) && ${sql.param(pids)}::int[]`)).map(r => Number(r.pid))
-
-async function ate(condicao: () => Promise<boolean>, oQue: string) {
-  for (let i = 0; i < 400; i++) { if (await condicao()) return; await new Promise(r => setImmediate(r)) }
-  throw new Error('não chegou: ' + oQue)
-}
-
 /** Roda a corrida e devolve o que o gravador respondeu, se o arquivar passou e as pendências que sobraram. */
 async function corrida(motoId: string, gravar: () => Promise<unknown>, pendencia: ReturnType<typeof sql>) {
-  const segura = new pg.Client({ connectionString: url })
-  await segura.connect()
+  const segura = await sessaoQueSegura(url!)
   try {
-    await segura.query('begin')
-    await segura.query('select id from motos where id = $1 for update', [motoId])
-    const seguraPid = (await segura.query('select pg_backend_pid() p')).rows[0].p as number
+    await segura.travar('select id from motos where id = $1 for update', [motoId])
 
     const arquivou = arquivarMotos(usuarioDaSessao as Parameters<typeof arquivarMotos>[0], [motoId], 'golpe')
       .then(() => true, (e: Error) => e.message)
-    await ate(async () => (await esperandoPor([seguraPid])).length === 1, 'o arquivar esperando a linha')
-    const [arquivarPid] = await esperandoPor([seguraPid])
+    await ate(async () => (await segura.esperandoPor([segura.pid])).length === 1, 'o arquivar esperando a linha')
+    const [arquivarPid] = await segura.esperandoPor([segura.pid])
 
     const gravou = gravar()
-    await ate(async () => (await esperandoPor([seguraPid, arquivarPid])).some(p => p !== arquivarPid), 'o gravador na fila, atrás do arquivar')
+    await ate(async () => (await segura.esperandoPor([segura.pid, arquivarPid])).some(p => p !== arquivarPid), 'o gravador na fila, atrás do arquivar')
 
-    await segura.query('commit')
+    await segura.soltar()
     const [resposta, arquivar] = await Promise.all([gravou, arquivou])
     const [{ arquivada, pendencias }] = await linhas(sql`select arquivada_em is not null as arquivada, (${pendencia})::int as pendencias from motos where id = ${motoId}`)
     return { resposta, arquivar, arquivada, pendencias }
   } finally {
-    await segura.end()
+    await segura.fim()
   }
 }
 

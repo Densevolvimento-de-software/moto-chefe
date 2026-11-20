@@ -65,6 +65,7 @@ export default async function SimuladorPage() {
             taxasDebito: (taxas?.taxasDebito ?? {}) as Record<string, number>,
             taxasLink: (taxas?.taxasLink ?? {}) as Record<string, number>,
             taxasFinanciamento: (taxas?.taxasFinanciamento ?? {}) as Record<string, number>,
+            custoPixTaxa: Number(taxas?.custoPixTaxa ?? 0),
           }}
           lojasFrete={lojasComCep}
           isAdmin={isAdmin}

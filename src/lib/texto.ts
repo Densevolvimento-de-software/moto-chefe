@@ -32,3 +32,7 @@ export function iniciaisDoNome(nome: string): string {
   const partes = nome.trim().split(/\s+/)
   return ((partes[0]?.[0] ?? '') + (partes.length > 1 ? partes[partes.length - 1][0] : '')).toUpperCase()
 }
+
+const LISTA = new Intl.ListFormat('pt-BR', { type: 'conjunction' })
+/** "a", "a e b", "a, b e c". */
+export const emLista = (itens: string[]) => LISTA.format(itens)

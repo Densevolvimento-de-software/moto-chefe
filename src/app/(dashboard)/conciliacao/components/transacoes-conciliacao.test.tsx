@@ -4,33 +4,42 @@
 import { test, after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
-import { DEPOIS_DA_ANIMACAO_MS, clicar, esperar, montarDialogo } from '@/test/dialogo-em-tela'
+import { DEPOIS_DA_ANIMACAO_MS, apertarEscape, botao, clicar, dialogoAberto, esperar, montarDialogo } from '@/test/dialogo-em-tela'
 import type { LinhaNaTela } from '@/lib/conciliacao-linha-tela'
 
 const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
 
-const desvincular = mock.fn(async (_id: string) => {})
-const vincular = mock.fn(async (_id: string, _alvo: string, _tipo: string) => {})
+const desvincular = mock.fn(async (_id: string) => ({ ok: true as const, dados: undefined }))
+const vincular = mock.fn(async (_id: string, _alvo: { tipo: string; id: string }) => ({ ok: true as const, dados: undefined }))
 const SUGERIDA = {
   id: 'v9', tipo: 'moto', numero: 32001, clienteNome: 'Ana Reis', valor: '3550.00', dataVenda: '2026-11-06T12:00:00.000Z',
   formaPagamento: 'PIX', pagamentos: [{ tipo: 'pix', valor: 3550 }, { tipo: 'cartao_credito', valor: 100, parcelas: 1 }],
 }
 const sugeridas = mock.fn(async () => [SUGERIDA] as unknown[])
+type Resultado = { ok: true; dados: unknown } | { ok: false; erro: string }
+const forcadaDaLinha = mock.fn(async (_id: string): Promise<Resultado> => ({ ok: true, dados: null }))
+const desfazerEDesvincular = mock.fn(async (_id: string, _visto?: unknown): Promise<Resultado> => ({ ok: true, dados: undefined }))
+const erros: string[] = []
+const sucessos: string[] = []
 const mocks = [
   mock.module('../actions', {
     namedExports: {
       buscarVendasParaVincular: () => sugeridas(), buscarVendaManual: async () => [],
       vincularVendaAction: vincular, desvincularVendaAction: desvincular,
+      forcadaDaLinhaAction: (c: string) => forcadaDaLinha(c), desfazerForcadaEDesvincularLinhaAction: (c: string, v?: unknown) => desfazerEDesvincular(c, v),
     },
   }),
+  mock.module('sonner', { namedExports: { toast: { error: (m: string) => { erros.push(m) }, success: (m: string) => { sucessos.push(m) } } } }),
 ]
 after(() => { for (const m of mocks) m.restore() })
 
 const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
-  desvincular.mock.resetCalls()
+  for (const f of [desvincular, forcadaDaLinha, desfazerEDesvincular]) { f.mock.resetCalls(); f.mock.restore() }
   vincular.mock.resetCalls()
+  erros.length = 0
+  sucessos.length = 0
   sugeridas.mock.restore()
   for (const d of montados.splice(0)) await d()
 })
@@ -138,7 +147,7 @@ test('Vincular de dentro da folha: o diálogo abre com a folha ainda aberta e es
   assert.ok(folha(), 'a folha continua aberta embaixo')
   const sugerida = [...document.querySelectorAll('[data-slot="dialog-content"] button')].find(b => texto(b).includes('Venda #32001'))
   await t.act(async () => { clicar(sugerida); await esperar(50) })
-  assert.deepEqual(vincular.mock.calls.map(c => c.arguments), [['c1', 'v9', 'moto']])
+  assert.deepEqual(vincular.mock.calls.map(c => c.arguments), [['c1', { tipo: 'moto', id: 'v9' }]])
 })
 
 // O servidor só vincula para quem gere a conciliação (`podeGerirConciliacao`); quem abre a tela por outro caminho
@@ -186,4 +195,99 @@ test('Vincular da linha pix sem venda no valor: o vazio fala de PIX', async () =
   const vincularDaTabela = [...linhaDaTabela('R$ 3.550,00')!.querySelectorAll('button')].find(b => texto(b) === 'Vincular')
   await t.act(async () => { clicar(vincularDaTabela); await esperar(50) })
   assert.ok(texto(document.querySelector('[data-slot="dialog-content"]')).includes('Nenhuma venda com PIX no valor exato encontrada.'))
+})
+
+// ─── #166, variante 2: a linha completa uma forçada parcial; Desvincular abre direto a confirmação ───────────────
+const COMPLETA = 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.'
+const RESUMO = { linhas: [{ valor: 1000, marcado: 600 }], cobre: 400 }
+const TITULO = 'Esta linha completa um pagamento marcado como recebido'
+const CAIXA = 'O pagamento PIX de R$ 1.000,00 da venda #31902 foi marcado como recebido com R$ 600,00. Este PIX cobre os R$ 400,00 que faltam.'
+const DIALOGO = 'O pagamento PIX de R$ 1.000,00 da venda #31902 deixa de estar marcado como recebido, e esta linha fica livre para vincular de novo.'
+const tela = () => (document.body.textContent ?? '').replace(/\s+/g, ' ')
+const recusaComResumo = () => {
+  desvincular.mock.mockImplementation(async () => ({ ok: false, erro: COMPLETA }) as never)
+  forcadaDaLinha.mock.mockImplementation(async () => ({ ok: true, dados: RESUMO }))
+}
+const desvincularNaTabela = (t: { act: (f: () => Promise<void>) => Promise<void> }) =>
+  t.act(async () => { clicar(linhaDaTabela('R$ 8.900,00')!.querySelector('button[title="Desvincular"]')); await esperar(80) })
+
+test('tabela: a recusa abre direto o diálogo com os valores; confirmar desfaz e desvincula a linha', async () => {
+  const t = await montar()
+  recusaComResumo()
+  await desvincularNaTabela(t)
+  assert.equal(dialogoAberto(), true)
+  for (const esperado of [TITULO, CAIXA, DIALOGO]) assert.ok(tela().includes(esperado), `${esperado} em: ${tela()}`)
+  assert.deepEqual(forcadaDaLinha.mock.calls.map(c => c.arguments), [['c2']])
+  assert.deepEqual(erros, [])
+  assert.equal(desfazerEDesvincular.mock.callCount(), 0, 'só depois de confirmar')
+  await t.clique('Desfazer e desvincular', 80)
+  assert.deepEqual(desfazerEDesvincular.mock.calls.map(c => c.arguments), [['c2', RESUMO]], 'manda o resumo que mostrou, só para conferir')
+  assert.deepEqual(sucessos, ['Forçada desfeita e linha desvinculada'])
+  await t.act(async () => { await esperar(DEPOIS_DA_ANIMACAO_MS) })
+  assert.equal(dialogoAberto(), false)
+})
+
+test('tabela: enquanto desfaz e desvincula, os botões travam e o Escape não fecha; a recusa vira toast', async () => {
+  const t = await montar()
+  recusaComResumo()
+  let responder: (r: Resultado) => void = () => {}
+  desfazerEDesvincular.mock.mockImplementation(() => new Promise<Resultado>(r => { responder = r }))
+  await desvincularNaTabela(t)
+  await t.clique('Desfazer e desvincular')
+  assert.deepEqual([botao('Cancelar')?.disabled, botao('Desfazendo…')?.disabled], [true, true])
+  await t.act(async () => { apertarEscape(); await esperar(50) })
+  assert.equal(dialogoAberto(), true)
+  await t.act(async () => { responder({ ok: false, erro: 'Conciliação não encontrada' }); await esperar(50) })
+  assert.deepEqual(erros, ['Conciliação não encontrada'])
+})
+
+test('recusa sem resumo (a forçada já mudou): a frase da recusa vai para o toast e nenhum diálogo abre', async () => {
+  const t = await montar()
+  desvincular.mock.mockImplementation(async () => ({ ok: false, erro: COMPLETA }) as never)
+  await desvincularNaTabela(t)
+  assert.deepEqual(erros, [COMPLETA])
+  assert.equal(dialogoAberto(), false)
+})
+
+test('folha: a recusa troca a folha pela confirmação; Cancelar volta aos detalhes; confirmar desfaz', async () => {
+  const t = await montar()
+  recusaComResumo()
+  await abrirFolha(t, 'R$ 8.900,00')
+  await t.clique('Desvincular da venda', 80)
+  assert.equal(texto(folha()?.querySelector('[data-slot="sheet-title"]')), TITULO)
+  for (const esperado of [CAIXA, DIALOGO]) assert.ok(texto(folha()).includes(esperado), texto(folha()))
+  assert.ok(!texto(folha()).includes('123400009932'), 'os detalhes saem da folha')
+  assert.equal(dialogoAberto(), false)
+  await t.clique('Cancelar')
+  assert.equal(texto(folha()?.querySelector('[data-slot="sheet-title"]')), 'R$ 8.900,00')
+  await t.clique('Desvincular da venda', 80)
+  await t.clique('Desfazer e desvincular', 80)
+  assert.deepEqual(desfazerEDesvincular.mock.calls.map(c => c.arguments), [['c2', RESUMO]], 'manda o resumo que mostrou, só para conferir')
+  assert.deepEqual(sucessos, ['Forçada desfeita e linha desvinculada'])
+})
+
+test('folha: enquanto desfaz e desvincula, os botões travam e o Escape não fecha a folha', async () => {
+  const t = await montar()
+  recusaComResumo()
+  let responder: (r: Resultado) => void = () => {}
+  desfazerEDesvincular.mock.mockImplementation(() => new Promise<Resultado>(r => { responder = r }))
+  await abrirFolha(t, 'R$ 8.900,00')
+  await t.clique('Desvincular da venda', 80)
+  await t.clique('Desfazer e desvincular')
+  assert.deepEqual([botao('Cancelar')?.disabled, botao('Desfazendo…')?.disabled], [true, true])
+  await t.act(async () => { folha()!.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await esperar(DEPOIS_DA_ANIMACAO_MS) })
+  assert.ok(folha(), 'a folha segue aberta')
+  await t.act(async () => { responder({ ok: true, dados: undefined }); await esperar(50) })
+  assert.deepEqual(sucessos, ['Forçada desfeita e linha desvinculada'])
+})
+
+test('erro inesperado ao desfazer (a action caiu): toast "Erro ao desvincular" e a confirmação fica para tentar de novo', async () => {
+  const t = await montar()
+  recusaComResumo()
+  desfazerEDesvincular.mock.mockImplementation(async () => { throw new Error('rede') })
+  await desvincularNaTabela(t)
+  await t.clique('Desfazer e desvincular', 80)
+  assert.deepEqual(erros, ['Erro ao desvincular'])
+  assert.equal(dialogoAberto(), true)
+  assert.equal(botao('Desfazer e desvincular')?.disabled, false)
 })

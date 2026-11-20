@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { semearPixRecebido } from '@/test/semear-alvos-conciliacao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -175,8 +176,70 @@ test('Financeiro: taxas de OS e peça separadas no mesmo SELECT, soma igual à d
   const fimDeOutubro = new Date('2026-10-31T23:59:59.999Z')
   const r = await taxas.taxasOutrasDoPeriodo([a.lojaId], new Date(OUTUBRO[0]), fimDeOutubro)
   // peça: crédito 9 + Pix 1; OS: Pix 4
-  assert.deepEqual(r, { taxaCartao: 9, tarifaPix: 5 })
+  assert.deepEqual(r, { taxaCartao: 9, tarifaPix: 5, custoPix: 0, qtdPix: 0 })
   assert.equal(r.taxaCartao + r.tarifaPix, (await taxaDeAntes([a.lojaId], ...OUTUBRO)).outras)
-  assert.deepEqual(await taxas.taxasOutrasDoPeriodo([], new Date(OUTUBRO[0]), fimDeOutubro), { taxaCartao: 0, tarifaPix: 0 })
+  assert.deepEqual(await taxas.taxasOutrasDoPeriodo([], new Date(OUTUBRO[0]), fimDeOutubro), { taxaCartao: 0, tarifaPix: 0, custoPix: 0, qtdPix: 0 })
 })
 
+
+// ─── #94: custo do PIX do banco de OS e peça (PIX vinculado e forçada), no Financeiro e no DRE ─────────────
+const pixDoBanco = (grupoId: string, alvo: { os?: string; peca?: string; venda?: string }, bruto: number, custo: number, tipoOperacao = 'PIX') =>
+  semearPixRecebido(db, grupoId, { valor: bruto - custo, tipoOperacao, vinculado: { ...alvo, valorBruto: bruto, custoPix: custo } })
+const forcadaPix = (c: Conta, custo: number) => [{ tipo: 'pix', valor: 1_000, conciliadoManual: {
+  motivo: 'Caiu na conta pessoal', porId: c.usuarioId, porNome: 'Aux', em: '2026-10-17T12:00:00.000Z',
+  pix: { valorRecebido: 1_000 - custo, valorBruto: 1_000, custoPix: custo, custoPixTaxa: custo / 1_000 } } }]
+const comPagamentos = (tabela: 'ordens_servico' | 'vendas_pecas', id: string, p: unknown) =>
+  db.execute(sql`update ${sql.raw(tabela)} set pagamentos = ${JSON.stringify(p)}::jsonb where id = ${id}`)
+
+// Outubro: OS com PIX do banco (custo 1,60) e forçada de PIX (custo 2,00); peça com PIX do banco (custo 0,40).
+// Fora: OS de novembro, OS aberta, PIX de outra Conta apontando para a OS da A. Custo 4,00 em 3 PIX.
+async function semearCustoPixOutubro(a: Conta, b: Conta) {
+  const os = await osConcluida(a, 800, '2026-10-17 12:00:00-03')
+  await pixDoBanco(a.grupoId, { os }, 800, 1.6)
+  await comPagamentos('ordens_servico', os, forcadaPix(a, 2))
+  await pixDoBanco(a.grupoId, { peca: await vendaPeca(a, 200, '2026-10-16 12:00:00-03') }, 200, 0.4)
+  await pixDoBanco(a.grupoId, { os: await osConcluida(a, 500, '2026-11-02 12:00:00-03') }, 500, 1)
+  const [aberta] = await linhas(sql`insert into ordens_servico (loja_id, aberta_por, descricao, status, valor_servicos)
+    values (${a.lojaId}, ${a.usuarioId}, 'revisão', 'aberta', 300) returning id`)
+  await pixDoBanco(a.grupoId, { os: aberta.id }, 300, 0.6)
+  await pixDoBanco(b.grupoId, { os }, 900, 1.8)
+}
+
+test('Financeiro: custo do PIX de OS e peça do período (PIX do banco e forçada) e quantos PIX; fora o de outro mês, OS aberta e outra Conta', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  await semearCustoPixOutubro(a, b)
+  const r = await taxas.taxasOutrasDoPeriodo([a.lojaId], new Date(OUTUBRO[0]), new Date('2026-10-31T23:59:59.999Z'))
+  assert.deepEqual(r, { taxaCartao: 0, tarifaPix: 0, custoPix: 4, qtdPix: 3 })
+  const deB = await taxas.taxasOutrasDoPeriodo([b.lojaId], new Date(OUTUBRO[0]), new Date('2026-10-31T23:59:59.999Z'))
+  assert.deepEqual([deB.custoPix, deB.qtdPix], [0, 0])
+})
+
+test('DRE do mês e por mês: a linha do custo do PIX soma motos, OS e peças', async () => {
+  const a = await semearConta()
+  const b = await semearConta()
+  await semearCustoPixOutubro(a, b)
+  await pixDoBanco(a.grupoId, { venda: await vendaMoto(a, 3_000, '2026-10-15 12:00:00-03') }, 3_000, 6)
+  const { colunas } = await dre.dreDoMes({ grupoId: a.grupoId, lojaIds: [a.lojaId], ano: 2026, mes: 10 })
+  assert.equal(colunas.find(c => c.chave === a.lojaId)!.entrada.custoPix, 10)
+  const meses = await dre.dreEvolucao({ grupoId: a.grupoId, lojaIds: [a.lojaId], ano: 2026, mes: 10, meses: 1 })
+  assert.equal(meses.find(m => m.mes === 10)!.entrada.custoPix, 10)
+})
+
+test('Financeiro: peça de outro mês, TED vinculada e a outra loja da mesma Conta ficam fora; cada loja com o seu custo', async () => {
+  const a = await semearConta()
+  const [outra] = await linhas(sql`insert into lojas (nome, cidade, endereco, grupo_id) values (${'TARPIX outra ' + randomUUID()}, 'C', 'R', ${a.grupoId}) returning id`)
+  const b = { ...a, lojaId: outra.id as string }
+  const peca = await vendaPeca(a, 200, '2026-10-16 12:00:00-03')
+  await pixDoBanco(a.grupoId, { peca }, 200, 0.4)
+  await pixDoBanco(a.grupoId, { peca }, 100, 0, 'TED')
+  await pixDoBanco(a.grupoId, { peca: await vendaPeca(a, 700, '2026-09-30 12:00:00-03') }, 700, 1.4)
+  await pixDoBanco(b.grupoId, { peca: await vendaPeca(b, 300, '2026-10-16 12:00:00-03') }, 300, 0.6)
+  const fim = new Date('2026-10-31T23:59:59.999Z')
+  const soA = await taxas.taxasOutrasDoPeriodo([a.lojaId], new Date(OUTUBRO[0]), fim)
+  const soB = await taxas.taxasOutrasDoPeriodo([b.lojaId], new Date(OUTUBRO[0]), fim)
+  assert.deepEqual([soA.custoPix, soA.qtdPix, soB.custoPix, soB.qtdPix], [0.4, 1, 0.6, 1])
+  const { colunas } = await dre.dreDoMes({ grupoId: a.grupoId, lojaIds: [a.lojaId, b.lojaId], ano: 2026, mes: 10 })
+  const custo = new Map(colunas.map(c => [c.chave, c.entrada.custoPix]))
+  assert.deepEqual([custo.get(a.lojaId), custo.get(b.lojaId)], [0.4, 0.6])
+})

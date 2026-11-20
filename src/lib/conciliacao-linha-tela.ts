@@ -1,11 +1,12 @@
 // Linha da /conciliacao como a tela mostra (#51, PR6b): a tabela do desktop e a lista do celular leem o mesmo objeto,
 // montado no servidor (serializável para o componente cliente).
 import type { ResumoDoAlvo, ResumosDoAlvoCartao } from '@/lib/rotulos-alvo'
+import type { AlvoTipo } from '@/lib/conciliacao-alvo'
 import type { conciliacoesCartao } from '@/lib/db/schema'
 import { linhaEstornada, rotuloCurtoDaLinha } from '@/lib/conciliacao-cartao'
 import { nomeOperadora } from '@/lib/operadoras'
 
-export type AlvoDaLinha = ResumoDoAlvo & { tipo: 'moto' | 'peca' | 'os' }
+export type AlvoDaLinha = ResumoDoAlvo & { tipo: AlvoTipo }
 export type LinhaNaTela = {
   id: string; data: string; operadora: string; tipo: string; rotulo: string; credito: boolean; bandeira: string; portador: string
   valor: number; liquido: number | null; nsu: string | null; estornada: boolean; alvo: AlvoDaLinha | null

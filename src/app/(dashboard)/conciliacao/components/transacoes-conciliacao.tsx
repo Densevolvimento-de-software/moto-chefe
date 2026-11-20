@@ -10,6 +10,9 @@ import { brl } from '@/lib/dashboard-painel'
 import { dataPuraBr, diaMesBr } from '@/lib/data-venda'
 import type { LinhaNaTela } from '@/lib/conciliacao-linha-tela'
 import { BotaoDesvincular, ChipDoAlvo, RotuloDoAlvo, VincularVendaButton } from './vincular-venda-button'
+import { ConfirmarForcadaDaLinha } from './forcada-da-linha'
+import { rotuloDoAlvoNaFrase } from '@/lib/forcada-frases'
+import type { ForcadaQueOPixCompleta } from '@/lib/conciliacao-status'
 
 const NAO_SE_VINCULA = 'Não se vincula'
 const NAO_SE_VINCULA_PORQUE = `${NAO_SE_VINCULA}: o dinheiro voltou ao cliente.`
@@ -116,6 +119,7 @@ function ListaDoCelular({ linhas, podeVincular }: Props) {
   // Guarda só o id: depois da action, a lista recarregada traz a linha nova; se ela saiu do filtro, a folha fecha.
   const [abertaId, setAbertaId] = useState<string | null>(null)
   const aberta = linhas.find(l => l.id === abertaId)
+  const [travada, setTravada] = useState(false)
 
   return (
     <>
@@ -157,21 +161,34 @@ function ListaDoCelular({ linhas, podeVincular }: Props) {
         ))}
       </ul>
 
-      <GavetaDeBaixo aberta={!!aberta} onAbertaChange={o => !o && setAbertaId(null)}>
-        {aberta && <FolhaDaLinha l={aberta} podeVincular={podeVincular} />}
+      {/* Enquanto desfaz a forçada e desvincula, a folha não fecha: o pedido já saiu. */}
+      <GavetaDeBaixo aberta={!!aberta} onAbertaChange={o => !o && !travada && setAbertaId(null)}>
+        {aberta && <FolhaDaLinha key={aberta.id} l={aberta} podeVincular={podeVincular} onTravar={setTravada} />}
       </GavetaDeBaixo>
     </>
   )
 }
 
+type FolhaProps = { l: LinhaNaTela; podeVincular: boolean }
+
 // Ação da folha: estornada explica por que não se vincula; sem permissão, nenhuma.
-function AcaoDaFolha({ l, podeVincular }: { l: LinhaNaTela; podeVincular: boolean }) {
+function AcaoDaFolha({ l, podeVincular, onForcada }: FolhaProps & { onForcada: (f: ForcadaQueOPixCompleta) => void }) {
   if (l.estornada) return <p className="text-sm text-muted-foreground">{NAO_SE_VINCULA_PORQUE}</p>
   if (!podeVincular) return null
-  return l.alvo ? <BotaoDesvincular conciliacaoId={l.id} tamanho="largo" /> : botaoVincular(l, 'largo')
+  return l.alvo
+    ? <BotaoDesvincular conciliacaoId={l.id} rotulo={rotuloDoAlvoNaFrase(l.alvo.tipo, l.alvo.numero)} tamanho="largo" onForcada={onForcada} />
+    : botaoVincular(l, 'largo')
 }
 
-function FolhaDaLinha({ l, podeVincular }: { l: LinhaNaTela; podeVincular: boolean }) {
+// A linha completa uma forçada parcial (#166): a folha inteira vira a confirmação de desfazer e desvincular.
+function FolhaDaLinha({ l, podeVincular, onTravar }: FolhaProps & { onTravar: (travada: boolean) => void }) {
+  const [forcada, setForcada] = useState<ForcadaQueOPixCompleta | null>(null)
+  if (forcada && l.alvo) {
+    return (
+      <ConfirmarForcadaDaLinha modo="folha" conciliacaoId={l.id} rotulo={rotuloDoAlvoNaFrase(l.alvo.tipo, l.alvo.numero)} forcada={forcada}
+        onFechar={() => setForcada(null)} onEnviando={onTravar} />
+    )
+  }
   return (
     <div className="space-y-4">
       {/* pr-10: o X de fechar da gaveta fica no canto de cima, à direita. */}
@@ -198,7 +215,7 @@ function FolhaDaLinha({ l, podeVincular }: { l: LinhaNaTela; podeVincular: boole
           </LinhaDeDetalhe>
         )}
       </div>
-      <AcaoDaFolha l={l} podeVincular={podeVincular} />
+      <AcaoDaFolha l={l} podeVincular={podeVincular} onForcada={setForcada} />
     </div>
   )
 }

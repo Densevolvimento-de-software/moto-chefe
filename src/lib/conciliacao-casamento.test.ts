@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { linhaDaTransacao, semAlvos } from './conciliacao-casamento'
+import { linhaDaTransacao } from './conciliacao-casamento'
+import { semAlvos } from './conciliacao-alvo'
 
 const AGORA = new Date('2026-11-12T12:00:00.000Z')
 const transacao = {

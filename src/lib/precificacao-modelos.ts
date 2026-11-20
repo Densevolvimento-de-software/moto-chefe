@@ -107,7 +107,6 @@ export async function salvarPrecoDoModelo(
       await tx.insert(precificacao).values({
         grupoId: grupo.id,
         ...campos,
-        taxaPix: '0',
         taxasCartao: {},
         taxasLink: {},
         taxasFinanciamento: {},
