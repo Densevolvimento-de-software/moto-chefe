@@ -232,7 +232,6 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     setMotivo('')
     if (!PAGAMENTO_PIX.has(p.tipo)) return
     const base = baseDaForcada(p.valor, coberto)
-    // Sem custo (o pedido já tem PIX com custo, #93): entrou o valor cheio.
     setRecebido(formatarNumeroBR(esperadoComTaxa(base, contextoPix?.taxa ?? 0) ?? base))
   }
 
