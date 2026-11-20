@@ -358,13 +358,13 @@ const subconjuntos = (xs: number[]): number[][] =>
  * depois o de menos linhas: sai só o que basta. Vazio se o PIX não completa nenhuma.
  */
 export function forcadasQueOPixCompleta(pgtos: PgtoOS[], linhasDoAlvo: ConcMatch[], pixDoBanco: PixMatch[], pixId: string): number[] {
-  const falta = (ps: PgtoOS[], pix: PixMatch[]) => cobrir(ps, linhasDoAlvo, pix).faltaNasForcadas
-  const hoje = falta(pgtos, pixDoBanco)
-  const semOPix = pixDoBanco.filter(r => r.id !== pixId)
-  if (falta(pgtos, semOPix) - hoje <= 0.05) return []
+  const hoje = cobrir(pgtos, linhasDoAlvo, pixDoBanco).faltaNasForcadas
+  // `pixId`: o PIX do banco ou a linha pix da maquininha (#166); sai das duas listas.
+  const semOPix = (ps: PgtoOS[]) => cobrir(ps, linhasDoAlvo.filter(c => c.id !== pixId), pixDoBanco.filter(r => r.id !== pixId)).faltaNasForcadas
+  if (semOPix(pgtos) - hoje <= 0.05) return []
   const parciais = pgtos.flatMap((p, i) => (restoDaForcadaParcial(p) > 0 ? [i] : []))
   const restos = (s: number[]) => s.reduce((a, i) => a + restoDaForcadaParcial(pgtos[i]), 0)
-  const servem = subconjuntos(parciais).filter(s => falta(s.reduce(semAMarca, pgtos), semOPix) - hoje <= 0.05)
+  const servem = subconjuntos(parciais).filter(s => semOPix(s.reduce(semAMarca, pgtos)) - hoje <= 0.05)
   const melhor = [...servem].sort((x, y) => restos(x) - restos(y) || x.length - y.length)[0]
   return melhor ?? parciais
 }
@@ -383,9 +383,11 @@ export function resumoDaForcadaQueOPixCompleta(pgtos: PgtoOS[], linhasDoAlvo: Co
   const idx = forcadasQueOPixCompleta(pgtos, linhasDoAlvo, pixDoBanco, pixId)
   if (idx.length === 0) return null
   const oPix = pixDoBanco.find(r => r.id === pixId)
+  const aLinha = linhasDoAlvo.find(c => c.id === pixId)
+  const valorDele = oPix ? valorQueCobre(oPix) : aLinha ? Number(aLinha.valorBruto) : Infinity
   const restos = idx.reduce((a, i) => a + restoDaForcadaParcial(pgtos[i]), 0)
   return {
     linhas: idx.map(i => ({ valor: pgtos[i].valor, marcado: centavos(pgtos[i].valor - restoDaForcadaParcial(pgtos[i])) })),
-    cobre: centavos(Math.min(restos, oPix ? valorQueCobre(oPix) : restos)),
+    cobre: centavos(Math.min(restos, valorDele)),
   }
 }

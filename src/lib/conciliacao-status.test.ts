@@ -6,6 +6,7 @@ import {
   semForcado,
   matchPagamentos,
   pixCompletaForcadaParcial,
+  forcadasQueOPixCompleta,
   resumoDaForcadaQueOPixCompleta,
   semForcadasQueOPixCompleta,
   estornosDosPagamentos,
@@ -519,6 +520,14 @@ test('resumoDaForcadaQueOPixCompleta: cada pagamento e quanto foi marcado, e qua
   // Um PIX que completa duas: as duas linhas, separadas.
   assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, [], [{ id: 'p45', valor: 4500 }, { id: 'p3', valor: 3000 }], 'p45'),
     { linhas: [{ valor: 10000, marcado: 6000 }, { valor: 2000, marcado: 1500 }], cobre: 4500 })
+})
+
+// #166: a linha pix da maquininha (conciliação de cartão) completa a forçada como o PIX do banco.
+test('forçada que a linha pix da maquininha completa: sai a marca dela, e o resumo diz quanto a linha cobre', () => {
+  const linhas = [{ id: 'mp4', autorizacao: null, valorBruto: '4000.00', tipo: 'pix', operadora: 'mercadopago' }]
+  assert.deepEqual(forcadasQueOPixCompleta(DUAS_PARCIAIS, linhas, [], 'mp4'), [0])
+  assert.deepEqual(marcadas(semForcadasQueOPixCompleta(DUAS_PARCIAIS, linhas, [], 'mp4')), [false, true, false])
+  assert.deepEqual(resumoDaForcadaQueOPixCompleta(DUAS_PARCIAIS, linhas, [], 'mp4'), { linhas: [{ valor: 10000, marcado: 6000 }], cobre: 4000 })
 })
 
 // F1 (#189 r2): sai o mínimo que basta, não o conjunto de soma mais perto do PIX.
