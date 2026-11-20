@@ -580,3 +580,33 @@ test('desfazer e desvincular com o resumo que a tela viu diferente do de agora: 
   assert.equal(await linhaLigada(linha), true)
   assert.ok((await marcaDe('os', a.alvos.os))?.pix)
 })
+
+test('Conta B mandando o resumo que a Conta A viu: a frase do inexistente, não "mudaram", e nada muda', async () => {
+  const a = await contaComAlvos()
+  const b = await contaComAlvos()
+  const linha = await maquininha(a, 'peca', 400)
+  usuario = sessao(a, 'aux_adm')
+  await comPagamentos('peca', a.alvos.peca, [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaParcial(600) }])
+  const visto = (await actions.forcadaDaLinhaAction(linha) as { dados: unknown }).dados
+  usuario = sessao(b, 'aux_adm')
+  assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha, visto), NAO_ENCONTRADA)
+  assert.equal(await linhaLigada(linha), true)
+  assert.ok((await marcaDe('peca', a.alvos.peca))?.pix)
+})
+
+test('linha estornada enquanto o desvincular conferia: não solta a estornada (ela mantém a venda)', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  const linha = await maquininha(a, 'moto', 400)
+  const s = await sessaoQueSegura(url!)
+  try {
+    // O importador marca o estorno e ainda não confirmou: o desvincular lê a linha viva, confere e espera para gravar.
+    await s.travar(`update conciliacoes_cartao set status = 'estornado', conciliado = false where id = $1`, [linha])
+    const solta = actions.desvincularVendaAction(linha)
+    await novoEsperando(s, [s.pid])
+    await s.soltar()
+    assert.deepEqual(await solta, NAO_ENCONTRADA)
+  } finally { await s.fim() }
+  const [l] = await execRows(sql`select venda_id, status from conciliacoes_cartao where id = ${linha}`) as { venda_id: string; status: string }[]
+  assert.deepEqual([l.venda_id, l.status], [a.alvos.moto, 'estornado'])
+})
