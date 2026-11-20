@@ -55,7 +55,8 @@ async function montar(correspondencia: Correspondencia, podeDesfazerForcada = fa
     document.querySelector('button[aria-label="Desvincular OS #42"]')!.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
     await esperar(80)
   })
-  return { salvar, desvincular, act: tela.act, clique: tela.clique }
+  const redesenhar = (c: Correspondencia) => tela.redesenhar({ id: 'pix-1', correspondencia: c, podeDesfazerForcada })
+  return { salvar, desvincular, act: tela.act, clique: tela.clique, redesenhar }
 }
 
 test('lançar envia o PIX, o tipo e o número; a recusa aparece com a frase da action', async () => {
@@ -159,4 +160,15 @@ test('a caixa com duas forçadas que o PIX completa, e o PIX cobrindo só parte 
   forcadaDoPix.mock.mockImplementation(async () => ({ ok: true, dados: { linhas: [{ valor: 1000, marcado: 900 }, { valor: 500, marcado: 100 }], cobre: 300 } }))
   await desvincular()
   assert.ok(tela().includes('Os pagamentos PIX de R$ 1.000,00 e R$ 500,00 da OS #42 foram marcados como recebidos com R$ 900,00 e R$ 100,00. Este PIX cobre R$ 300,00 dos R$ 500,00 que faltam.'), tela())
+})
+
+test('a caixa some quando o PIX fica livre e não volta ao religar (U1)', async () => {
+  const { desvincular, redesenhar } = await montar(LIGADO, true)
+  remover.mock.mockImplementation(async () => ({ ok: false, erro: COMPLETA }))
+  forcadaDoPix.mock.mockImplementation(async () => ({ ok: true, dados: RESUMO }))
+  await desvincular()
+  assert.ok(tela().includes(TEXTO_DA_CAIXA), tela())
+  await redesenhar(LIVRE)
+  await redesenhar(LIGADO)
+  assert.equal(tela().includes('Este PIX completa um pagamento marcado como recebido'), false, tela())
 })

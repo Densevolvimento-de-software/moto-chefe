@@ -44,6 +44,8 @@ export function CorrespondenciaForm({ id, correspondencia, podeDesfazerForcada }
   const [numero, setNumero] = useState('')
   // O desvincular foi recusado porque o PIX completa uma forçada parcial (#92): o que a caixa mostra.
   const [forcada, setForcada] = useState<ForcadaQueOPixCompleta | null>(null)
+  // Sem vínculo a caixa perde o sentido; ao religar, a recusa é que traz uma caixa nova.
+  if (!correspondencia.tipo && forcada) setForcada(null)
 
   if (correspondencia.tipo) {
     const label = labelPorTipo[correspondencia.tipo](correspondencia)
