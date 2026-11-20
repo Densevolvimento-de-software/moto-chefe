@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { ChevronDown, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PAGAMENTO_PIX, baseDaForcada, estornosDosPagamentos, matchPagamentos, pixDaForcada, precisaConciliar, type EstornoDoAlvo, type PgtoOS } from '@/lib/conciliacao-status'
-import { avisoDeCustoAlto, esperadoComTaxa, percentualDoPix, type CustoDoPix } from '@/lib/custo-pix'
+import { avisoDeCustoAlto, coberturaComEstaVenda, custoDaForcadaQueConta, esperadoComTaxa, percentualDoPix, textoDoCustoDaForcada, type CoberturaDaVenda, type CustoDoPix } from '@/lib/custo-pix'
 import { formatarNumeroBR, parseNumeroBR } from '@/lib/numero-br'
 import { nomeOperadora } from '@/lib/operadoras'
 import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
@@ -16,6 +16,7 @@ import {
   buscarConciliacoesLivres,
   buscarPixLivres,
   buscarPixParaOAlvo,
+  buscarCoberturaDoPedido,
   vincularVendaAction,
   vincularPixAlvoAction,
   forcarConciliacaoAction,
@@ -48,6 +49,9 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
   const [concs, setConcs]     = useState<Conc[]>([])
   const [pixRecs, setPixRecs] = useState<PixRec[]>([])
   const [estornos, setEstornos] = useState<EstornoDoAlvo[]>([])
+  // undefined: ainda não chegou. A falha dela não derruba o resto do painel, mas aparece na linha da forçada.
+  const [cobertura, setCobertura] = useState<CoberturaDaVenda | null | undefined>(undefined)
+  const [coberturaFalhou, setCoberturaFalhou] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const { tipo, id } = alvo
@@ -59,6 +63,10 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
         buscarConciliacoesDoAlvo({ tipo, id }),
         buscarPixDoAlvo({ tipo, id }),
         buscarEstornosDoAlvo({ tipo, id }),
+        buscarCoberturaDoPedido({ tipo, id }).then(
+          cob => { setCobertura(cob); setCoberturaFalhou(false) },
+          () => setCoberturaFalhou(true),
+        ),
       ])
       setConcs(c)
       setPixRecs(px)
@@ -72,7 +80,7 @@ export function useConciliacaoAlvo(alvo: AlvoConciliacao, ativo: boolean) {
     if (ativo) recarregar()
   }, [ativo, recarregar])
 
-  return { concs, pixRecs, estornos, loading, recarregar }
+  return { concs, pixRecs, estornos, cobertura, coberturaFalhou, loading, recarregar }
 }
 
 type Props = {
@@ -116,6 +124,15 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const conciliados = matchPagamentos(pagamentos, concs, pixRecs)
   // Pagamento que voltou a pendente porque a linha da maquininha foi estornada no Mercado Pago (#51).
   const estornados = estornosDosPagamentos(pagamentos, conciliados, dados.estornos)
+  // Custo da forçada de PIX que conta no líquido, pela mesma conta do servidor (decisão 11 do Luis, #93).
+  const textoDoCusto = (custoGravado: number) =>
+    textoDoCustoDaForcada(custoDaForcadaQueConta(custoGravado, coberturaComEstaVenda(dados.cobertura ?? null, pagamentos)))
+  // Sem a cobertura, o custo gravado pode não ser o que conta: a linha espera por ela, e a falha aparece.
+  const textoDaLinhaForcada = (custoGravado: number) =>
+    custoGravado <= 0 ? null
+    : dados.coberturaFalhou ? 'Não deu para carregar o custo do PIX.'
+    : dados.cobertura === undefined ? null
+    : textoDoCusto(custoGravado)
 
   function limparBusca() {
     setCandidatos([])
@@ -333,7 +350,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     const parcial    = pendente && cobertura.coberto > 0.005
     const situacao = situacaoDe({ precisa, loading, forcado, conciliado, parcial })
     const pix = cobertura.pixId ? pixRecs.find(r => r.id === cobertura.pixId) : undefined
-    return { p, i, situacao, coberto: cobertura.coberto, pix, pixDaMaquininha: cobertura.pixDaMaquininha }
+    const custoDaForcada = forcado && p.conciliadoManual?.pix ? textoDaLinhaForcada(p.conciliadoManual.pix.custoPix) : null
+    return { p, i, situacao, coberto: cobertura.coberto, pix, pixDaMaquininha: cobertura.pixDaMaquininha, custoDaForcada }
   }).filter(l => !somenteConciliaveis || l.situacao !== 'livre')
   const ordem: Record<Situacao, number> = { pendente: 0, parcial: 1, carregando: 2, forcado: 3, conciliado: 4, livre: 5 }
   itens.sort((x, y) => ordem[x.situacao] - ordem[y.situacao] || x.i - y.i)
@@ -363,7 +381,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
       )}
 
       <ul className="space-y-2">
-        {itens.map(({ p, i, situacao, coberto, pix, pixDaMaquininha }) => {
+        {itens.map(({ p, i, situacao, coberto, pix, pixDaMaquininha, custoDaForcada }) => {
           const resolvivel = RESOLVIVEL.has(situacao)
           const mostraBusca = buscandoIdx === i && podeGerir && p.tipo !== 'financiamento'
           const aberto = resolvivel && (buscandoIdx === i || forcandoIdx === i)
@@ -402,6 +420,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                 )}
               </button>
 
+              {custoDaForcada && <p data-custo-forcada className="mx-3 mb-3 text-xs text-muted-foreground">{custoDaForcada}</p>}
+
               {situacao === 'conciliado' && pix && Number(pix.custoPixTaxa) > 0 && <ContaDoPixComCusto className="mx-3 mb-3" valorBruto={Number(pix.valorBruto ?? pix.valor)} custoPix={Number(pix.custoPix ?? 0)} custoPixTaxa={Number(pix.custoPixTaxa)} entrou={Number(pix.valor)} />}
 
               {situacao === 'forcado' && podeGerir && (
@@ -416,7 +436,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                 <div className="space-y-3 border-t border-border p-3">
                   {forcandoIdx === i ? (
                     <FormularioDoForcado
-                      p={p} i={i} coberto={coberto} taxaDoGrupo={contextoPix?.taxa ?? 0} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
+                      p={p} i={i} coberto={coberto} taxaDoGrupo={contextoPix?.taxa ?? 0} custoQueConta={custo => (dados.cobertura?.pixDoPedido ?? 0) > 0 ? textoDoCusto(custo) : null} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
                       salvando={salvando} onCancelar={() => setForcandoIdx(null)} onConfirmar={forcar}
                     />
                   ) : (
@@ -505,8 +525,10 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
 }
 
 // O formulário do Forçar: motivo para todos; para PIX, também o valor que entrou e a conta do custo (#92).
-function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, motivo, onMotivo, recebido, onRecebido, salvando, onCancelar, onConfirmar }: {
+function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, custoQueConta, motivo, onMotivo, recebido, onRecebido, salvando, onCancelar, onConfirmar }: {
   p: PgtoOS; i: number; coberto: number; taxaDoGrupo: number
+  /** Com PIX com custo no pedido: quanto do custo desta forçada conta no líquido (decisão 11 do Luis, #93). */
+  custoQueConta: (custoPix: number) => string | null
   motivo: string; onMotivo: (v: string) => void
   recebido: string; onRecebido: (v: string) => void
   salvando: boolean; onCancelar: () => void; onConfirmar: (baseVista?: number) => void
@@ -515,6 +537,7 @@ function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, motivo, onMotivo, rec
   const pixForcado = ehPix ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto }) : null
   const podeConfirmar = motivo.trim().length >= 3 && typeof pixForcado !== 'string'
   const avisoCusto = pixForcado && typeof pixForcado !== 'string' ? avisoDeCustoAlto(pixForcado, taxaDoGrupo) : null
+  const textoCusto = pixForcado && typeof pixForcado !== 'string' ? custoQueConta(pixForcado.custoPix) : null
   const confirmar = () => onConfirmar(pixForcado && typeof pixForcado !== 'string' ? pixForcado.valorBruto : undefined)
   return (
     <div className="space-y-2 rounded-lg bg-warning/10 p-3">
@@ -551,6 +574,7 @@ function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, motivo, onMotivo, rec
                 <p className="text-xs text-warning">Entrou mais que o pagamento: fica sem custo do PIX.</p>
               )}
               {avisoCusto && <p className="text-xs text-warning">{avisoCusto}</p>}
+              {textoCusto && <p className="text-xs text-muted-foreground">{textoCusto}</p>}
             </>
           )}
         </div>

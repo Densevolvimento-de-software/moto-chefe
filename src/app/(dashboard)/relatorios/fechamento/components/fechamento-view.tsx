@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { DadosFechamento, Item, LojaFechamento } from '@/lib/queries/fechamento'
 import { nomeMes, mesAnterior, formatarMes, variacaoPct, pctMeta, classeMeta } from '@/lib/fechamento'
+import { dreResumido } from '@/lib/dre'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 const brlk = (n: number) => 'R$ ' + (n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mil'
@@ -124,27 +125,17 @@ export function FechamentoView({ dados, grupo, mes }: { dados: DadosFechamento; 
       <section>
         <SecTitle>Resultado do mês (DRE)</SecTitle>
         <div className="rounded-lg border border-border overflow-hidden">
-          {[
-            ['receita_bruta', 'Receita bruta', false],
-            ['taxas_cartao', '(−) Taxas de cartão', true],
-            ['tarifa_pix', '(−) Tarifa do PIX na maquininha', true],
-            ['receita_liquida', 'Receita líquida', false],
-            ['cmv', '(−) CMV — motos', true],
-            ['lucro_bruto', 'Lucro bruto', false],
-            ['despesas_total', '(−) Despesas operacionais', true],
-            ['resultado', 'Resultado operacional', false],
-          ].map(([k, rot, ded], i) => {
-            const v = dl(k as string)
+          {dreResumido(dados.dre).map(({ chave: k, rotulo: rot, deducao: ded, valor: v }, i) => {
             const isResult = k === 'resultado'
             return (
               <div key={i} className={`flex justify-between px-4 py-2 text-sm ${isResult ? 'bg-primary text-primary-foreground font-bold' : i % 2 ? 'bg-muted' : 'bg-card'}`}>
-                <span className={ded ? 'text-muted-foreground' : 'font-medium'}>{rot as string}</span>
+                <span className={ded ? 'text-muted-foreground' : 'font-medium'}>{rot}</span>
                 <span className={`tabular-nums ${!isResult && (ded ? 'text-muted-foreground' : 'font-semibold')}`}>{ded ? '− ' : ''}{brl(Math.abs(v))}</span>
               </div>
             )
           })}
         </div>
-        <p className="text-xs text-muted-foreground mt-2">Mesmos números do <a href="/admin/dre" className="underline">DRE</a>. Taxa de cartão e tarifa do PIX na maquininha entram como dedução da receita; imposto fica nas despesas (Tributos).</p>
+        <p className="text-xs text-muted-foreground mt-2">Mesmos números do <a href="/admin/dre" className="underline">DRE</a>. Taxa de cartão, tarifa do PIX na maquininha e custo do PIX entram como dedução da receita; imposto fica nas despesas (Tributos).</p>
       </section>
 
       {/* Ritmo diário */}

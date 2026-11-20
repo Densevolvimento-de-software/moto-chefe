@@ -4,7 +4,7 @@ import { eq, and, gte, lte, ne, sql, count, sum, inArray, or, avg, desc, SQL } f
 import type { Column } from 'drizzle-orm'
 import { calcStatusMultiPagamento, pagamentosEfetivosOS } from '@/lib/conciliacao-status'
 import { STATUS_OS_ABERTA } from '@/lib/os-transicao'
-import { valorLiquidoExpr } from './valor-liquido'
+import { valorLiquidoDaComissaoExpr, valorLiquidoExpr } from './valor-liquido'
 import { motoNoShowroom } from './showroom'
 import { inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
@@ -61,7 +61,7 @@ export async function getKPIs(filtros: Filtros, opts?: { useLiquidoValue?: boole
   )
 
   // Uma única query com UNION ALL — 1 round-trip ao banco em vez de 5
-  const valorV = useLiquido ? valorLiquidoExpr() : sql`${vendas.valor}`
+  const valorV = useLiquido ? valorLiquidoDaComissaoExpr() : sql`${vendas.valor}`
   const rows = await execRows(sql`
     SELECT 'v'  AS t, count(*)::int AS n, coalesce(sum(${valorV}), 0)::numeric AS val FROM ${vendas} WHERE ${vendasCond}
     UNION ALL
@@ -109,7 +109,7 @@ export async function getVendasPorDia(filtros: Filtros, opts?: { useLiquidoValue
     .select({
       dia: diaBrt,
       total: count(),
-      valor: opts?.useLiquidoValue ? sql<string>`sum(${valorLiquidoExpr()})` : sum(vendas.valor),
+      valor: opts?.useLiquidoValue ? sql<string>`sum(${valorLiquidoDaComissaoExpr()})` : sum(vendas.valor),
     })
     .from(vendas)
     .where(and(...conditions))
@@ -162,7 +162,7 @@ export async function getSaldoCaixaPorLoja(lojaId?: string[]) {
     .orderBy(lojas.nome)
 }
 
-export async function getUltimasVendas(filtros: Filtros, limite = 5) {
+export async function getUltimasVendas(filtros: Filtros, limite = 5, { baseDaComissao = false }: { baseDaComissao?: boolean } = {}) {
   const { dataInicio, dataFim, lojaId, vendedorId } = filtros
   const inicio = inicioDoDiaBrt(dataInicio)
   const fim = fimDoDiaBrt(dataFim)
@@ -178,7 +178,7 @@ export async function getUltimasVendas(filtros: Filtros, limite = 5) {
     .select({
       id: vendas.id,
       clienteNome: vendas.clienteNome,
-      valor: sql<string>`${valorLiquidoExpr()}`,
+      valor: sql<string>`${liquidoDoPainel(baseDaComissao)}`,
       dataVenda: vendas.dataVenda,
       loja: lojas.nome,
       modelo: nomeDoModeloNaLoja(vendas.lojaId),
@@ -287,7 +287,10 @@ export async function getOsAbertas(lojaId?: string[], mecanicoId?: string, limit
 
 // admin_geral olha a rede: o modelo soma as Contas numa linha, com o nome original
 // (decisão do Luis, #476). Cada Conta vê o nome dela.
-type OpcoesRankingModelo = { nomeOriginal?: boolean }
+// `baseDaComissao`: o painel do vendedor mostra a base da comissão (sem o custo do PIX), como o KPI e o simulador
+// (decisão do Luis registrada na #93); para os outros, o líquido real.
+type OpcoesRankingModelo = { nomeOriginal?: boolean; baseDaComissao?: boolean }
+const liquidoDoPainel = (baseDaComissao?: boolean) => (baseDaComissao ? valorLiquidoDaComissaoExpr() : valorLiquidoExpr())
 
 export async function getMotoMaisVendida(filtros: Filtros, { nomeOriginal = false }: OpcoesRankingModelo = {}) {
   const { dataInicio, dataFim, lojaId, vendedorId } = filtros
@@ -331,7 +334,7 @@ export async function getPrecoMedioVendas(filtros: Filtros, opts?: { useLiquidoV
   if (vendedorId) conditions.push(eq(vendas.vendedorId, vendedorId))
 
   const mediaExpr = opts?.useLiquidoValue
-    ? sql<number>`AVG(${valorLiquidoExpr()})`
+    ? sql<number>`AVG(${valorLiquidoDaComissaoExpr()})`
     : avg(vendas.valor)
 
   const [result] = await db
@@ -342,7 +345,7 @@ export async function getPrecoMedioVendas(filtros: Filtros, opts?: { useLiquidoV
   return Number(result?.media ?? 0)
 }
 
-export async function getRankingVendedores(filtros: Omit<Filtros, 'vendedorId'>) {
+export async function getRankingVendedores(filtros: Omit<Filtros, 'vendedorId'>, { baseDaComissao = false }: { baseDaComissao?: boolean } = {}) {
   const { dataInicio, dataFim, lojaId } = filtros
   const inicio = inicioDoDiaBrt(dataInicio)
   const fim = fimDoDiaBrt(dataFim)
@@ -364,17 +367,17 @@ export async function getRankingVendedores(filtros: Omit<Filtros, 'vendedorId'>)
       nome: usuarios.nome,
       loja: lojaVendedor.nome,
       totalVendas: count(),
-      faturamento: sql<string>`sum(${valorLiquidoExpr()})`,
+      faturamento: sql<string>`sum(${liquidoDoPainel(baseDaComissao)})`,
     })
     .from(vendas)
     .innerJoin(usuarios, eq(vendas.vendedorId, usuarios.id))
     .leftJoin(lojaVendedor, eq(usuarios.lojaId, lojaVendedor.id))
     .where(and(...conditions))
     .groupBy(vendas.vendedorId, usuarios.nome, lojaVendedor.nome)
-    .orderBy(sql`sum(${valorLiquidoExpr()}) DESC`)
+    .orderBy(sql`sum(${liquidoDoPainel(baseDaComissao)}) DESC`)
 }
 
-export async function getModelosMaisVendidos(filtros: Filtros, { nomeOriginal = false }: OpcoesRankingModelo = {}) {
+export async function getModelosMaisVendidos(filtros: Filtros, { nomeOriginal = false, baseDaComissao = false }: OpcoesRankingModelo = {}) {
   const { dataInicio, dataFim, lojaId, vendedorId } = filtros
   const inicio = inicioDoDiaBrt(dataInicio)
   const fim = fimDoDiaBrt(dataFim)
@@ -392,7 +395,7 @@ export async function getModelosMaisVendidos(filtros: Filtros, { nomeOriginal = 
       modelo: nome,
       marca: modelos.marca,
       totalVendas: count(),
-      faturamento: sql<string>`sum(${valorLiquidoExpr()})`,
+      faturamento: sql<string>`sum(${liquidoDoPainel(baseDaComissao)})`,
     })
     .from(vendas)
     .innerJoin(motos, eq(vendas.motoId, motos.id))

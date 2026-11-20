@@ -6,6 +6,7 @@ import {
   semForcado,
   matchPagamentos,
   pixCompletaForcadaParcial,
+  pixDaForcada,
   forcadasQueOPixCompleta,
   mesmoResumoDaForcada,
   resumoDaForcadaQueOPixCompleta,

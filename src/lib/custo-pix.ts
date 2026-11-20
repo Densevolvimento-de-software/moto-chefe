@@ -1,6 +1,8 @@
 // Custo do PIX (CONTEXT.md): o banco credita o valor do PIX menos uma porcentagem do grupo.
 // A conta é a mesma da taxa de cartão (preco-minimo.ts); aqui ela ganha os nomes do PIX.
 import { centavos } from './centavos'
+import { brl } from './dashboard-painel'
+import { PAGAMENTO_PIX, type PgtoOS } from './conciliacao-status'
 import { parseNumeroBR } from './numero-br'
 import { brutoParaReceber, liquidoDoBruto } from './preco-minimo'
 
@@ -91,4 +93,42 @@ const CUSTO_ALTO_NA_FORCADA = 0.01
 export function avisoDeCustoAlto(custo: CustoDoPix, taxaDoGrupo: number): string | null {
   if (custo.custoPixTaxa <= CUSTO_ALTO_NA_FORCADA) return null
   return `Custo de ${percentualDoPix(custo.custoPixTaxa)} bem acima do custo do PIX do grupo (${percentualDoPix(taxaDoGrupo)}). Confira o valor que entrou.`
+}
+
+/**
+ * O pedido da venda: valor bruto dos PIX com custo ligados a ele (do grupo da loja) e a soma dos pagamentos PIX de
+ * todas as vendas dele, forçados ou não (decisão 13 do Luis, #93). O SQL do líquido (`queries/valor-liquido.ts`) faz a
+ * mesma conta.
+ */
+export type CoberturaDoPedido = { pixDoPedido: number; pixDasVendas: number }
+
+/**
+ * Quanto do custo gravado na forçada de PIX conta no líquido (decisão 10 do Luis, #93): a parte que o PIX do pedido
+ * cobre já leva o custo dele e não conta de novo. Desvinculado o PIX, volta a contar inteiro.
+ */
+export function custoDaForcadaQueConta(custoGravado: number, c: CoberturaDoPedido): { conta: number; coberto: number } {
+  const [custo, p, f] = [custoGravado, c.pixDoPedido, c.pixDasVendas].map(v => Math.round(v * 100))
+  // custo × (1 − p/f) em centavos inteiros, meio centavo para cima: a mesma conta do SQL, sem resto de ponto flutuante.
+  const conta = p <= 0 || f <= 0 ? custo : p >= f ? 0 : Math.floor((2 * custo * (f - p) + f) / (2 * f))
+  return { conta: conta / 100, coberto: (custo - conta) / 100 }
+}
+
+/** A linha da forçada na aba Pagamento (decisão 11 do Luis, #93): o custo que conta e a parte do PIX do pedido. */
+export function textoDoCustoDaForcada({ conta, coberto }: { conta: number; coberto: number }): string | null {
+  if (conta === 0 && coberto === 0) return null
+  if (conta === 0) return 'Custo já entra pelo PIX do pedido'
+  if (coberto === 0) return `Custo do PIX ${brl(conta)}`
+  return `Custo do PIX ${brl(conta)} (${brl(coberto)} já entra pelo PIX do pedido)`
+}
+
+/**
+ * O que o servidor manda à tela sobre o pedido da venda (decisão 11 do Luis, #93): o P e a soma dos pagamentos PIX
+ * das OUTRAS vendas dele. Os da própria venda a tela tem atualizados.
+ */
+export type CoberturaDaVenda = { pixDoPedido: number; pixDasOutras: number }
+
+/** A cobertura do pedido vista da venda: os pagamentos PIX das outras vendas + os desta, forçados ou não. */
+export function coberturaComEstaVenda(c: CoberturaDaVenda | null, pagamentos: readonly Pick<PgtoOS, 'tipo' | 'valor'>[]): CoberturaDoPedido {
+  const destaVenda = pagamentos.filter(p => PAGAMENTO_PIX.has(p.tipo)).reduce((s, p) => s + (Number(p.valor) || 0), 0)
+  return { pixDoPedido: c?.pixDoPedido ?? 0, pixDasVendas: (c?.pixDasOutras ?? 0) + destaVenda }
 }

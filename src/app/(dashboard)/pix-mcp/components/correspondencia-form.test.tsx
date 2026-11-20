@@ -17,7 +17,7 @@ const janela = dom.window as unknown as { matchMedia?: unknown }
 janela.matchMedia = () => ({ matches: desktop, addEventListener: () => {}, removeEventListener: () => {} })
 after(() => { delete janela.matchMedia })
 
-const lancar = mock.fn(async (_id: string, _tipo: string, _numero: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
+const lancar = mock.fn(async (_id: string, _tipo: string, _numero: string): Promise<ResultadoAction<{ forcadasComCusto: number }>> => ({ ok: true, dados: { forcadasComCusto: 0 } }))
 const remover = mock.fn(async (_id: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const desfazerERemover = mock.fn(async (_id: string, _resumoVisto?: unknown): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const forcadaDoPix = mock.fn(async (_id: string): Promise<ResultadoAction<ForcadaQueOPixCompleta | null>> => ({ ok: true, dados: null }))
@@ -226,4 +226,16 @@ test('celular: enquanto envia, os botões da gaveta travam e o Escape não fecha
   })
   assert.equal(gavetaAberta(), true)
   await act(async () => { responder({ ok: true, dados: undefined }); await esperar(50) })
+})
+
+// Decisões 9 e 10 do Luis (#93): ligar ao pedido um PIX com custo faz a parte coberta das forçadas de PIX do pedido
+// deixar de contar; a tela avisa quantas forçadas são.
+test('lançar no pedido avisa quando o pedido tem forçadas de PIX com custo', async () => {
+  const { salvar } = await montar(LIVRE)
+  lancar.mock.mockImplementation(async () => ({ ok: true, dados: { forcadasComCusto: 2 } }))
+  await salvar('123')
+  assert.deepEqual(sucessos, ['Correspondência lançada. O custo do PIX de 2 forçadas deste pedido deixa de contar na parte que este PIX cobre.'])
+  lancar.mock.mockImplementation(async () => ({ ok: true, dados: { forcadasComCusto: 1 } }))
+  await salvar('124')
+  assert.deepEqual(sucessos.slice(1), ['Correspondência lançada. O custo do PIX de 1 forçada deste pedido deixa de contar na parte que este PIX cobre.'])
 })

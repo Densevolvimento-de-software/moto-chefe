@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearGrupo, semearLoja, type Base } from '@/test/semear-conta'
-import { semearContaComAlvos, semearLinhaDaMaquininha, semearPixRecebido, semearVendaPeca } from '@/test/semear-alvos-conciliacao'
+import { semearContaComAlvos, semearLinhaDaMaquininha, semearPixRecebido, semearVendaPeca, semearCustoPixDoGrupo } from '@/test/semear-alvos-conciliacao'
 import { ALVO_TIPOS } from '@/lib/conciliacao-alvo'
 import type { AlvoConciliacao } from './actions'
 import type { PgtoOS } from '@/lib/conciliacao-status'
@@ -424,6 +424,36 @@ test('PIX vinculado que completa uma forçada parcial não se desvincula: pede p
   // Desfeita a forçada, o PIX se desvincula.
   assert.equal((await actions.desfazerConciliacaoForcadaAction({ tipo: 'peca', id: a.alvos.peca }, 0)).ok, true)
   assert.equal((await actions.desvincularPixAlvoAction(pix)).ok, true)
+})
+
+// Decisão 9 do Luis (#93, muda o B6): a forçada sempre grava o custo dela, mesmo com PIX com custo no pedido; o
+// líquido é que não conta a parte coberta (valor-liquido.db.test.ts). A cobertura que a tela usa (decisão 11) soma só
+// PIX com custo da própria Conta no pedido; quem não abre a venda recebe null, como venda inexistente.
+test('forçar PIX de venda cujo pedido já tem PIX com custo: a marca grava o custo dela; PIX de outra Conta ou sem custo no pedido não conta', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  await semearCustoPixDoGrupo(db, a.grupoId, 0.002)
+  const alvo = { tipo: 'moto' as const, id: a.alvos.moto }
+  const pedido = (await execRows(sql`select pedido_venda_id as p from vendas where id = ${a.alvos.moto}`))[0].p
+  const ligarNoPedido = (grupoId: string, custoPix = 6, tipoOperacao = 'PIX') =>
+    semearPixRecebido(db, grupoId, { valor: 3000 - custoPix, tipoOperacao, vinculado: { pedido, valorBruto: 3000, custoPix } })
+  // PIX de outra Conta apontando para o pedido, e uma TED (custo 0) do próprio grupo no pedido: não desligam o custo.
+  const b = await contaComAlvos()
+  await ligarNoPedido(b.grupoId)
+  await ligarNoPedido(a.grupoId, 0, 'TED')
+  assert.equal(await actions.buscarPixParaOAlvo(alvo, 1000).then(r => r.taxa), 0.002)
+  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 0, pixDasOutras: 0 })
+  // PIX do próprio grupo no pedido: a forçada grava o custo dela do mesmo jeito.
+  await ligarNoPedido(a.grupoId)
+  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 3000, pixDasOutras: 0 })
+  assert.equal((await actions.forcarConciliacaoAction(alvo, 0, MOTIVO, 998, 1000)).ok, true)
+  assert.deepEqual((await marcaDe('moto', a.alvos.moto))?.pix, { valorRecebido: 998, valorBruto: 1000, custoPix: 2, custoPixTaxa: 0.002 })
+  // A forçada desta venda não entra nas "outras": a tela soma a dela pelos pagamentos.
+  assert.deepEqual(await actions.buscarCoberturaDoPedido(alvo), { pixDoPedido: 3000, pixDasOutras: 0 })
+  usuario = sessao(b, 'aux_adm')
+  assert.equal(await actions.buscarCoberturaDoPedido(alvo), null)
+  assert.equal(await actions.buscarCoberturaDoPedido({ tipo: 'moto', id: randomUUID() }), null)
+  await db.execute(sql`delete from configuracao_taxas where grupo_id = ${a.grupoId}`)
 })
 
 // ─── #166: a linha pix da maquininha que completa a forçada parcial ─────────────────────────────

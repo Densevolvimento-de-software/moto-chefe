@@ -8,6 +8,7 @@ import { pixRecebimentosMcp } from './db/schema'
 import { COMPLETA_FORCADA, type ForcadaQueOPixCompleta } from './conciliacao-status'
 import type { AlvoConciliacao } from './conciliacao-alvo'
 import { ehTransferenciaInterna } from './pix-internos'
+import { forcadasPixComCustoDoPedido } from './alvo-da-conciliacao'
 import { RecusaUsuario } from './resultado-action'
 import { ehUuid } from './uuid'
 import { desfazerForcadaEDesvincular, desvincularNaTrava, forcadaQueOItemCompleta, PIX_NAO_ENCONTRADO, pixDoBanco, pixDoGrupo } from './vinculo-na-trava'
@@ -24,7 +25,8 @@ export type VinculoPix =
   | { tipo: 'peca'; pecaVendaId: string }
 
 
-export async function vincularPix(pixId: string, grupoId: string, vinculo: VinculoPix, porId: string): Promise<void> {
+// `forcadasComCusto`: forçadas de PIX com custo do pedido, cuja parte coberta deixa de contar (#93), para a tela avisar.
+export async function vincularPix(pixId: string, grupoId: string, vinculo: VinculoPix, porId: string): Promise<{ forcadasComCusto: number }> {
   const [pix] = ehUuid(pixId)
     ? await db.select({ pagadorNome: pixRecebimentosMcp.pagadorNome, tipo: pixRecebimentosMcp.tipoCorrespondencia, valor: pixRecebimentosMcp.valor, tipoOperacao: pixRecebimentosMcp.tipoOperacao })
       .from(pixRecebimentosMcp).where(pixDoGrupo(pixId, grupoId)).limit(1)
@@ -52,6 +54,8 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
     .returning({ id: pixRecebimentosMcp.id })
   // Outro clique ligou o PIX entre a leitura e a gravação.
   if (ligados.length === 0) throw new RecusaUsuario(PIX_JA_VINCULADO)
+  const comCustoNoPedido = vinculo.tipo === 'pedido' && custo.custoPix > 0
+  return { forcadasComCusto: comCustoNoPedido ? await forcadasPixComCustoDoPedido(vinculo.pedidoId, grupoId) : 0 }
 }
 
 /** Desvincula o PIX do banco com a forçada parcial conferida na trava do alvo (vinculo-na-trava). */

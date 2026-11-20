@@ -12,7 +12,7 @@ import { posicoes, type AtendVendedor } from '@/lib/individual'
 // Bordas de mês em UTC, iguais ao fechamento/DRE. Filtra por grupo_id (escalar).
 //
 // Faturamento em LÍQUIDO (valorLiquidoSql, base do DRE): valor menos a taxa de
-// cartão da parte já conciliada. Mês recém-fechado, com conciliação pendente,
+// cartão e o custo do PIX do que já foi conciliado. Mês recém-fechado, com conciliação pendente,
 // aparece otimista e encolhe conforme as transações casam.
 
 export type Modelo = { nome: string; qtd: number; total: number }

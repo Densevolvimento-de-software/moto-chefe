@@ -16,7 +16,7 @@ import { alvoValido, colunasDoAlvo, semAlvos, tipoDoAlvo, type AlvoConciliacao, 
 import { ehUuid } from '@/lib/uuid'
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
 import { CONCILIACAO_NAO_ENCONTRADA, desfazerForcadaEDesvincular, desvincularNaTrava, forcadaQueOItemCompleta, linhaDoCartao } from '@/lib/vinculo-na-trava'
-import { esperadoComTaxa, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
+import { esperadoComTaxa, OPERACAO_COM_CUSTO, type CoberturaDaVenda } from '@/lib/custo-pix'
 import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
 import { comForcado, matchPagamentos, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
@@ -30,7 +30,7 @@ import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
 import { grupos } from '@/lib/db/schema'
 import { revalidatePath } from 'next/cache'
 import { revalidarTelasDaConciliacao } from '@/lib/revalidar-conciliacao'
-import { cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from '@/lib/alvo-da-conciliacao'
+import { coberturaDoPedidoDaVenda, cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from '@/lib/alvo-da-conciliacao'
 import { lojasDoEscopo } from '@/lib/conta'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
@@ -449,6 +449,12 @@ export async function buscarEstornosDoAlvo(alvo: AlvoConciliacao) {
 export async function buscarPixDoAlvo(alvo: AlvoConciliacao) {
   if (!(await abreOAlvo(alvo))) return []
   return pixDoAlvo(alvo)
+}
+
+/** A cobertura do pedido da venda para a linha da forçada de PIX (decisão 11 do Luis, #93). Só venda; sem acesso, null. */
+export async function buscarCoberturaDoPedido(alvo: AlvoConciliacao): Promise<CoberturaDaVenda | null> {
+  if (alvo.tipo !== 'moto' || !(await abreOAlvo(alvo))) return null
+  return coberturaDoPedidoDaVenda(alvo.id)
 }
 
 // Busca livre: a lupa padrão só acha transação de valor praticamente idêntico. Quando

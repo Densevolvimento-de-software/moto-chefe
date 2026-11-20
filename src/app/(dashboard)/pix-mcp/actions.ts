@@ -28,9 +28,11 @@ async function lancarCorrespondencia(id: string, tipo: Tipo, numero: string) {
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
   const vinculo = await vinculoPeloNumero(tipo, String(numero), lojaIdsGrupo, grupo.nome)
-  await vincularPix(id, grupo.id, vinculo, usuario.id)
-
-  revalidatePath('/pix-mcp')
+  const r = await vincularPix(id, grupo.id, vinculo, usuario.id)
+  // Com forçadas de custo no pedido, o líquido das vendas dele muda: as telas da conciliação revalidam juntas.
+  if (r.forcadasComCusto > 0) revalidarTelasDaConciliacao(null)
+  else revalidatePath('/pix-mcp')
+  return r
 }
 
 // O número só é procurado nas lojas do grupo ativo: NF e OS se repetem entre Contas.

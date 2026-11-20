@@ -15,7 +15,7 @@ import { montarDre, somarEntradas, ENTRADA_VAZIA, type LinhaDre } from '@/lib/dr
 // equivalente, já que lojaIds = as lojas do grupo.
 //
 // Faturamento de MOTOS em LÍQUIDO (valorLiquidoSql, base do DRE): valor menos a
-// taxa de cartão da parte já conciliada. OS/peças e a composição por forma de
+// taxa de cartão e o custo do PIX do que já foi conciliado. OS/peças e a composição por forma de
 // pagamento seguem no bruto. O DRE resumido tem receita bruta e líquida separadas.
 
 export type Item = { nome: string; qtd: number; total: number }

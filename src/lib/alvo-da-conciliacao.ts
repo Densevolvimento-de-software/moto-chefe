@@ -1,14 +1,16 @@
 // Leituras e gravação dos pagamentos e lançamentos de um alvo da conciliação (venda de moto, OS ou venda
 // de peça). Quem chama já conferiu que o alvo abre para o usuário; pagamentos e gravação levam as lojas
 // do grupo dentro da consulta. `exec`: o db, ou a transação de quem confere e grava junto.
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { PgSelect } from 'drizzle-orm/pg-core'
-import { db } from './db'
+import { db, execRows } from './db'
 import { conciliacoesCartao, ordensServico, pixRecebimentosMcp, vendas, vendasPecas } from './db/schema'
 import { pagamentosEfetivosOS, type PgtoOS } from './conciliacao-status'
 import type { AlvoConciliacao } from './conciliacao-alvo'
 import { colunasQueLigamAoAlvo } from './alvo-conciliado'
 import { CARTAO_ESTORNADO } from './conciliacao-cartao'
+import { pixComCustoDoPedido, pixDasVendasDoPedido } from './queries/valor-liquido'
+import type { CoberturaDaVenda } from './custo-pix'
 
 export type ExecutorDoAlvo = Pick<typeof db, 'select' | 'update'>
 
@@ -115,4 +117,25 @@ export async function gravarPagamentosDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo
     await exec.update(vendas).set({ pagamentos: pgtos })
       .where(and(eq(vendas.id, alvo.id), inArray(vendas.lojaId, lojaIdsGrupo)))
   }
+}
+
+/** A cobertura do pedido da venda para a linha da forçada de PIX (`CoberturaDaVenda`), nas lojas do grupo da loja da venda. */
+export async function coberturaDoPedidoDaVenda(vendaId: string): Promise<CoberturaDaVenda | null> {
+  const [pedido, grupo] = [sql.raw('v.pedido_venda_id'), sql.raw('lj.grupo_id')]
+  const [r] = (await execRows(sql`select ${pixComCustoDoPedido(pedido, grupo)} as pix,
+      ${pixDasVendasDoPedido(pedido, grupo, sql.raw('v.id'))} as outras
+    from vendas v join lojas lj on lj.id = v.loja_id where v.id = ${vendaId}`)) as { pix: string; outras: string }[]
+  return r ? { pixDoPedido: Number(r.pix), pixDasOutras: Number(r.outras) } : null
+}
+
+/**
+ * Quantas forçadas de PIX com custo as vendas do pedido têm, nas lojas do grupo (#93, decisões 9 e 10): ligar ao
+ * pedido um PIX com custo faz a parte coberta delas deixar de contar, e a tela avisa. Só lê.
+ */
+export async function forcadasPixComCustoDoPedido(pedidoId: string, grupoId: string): Promise<number> {
+  const [r] = (await execRows(sql`select count(*)::int as n
+    from vendas v cross join lateral jsonb_array_elements(coalesce(v.pagamentos, '[]'::jsonb)) pg
+    where v.pedido_venda_id = ${pedidoId} and v.loja_id in (select id from lojas where grupo_id = ${grupoId})
+      and (pg->'conciliadoManual'->'pix'->>'custoPix')::numeric > 0`)) as { n: number }[]
+  return r?.n ?? 0
 }

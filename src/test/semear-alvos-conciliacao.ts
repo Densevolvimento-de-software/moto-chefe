@@ -16,12 +16,13 @@ const formaDe = (p: Pagamentos) => String(p[0]?.tipo ?? 'dinheiro')
 const totalDe = (p: Pagamentos) => p.reduce((soma, x) => soma + Number(x.valor ?? 0), 0)
 const dataOuPadrao = (em?: string) => em ? sql`${em}::timestamptz` : sql`default`
 
-export async function semearVendaMoto(tx: Executor, b: Balcao, pagamentos: Pagamentos) {
+/** `o.valor`: o da venda (padrão, a soma dos pagamentos); `o.pedidoId`: outra venda do mesmo pedido (pedido com várias motos). */
+export async function semearVendaMoto(tx: Executor, b: Balcao, pagamentos: Pagamentos, o: { valor?: number; pedidoId?: string } = {}) {
   const moto = await idDoInsert(tx, sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
     values (${randomUUID()}, ${b.modeloId}, ${b.lojaId}, 'CINZA', '1', 'vendida', 'vendida') returning id`)
-  const pedido = await idDoInsert(tx, sql`insert into pedidos_venda (moto_id, loja_id, vendedor_id) values (${moto}, ${b.lojaId}, ${b.usuarioId}) returning id`)
+  const pedido = o.pedidoId ?? await idDoInsert(tx, sql`insert into pedidos_venda (moto_id, loja_id, vendedor_id) values (${moto}, ${b.lojaId}, ${b.usuarioId}) returning id`)
   return idDoInsert(tx, sql`insert into vendas (pedido_venda_id, moto_id, loja_id, vendedor_id, efetivado_por, cliente_nome, cliente_cpf, valor, forma_pagamento, pagamentos, data_venda)
-    values (${pedido}, ${moto}, ${b.lojaId}, ${b.usuarioId}, ${b.usuarioId}, 'Cliente sintético', '52998224725', ${totalDe(pagamentos)}, ${formaDe(pagamentos)},
+    values (${pedido}, ${moto}, ${b.lojaId}, ${b.usuarioId}, ${b.usuarioId}, 'Cliente sintético', '52998224725', ${o.valor ?? totalDe(pagamentos)}, ${formaDe(pagamentos)},
       ${jsonDe(pagamentos)}, ${dataOuPadrao(b.em)}) returning id`)
 }
 
@@ -36,11 +37,21 @@ export function semearOs(tx: Executor, b: Pick<Balcao, 'lojaId' | 'usuarioId' | 
     values (${b.lojaId}, ${b.usuarioId}, 'revisão', 'concluida', ${jsonDe(pagamentos)}, ${b.em ?? null}::timestamptz) returning id`)
 }
 
-/** PIX recebido do banco (Open Finance), livre, no grupo, com data de agora. */
-export function semearPixRecebido(tx: Executor, grupoId: string, o: { valor: number; pagadorNome?: string; tipoOperacao?: string | null }) {
-  return idDoInsert(tx, sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor, pagador_nome, tipo_operacao)
+/**
+ * PIX recebido do banco (Open Finance), no grupo, com data de agora. Livre, ou já vinculado à venda ou ao pedido
+ * com o que o vínculo grava (`vinculado`: valor do PIX e custo; a taxa sai deles).
+ */
+export function semearPixRecebido(tx: Executor, grupoId: string, o: {
+  valor: number; pagadorNome?: string; tipoOperacao?: string | null
+  vinculado?: { venda?: string; pedido?: string; valorBruto: number; custoPix: number }
+}) {
+  const v = o.vinculado
+  return idDoInsert(tx, sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor, pagador_nome, tipo_operacao,
+      tipo_correspondencia, venda_id, pedido_id, valor_bruto, custo_pix, custo_pix_taxa)
     values (${grupoId}, 'conta-sintetica', 'Banco sintético', ${randomUUID()}, now(), ${o.valor}, ${o.pagadorNome ?? 'Pagador sintético'},
-      ${o.tipoOperacao === undefined ? 'PIX' : o.tipoOperacao}) returning id`)
+      ${o.tipoOperacao === undefined ? 'PIX' : o.tipoOperacao},
+      ${v ? (v.venda ? 'venda' : 'pedido') : null}, ${v?.venda ?? null}, ${v?.pedido ?? null},
+      ${v?.valorBruto ?? null}, ${v?.custoPix ?? null}, ${v ? (v.valorBruto > 0 ? v.custoPix / v.valorBruto : 0) : null}) returning id`)
 }
 
 /**

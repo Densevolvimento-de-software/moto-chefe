@@ -228,8 +228,9 @@ async function RankingSection({
   try {
     ;[rankingVendedores, modelosMaisVendidos, descontos] = await withTimeout(
       Promise.all([
-        getRankingVendedores(filtrosRanking),
-        getModelosMaisVendidos(filtros, { nomeOriginal }),
+        // O vendedor vê a base da comissão, como no KPI e no simulador (#93).
+        getRankingVendedores(filtrosRanking, { baseDaComissao: vendedorAtualId !== undefined }),
+        getModelosMaisVendidos(filtros, { nomeOriginal, baseDaComissao: vendedorAtualId !== undefined }),
         // Quem não pode ver o desconto dos colegas recebe só a própria linha —
         // a query já filtra por vendedor, então o dado nem chega ao cliente.
         descontosPorVendedor({
@@ -267,7 +268,7 @@ async function TabelasSection({
   try {
     ;[ultimasVendas, transfPendentes, garantiasVencendo, osAbertas] = await withTimeout(
       Promise.all([
-        getUltimasVendas(filtros),
+        getUltimasVendas(filtros, 5, { baseDaComissao: isVendedor }),
         getTransferenciasPendentes(lojaId),
         isVendedor ? Promise.resolve([] as Awaited<ReturnType<typeof getGarantiasProxVencimento>>) : getGarantiasProxVencimento(lojaId),
         isVendedor ? Promise.resolve([] as Awaited<ReturnType<typeof getOsAbertas>>) : getOsAbertas(lojaId, mecanicoId),
