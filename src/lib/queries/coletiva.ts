@@ -13,7 +13,7 @@ import {
 // bordas de mês em UTC (iguais ao fechamento/metas), vendedor inativo fica de fora.
 //
 // Faturamento em LÍQUIDO (valorLiquidoSql): a venda entra pelo valor menos a taxa
-// de cartão da parte já conciliada — a mesma base do DRE. Mês recém-fechado com
+// de cartão e o custo do PIX do que já foi conciliado — a mesma base do DRE. Mês recém-fechado com
 // conciliação pendente aparece otimista e encolhe conforme as transações casam.
 
 export type DadosColetiva = {

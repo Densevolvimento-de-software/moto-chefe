@@ -5,10 +5,10 @@ import { vendas, conciliacoesCartao } from '@/lib/db/schema'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 
 /**
- * Valor da venda com a parte já conciliada trocada pelo líquido da operadora.
+ * Valor da venda com o que já foi conciliado trocado pelo que entrou de fato: a parte paga em cartão vira o
+ * líquido da operadora e sai o custo do PIX (#93). O resto fica como está.
  *
- * A parte não paga em cartão fica como está; a paga em cartão E já conciliada
- * vira o líquido. Cobre venda com forma "multiplos" (cartão + pix/dinheiro), em
+ * Detalhe do cartão: a paga em cartão E já conciliada vira o líquido. Cobre venda com forma "multiplos" (cartão + pix/dinheiro), em
  * que descartar a parte não-cartão zeraria dinheiro que entrou de verdade.
  *
  * Enquanto a conciliação não chega, a venda entra pelo bruto — o líquido do mês
@@ -73,7 +73,6 @@ export function tarifaPixDaVendaExpr() {
                 AND ${conciliacoesCartao.tipo} = ${LINHA_PIX}), 0)`
 }
 
-
 /**
  * Custo do PIX da venda (#93), a parte que o banco ficou dos PIX: o dos PIX conciliados da venda, o dos PIX
  * conciliados do pedido dela (o do pedido inteiro na 1ª venda, a de menor número; decisão do Luis registrada na
@@ -107,7 +106,7 @@ export const custoPixDaVendaExpr = () => custoPixDaVenda({
 })
 
 /** A mesma conta para o SQL cru com alias (`v` = alias de vendas na query externa). */
-export function custoPixDaVendaSql(v = 'v') {
+function custoPixDaVendaSql(v = 'v') {
   const col = (c: string) => sql.raw(`${v}.${c}`)
   return custoPixDaVenda({ id: col('id'), pedido: col('pedido_venda_id'), numero: col('numero'), loja: col('loja_id'), pagamentos: col('pagamentos') })
 }
