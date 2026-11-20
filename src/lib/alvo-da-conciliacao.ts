@@ -10,6 +10,7 @@ import type { AlvoConciliacao } from './conciliacao-alvo'
 import { colunasQueLigamAoAlvo } from './alvo-conciliado'
 import { CARTAO_ESTORNADO } from './conciliacao-cartao'
 import { basesForcadasDoPedido, pixComCustoDoPedido } from './queries/valor-liquido'
+import type { CoberturaDaVenda } from './custo-pix'
 
 export type ExecutorDoAlvo = Pick<typeof db, 'select' | 'update'>
 
@@ -118,13 +119,7 @@ export async function gravarPagamentosDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo
   }
 }
 
-/**
- * O que a linha da forçada de PIX precisa para a conta de `custoDaForcadaQueConta` (decisão 11 do Luis, #93): o valor
- * bruto dos PIX com custo ligados ao pedido da venda e a base das forçadas de PIX das OUTRAS vendas dele, nas lojas do
- * grupo da loja da venda. As forçadas da própria venda a tela soma dos pagamentos, que já tem atualizados.
- */
-export type CoberturaDaVenda = { pixDoPedido: number; forcadasDasOutras: number }
-
+/** A cobertura do pedido da venda para a linha da forçada de PIX (`CoberturaDaVenda`), nas lojas do grupo da loja da venda. */
 export async function coberturaDoPedidoDaVenda(vendaId: string): Promise<CoberturaDaVenda | null> {
   const [pedido, grupo] = [sql.raw('v.pedido_venda_id'), sql.raw('lj.grupo_id')]
   const [r] = (await execRows(sql`select ${pixComCustoDoPedido(pedido, grupo)} as pix,

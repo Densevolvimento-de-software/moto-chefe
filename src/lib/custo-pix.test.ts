@@ -1,7 +1,7 @@
 // Custo do PIX (#89): o banco credita o valor do PIX menos a porcentagem do grupo.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { avisoDeCustoAlto, creditoDoPix, custoDaForcadaQueConta, custoDoPixForcado, textoDoCustoDaForcada, esperadoComTaxa, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa, lerValorRecebido, percentualDoPix } from './custo-pix'
+import { avisoDeCustoAlto, coberturaComEstaVenda, creditoDoPix, custoDaForcadaQueConta, custoDoPixForcado, textoDoCustoDaForcada, esperadoComTaxa, custoDoPixRecebido, custoDoPixVinculado, custoPixDoCampo, lerCustoPixTaxa, lerValorRecebido, percentualDoPix } from './custo-pix'
 
 test('crédito de R$ 9.980,00 com 0,20%: o PIX foi de R$ 10.000,00 e custou R$ 20,00', () => {
   assert.deepEqual(custoDoPixRecebido(9980, 0.002), { bruto: 10000, custo: 20 })
@@ -158,4 +158,14 @@ test('textoDoCustoDaForcada: o que conta, a parte do PIX do pedido, ou nada quan
 test('custoDaForcadaQueConta: no empate de meio centavo arredonda para cima, como o SQL do líquido', () => {
   assert.deepEqual(custoDaForcadaQueConta(2.01, { pixDoPedido: 1, forcadasDoPedido: 2 }), { conta: 1.01, coberto: 1 })
   assert.deepEqual(custoDaForcadaQueConta(0.05, { pixDoPedido: 5, forcadasDoPedido: 10 }), { conta: 0.03, coberto: 0.02 })
+})
+
+// P5 da revisão: o F que a tela usa sai de uma função só: as forçadas das outras vendas (servidor) + as desta venda
+// (pagamentos) + a base que está sendo forçada.
+test('coberturaComEstaVenda: soma as forçadas das outras vendas, as desta venda e a que está sendo forçada', () => {
+  const marca = (valorBruto: number) => ({ motivo: 'x', porId: 'u', porNome: 'U', em: '2026-11-20T12:00:00.000Z', pix: { valorRecebido: valorBruto, valorBruto, custoPix: 0, custoPixTaxa: 0 } })
+  const pgtos = [{ tipo: 'pix', valor: 4000, conciliadoManual: marca(4000) }, { tipo: 'pix', valor: 500 }, { tipo: 'cartao_credito', valor: 300, conciliadoManual: { motivo: 'x', porId: 'u', porNome: 'U', em: '2026-11-20T12:00:00.000Z' } }]
+  assert.deepEqual(coberturaComEstaVenda({ pixDoPedido: 1000, forcadasDasOutras: 6000 }, pgtos), { pixDoPedido: 1000, forcadasDoPedido: 10_000 })
+  assert.deepEqual(coberturaComEstaVenda({ pixDoPedido: 1000, forcadasDasOutras: 6000 }, pgtos, 500), { pixDoPedido: 1000, forcadasDoPedido: 10_500 })
+  assert.deepEqual(coberturaComEstaVenda(null, pgtos), { pixDoPedido: 0, forcadasDoPedido: 4000 })
 })

@@ -2,6 +2,7 @@
 // A conta é a mesma da taxa de cartão (preco-minimo.ts); aqui ela ganha os nomes do PIX.
 import { centavos } from './centavos'
 import { brl } from './dashboard-painel'
+import type { PgtoOS } from './conciliacao-status'
 import { parseNumeroBR } from './numero-br'
 import { brutoParaReceber, liquidoDoBruto } from './preco-minimo'
 
@@ -117,4 +118,18 @@ export function textoDoCustoDaForcada({ conta, coberto }: { conta: number; cober
   if (conta === 0) return 'Custo já entra pelo PIX do pedido'
   if (coberto === 0) return `Custo do PIX ${brl(conta)}`
   return `Custo do PIX ${brl(conta)} (${brl(coberto)} já entra pelo PIX do pedido)`
+}
+
+/**
+ * O que o servidor manda à tela sobre o pedido da venda (decisão 11 do Luis, #93): o P e a base das forçadas de PIX
+ * das OUTRAS vendas dele. As da própria venda a tela tem atualizadas nos pagamentos.
+ */
+export type CoberturaDaVenda = { pixDoPedido: number; forcadasDasOutras: number }
+
+/** A cobertura do pedido vista da venda: as forçadas das outras vendas + as desta + `aMais`, a base que está sendo forçada. */
+export function coberturaComEstaVenda(
+  c: CoberturaDaVenda | null, pagamentos: readonly Pick<PgtoOS, 'conciliadoManual'>[], aMais = 0,
+): CoberturaDoPedido {
+  const destaVenda = pagamentos.reduce((s, p) => s + (p.conciliadoManual?.pix?.valorBruto ?? 0), 0)
+  return { pixDoPedido: c?.pixDoPedido ?? 0, forcadasDoPedido: (c?.forcadasDasOutras ?? 0) + destaVenda + aMais }
 }

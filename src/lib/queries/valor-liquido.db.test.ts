@@ -266,7 +266,8 @@ test('cobertura da tela + função pura = o custo das forçadas que o líquido d
   for (const [venda, base, gravado, doPedido] of [[primeira.venda, 6_000, 12.37, 6], [segunda.venda, 4_000, 8.11, 0]] as const) {
     const cob = await alvos.coberturaDoPedidoDaVenda(venda)
     assert.ok(cob)
-    const { conta } = custoPix.custoDaForcadaQueConta(gravado, { pixDoPedido: cob.pixDoPedido, forcadasDoPedido: cob.forcadasDasOutras + base })
+    const pgtos = [{ tipo: 'pix', valor: base, conciliadoManual: marcaPix(c, base, gravado) }]
+    const { conta } = custoPix.custoDaForcadaQueConta(gravado, custoPix.coberturaComEstaVenda(cob, pgtos))
     assert.equal(Math.round((base - doPedido - conta) * 100), Math.round(await liquido(venda) * 100), venda)
   }
 })

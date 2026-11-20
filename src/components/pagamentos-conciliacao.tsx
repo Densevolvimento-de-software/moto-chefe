@@ -4,8 +4,7 @@ import { toast } from 'sonner'
 import { ChevronDown, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PAGAMENTO_PIX, baseDaForcada, estornosDosPagamentos, matchPagamentos, pixDaForcada, precisaConciliar, type EstornoDoAlvo, type PgtoOS } from '@/lib/conciliacao-status'
-import { avisoDeCustoAlto, custoDaForcadaQueConta, esperadoComTaxa, percentualDoPix, textoDoCustoDaForcada, type CustoDoPix } from '@/lib/custo-pix'
-import type { CoberturaDaVenda } from '@/lib/alvo-da-conciliacao'
+import { avisoDeCustoAlto, coberturaComEstaVenda, custoDaForcadaQueConta, esperadoComTaxa, percentualDoPix, textoDoCustoDaForcada, type CoberturaDaVenda, type CustoDoPix } from '@/lib/custo-pix'
 import { formatarNumeroBR, parseNumeroBR } from '@/lib/numero-br'
 import { nomeOperadora } from '@/lib/operadoras'
 import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
@@ -121,13 +120,10 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const conciliados = matchPagamentos(pagamentos, concs, pixRecs)
   // Pagamento que voltou a pendente porque a linha da maquininha foi estornada no Mercado Pago (#51).
   const estornados = estornosDosPagamentos(pagamentos, conciliados, dados.estornos)
-  // Custo da forçada de PIX que conta no líquido, pela mesma conta do servidor (decisão 11 do Luis, #93): as forçadas
-  // das outras vendas do pedido vêm do servidor; as desta venda, dos pagamentos. `aMais`: a base que está sendo forçada.
-  const basesForcadas = pagamentos.reduce((s, p) => s + (p.conciliadoManual?.pix?.valorBruto ?? 0), 0)
-  const textoDoCusto = (custoGravado: number, aMais = 0) => textoDoCustoDaForcada(custoDaForcadaQueConta(custoGravado, {
-    pixDoPedido: dados.cobertura?.pixDoPedido ?? 0,
-    forcadasDoPedido: (dados.cobertura?.forcadasDasOutras ?? 0) + basesForcadas + aMais,
-  }))
+  // Custo da forçada de PIX que conta no líquido, pela mesma conta do servidor (decisão 11 do Luis, #93).
+  // `aMais`: a base que está sendo forçada.
+  const textoDoCusto = (custoGravado: number, aMais = 0) =>
+    textoDoCustoDaForcada(custoDaForcadaQueConta(custoGravado, coberturaComEstaVenda(dados.cobertura, pagamentos, aMais)))
 
   function limparBusca() {
     setCandidatos([])
