@@ -105,9 +105,10 @@ export type CoberturaDoPedido = { pixDoPedido: number; forcadasDoPedido: number 
  * cobre já leva o custo dele e não conta de novo. Desvinculado o PIX, volta a contar inteiro.
  */
 export function custoDaForcadaQueConta(custoGravado: number, c: CoberturaDoPedido): { conta: number; coberto: number } {
-  const fracao = c.pixDoPedido > 0 && c.forcadasDoPedido > 0 ? Math.min(1, c.pixDoPedido / c.forcadasDoPedido) : 0
-  const conta = centavos(custoGravado * (1 - fracao))
-  return { conta, coberto: centavos(custoGravado - conta) }
+  const [custo, p, f] = [custoGravado, c.pixDoPedido, c.forcadasDoPedido].map(v => Math.round(v * 100))
+  // custo × (1 − p/f) em centavos inteiros, meio centavo para cima: a mesma conta do SQL, sem resto de ponto flutuante.
+  const conta = p <= 0 || f <= 0 ? custo : p >= f ? 0 : Math.floor((2 * custo * (f - p) + f) / (2 * f))
+  return { conta: conta / 100, coberto: (custo - conta) / 100 }
 }
 
 /** A linha da forçada na aba Pagamento (decisão 11 do Luis, #93): o custo que conta e a parte do PIX do pedido. */

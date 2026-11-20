@@ -270,3 +270,13 @@ test('cobertura da tela + função pura = o custo das forçadas que o líquido d
     assert.equal(Math.round((base - doPedido - conta) * 100), Math.round(await liquido(venda) * 100), venda)
   }
 })
+
+// C1 da revisão: forçada de custo 2,01 com metade coberta pelo PIX do pedido; o líquido conta 1,01, como a tela.
+test('empate de meio centavo: o líquido conta 1,01 da forçada de 2,01 coberta pela metade, o mesmo da função pura', async () => {
+  const c = await semearConta()
+  const { venda, pedido } = await vendaMoto(c, 2_000, [{ tipo: 'pix', valor: 2_000, conciliadoManual: marcaPix(c, 2_000, 2.01) }])
+  await pixVinculado(c.grupoId, { pedido }, 995, 1_000, 5)
+  const { conta } = custoPix.custoDaForcadaQueConta(2.01, { pixDoPedido: 1_000, forcadasDoPedido: 2_000 })
+  assert.equal(conta, 1.01)
+  assert.equal(await liquido(venda), 2_000 - 5 - 1.01)
+})

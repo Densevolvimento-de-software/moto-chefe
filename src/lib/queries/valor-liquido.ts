@@ -97,16 +97,15 @@ function custoPixDaVenda(c: { id: SQL; pedido: SQL; numero: SQL; loja: SQL; paga
  * `pagamentos` é a coluna jsonb do registro; OS e venda de peça (#94) não têm pedido e contam o custo inteiro.
  */
 export function custoDasForcadasPix(pagamentos: SQL, pedidoDaVenda?: { pedido: SQL; loja: SQL }) {
-  const fracao = pedidoDaVenda ? fracaoCobertaPeloPedido(pedidoDaVenda) : sql`0`
-  return sql`COALESCE((SELECT SUM(ROUND((pg->'conciliadoManual'->'pix'->>'custoPix')::numeric * (1 - ${fracao}), 2))
-              FROM jsonb_array_elements(COALESCE(${pagamentos}, '[]'::jsonb)) pg), 0)`
-}
-
-/** min(1, PIX com custo do grupo da loja ligados ao pedido / base das forçadas de PIX das vendas do pedido); sem um dos dois, 0. */
-function fracaoCobertaPeloPedido({ pedido, loja }: { pedido: SQL; loja: SQL }) {
-  const grupo = sql`(SELECT lj.grupo_id FROM lojas lj WHERE lj.id = ${loja})`
-  return sql`(SELECT CASE WHEN f.total > 0 AND p.total > 0 THEN LEAST(1, p.total / f.total) ELSE 0 END
-    FROM (SELECT ${pixComCustoDoPedido(pedido, grupo)} AS total) p, (SELECT ${basesForcadasDoPedido(pedido, grupo)} AS total) f)`
+  const custo = sql`ROUND((pg->'conciliadoManual'->'pix'->>'custoPix')::numeric * 100)`
+  if (!pedidoDaVenda) return sql`COALESCE((SELECT SUM(${custo}) / 100 FROM jsonb_array_elements(COALESCE(${pagamentos}, '[]'::jsonb)) pg), 0)`
+  const grupo = sql`(SELECT lj.grupo_id FROM lojas lj WHERE lj.id = ${pedidoDaVenda.loja})`
+  // Em centavos inteiros, meio centavo para cima, como custoDaForcadaQueConta: tela e líquido dão o mesmo no empate.
+  return sql`COALESCE((SELECT SUM(CASE WHEN cob.p <= 0 OR cob.f <= 0 THEN ${custo} WHEN cob.p >= cob.f THEN 0
+                                  ELSE FLOOR((2 * ${custo} * (cob.f - cob.p) + cob.f) / (2 * cob.f)) END) / 100
+              FROM jsonb_array_elements(COALESCE(${pagamentos}, '[]'::jsonb)) pg
+              CROSS JOIN (SELECT ROUND(${pixComCustoDoPedido(pedidoDaVenda.pedido, grupo)} * 100) AS p,
+                                 ROUND(${basesForcadasDoPedido(pedidoDaVenda.pedido, grupo)} * 100) AS f) cob), 0)`
 }
 
 /** Valor bruto dos PIX com custo ligados ao pedido, do grupo dado: o P da cobertura (decisão 10 do Luis, #93). */

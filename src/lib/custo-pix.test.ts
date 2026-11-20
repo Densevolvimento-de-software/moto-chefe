@@ -153,3 +153,9 @@ test('textoDoCustoDaForcada: o que conta, a parte do PIX do pedido, ou nada quan
   assert.equal(sp(textoDoCustoDaForcada({ conta: 20, coberto: 0 })), 'Custo do PIX R$ 20,00')
   assert.equal(textoDoCustoDaForcada({ conta: 0, coberto: 0 }), null)
 })
+
+// C1 da revisão: tela e líquido contam em centavos inteiros, meio centavo para cima; no empate os dois dão o mesmo.
+test('custoDaForcadaQueConta: no empate de meio centavo arredonda para cima, como o SQL do líquido', () => {
+  assert.deepEqual(custoDaForcadaQueConta(2.01, { pixDoPedido: 1, forcadasDoPedido: 2 }), { conta: 1.01, coberto: 1 })
+  assert.deepEqual(custoDaForcadaQueConta(0.05, { pixDoPedido: 5, forcadasDoPedido: 10 }), { conta: 0.03, coberto: 0.02 })
+})
