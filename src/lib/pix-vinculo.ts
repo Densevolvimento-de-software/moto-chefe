@@ -76,8 +76,11 @@ async function vinculoDoPix(pixId: string, grupoId: string, tx: ExecutorDoAlvo):
   return v ?? null
 }
 
-/** Sem este PIX a forçada parcial do alvo fica sem o resto que a completava? */
-async function completaForcada(pixId: string, lojaIds: string[], v: Alvos, tx: ExecutorDoAlvo): Promise<boolean> {
+/**
+ * Sem este PIX (do banco ou a linha pix da maquininha, #166) a forçada parcial do alvo fica sem o resto que a
+ * completava? Lê os pagamentos com a linha do alvo travada: chame dentro da transação que solta o PIX.
+ */
+export async function completaForcada(pixId: string, lojaIds: string[], v: Alvos, tx: ExecutorDoAlvo): Promise<boolean> {
   const alvo = await alvoComPagamentos(v, lojaIds, tx)
   return alvo ? pixCompletaForcadaParcial(alvo.pgtos, alvo.cartoes, alvo.pix, pixId) : false
 }

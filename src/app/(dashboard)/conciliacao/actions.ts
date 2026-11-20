@@ -14,10 +14,10 @@ import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-per
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { alvoValido, colunasDoAlvo, semAlvos, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 import { ehUuid } from '@/lib/uuid'
-import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
+import { completaForcada, desvincularPix, vincularPix } from '@/lib/pix-vinculo'
 import { esperadoComTaxa, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
 import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
-import { comForcado, matchPagamentos, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
+import { COMPLETA_FORCADA, comForcado, matchPagamentos, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
 import { casarPorAutorizacao, linhaDaTransacao } from '@/lib/conciliacao-casamento'
 import { tiposDoPagamentoDaLinha } from '@/lib/conciliacao-status'
@@ -30,7 +30,7 @@ import { grupos } from '@/lib/db/schema'
 import { revalidatePath } from 'next/cache'
 import { revalidarTelasDaConciliacao } from '@/lib/revalidar-conciliacao'
 import { cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from '@/lib/alvo-da-conciliacao'
-import { lojasDoEscopo } from '@/lib/conta'
+import { lojasDoEscopo, lojasDoGrupo } from '@/lib/conta'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 // Linha comum aos leitores de relatório, o que a gravação precisa de cada transação.
@@ -341,14 +341,24 @@ async function desvincularVenda(conciliacaoId: string) {
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
 
-  const atualizadas = ehUuid(conciliacaoId)
-    ? await db.update(conciliacoesCartao)
+  if (!ehUuid(conciliacaoId)) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
+  // Estornada mantém o vínculo com a venda: desvincular recebe a mesma frase de linha inexistente.
+  const daLinha = and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado)
+  // As lojas antes: dentro da transação, o db pegaria uma 2ª conexão do pool.
+  const lojaIds = (await lojasDoGrupo(grupo.id)).map(l => l.id)
+  await db.transaction(async tx => {
+    const [vinculo] = await tx.select({ vendaId: conciliacoesCartao.vendaId, osId: conciliacoesCartao.osId, pecaVendaId: conciliacoesCartao.pecaVendaId })
+      .from(conciliacoesCartao).where(daLinha).limit(1)
+    if (!vinculo) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
+    // A linha pix da maquininha pode ser o resto de uma forçada parcial de PIX (#166), como o PIX do banco.
+    if (await completaForcada(conciliacaoId, lojaIds, vinculo, tx)) throw new RecusaUsuario(COMPLETA_FORCADA)
+
+    const atualizadas = await tx.update(conciliacoesCartao)
       .set({ ...semAlvos(), conciliado: false, conciliadoEm: null })
-      // Estornada mantém o vínculo com a venda: desvincular recebe a mesma frase de linha inexistente.
-      .where(and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupo.id), cartaoNaoEstornado))
+      .where(daLinha)
       .returning({ id: conciliacoesCartao.id })
-    : []
-  if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
+    if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
+  })
 
   revalidarTelasDaConciliacao()
 }
