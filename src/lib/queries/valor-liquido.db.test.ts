@@ -31,6 +31,7 @@ let contabil: typeof import('@/lib/queries/export-contabil')
 let fechamento: typeof import('@/lib/queries/fechamento')
 let dreLib: typeof import('@/lib/dre')
 let dashboard: typeof import('@/lib/queries/dashboard')
+let folha: typeof import('@/lib/queries/folha')
 
 before(async () => {
   ;({ db } = await import('@/lib/db'))
@@ -41,6 +42,7 @@ before(async () => {
   fechamento = await import('@/lib/queries/fechamento')
   dreLib = await import('@/lib/dre')
   dashboard = await import('@/lib/queries/dashboard')
+  folha = await import('@/lib/queries/folha')
   acoesVendas = await import('@/app/(dashboard)/vendas/actions')
 })
 after(async () => {
@@ -179,6 +181,11 @@ test('painel do vendedor e folha: o líquido da comissão não desconta o custo 
   await pixVinculado(c.grupoId, { venda }, 9_980, 10_000, 20)
   const filtros = { dataInicio: '2026-11-01', dataFim: '2026-11-30', lojaId: [c.lojaId] }
   assert.equal((await dashboard.getKPIs(filtros, { useLiquidoValue: true })).faturamento, 17_888)
+  assert.equal((await dashboard.getVendasPorDia(filtros, { useLiquidoValue: true })).reduce((a, d) => a + d.valor, 0), 17_888)
+  assert.equal(await dashboard.getPrecoMedioVendas(filtros, { useLiquidoValue: true }), 17_888)
+  // A folha: a base do vendedor e a da loja (aux_adm que ganha sobre a loja).
+  const f = await folha.buscarDadosFolha({ mes: '2026-11', lojaIds: [c.lojaId], grupoId: c.grupoId })
+  assert.deepEqual([f.vendasPorVendedor.map(v => Number(v.total)), f.motosPorLoja.map(v => Number(v.total))], [[17_888], [17_888]])
   const [comissao] = await db.select({ l: sql<string>`${vl.valorLiquidoDaComissaoExpr()}` }).from(vendas).where(eq(vendas.id, venda))
   assert.equal(Number(comissao.l), 17_888)
   assert.equal(await liquido(venda), 17_868)
