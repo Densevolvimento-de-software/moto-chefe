@@ -1,7 +1,7 @@
 // Soltar do alvo o dinheiro que o liga a ele (o PIX do banco ou a linha da conciliação de cartão, como a linha pix
 // da maquininha Mercado Pago) com a linha do alvo travada: conferir a forçada parcial de PIX (#92, #166), desfazer
 // e soltar na mesma transação. Um lugar só para os dois itens.
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, type SQL } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { db } from './db'
 import { conciliacoesCartao, pixRecebimentosMcp } from './db/schema'
@@ -28,42 +28,40 @@ export type ItemDoAlvo = {
 
 type ColunasDoVinculo = Record<keyof Alvos, AnyPgColumn>
 
+const COLUNAS_DO_VINCULO = Object.keys(semAlvos()) as (keyof Alvos)[]
+
 // O vínculo lido no começo vai no where: religado a outro alvo enquanto este esperava a trava, o item não é solto
 // do alvo novo sem conferir a forçada dele.
-const mesmoVinculo = (t: ColunasDoVinculo, v: Alvos) =>
-  and(...(['vendaId', 'osId', 'pecaVendaId'] as const).map(c => (v[c] ? eq(t[c], v[c]) : isNull(t[c]))))
+const mesmoVinculo = (t: ColunasDoVinculo, v: Alvos) => and(...COLUNAS_DO_VINCULO.map(c => (v[c] ? eq(t[c], v[c]) : isNull(t[c]))))
 
 export const PIX_NAO_ENCONTRADO = 'PIX não encontrado no grupo ativo'
-const CONCILIACAO_NAO_ENCONTRADA = 'Conciliação não encontrada'
+export const CONCILIACAO_NAO_ENCONTRADA = 'Conciliação não encontrada'
+
+/** O PIX recebido do banco pelo id, só no grupo. */
+export const pixDoGrupo = (pixId: string, grupoId: string) => and(eq(pixRecebimentosMcp.id, pixId), eq(pixRecebimentosMcp.grupoId, grupoId))
+
+// O item lido e solto pelo mesmo `where` (id, grupo e o que mais o item exige); id que não é uuid não vai ao banco.
+function item(t: typeof pixRecebimentosMcp | typeof conciliacoesCartao, id: string, onde: SQL | undefined, naoEncontrado: string,
+  solto: Parameters<ReturnType<ExecutorDoAlvo['update']>['set']>[0]): ItemDoAlvo {
+  return {
+    id,
+    naoEncontrado,
+    ler: async tx => (ehUuid(id)
+      ? (await tx.select({ vendaId: t.vendaId, osId: t.osId, pecaVendaId: t.pecaVendaId }).from(t).where(onde).limit(1))[0] ?? null
+      : null),
+    soltar: async (tx, v) => (await tx.update(t).set(solto).where(and(onde, mesmoVinculo(t, v))).returning({ id: t.id })).length,
+  }
+}
 
 /** O PIX recebido do banco, no grupo. */
-export function pixDoBanco(pixId: string, grupoId: string): ItemDoAlvo {
-  const t = pixRecebimentosMcp
-  const doGrupo = and(eq(t.id, pixId), eq(t.grupoId, grupoId))
-  return {
-    id: pixId,
-    naoEncontrado: PIX_NAO_ENCONTRADO,
-    ler: async tx => (ehUuid(pixId)
-      ? (await tx.select({ vendaId: t.vendaId, osId: t.osId, pecaVendaId: t.pecaVendaId }).from(t).where(doGrupo).limit(1))[0] ?? null
-      : null),
-    soltar: async (tx, v) => (await tx.update(t).set(PIX_SOLTO).where(and(doGrupo, mesmoVinculo(t, v))).returning({ id: t.id })).length,
-  }
-}
+export const pixDoBanco = (pixId: string, grupoId: string): ItemDoAlvo =>
+  item(pixRecebimentosMcp, pixId, pixDoGrupo(pixId, grupoId), PIX_NAO_ENCONTRADO, PIX_SOLTO)
 
 /** A linha da conciliação de cartão, no grupo; estornada mantém o vínculo e recebe a frase de inexistente. */
-export function linhaDoCartao(conciliacaoId: string, grupoId: string): ItemDoAlvo {
-  const t = conciliacoesCartao
-  const daLinha = and(eq(t.id, conciliacaoId), eq(t.grupoId, grupoId), cartaoNaoEstornado)
-  return {
-    id: conciliacaoId,
-    naoEncontrado: CONCILIACAO_NAO_ENCONTRADA,
-    ler: async tx => (ehUuid(conciliacaoId)
-      ? (await tx.select({ vendaId: t.vendaId, osId: t.osId, pecaVendaId: t.pecaVendaId }).from(t).where(daLinha).limit(1))[0] ?? null
-      : null),
-    soltar: async (tx, v) => (await tx.update(t).set({ ...semAlvos(), conciliado: false, conciliadoEm: null })
-      .where(and(daLinha, mesmoVinculo(t, v))).returning({ id: t.id })).length,
-  }
-}
+export const linhaDoCartao = (conciliacaoId: string, grupoId: string): ItemDoAlvo =>
+  item(conciliacoesCartao, conciliacaoId,
+    and(eq(conciliacoesCartao.id, conciliacaoId), eq(conciliacoesCartao.grupoId, grupoId), cartaoNaoEstornado),
+    CONCILIACAO_NAO_ENCONTRADA, { ...semAlvos(), conciliado: false, conciliadoEm: null })
 
 // O alvo do item com os pagamentos lidos (e a linha travada, se pedido) só nas lojas do grupo (pedido não tem forçada).
 // Cartões e PIX do alvo só depois: eles leem pelo id.

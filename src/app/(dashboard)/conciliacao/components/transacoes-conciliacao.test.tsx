@@ -280,3 +280,14 @@ test('folha: enquanto desfaz e desvincula, os botões travam e o Escape não fec
   await t.act(async () => { responder({ ok: true, dados: undefined }); await esperar(50) })
   assert.deepEqual(sucessos, ['Forçada desfeita e linha desvinculada'])
 })
+
+test('erro inesperado ao desfazer (a action caiu): toast "Erro ao desvincular" e a confirmação fica para tentar de novo', async () => {
+  const t = await montar()
+  recusaComResumo()
+  desfazerEDesvincular.mock.mockImplementation(async () => { throw new Error('rede') })
+  await desvincularNaTabela(t)
+  await t.clique('Desfazer e desvincular', 80)
+  assert.deepEqual(erros, ['Erro ao desvincular'])
+  assert.equal(dialogoAberto(), true)
+  assert.equal(botao('Desfazer e desvincular')?.disabled, false)
+})

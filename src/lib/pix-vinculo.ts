@@ -10,7 +10,7 @@ import type { AlvoConciliacao } from './conciliacao-alvo'
 import { ehTransferenciaInterna } from './pix-internos'
 import { RecusaUsuario } from './resultado-action'
 import { ehUuid } from './uuid'
-import { desfazerForcadaEDesvincular, desvincularNaTrava, forcadaQueOItemCompleta, PIX_NAO_ENCONTRADO, pixDoBanco } from './vinculo-na-trava'
+import { desfazerForcadaEDesvincular, desvincularNaTrava, forcadaQueOItemCompleta, PIX_NAO_ENCONTRADO, pixDoBanco, pixDoGrupo } from './vinculo-na-trava'
 
 // Decisão do Luis (18/11/2026): trocar o vínculo é desvincular e vincular de novo.
 const PIX_JA_VINCULADO = 'Este PIX já está vinculado. Desvincule antes de vincular de novo.'
@@ -23,12 +23,11 @@ export type VinculoPix =
   | { tipo: 'pedido'; pedidoId: string }
   | { tipo: 'peca'; pecaVendaId: string }
 
-const doGrupo = (pixId: string, grupoId: string) => and(eq(pixRecebimentosMcp.id, pixId), eq(pixRecebimentosMcp.grupoId, grupoId))
 
 export async function vincularPix(pixId: string, grupoId: string, vinculo: VinculoPix, porId: string): Promise<void> {
   const [pix] = ehUuid(pixId)
     ? await db.select({ pagadorNome: pixRecebimentosMcp.pagadorNome, tipo: pixRecebimentosMcp.tipoCorrespondencia, valor: pixRecebimentosMcp.valor, tipoOperacao: pixRecebimentosMcp.tipoOperacao })
-      .from(pixRecebimentosMcp).where(doGrupo(pixId, grupoId)).limit(1)
+      .from(pixRecebimentosMcp).where(pixDoGrupo(pixId, grupoId)).limit(1)
     : []
   if (!pix) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
   if (pix.tipo) throw new RecusaUsuario(PIX_JA_VINCULADO)
@@ -49,7 +48,7 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
       custoPix:     String(custo.custoPix),
       custoPixTaxa: String(custo.custoPixTaxa),
     })
-    .where(and(doGrupo(pixId, grupoId), isNull(pixRecebimentosMcp.tipoCorrespondencia)))
+    .where(and(pixDoGrupo(pixId, grupoId), isNull(pixRecebimentosMcp.tipoCorrespondencia)))
     .returning({ id: pixRecebimentosMcp.id })
   // Outro clique ligou o PIX entre a leitura e a gravação.
   if (ligados.length === 0) throw new RecusaUsuario(PIX_JA_VINCULADO)

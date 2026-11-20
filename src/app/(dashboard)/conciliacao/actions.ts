@@ -15,7 +15,7 @@ import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { alvoValido, colunasDoAlvo, semAlvos, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 import { ehUuid } from '@/lib/uuid'
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
-import { desfazerForcadaEDesvincular, desvincularNaTrava, forcadaQueOItemCompleta, linhaDoCartao } from '@/lib/vinculo-na-trava'
+import { CONCILIACAO_NAO_ENCONTRADA, desfazerForcadaEDesvincular, desvincularNaTrava, forcadaQueOItemCompleta, linhaDoCartao } from '@/lib/vinculo-na-trava'
 import { esperadoComTaxa, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
 import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
 import { comForcado, matchPagamentos, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
@@ -313,7 +313,6 @@ async function importarRelatorio(formData: FormData) {
 
 // Linha de outro grupo, inexistente ou estornada recebem a mesma frase: estornada não se vincula
 // (vincular poria o valor devolvido de volta nas somas), e a frase não revela mais que "não achei".
-const CONCILIACAO_NAO_ENCONTRADA = 'Conciliação não encontrada'
 
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404, #129).
 export async function vincularVendaAction(conciliacaoId: string, alvo: AlvoConciliacao) {
