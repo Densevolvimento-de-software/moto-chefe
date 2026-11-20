@@ -5,7 +5,8 @@ import { before, after, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { eq, sql } from 'drizzle-orm'
-import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { semearContaBase, semearModelo, semearUsuario } from '@/test/semear-conta'
+import { semearPixRecebido, semearVendaMoto, type Pagamentos } from '@/test/semear-alvos-conciliacao'
 import { sessaoDe, type Sessao } from '@/test/sessao'
 
 const url = process.env.TEST_DATABASE_URL
@@ -54,37 +55,23 @@ async function semearConta() {
   const suf = randomUUID()
   const base = await semearContaBase(db, { prefixo: 'LIQ93', nome: suf, cnpj: suf })
   const usuarioId = await semearUsuario(db, base, { papel: 'aux_adm' })
-  const [modelo] = await linhas(sql`insert into modelos (marca, modelo, categoria, potencia_w, motor, velocidade_max)
-    values ('M', ${'LIQ93 ' + suf}, 'autopropelido', '1000', 'hub', '32') returning id`)
-  return { ...base, usuarioId, modeloId: modelo.id as string }
+  return { ...base, usuarioId, modeloId: await semearModelo(db, `LIQ93 ${suf}`) }
 }
 type Conta = Awaited<ReturnType<typeof semearConta>>
 
-async function novoPedido(c: Conta) {
-  const [moto] = await linhas(sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
-    values (${randomUUID()}, ${c.modeloId}, ${c.lojaId}, 'CINZA', '1', 'vendida', 'vendida') returning id`)
-  const [pedido] = await linhas(sql`insert into pedidos_venda (moto_id, loja_id, vendedor_id) values (${moto.id}, ${c.lojaId}, ${c.usuarioId}) returning id`)
-  return pedido.id as string
-}
-async function vendaMoto(c: Conta, valor: number, pagamentos: unknown[] = [], pedidoId?: string) {
-  const pedido = pedidoId ?? await novoPedido(c)
-  const [moto] = await linhas(sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
-    values (${randomUUID()}, ${c.modeloId}, ${c.lojaId}, 'CINZA', '1', 'vendida', 'vendida') returning id`)
-  const [v] = await linhas(sql`insert into vendas (pedido_venda_id, moto_id, loja_id, vendedor_id, efetivado_por, cliente_nome, cliente_cpf, valor, forma_pagamento, pagamentos, data_venda)
-    values (${pedido}, ${moto.id}, ${c.lojaId}, ${c.usuarioId}, ${c.usuarioId}, 'Cliente sintético', '52998224725', ${valor}, 'multiplos', ${JSON.stringify(pagamentos)}::jsonb, '2026-11-10 12:00:00-03') returning id`)
-  return { venda: v.id as string, pedido }
+async function vendaMoto(c: Conta, valor: number, pagamentos: Pagamentos = [], pedidoId?: string) {
+  const venda = await semearVendaMoto(db, { lojaId: c.lojaId, usuarioId: c.usuarioId, modeloId: c.modeloId, em: '2026-11-10 12:00:00-03' },
+    pagamentos, { valor, pedidoId })
+  const pedido = (await linhas(sql`select pedido_venda_id as p from vendas where id = ${venda}`))[0].p as string
+  return { venda, pedido }
 }
 async function cartaoConciliado(c: Conta, venda: string, bruto: number, liquido: number) {
   await db.execute(sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, nsu, valor_bruto, valor_liquido, tipo, venda_id, conciliado)
     values (${c.grupoId}, 'cielo', '2026-11-10', ${randomUUID()}, ${bruto}, ${liquido}, 'credito', ${venda}, true)`)
 }
 /** PIX recebido do banco já vinculado (o que o vínculo grava: crédito, valor do PIX, custo e taxa). */
-async function pixVinculado(grupoId: string, alvo: { venda?: string; pedido?: string }, credito: number, bruto: number, custo: number, tipo = 'PIX') {
-  await db.execute(sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor, pagador_nome, tipo_operacao,
-      tipo_correspondencia, venda_id, pedido_id, valor_bruto, custo_pix, custo_pix_taxa)
-    values (${grupoId}, 'conta-sintetica', 'Banco sintético', ${randomUUID()}, now(), ${credito}, 'Pagador sintético', ${tipo},
-      ${alvo.venda ? 'venda' : 'pedido'}, ${alvo.venda ?? null}, ${alvo.pedido ?? null}, ${bruto}, ${custo}, ${bruto > 0 ? custo / bruto : 0})`)
-}
+const pixVinculado = (grupoId: string, alvo: { venda?: string; pedido?: string }, credito: number, bruto: number, custo: number, tipo = 'PIX') =>
+  semearPixRecebido(db, grupoId, { valor: credito, tipoOperacao: tipo, vinculado: { ...alvo, valorBruto: bruto, custoPix: custo } })
 
 /** O líquido da venda pelas duas formas da regra; as duas têm de dar o mesmo. */
 async function liquido(venda: string) {
@@ -121,9 +108,8 @@ test('forçada de PIX: o custo gravado na marca sai do líquido', async () => {
 test('PIX não conciliado, TED e grupo com taxa 0: líquido igual ao valor', async () => {
   const c = await semearConta()
   const { venda } = await vendaMoto(c, 5_000, [{ tipo: 'pix', valor: 5_000 }])
-  // Um PIX livre (sem vínculo) do grupo, uma TED vinculada (custo 0) e um PIX de grupo com taxa 0 (custo 0).
-  await db.execute(sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor, pagador_nome, tipo_operacao)
-    values (${c.grupoId}, 'conta-sintetica', 'Banco sintético', ${randomUUID()}, now(), 4990, 'Livre', 'PIX')`)
+  // Um PIX livre (sem vínculo) do grupo, uma TED vinculada e um PIX vinculado quando a taxa era 0: os dois com custo 0 gravado.
+  await semearPixRecebido(db, c.grupoId, { valor: 4990 })
   await pixVinculado(c.grupoId, { venda }, 2_000, 2_000, 0, 'TED')
   await pixVinculado(c.grupoId, { venda }, 3_000, 3_000, 0)
   assert.equal(await liquido(venda), 5_000)
