@@ -67,7 +67,7 @@ export type AutorDoForcado = Pick<ConciliadoManual, 'porId' | 'porNome' | 'em'>
  */
 export type RecebimentoDaForcada = { valorRecebido: unknown; coberto: number; baseVista?: unknown }
 
-/** Recusa de desvincular o PIX que completa uma forçada parcial; quem gere desfaz a forçada pelo painel da venda. */
+/** Recusa de desvincular o PIX que completa uma forçada parcial; quem gere desfaz pelo painel da venda ou pela /pix-mcp. */
 export const COMPLETA_FORCADA = 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.'
 // Para quem não gere a conciliação (não pode desfazer a forçada).
 export const COMPLETA_FORCADA_PEDIR_A_GESTOR = 'Este PIX completa um pagamento marcado como recebido. Peça a quem gere a conciliação para desfazer a forçada.'
