@@ -183,8 +183,8 @@ test('Financeiro: taxas de OS e peça separadas no mesmo SELECT, soma igual à d
 
 
 // ─── #94: custo do PIX do banco de OS e peça (PIX vinculado e forçada), no Financeiro e no DRE ─────────────
-const pixDoBanco = (grupoId: string, alvo: { os?: string; peca?: string; venda?: string }, bruto: number, custo: number) =>
-  semearPixRecebido(db, grupoId, { valor: bruto - custo, vinculado: { ...alvo, valorBruto: bruto, custoPix: custo } })
+const pixDoBanco = (grupoId: string, alvo: { os?: string; peca?: string; venda?: string }, bruto: number, custo: number, tipoOperacao = 'PIX') =>
+  semearPixRecebido(db, grupoId, { valor: bruto - custo, tipoOperacao, vinculado: { ...alvo, valorBruto: bruto, custoPix: custo } })
 const forcadaPix = (c: Conta, custo: number) => [{ tipo: 'pix', valor: 1_000, conciliadoManual: {
   motivo: 'Caiu na conta pessoal', porId: c.usuarioId, porNome: 'Aux', em: '2026-10-17T12:00:00.000Z',
   pix: { valorRecebido: 1_000 - custo, valorBruto: 1_000, custoPix: custo, custoPixTaxa: custo / 1_000 } } }]
@@ -224,4 +224,22 @@ test('DRE do mês e por mês: a linha do custo do PIX soma motos, OS e peças', 
   assert.equal(colunas.find(c => c.chave === a.lojaId)!.entrada.custoPix, 10)
   const meses = await dre.dreEvolucao({ grupoId: a.grupoId, lojaIds: [a.lojaId], ano: 2026, mes: 10, meses: 1 })
   assert.equal(meses.find(m => m.mes === 10)!.entrada.custoPix, 10)
+})
+
+test('Financeiro: peça de outro mês, TED vinculada e a outra loja da mesma Conta ficam fora; cada loja com o seu custo', async () => {
+  const a = await semearConta()
+  const [outra] = await linhas(sql`insert into lojas (nome, cidade, endereco, grupo_id) values (${'TARPIX outra ' + randomUUID()}, 'C', 'R', ${a.grupoId}) returning id`)
+  const b = { ...a, lojaId: outra.id as string }
+  const peca = await vendaPeca(a, 200, '2026-10-16 12:00:00-03')
+  await pixDoBanco(a.grupoId, { peca }, 200, 0.4)
+  await pixDoBanco(a.grupoId, { peca }, 100, 0, 'TED')
+  await pixDoBanco(a.grupoId, { peca: await vendaPeca(a, 700, '2026-09-30 12:00:00-03') }, 700, 1.4)
+  await pixDoBanco(b.grupoId, { peca: await vendaPeca(b, 300, '2026-10-16 12:00:00-03') }, 300, 0.6)
+  const fim = new Date('2026-10-31T23:59:59.999Z')
+  const soA = await taxas.taxasOutrasDoPeriodo([a.lojaId], new Date(OUTUBRO[0]), fim)
+  const soB = await taxas.taxasOutrasDoPeriodo([b.lojaId], new Date(OUTUBRO[0]), fim)
+  assert.deepEqual([soA.custoPix, soA.qtdPix, soB.custoPix, soB.qtdPix], [0.4, 1, 0.6, 1])
+  const { colunas } = await dre.dreDoMes({ grupoId: a.grupoId, lojaIds: [a.lojaId, b.lojaId], ano: 2026, mes: 10 })
+  const custo = new Map(colunas.map(c => [c.chave, c.entrada.custoPix]))
+  assert.deepEqual([custo.get(a.lojaId), custo.get(b.lojaId)], [0.4, 0.6])
 })

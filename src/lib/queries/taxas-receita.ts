@@ -1,5 +1,6 @@
-// Taxas das receitas de OS e peça (#51): a parte de cartão e a tarifa do Pix da maquininha Mercado Pago
-// saem do mesmo SELECT, da mesma linha, para a soma das duas ser sempre a taxa de antes.
+// Taxas das receitas de OS e peça (#51): a parte de cartão e a tarifa do Pix da maquininha Mercado Pago saem do mesmo
+// SELECT, da mesma linha, para a soma das duas ser sempre a taxa de antes. O custo do PIX do banco (#94) vem de um
+// SELECT à parte sobre as mesmas OS e peças.
 import { sql } from 'drizzle-orm'
 import { execRows } from '@/lib/db'
 import { conciliacoesCartao, ordensServico, vendasPecas } from '@/lib/db/schema'
