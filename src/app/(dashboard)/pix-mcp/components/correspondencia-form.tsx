@@ -6,10 +6,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Unlink } from 'lucide-react'
-import { lancarCorrespondenciaAction, removerCorrespondenciaAction } from '../actions'
+import { forcadaDoPixAction, lancarCorrespondenciaAction, removerCorrespondenciaAction } from '../actions'
+import { COMPLETA_FORCADA, COMPLETA_FORCADA_PEDIR_A_GESTOR, type ForcadaQueOPixCompleta } from '@/lib/conciliacao-status'
+import { ForcadaDoPix } from './forcada-do-pix'
+import { plural } from '@/lib/texto'
+import type { VinculoPix } from '@/lib/pix-vinculo'
 
 type Correspondencia = {
-  tipo: 'venda' | 'os' | 'pedido' | 'peca' | null
+  tipo: VinculoPix['tipo'] | null
   vendaNf: string | null
   osNumero: number | null
   pedidoNumero: number | null
@@ -18,7 +22,8 @@ type Correspondencia = {
   lancadoEm: string | null
 }
 
-type Props = { id: string; correspondencia: Correspondencia }
+// `podeDesfazerForcada`: quem gere a conciliação (podeGerirConciliacao); a action confere de novo.
+type Props = { id: string; correspondencia: Correspondencia; podeDesfazerForcada: boolean }
 
 const labelPorTipo = {
   venda: (c: Correspondencia) => `NF ${c.vendaNf}`,
@@ -34,10 +39,14 @@ export function rotuloCorrespondencia(c: Correspondencia) {
 
 export type { Correspondencia }
 
-export function CorrespondenciaForm({ id, correspondencia }: Props) {
+export function CorrespondenciaForm({ id, correspondencia, podeDesfazerForcada }: Props) {
   const [pending, start] = useTransition()
-  const [tipo, setTipo] = useState<'venda' | 'os' | 'pedido' | 'peca'>('venda')
+  const [tipo, setTipo] = useState<VinculoPix['tipo']>('venda')
   const [numero, setNumero] = useState('')
+  // O desvincular foi recusado porque o PIX completa uma forçada parcial (#92): o que a caixa mostra.
+  const [forcada, setForcada] = useState<ForcadaQueOPixCompleta | null>(null)
+  // Sem vínculo a caixa perde o sentido; ao religar, a recusa é que traz uma caixa nova.
+  if (!correspondencia.tipo && forcada) setForcada(null)
 
   if (correspondencia.tipo) {
     const label = labelPorTipo[correspondencia.tipo](correspondencia)
@@ -45,10 +54,16 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
     function remover() {
       start(async () => {
         try {
-          await removerCorrespondenciaAction(id)
+          const r = await removerCorrespondenciaAction(id)
+          if (!r.ok && (r.erro === COMPLETA_FORCADA || r.erro === COMPLETA_FORCADA_PEDIR_A_GESTOR)) {
+            const resumo = await forcadaDoPixAction(id)
+            if (resumo.ok && resumo.dados) { setForcada(resumo.dados); return }
+          }
+          if (!r.ok) { toast.error(r.erro); return }
           toast.success('Correspondência desvinculada')
-        } catch (e: any) {
-          toast.error(e.message ?? 'Erro ao desvincular')
+        } catch {
+          // A recusa com frase já voltou em `r.erro`; aqui só cai falha interna, sem frase legível.
+          toast.error('Erro ao desvincular')
         }
       })
     }
@@ -58,7 +73,7 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
       : null
 
     return (
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div>
           <span className="text-xs font-medium text-primary-text border-l-2 border-primary pl-2">
             {label}
@@ -78,6 +93,7 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
           <Unlink size={14} />
           {pending ? 'Desvinculando…' : 'Desvincular'}
         </Button>
+        {forcada && <ForcadaDoPix id={id} rotulo={label} forcada={forcada} podeDesfazer={podeDesfazerForcada} onDesfeito={() => setForcada(null)} />}
       </div>
     )
   }
@@ -86,18 +102,23 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
     if (!numero.trim()) return
     start(async () => {
       try {
-        await lancarCorrespondenciaAction(id, tipo, numero.trim())
-        toast.success('Correspondência lançada')
+        const r = await lancarCorrespondenciaAction(id, tipo, numero.trim())
+        if (!r.ok) { toast.error(r.erro); return }
+        // Ligado ao pedido com custo: a parte coberta das forçadas de PIX do pedido deixa de contar (#93).
+        const n = r.dados?.forcadasComCusto ?? 0
+        toast.success(n > 0
+          ? `Correspondência lançada. O custo do PIX de ${plural(n, 'forçada', 'forçadas')} deste pedido deixa de contar na parte que este PIX cobre.`
+          : 'Correspondência lançada')
         setNumero('')
-      } catch (e: any) {
-        toast.error(e.message ?? 'Erro ao lançar correspondência')
+      } catch {
+        toast.error('Erro ao lançar correspondência')
       }
     })
   }
 
   return (
     <div className="flex items-center gap-1.5">
-      <Select value={tipo} onValueChange={v => setTipo(v as 'venda' | 'os' | 'pedido' | 'peca')}>
+      <Select value={tipo} onValueChange={v => setTipo(v as VinculoPix['tipo'])}>
         <SelectTrigger className="h-11 w-24 text-base md:h-8 md:w-20 md:text-xs">
           <span>{{ venda: 'NF', os: 'OS', pedido: 'Pedido', peca: 'PA' }[tipo]}</span>
         </SelectTrigger>

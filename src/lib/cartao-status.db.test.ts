@@ -5,13 +5,15 @@ import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { semearContaBase, semearGrupo, semearUsuario } from '@/test/semear-conta'
+import { semearContaComAlvos, semearOs, semearVendaMoto, semearVendaPeca } from '@/test/semear-alvos-conciliacao'
+import { ALVO_TIPOS, type AlvoTipo } from '@/lib/conciliacao-alvo'
+import { sessaoDe, type Sessao } from '@/test/sessao'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
 process.env.DATABASE_URL = url
 
-type Sessao = { id: string; papel: string; lojaId: string | null; contaId: string | null; gruposAcesso: string[]; gruposAprovacao: string[] }
 let db: typeof import('@/lib/db')['db']
 let actions: typeof import('@/app/(dashboard)/conciliacao/actions')
 let contarPendenciasCartao: typeof import('@/lib/queries/conciliacao-pendentes')['contarPendenciasCartao']
@@ -31,6 +33,16 @@ after(async () => {
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
 })
 
+const OK = { ok: true, dados: undefined }
+const CONCILIACAO_NAO_ENCONTRADA = { ok: false, erro: 'Conciliação não encontrada' }
+const SEM_PERMISSAO = { ok: false, erro: 'Sem permissão' }
+const NAO_ENCONTRADO: Record<AlvoTipo, { ok: false; erro: string }> = {
+  moto: { ok: false, erro: 'Venda não encontrada' },
+  peca: { ok: false, erro: 'Venda de peça não encontrada' },
+  os:   { ok: false, erro: 'Ordem de serviço não encontrada' },
+}
+const COLUNA: Record<AlvoTipo, 'venda_id' | 'peca_venda_id' | 'os_id'> = { moto: 'venda_id', peca: 'peca_venda_id', os: 'os_id' }
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const linhas = async (q: ReturnType<typeof sql>) => ((await db.execute(q)) as unknown as { rows: any[] }).rows
 
@@ -46,7 +58,7 @@ async function semear() {
   const [venda] = await linhas(sql`insert into vendas (pedido_venda_id, moto_id, loja_id, vendedor_id, efetivado_por, cliente_nome, cliente_cpf, valor, forma_pagamento, pagamentos, data_venda)
     values (${pedido.id}, ${moto.id}, ${base.lojaId}, ${usuarioId}, ${usuarioId}, 'Cliente sintético', '52998224725', 1000, 'cartao_credito',
       '[{"tipo":"cartao_credito","valor":1000,"parcelas":1}]'::jsonb, '2026-11-05 12:00:00-03'::timestamptz) returning id`)
-  usuario = { id: usuarioId, papel: 'aux_adm', lojaId: base.lojaId, contaId: base.contaId, gruposAcesso: [], gruposAprovacao: [] }
+  usuario = sessaoDe(base, 'aux_adm', usuarioId)
   return { base, vendaId: venda.id as string }
 }
 
@@ -87,16 +99,16 @@ test('vincular cartão estornado é recusado com a frase de "não encontrada" e 
   const estornado = await cartao(base.grupoId, 1000, 'estornado', vendaId)
   const antes = await linhaDe(estornado)
 
-  await assert.rejects(actions.vincularVendaAction(estornado, vendaId, 'moto'), { message: 'Conciliação não encontrada' })
+  assert.deepEqual(await actions.vincularVendaAction(estornado, { tipo: 'moto', id: vendaId }), CONCILIACAO_NAO_ENCONTRADA)
   assert.deepEqual(await linhaDe(estornado), antes)
   assert.equal(antes.conciliado, false)
 
   // Mesma frase de um id que não existe: a recusa não revela que a linha existe.
-  await assert.rejects(actions.vincularVendaAction(randomUUID(), vendaId, 'moto'), { message: 'Conciliação não encontrada' })
+  assert.deepEqual(await actions.vincularVendaAction(randomUUID(), { tipo: 'moto', id: vendaId }), CONCILIACAO_NAO_ENCONTRADA)
 
   // O aprovado continua vinculando.
   const aprovado = await cartao(base.grupoId, 1000, 'aprovado', null)
-  await actions.vincularVendaAction(aprovado, vendaId, 'moto')
+  assert.deepEqual(await actions.vincularVendaAction(aprovado, { tipo: 'moto', id: vendaId }), OK)
   const depois = await linhaDe(aprovado)
   assert.equal(depois.conciliado, true)
   assert.equal(depois.venda_id, vendaId)
@@ -112,9 +124,9 @@ test('vincular a venda, peça ou OS de outra Conta é recusado e a linha não mu
   const linhaA = await cartao(base.grupoId, 1000, 'aprovado', null)
   const antes = await linhaDe(linhaA)
 
-  await assert.rejects(actions.vincularVendaAction(linhaA, b.vendaId, 'moto'), { message: 'Venda não pertence ao grupo ativo' })
-  await assert.rejects(actions.vincularVendaAction(linhaA, pecaB.id, 'peca'), { message: 'Venda de peça não pertence ao grupo ativo' })
-  await assert.rejects(actions.vincularVendaAction(linhaA, osB.id, 'os'), { message: 'Ordem de serviço não pertence ao grupo ativo' })
+  assert.deepEqual(await actions.vincularVendaAction(linhaA, { tipo: 'moto', id: b.vendaId }), NAO_ENCONTRADO.moto)
+  assert.deepEqual(await actions.vincularVendaAction(linhaA, { tipo: 'peca', id: pecaB.id }), NAO_ENCONTRADO.peca)
+  assert.deepEqual(await actions.vincularVendaAction(linhaA, { tipo: 'os', id: osB.id }), NAO_ENCONTRADO.os)
   assert.deepEqual(await linhaDe(linhaA), antes)
 })
 
@@ -124,7 +136,7 @@ test('vincular a linha de outra Conta recebe "Conciliação não encontrada" e a
   const antes = await linhaDe(linhaB)
   const { vendaId } = await semear() // a sessão passa a ser a da Conta A
 
-  await assert.rejects(actions.vincularVendaAction(linhaB, vendaId, 'moto'), { message: 'Conciliação não encontrada' })
+  assert.deepEqual(await actions.vincularVendaAction(linhaB, { tipo: 'moto', id: vendaId }), CONCILIACAO_NAO_ENCONTRADA)
   assert.deepEqual(await linhaDe(linhaB), antes)
 })
 
@@ -148,7 +160,7 @@ test('desvincular cartão estornado é recusado e o vínculo fica', async () => 
   const { base, vendaId } = await semear()
   const estornado = await cartao(base.grupoId, 1000, 'estornado', vendaId)
   const antes = await linhaDe(estornado)
-  await assert.rejects(actions.desvincularVendaAction(estornado), { message: 'Conciliação não encontrada' })
+  assert.deepEqual(await actions.desvincularVendaAction(estornado), CONCILIACAO_NAO_ENCONTRADA)
   assert.deepEqual(await linhaDe(estornado), antes)
   assert.equal(antes.venda_id, vendaId)
 })
@@ -160,7 +172,7 @@ test('desvincular a linha de outra Conta recebe "Conciliação não encontrada" 
   const antes = await linhaDe(linhaB)
   await semear() // a sessão passa a ser a da Conta A
 
-  await assert.rejects(actions.desvincularVendaAction(linhaB), { message: 'Conciliação não encontrada' })
+  assert.deepEqual(await actions.desvincularVendaAction(linhaB), CONCILIACAO_NAO_ENCONTRADA)
   assert.deepEqual(await linhaDe(linhaB), antes)
   assert.equal(antes.venda_id, b.vendaId)
 })
@@ -175,4 +187,81 @@ test('busca livre e por valor não trazem linha de outra Conta com o mesmo valor
   const porValor = (await actions.buscarConciliacoesPorValor(7654.32)).map(l => l.id)
   assert.ok(livres.includes(linhaA) && !livres.includes(linhaB))
   assert.ok(porValor.includes(linhaA) && !porValor.includes(linhaB))
+})
+
+// Vincular e desvincular pela conciliação de cartão (#129): recusa volta como valor, com a mesma
+// frase para alvo de outra Conta, de outro grupo da mesma Conta e inexistente; alvo pela lista única.
+const PAGAMENTOS = [{ tipo: 'cartao_credito', valor: 1000, parcelas: 1 }]
+
+async function contaComLinha() {
+  const a = await semearContaComAlvos(db, 'CART129', PAGAMENTOS)
+  usuario = sessaoDe(a, 'aux_adm', a.balcao.usuarioId)
+  return { a, linha: await cartao(a.grupoId, 1000, 'aprovado', null) }
+}
+
+const LIVRE = { status: 'aprovado', conciliado: false, venda_id: null, peca_venda_id: null, os_id: null }
+
+test('guarda: vincular venda de moto, peça e OS da própria Conta grava só a coluna do tipo e concilia', async () => {
+  for (const tipo of ALVO_TIPOS) {
+    const { a, linha } = await contaComLinha()
+    assert.deepEqual(await actions.vincularVendaAction(linha, { tipo, id: a.alvos[tipo] }), OK, tipo)
+    assert.deepEqual(await linhaDe(linha), { ...LIVRE, conciliado: true, [COLUNA[tipo]]: a.alvos[tipo] }, tipo)
+  }
+})
+
+test('vincular alvo de outra Conta, de outro grupo da mesma Conta ou inexistente: a mesma frase por tipo e a linha não muda', async () => {
+  const b = await semearContaComAlvos(db, 'CART129', PAGAMENTOS)
+  const { a, linha } = await contaComLinha()
+  const g2 = await semearGrupo(db, a.contaId, { prefixo: 'CART129', nome: randomUUID(), cnpj: randomUUID() })
+  const balcao2 = { ...a.balcao, lojaId: g2.lojaId }
+  const doOutroGrupo: Record<AlvoTipo, string> = {
+    moto: await semearVendaMoto(db, balcao2, PAGAMENTOS),
+    peca: await semearVendaPeca(db, balcao2, PAGAMENTOS),
+    os:   await semearOs(db, balcao2, PAGAMENTOS),
+  }
+  for (const tipo of ALVO_TIPOS) {
+    for (const [rotulo, id] of [['outra Conta', b.alvos[tipo]], ['outro grupo', doOutroGrupo[tipo]], ['inexistente', randomUUID()]] as const) {
+      assert.deepEqual(await actions.vincularVendaAction(linha, { tipo, id }), NAO_ENCONTRADO[tipo], `${tipo}, ${rotulo}`)
+    }
+  }
+  assert.deepEqual(await linhaDe(linha), LIVRE)
+})
+
+test('vincular com tipo fora da lista ou id que não é uuid: "Venda não encontrada" e nada é gravado', async () => {
+  const { a, linha } = await contaComLinha()
+  const forjados = [{ tipo: 'xyz', id: a.alvos.moto }, { tipo: 'moto', id: 'abc' }, null] as unknown as { tipo: AlvoTipo; id: string }[]
+  for (const alvo of forjados) {
+    assert.deepEqual(await actions.vincularVendaAction(linha, alvo), NAO_ENCONTRADO.moto, JSON.stringify(alvo))
+  }
+  assert.deepEqual(await linhaDe(linha), LIVRE)
+})
+
+test('vincular e desvincular com id da conciliação que não é uuid: "Conciliação não encontrada"', async () => {
+  const { a } = await contaComLinha()
+  assert.deepEqual(await actions.vincularVendaAction('abc', { tipo: 'moto', id: a.alvos.moto }), CONCILIACAO_NAO_ENCONTRADA)
+  assert.deepEqual(await actions.desvincularVendaAction('abc'), CONCILIACAO_NAO_ENCONTRADA)
+})
+
+test('desvincular linha inexistente recebe a mesma frase da linha de outra Conta; o próprio vínculo se desfaz nos 3 tipos', async () => {
+  assert.deepEqual(await actions.desvincularVendaAction(randomUUID()), CONCILIACAO_NAO_ENCONTRADA)
+  for (const tipo of ALVO_TIPOS) {
+    const { a, linha } = await contaComLinha()
+    assert.deepEqual(await actions.vincularVendaAction(linha, { tipo, id: a.alvos[tipo] }), OK, tipo)
+    assert.deepEqual(await actions.desvincularVendaAction(linha), OK, tipo)
+    assert.deepEqual(await linhaDe(linha), LIVRE, tipo)
+  }
+})
+
+test('vendedor e mecânico não vinculam nem desvinculam: "Sem permissão" e nada muda', async () => {
+  const { a, linha } = await contaComLinha()
+  const ligada = await cartao(a.grupoId, 1000, 'aprovado', null)
+  assert.deepEqual(await actions.vincularVendaAction(ligada, { tipo: 'moto', id: a.alvos.moto }), OK)
+  const antes = await linhaDe(ligada)
+  for (const papel of ['vendedor', 'mecanico']) {
+    usuario = { ...usuario, papel }
+    assert.deepEqual(await actions.vincularVendaAction(linha, { tipo: 'moto', id: a.alvos.moto }), SEM_PERMISSAO, papel)
+    assert.deepEqual(await actions.desvincularVendaAction(ligada), SEM_PERMISSAO, papel)
+  }
+  assert.deepEqual(await linhaDe(linha), LIVRE)
+  assert.deepEqual(await linhaDe(ligada), antes)
 })

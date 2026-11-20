@@ -11,10 +11,9 @@ import { conciliacoesCartao, ordensServico, vendas, vendasPecas } from '@/lib/db
 import { tiposDoPagamentoDaLinha, type PgtoOS } from '@/lib/conciliacao-status'
 import { addDias } from '@/lib/calendario'
 import type { TransacaoCartao } from '@/lib/conciliacao-cartao'
+import { semAlvos, type Alvos } from '@/lib/conciliacao-alvo'
 
 type Db = Pick<typeof db, 'select'>
-
-export type Alvos = { vendaId: string | null; pecaVendaId: string | null; osId: string | null }
 
 /** A transação casou com uma venda de moto, uma venda de peça ou uma OS. */
 export const casou = (a: Alvos): boolean => (a.vendaId ?? a.pecaVendaId ?? a.osId) !== null
@@ -23,7 +22,6 @@ const TOLERANCIA = 0.05 // R$ 0,05 de tolerância no valor
 
 type Pagamento = Pick<PgtoOS, 'tipo' | 'valor' | 'parcelas'>
 
-export const semAlvos = (): Alvos => ({ vendaId: null, pecaVendaId: null, osId: null })
 
 /** Um lançamento do tipo que a linha cobre, do mesmo valor (±R$ 0,05) e mesmas parcelas. */
 function casaPagamento(pagamentos: unknown, tipos: ReadonlySet<string>, valorBruto: number, parcelas: number): boolean {

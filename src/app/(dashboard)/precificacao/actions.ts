@@ -10,6 +10,7 @@ import { ehPadraoSimulador } from '@/lib/simulador-padrao'
 import { ehMatrizDePlanilha } from '@/lib/planilha-precos'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { gravarImportacao, previaDaImportacao } from '@/lib/importar-precos'
+import { CUSTO_PIX_FORA_DA_FAIXA, lerCustoPixTaxa } from '@/lib/custo-pix'
 
 const ADMINS = ['admin_geral', 'admin_socio']
 
@@ -28,32 +29,39 @@ export type TaxasPayload = {
   freteKmGratis: number
   freteValorFixo: string
   imposto: string
+  /** Custo do PIX em fração (0.002 = 0,20%). */
+  custoPixTaxa: string
 }
 
 export async function salvarTaxasAction(data: TaxasPayload) {
-  const grupo = await checarAdmin()
-  // Só os campos do formulário; o grupo é sempre o ativo do servidor.
-  const taxas = {
-    taxasCartao: data.taxasCartao,
-    taxasDebito: data.taxasDebito,
-    taxasLink: data.taxasLink,
-    taxasFinanciamento: data.taxasFinanciamento,
-    freteValorKm: data.freteValorKm,
-    freteKmGratis: data.freteKmGratis,
-    freteValorFixo: data.freteValorFixo,
-    imposto: data.imposto,
-  }
-  await db
-    .insert(configuracaoTaxas)
-    .values({ grupoId: grupo.id, ...taxas })
-    .onConflictDoUpdate({
-      target: configuracaoTaxas.grupoId,
-      set: { ...taxas, atualizadoEm: sql`NOW()` },
-      setWhere: eq(configuracaoTaxas.grupoId, grupo.id),
-    })
-  revalidatePath('/precificacao')
-  revalidatePath('/simulador')
-  revalidatePath('/financeiro')
+  return acao(async () => {
+    const grupo = await checarAdmin()
+    const custoPixTaxa = lerCustoPixTaxa(data.custoPixTaxa)
+    if (custoPixTaxa === null) throw new RecusaUsuario(CUSTO_PIX_FORA_DA_FAIXA)
+    // Só os campos do formulário; o grupo é sempre o ativo do servidor.
+    const taxas = {
+      taxasCartao: data.taxasCartao,
+      taxasDebito: data.taxasDebito,
+      taxasLink: data.taxasLink,
+      taxasFinanciamento: data.taxasFinanciamento,
+      freteValorKm: data.freteValorKm,
+      freteKmGratis: data.freteKmGratis,
+      freteValorFixo: data.freteValorFixo,
+      imposto: data.imposto,
+      custoPixTaxa: String(custoPixTaxa),
+    } satisfies Omit<typeof configuracaoTaxas.$inferInsert, 'grupoId' | 'padraoSimulador' | 'atualizadoEm'>
+    await db
+      .insert(configuracaoTaxas)
+      .values({ grupoId: grupo.id, ...taxas })
+      .onConflictDoUpdate({
+        target: configuracaoTaxas.grupoId,
+        set: { ...taxas, atualizadoEm: sql`NOW()` },
+        setWhere: eq(configuracaoTaxas.grupoId, grupo.id),
+      })
+    revalidatePath('/precificacao')
+    revalidatePath('/simulador')
+    revalidatePath('/financeiro')
+  })
 }
 
 /** Grava o preço de um modelo do grupo ativo; ver salvarPrecoDoModelo. */

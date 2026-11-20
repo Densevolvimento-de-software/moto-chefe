@@ -12,6 +12,7 @@ import { buscarHistoricoMotoAction } from '../actions'
 import { DanfeButton } from '../../estoque/[id]/components/danfe-button'
 import { TIPOS_CARTAO, type PgtoOS } from '@/lib/conciliacao-status'
 import { PagamentosConciliacao, useConciliacaoAlvo } from '@/components/pagamentos-conciliacao'
+import { CustosDaVenda } from './custos-da-venda'
 import { PainelAssinatura } from './painel-assinatura'
 import { rotuloDocumento, tipoPessoaDoDocumento } from '@/lib/documento'
 import { NfSaidaButton } from '../../estoque/components/nf-saida-button'
@@ -87,9 +88,7 @@ export function DetalhesVendaDialog({ venda: v, papel, desconto, gatilho }: Prop
   // Só carrega lançamentos quando há algo a conciliar — venda em dinheiro não
   // precisa bater com nada. Ver src/components/pagamentos-conciliacao.tsx.
   const dados = useConciliacaoAlvo({ tipo: 'moto', id: v.id }, open && (temCartao || temPix))
-  const { concs, loading } = dados
 
-  const taxas = loading ? 0 : concs.reduce((s, c) => s + (Number(c.valorBruto) - Number(c.valorLiquido ?? c.valorBruto)), 0)
   const endereco = [
     [v.clienteLogradouro, v.clienteNumero, v.clienteComplemento, v.clienteBairro].filter(Boolean).join(', '),
     v.clienteCidade ? `${v.clienteCidade}/${v.clienteEstado}` : '',
@@ -167,12 +166,7 @@ export function DetalhesVendaDialog({ venda: v, papel, desconto, gatilho }: Prop
                       </span>
                     ) : 'Ainda não emitida'}
                   </Par>
-                  {taxas > 0 && (
-                    <Par rotulo="Valor líquido">
-                      <b className="tabular-nums">{formatCurrency(Number(v.valor) - taxas)}</b>
-                      <span className="block text-xs text-muted-foreground">{formatCurrency(taxas)} em taxas</span>
-                    </Par>
-                  )}
+                  {(temCartao || temPix) && <CustosDaVenda vendaId={v.id} concs={dados.concs} pixRecs={dados.pixRecs} pagamentos={pagamentos} />}
                   {desconto && (
                     <div className="py-3">
                       <div className="border-l-2 border-destructive py-0.5 pl-3">

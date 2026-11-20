@@ -82,6 +82,7 @@ export default async function PrecificacaoPage() {
     freteKmGratis: 40,
     freteValorFixo: '0.00',
     imposto: '0.06',
+    custoPixTaxa: '0',
   }
 
   return (
@@ -103,6 +104,7 @@ export default async function PrecificacaoPage() {
           freteKmGratis: taxas.freteKmGratis ?? 40,
           freteValorFixo: taxas.freteValorFixo ?? '0.00',
           imposto: taxas.imposto ?? '0.06',
+          custoPixTaxa: taxas.custoPixTaxa ?? '0',
         }}
         modelos={modelos}
         grupoNome={grupo.nome}

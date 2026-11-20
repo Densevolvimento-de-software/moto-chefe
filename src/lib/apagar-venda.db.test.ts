@@ -93,8 +93,9 @@ async function semearVendaCompleta(c: Conta) {
     values (${c.lojaId}, ${c.aux.id}, 'entrada', 'Venda', 1000, '2026-11-05', ${v.id}) returning id`)
   const cartaoId = await idDe(sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, valor_bruto, venda_id, conciliado, conciliado_em)
     values (${c.grupoId}, 'stone', '2026-11-05', 300.50, ${v.id}, true, now()) returning id`)
-  const pixId = await idDe(sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor, venda_id, tipo_correspondencia, lancado_por_id, lancado_em)
-    values (${c.grupoId}, 'conta-sintetica', 'banco', ${randomUUID()}, now(), 200.25, ${v.id}, 'venda', ${c.aux.id}, now()) returning id`)
+  const pixId = await idDe(sql`insert into pix_recebimentos_mcp (grupo_id, conta_id, banco, transacao_id, data, valor, venda_id, tipo_correspondencia, lancado_por_id, lancado_em,
+      valor_bruto, custo_pix, custo_pix_taxa)
+    values (${c.grupoId}, 'conta-sintetica', 'banco', ${randomUUID()}, now(), 200.25, ${v.id}, 'venda', ${c.aux.id}, now(), 200.65, 0.40, 0.002) returning id`)
   const demandaId = await idDe(sql`insert into demandas (modelo, cor, loja_id, solicitante_id, venda_id)
     values ('Modelo', 'PRETO', ${c.lojaId}, ${c.aux.id}, ${v.id}) returning id`)
   const arquivos = { selfie: `${c.grupoId}/${v.id}/selfie.jpg`, assinatura: `${c.grupoId}/${v.id}/assinatura.png` }
@@ -118,8 +119,10 @@ test('cancelar venda completa: apaga venda, caixa e documentos, solta recebiment
   assert.deepEqual(await execRows(sql`select id from documentos_assinatura where venda_id = ${v.id} or id in (${v.documentoIds[0]}, ${v.documentoIds[1]})`), [])
   assert.deepEqual(await execRows(sql`select venda_id, conciliado, conciliado_em from conciliacoes_cartao where id = ${v.cartaoId}`),
     [{ venda_id: null, conciliado: false, conciliado_em: null }])
-  assert.deepEqual(await execRows(sql`select venda_id, tipo_correspondencia, lancado_por_id, lancado_em from pix_recebimentos_mcp where id = ${v.pixId}`),
-    [{ venda_id: null, tipo_correspondencia: null, lancado_por_id: null, lancado_em: null }])
+  // #90: o PIX volta livre e sem o valor do PIX, o custo e a taxa; o `valor` devolvido acima segue no crédito (o extrato).
+  assert.deepEqual(await execRows(sql`select venda_id, tipo_correspondencia, lancado_por_id, lancado_em, valor_bruto, custo_pix, custo_pix_taxa
+    from pix_recebimentos_mcp where id = ${v.pixId}`),
+    [{ venda_id: null, tipo_correspondencia: null, lancado_por_id: null, lancado_em: null, valor_bruto: null, custo_pix: null, custo_pix_taxa: null }])
   assert.deepEqual(await execRows(sql`select venda_id from demandas where id = ${v.demandaId}`), [{ venda_id: null }])
   assert.deepEqual(await execRows(sql`select status, disponibilidade from motos where id = ${v.motoId}`), [{ status: 'montada', disponibilidade: 'disponivel' }])
   assert.deepEqual(await execRows(sql`select status from pedidos_venda where id = ${v.pedidoId}`), [{ status: 'cancelado' }])
