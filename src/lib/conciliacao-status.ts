@@ -388,3 +388,19 @@ export function resumoDaForcadaQueOPixCompleta(pgtos: PgtoOS[], linhasDoAlvo: Co
     cobre: centavos(Math.min(restos, oPix ? valorQueCobre(oPix) : restos)),
   }
 }
+
+// O resumo que a caixa mostrou só confere (#92, decisão do Luis registrada na #92): o servidor recalcula sob a trava e
+// recusa se difere. Nunca entra no cálculo.
+export const RESUMO_DA_FORCADA_MUDOU = 'Os lançamentos deste pagamento mudaram. Confira e tente de novo.'
+const mesmosCentavos = (a: number, b: unknown) => typeof b === 'number' && Math.abs(a - b) < 0.005
+
+export function mesmoResumoDaForcada(agora: ForcadaQueOPixCompleta | null, visto: unknown): boolean {
+  if (agora === null) return visto === null
+  if (typeof visto !== 'object' || visto === null) return false
+  const { linhas, cobre } = visto as Record<string, unknown>
+  if (!Array.isArray(linhas) || linhas.length !== agora.linhas.length || !mesmosCentavos(agora.cobre, cobre)) return false
+  return agora.linhas.every((l, i) => {
+    const v = linhas[i] as Record<string, unknown> | null
+    return typeof v === 'object' && v !== null && mesmosCentavos(l.valor, v.valor) && mesmosCentavos(l.marcado, v.marcado)
+  })
+}

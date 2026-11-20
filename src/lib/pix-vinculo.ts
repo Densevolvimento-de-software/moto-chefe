@@ -5,7 +5,7 @@ import { custoDoPixVinculado } from './custo-pix'
 import { custoPixTaxaDoGrupo } from './custo-pix-grupo'
 import { db } from './db'
 import { pixRecebimentosMcp } from './db/schema'
-import { COMPLETA_FORCADA, pixCompletaForcadaParcial, resumoDaForcadaQueOPixCompleta, semForcadasQueOPixCompleta, type ForcadaQueOPixCompleta } from './conciliacao-status'
+import { COMPLETA_FORCADA, RESUMO_DA_FORCADA_MUDOU, mesmoResumoDaForcada, pixCompletaForcadaParcial, resumoDaForcadaQueOPixCompleta, semForcadasQueOPixCompleta, type ForcadaQueOPixCompleta } from './conciliacao-status'
 import { cartoesDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from './alvo-da-conciliacao'
 import { alvoDasColunas, type Alvos, type AlvoConciliacao } from './conciliacao-alvo'
 import { lojasDoGrupo } from './conta'
@@ -129,10 +129,13 @@ async function soltarPix(pixId: string, grupoId: string, vinculo: Alvos, tx: Exe
  * mesma transação e com a mesma trava do alvo do desvincular. Devolve o alvo, para revalidar as telas dele. Quem
  * pode (quem gere a conciliação) a action confere.
  */
-export function desfazerForcadaEDesvincularPix(pixId: string, grupoId: string): Promise<AlvoConciliacao | null> {
+export function desfazerForcadaEDesvincularPix(pixId: string, grupoId: string, resumoVisto: unknown): Promise<AlvoConciliacao | null> {
   return soltarNaTravaDoAlvo(pixId, grupoId, async (tx, vinculo, lojaIds) => {
     const alvo = alvoDasColunas(vinculo)
     const doAlvo = await alvoComPagamentos(vinculo, lojaIds, tx)
+    // O que a caixa mostrou tem de ser o de agora, lido sob a trava; senão o confirmar agiria em outra coisa.
+    const agora = doAlvo ? resumoDaForcadaQueOPixCompleta(doAlvo.pgtos, doAlvo.cartoes, doAlvo.pix, pixId) : null
+    if (!mesmoResumoDaForcada(agora, resumoVisto)) throw new RecusaUsuario(RESUMO_DA_FORCADA_MUDOU)
     if (!alvo || !doAlvo) return
     const semForcadas = semForcadasQueOPixCompleta(doAlvo.pgtos, doAlvo.cartoes, doAlvo.pix, pixId)
     if (semForcadas !== doAlvo.pgtos) await gravarPagamentosDoAlvo(alvo, lojaIds, semForcadas, tx)

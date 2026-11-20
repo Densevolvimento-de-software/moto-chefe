@@ -52,7 +52,8 @@ export function ForcadaDoPix({ id, rotulo, forcada, podeDesfazer, onDesfeito }: 
   async function desfazer() {
     setEnviando(true)
     try {
-      const r = await desfazerForcadaERemoverAction(id)
+      // Vai junto o que a caixa mostrou: o servidor recusa se os lançamentos mudaram desde então.
+      const r = await desfazerForcadaERemoverAction(id, forcada)
       if (!r.ok) { toast.error(r.erro); return }
       setConfirmando(false)
       onDesfeito()

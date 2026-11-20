@@ -19,12 +19,12 @@ after(() => { delete janela.matchMedia })
 
 const lancar = mock.fn(async (_id: string, _tipo: string, _numero: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const remover = mock.fn(async (_id: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
-const desfazerERemover = mock.fn(async (_id: string): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
+const desfazerERemover = mock.fn(async (_id: string, _resumoVisto?: unknown): Promise<ResultadoAction> => ({ ok: true, dados: undefined }))
 const forcadaDoPix = mock.fn(async (_id: string): Promise<ResultadoAction<ForcadaQueOPixCompleta | null>> => ({ ok: true, dados: null }))
 const actionsMock = mock.module('@/app/(dashboard)/pix-mcp/actions', { namedExports: {
   lancarCorrespondenciaAction: (i: string, t: string, n: string) => lancar(i, t, n),
   removerCorrespondenciaAction: (i: string) => remover(i),
-  desfazerForcadaERemoverAction: (i: string) => desfazerERemover(i),
+  desfazerForcadaERemoverAction: (i: string, r?: unknown) => desfazerERemover(i, r),
   forcadaDoPixAction: (i: string) => forcadaDoPix(i),
 } })
 const erros: string[] = []
@@ -120,7 +120,7 @@ test('quem gere a conciliação: a recusa vira a caixa com os valores; confirmar
   assert.ok(tela().includes('O pagamento PIX de R$ 1.000,00 da OS #42 deixa de estar marcado como recebido, e este PIX fica livre para vincular de novo.'), tela())
   assert.equal(desfazerERemover.mock.callCount(), 0, 'só depois de confirmar')
   await clique('Desfazer e desvincular', 80)
-  assert.deepEqual(desfazerERemover.mock.calls.map(c => c.arguments), [['pix-1']])
+  assert.deepEqual(desfazerERemover.mock.calls.map(c => c.arguments), [['pix-1', RESUMO]])
   assert.deepEqual(sucessos, ['Forçada desfeita e correspondência desvinculada'])
   assert.deepEqual(erros, [])
 })
@@ -205,7 +205,7 @@ test('celular: a confirmação abre na gaveta de baixo e confirmar desfaz e desv
   assert.equal(document.querySelector('[data-slot="sheet-title"]')?.textContent, 'Desfazer a forçada e desvincular?')
   assert.ok(tela().includes('O pagamento PIX de R$ 1.000,00 da OS #42 deixa de estar marcado como recebido, e este PIX fica livre para vincular de novo.'), tela())
   await clique('Desfazer e desvincular', 80)
-  assert.deepEqual(desfazerERemover.mock.calls.map(c => c.arguments), [['pix-1']])
+  assert.deepEqual(desfazerERemover.mock.calls.map(c => c.arguments), [['pix-1', RESUMO]])
   assert.deepEqual(sucessos, ['Forçada desfeita e correspondência desvinculada'])
 })
 
