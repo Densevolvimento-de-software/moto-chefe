@@ -353,9 +353,12 @@ async function desvincularVenda(conciliacaoId: string) {
     // A linha pix da maquininha pode ser o resto de uma forçada parcial de PIX (#166), como o PIX do banco.
     if (await completaForcada(conciliacaoId, lojaIds, vinculo, tx)) throw new RecusaUsuario(COMPLETA_FORCADA)
 
+    // Solta só se o vínculo ainda é o conferido: o vincular religa a linha sem travar o alvo novo.
+    const mesmoVinculo = and(...(['vendaId', 'osId', 'pecaVendaId'] as const)
+      .map(c => sql`${conciliacoesCartao[c]} is not distinct from ${vinculo[c]}`))
     const atualizadas = await tx.update(conciliacoesCartao)
       .set({ ...semAlvos(), conciliado: false, conciliadoEm: null })
-      .where(daLinha)
+      .where(and(daLinha, mesmoVinculo))
       .returning({ id: conciliacoesCartao.id })
     if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
   })

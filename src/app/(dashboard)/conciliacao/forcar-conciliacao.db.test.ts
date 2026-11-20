@@ -478,3 +478,21 @@ for (const tipo of ALVO_TIPOS) {
     assert.equal(await marcaDe(tipo, a.alvos[tipo]), undefined)
   })
 }
+
+test('linha religada a outro alvo enquanto o desvincular confere o primeiro: não solta do alvo novo sem conferir', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  const linha = await maquininha(a, 'moto', 400)
+  // O alvo novo (a OS) tem a forçada parcial que a linha completa.
+  await comPagamentos('os', a.alvos.os, [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaParcial(600) }])
+  const s = await sessaoQueSegura(url!)
+  try {
+    // Outro vincular religa a linha à OS e ainda não confirmou: o desvincular lê a venda, confere e espera para gravar.
+    await s.travar('update conciliacoes_cartao set venda_id = null, os_id = $2 where id = $1', [linha, a.alvos.os])
+    const solta = actions.desvincularVendaAction(linha)
+    await novoEsperando(s, [s.pid])
+    await s.soltar()
+    assert.equal((await solta).ok, false)
+  } finally { await s.fim() }
+  assert.equal(await linhaLigada(linha), true)
+})
