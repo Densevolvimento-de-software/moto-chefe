@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm'
+import { sql, type SQL } from 'drizzle-orm'
 import { vendas, conciliacoesCartao } from '@/lib/db/schema'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 
@@ -19,6 +19,7 @@ import { LINHA_PIX } from '@/lib/conciliacao-cartao'
 export function valorLiquidoExpr() {
   return sql`(
     ${vendas.valor}::numeric
+    - ${custoPixDaVendaExpr()}
     - COALESCE((SELECT SUM(${conciliacoesCartao.valorBruto}::numeric)
                 FROM ${conciliacoesCartao}
                 WHERE ${conciliacoesCartao.vendaId} = ${vendas.id}
@@ -42,6 +43,7 @@ export function valorLiquidoSql(v = 'v') {
   const a = sql.raw(v)
   return sql`(
     ${a}.valor::numeric
+    - ${custoPixDaVendaSql(v)}
     - COALESCE((SELECT SUM(cc.valor_bruto::numeric) FROM conciliacoes_cartao cc
                 WHERE cc.venda_id = ${a}.id AND cc.conciliado = true), 0)
     + COALESCE((SELECT SUM(cc.valor_liquido::numeric) FROM conciliacoes_cartao cc
@@ -62,3 +64,33 @@ export function tarifaPixDaVendaExpr() {
                 AND ${conciliacoesCartao.tipo} = ${LINHA_PIX}), 0)`
 }
 
+
+/**
+ * Custo do PIX da venda (#93), a parte que o banco ficou dos PIX: o dos PIX conciliados da venda, o dos PIX
+ * conciliados do pedido dela (o do pedido inteiro na 1ª venda, a de menor número; decisão do Luis registrada na
+ * #93) e o das forçadas de PIX (gravado na marca). Só conta PIX do grupo da loja da venda. PIX não conciliado,
+ * TED e grupo com taxa 0 têm custo 0. As duas formas montam a mesma conta a partir das colunas da venda.
+ */
+function custoPixDaVenda(c: { id: SQL; pedido: SQL; numero: SQL; loja: SQL; pagamentos: SQL }) {
+  return sql`(
+    COALESCE((SELECT SUM(pr.custo_pix::numeric) FROM pix_recebimentos_mcp pr
+              WHERE pr.grupo_id = (SELECT lj.grupo_id FROM lojas lj WHERE lj.id = ${c.loja})
+                AND (pr.venda_id = ${c.id}
+                     OR (pr.pedido_id = ${c.pedido}
+                         AND ${c.numero} = (SELECT MIN(vp.numero) FROM vendas vp WHERE vp.pedido_venda_id = ${c.pedido})))), 0)
+    + COALESCE((SELECT SUM((pg->'conciliadoManual'->'pix'->>'custoPix')::numeric)
+                FROM jsonb_array_elements(COALESCE(${c.pagamentos}, '[]'::jsonb)) pg), 0)
+  )`
+}
+
+// Qualificado à mão: numa query sem join, ${vendas.id} sai sem a tabela e casaria com o id da tabela de dentro.
+export const custoPixDaVendaExpr = () => custoPixDaVenda({
+  id: sql.raw('"vendas"."id"'), pedido: sql.raw('"vendas"."pedido_venda_id"'), numero: sql.raw('"vendas"."numero"'),
+  loja: sql.raw('"vendas"."loja_id"'), pagamentos: sql.raw('"vendas"."pagamentos"'),
+})
+
+/** A mesma conta para o SQL cru com alias (`v` = alias de vendas na query externa). */
+export function custoPixDaVendaSql(v = 'v') {
+  const col = (c: string) => sql.raw(`${v}.${c}`)
+  return custoPixDaVenda({ id: col('id'), pedido: col('pedido_venda_id'), numero: col('numero'), loja: col('loja_id'), pagamentos: col('pagamentos') })
+}
