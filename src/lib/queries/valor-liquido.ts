@@ -106,12 +106,17 @@ export function custoDasForcadasPix(pagamentos: SQL, pedidoDaVenda?: { pedido: S
 function fracaoCobertaPeloPedido({ pedido, loja }: { pedido: SQL; loja: SQL }) {
   const grupo = sql`(SELECT lj.grupo_id FROM lojas lj WHERE lj.id = ${loja})`
   return sql`(SELECT CASE WHEN f.total > 0 AND p.total > 0 THEN LEAST(1, p.total / f.total) ELSE 0 END
-    FROM (SELECT COALESCE(SUM(pr.valor_bruto::numeric), 0) AS total FROM pix_recebimentos_mcp pr
-            WHERE pr.pedido_id = ${pedido} AND pr.custo_pix > 0 AND pr.grupo_id = ${grupo}) p,
-         (SELECT COALESCE(SUM((pf->'conciliadoManual'->'pix'->>'valorBruto')::numeric), 0) AS total
-            FROM vendas vf CROSS JOIN LATERAL jsonb_array_elements(COALESCE(vf.pagamentos, '[]'::jsonb)) pf
-            WHERE vf.pedido_venda_id = ${pedido} AND vf.loja_id IN (SELECT id FROM lojas WHERE grupo_id = ${grupo})) f)`
+    FROM (SELECT ${pixComCustoDoPedido(pedido, grupo)} AS total) p, (SELECT ${basesForcadasDoPedido(pedido, grupo)} AS total) f)`
 }
+
+/** Valor bruto dos PIX com custo ligados ao pedido, do grupo dado: o P da cobertura (decisão 10 do Luis, #93). */
+export const pixComCustoDoPedido = (pedido: SQL, grupo: SQL) => sql`(SELECT COALESCE(SUM(pr.valor_bruto::numeric), 0)
+  FROM pix_recebimentos_mcp pr WHERE pr.pedido_id = ${pedido} AND pr.custo_pix > 0 AND pr.grupo_id = ${grupo})`
+
+/** Base das forçadas de PIX das vendas do pedido, nas lojas do grupo: o F da cobertura. `exceto`: venda que fica de fora. */
+export const basesForcadasDoPedido = (pedido: SQL, grupo: SQL, exceto?: SQL) => sql`(SELECT COALESCE(SUM((pf->'conciliadoManual'->'pix'->>'valorBruto')::numeric), 0)
+  FROM vendas vf CROSS JOIN LATERAL jsonb_array_elements(COALESCE(vf.pagamentos, '[]'::jsonb)) pf
+  WHERE vf.pedido_venda_id = ${pedido} AND vf.loja_id IN (SELECT id FROM lojas WHERE grupo_id = ${grupo})${exceto ? sql` AND vf.id <> ${exceto}` : sql``})`
 
 // Qualificado à mão: numa query sem join, ${vendas.id} sai sem a tabela e casaria com o id da tabela de dentro.
 export const custoPixDaVendaExpr = () => custoPixDaVenda({

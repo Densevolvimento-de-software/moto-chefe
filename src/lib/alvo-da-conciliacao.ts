@@ -9,6 +9,7 @@ import { pagamentosEfetivosOS, type PgtoOS } from './conciliacao-status'
 import type { AlvoConciliacao } from './conciliacao-alvo'
 import { colunasQueLigamAoAlvo } from './alvo-conciliado'
 import { CARTAO_ESTORNADO } from './conciliacao-cartao'
+import { basesForcadasDoPedido, pixComCustoDoPedido } from './queries/valor-liquido'
 
 export type ExecutorDoAlvo = Pick<typeof db, 'select' | 'update'>
 
@@ -125,13 +126,9 @@ export async function gravarPagamentosDoAlvo(alvo: AlvoConciliacao, lojaIdsGrupo
 export type CoberturaDaVenda = { pixDoPedido: number; forcadasDasOutras: number }
 
 export async function coberturaDoPedidoDaVenda(vendaId: string): Promise<CoberturaDaVenda | null> {
-  const [r] = (await execRows(sql`select
-      (select coalesce(sum(pr.valor_bruto::numeric), 0) from pix_recebimentos_mcp pr
-        where pr.pedido_id = v.pedido_venda_id and pr.custo_pix > 0 and pr.grupo_id = lj.grupo_id) as pix,
-      (select coalesce(sum((pf->'conciliadoManual'->'pix'->>'valorBruto')::numeric), 0)
-        from vendas vf cross join lateral jsonb_array_elements(coalesce(vf.pagamentos, '[]'::jsonb)) pf
-        where vf.pedido_venda_id = v.pedido_venda_id and vf.id <> v.id
-          and vf.loja_id in (select id from lojas where grupo_id = lj.grupo_id)) as outras
+  const [pedido, grupo] = [sql.raw('v.pedido_venda_id'), sql.raw('lj.grupo_id')]
+  const [r] = (await execRows(sql`select ${pixComCustoDoPedido(pedido, grupo)} as pix,
+      ${basesForcadasDoPedido(pedido, grupo, sql.raw('v.id'))} as outras
     from vendas v join lojas lj on lj.id = v.loja_id where v.id = ${vendaId}`)) as { pix: string; outras: string }[]
   return r ? { pixDoPedido: Number(r.pix), forcadasDasOutras: Number(r.outras) } : null
 }
