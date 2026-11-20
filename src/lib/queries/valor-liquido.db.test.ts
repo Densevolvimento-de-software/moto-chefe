@@ -280,3 +280,12 @@ test('empate de meio centavo: o líquido conta 1,01 da forçada de 2,01 coberta 
   assert.equal(conta, 1.01)
   assert.equal(await liquido(venda), 2_000 - 5 - 1.01)
 })
+
+// T1 da revisão: TED (custo 0) ligada ao pedido não cobre a forçada; o custo dela conta inteiro.
+test('TED ou PIX sem custo no pedido não cobre: a forçada conta o custo inteiro', async () => {
+  const c = await semearConta()
+  const { venda, pedido } = await vendaMoto(c, 1_000, [{ tipo: 'pix', valor: 1_000, conciliadoManual: marcaPix(c, 1_000, 2) }])
+  await pixVinculado(c.grupoId, { pedido }, 3_000, 3_000, 0, 'TED')
+  await pixVinculado(c.grupoId, { pedido }, 3_000, 3_000, 0)
+  assert.equal(await liquido(venda), 1_000 - 2)
+})
