@@ -27,6 +27,8 @@ let vl: typeof import('@/lib/queries/valor-liquido')
 let vendas: typeof import('@/lib/db/schema')['vendas']
 let dre: typeof import('@/lib/queries/dre')
 let contabil: typeof import('@/lib/queries/export-contabil')
+let fechamento: typeof import('@/lib/queries/fechamento')
+let dreLib: typeof import('@/lib/dre')
 
 before(async () => {
   ;({ db } = await import('@/lib/db'))
@@ -34,6 +36,8 @@ before(async () => {
   ;({ vendas } = await import('@/lib/db/schema'))
   dre = await import('@/lib/queries/dre')
   contabil = await import('@/lib/queries/export-contabil')
+  fechamento = await import('@/lib/queries/fechamento')
+  dreLib = await import('@/lib/dre')
   acoesVendas = await import('@/app/(dashboard)/vendas/actions')
 })
 after(async () => {
@@ -161,4 +165,19 @@ test('Detalhes da venda: taxa do cartão, tarifa do PIX na maquininha, custo do 
   usuario = sessaoDe(b, 'aux_adm', b.usuarioId)
   assert.deepEqual(await acoesVendas.custosDaVendaAction(venda), { ok: true, dados: null })
   assert.deepEqual(await acoesVendas.custosDaVendaAction(randomUUID()), { ok: true, dados: null })
+})
+
+// C1 da revisão: o DRE resumido do fechamento tem o custo do PIX e a conta da tela fecha.
+test('fechamento: o DRE resumido tem a linha do custo do PIX e bruta − deduções = líquida', async () => {
+  const c = await semearConta()
+  const { venda } = await vendaMoto(c, 18_500, [{ tipo: 'pix', valor: 10_000 }, { tipo: 'cartao_credito', valor: 8_500 }])
+  await cartaoConciliado(c, venda, 8_500, 7_888)
+  await pixVinculado(c.grupoId, { venda }, 9_980, 10_000, 20)
+  const d = await fechamento.dadosFechamento({ grupoId: c.grupoId, lojaIds: [c.lojaId], ano: 2026, mes: 11 })
+  const linhas = dreLib.dreResumido(d.dre)
+  const v = (k: string) => linhas.find(l => l.chave === k)?.valor
+  assert.deepEqual([v('taxas_cartao'), v('tarifa_pix'), v('custo_pix')], [612, 0, 20])
+  const ateLiquida = linhas.slice(1, linhas.findIndex(l => l.chave === 'receita_liquida'))
+  assert.equal(v('receita_bruta')! - ateLiquida.reduce((a, l) => a + l.valor, 0), v('receita_liquida'))
+  assert.equal(v('receita_liquida'), 17_868)
 })

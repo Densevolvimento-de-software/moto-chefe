@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   montarDre, somarEntradas, grupoOuOutras, rotuloGrupo,
-  GRUPOS_DRE, ENTRADA_VAZIA, montarMatriz, taxasDaReceita, type EntradaDre,
+  GRUPOS_DRE, ENTRADA_VAZIA, dreResumido, montarMatriz, taxasDaReceita, type EntradaDre,
 } from './dre'
 
 const valor = (linhas: ReturnType<typeof montarDre>, chave: string) =>
@@ -186,4 +186,15 @@ test('custo do PIX é linha própria logo após a tarifa do PIX na maquininha e 
   assert.deepEqual([linha?.rotulo, linha?.tipo, linha?.valor], ['(−) Custo do PIX', 'deducao', 320])
   assert.equal(valor(l, 'receita_liquida'), 1_526_094 - 38_204 - 1_250 - 320)
   assert.equal(somarEntradas({ ...BASE, custoPix: 100 }, { ...BASE, custoPix: 25 }).custoPix, 125)
+})
+
+// Fechamento (#93, C1): o DRE resumido sai das linhas do DRE; nenhuma dedução nova fica de fora e a conta fecha.
+test('DRE resumido: as linhas de primeiro nível do DRE, com o custo do PIX, e a receita líquida fecha', () => {
+  const r = dreResumido(montarDre({ ...BASE, tarifaPix: 10, custoPix: 57.98 }))
+  assert.deepEqual(r.map(l => l.chave),
+    ['receita_bruta', 'taxas_cartao', 'tarifa_pix', 'custo_pix', 'receita_liquida', 'cmv', 'lucro_bruto', 'despesas_total', 'resultado'])
+  const v = (k: string) => r.find(l => l.chave === k)!.valor
+  const deducoes = r.slice(1, r.findIndex(l => l.chave === 'receita_liquida')).filter(l => l.deducao).reduce((a, l) => a + l.valor, 0)
+  assert.equal(v('receita_bruta') - deducoes, v('receita_liquida'))
+  assert.deepEqual(r.find(l => l.chave === 'custo_pix'), { chave: 'custo_pix', rotulo: '(−) Custo do PIX', deducao: true, valor: 57.98 })
 })

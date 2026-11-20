@@ -219,3 +219,19 @@ export function montarMatriz(colunas: ColunaMatriz[]): LinhaMatriz[] {
     percentuais: porColuna.map(linhas => linhas[i].percentual),
   }))
 }
+
+// Os subtotais do DRE em caixa alta; no resumo do fechamento, com a escrita da tela.
+const ROTULO_NO_RESUMO: Record<string, string> = {
+  receita_bruta: 'Receita bruta', receita_liquida: 'Receita líquida', lucro_bruto: 'Lucro bruto',
+  despesas_total: '(−) Despesas operacionais', resultado: 'Resultado operacional',
+}
+
+/**
+ * O DRE resumido do fechamento (#93): as linhas de primeiro nível do DRE, na ordem dele, sem o memorando. Sai das
+ * linhas e não de uma lista à mão, para nenhuma dedução nova (tarifa do PIX, custo do PIX) ficar de fora da conta.
+ */
+export function dreResumido(linhas: LinhaDre[]) {
+  return linhas
+    .filter(l => l.nivel === 0 && l.tipo !== 'memo')
+    .map(l => ({ chave: l.chave, rotulo: ROTULO_NO_RESUMO[l.chave] ?? l.rotulo, deducao: l.tipo === 'deducao', valor: l.valor }))
+}
