@@ -1,5 +1,5 @@
 'use server'
-import { acao, RecusaUsuario } from '@/lib/resultado-action'
+import { acao, RecusaUsuario, type ResultadoAction } from '@/lib/resultado-action'
 import { maquininhasDoGrupo } from '@/lib/maquininhas'
 import { gruposDoTerminalNaConta } from '@/lib/terminal-da-conta'
 import { db } from '@/lib/db'
@@ -15,9 +15,9 @@ import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { alvoValido, colunasDoAlvo, semAlvos, tipoDoAlvo, type AlvoConciliacao, type AlvoTipo } from '@/lib/conciliacao-alvo'
 import { ehUuid } from '@/lib/uuid'
 import { desvincularPix, vincularPix } from '@/lib/pix-vinculo'
-import { creditoDoPix, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
+import { esperadoComTaxa, OPERACAO_COM_CUSTO } from '@/lib/custo-pix'
 import { custoPixTaxaDoGrupo } from '@/lib/custo-pix-grupo'
-import { comForcado, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
+import { comForcado, matchPagamentos, semForcado, type PgtoOS } from '@/lib/conciliacao-status'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
 import { casarPorAutorizacao, linhaDaTransacao } from '@/lib/conciliacao-casamento'
 import { tiposDoPagamentoDaLinha } from '@/lib/conciliacao-status'
@@ -28,7 +28,8 @@ import { lerRelatorioRede } from '@/lib/conciliacao-rede'
 import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
 import { grupos } from '@/lib/db/schema'
 import { revalidatePath } from 'next/cache'
-import { cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo } from '@/lib/alvo-da-conciliacao'
+import { revalidarTelasDaConciliacao } from '@/lib/revalidar-conciliacao'
+import { cartoesDoAlvo, estornosDoAlvo, gravarPagamentosDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from '@/lib/alvo-da-conciliacao'
 import { lojasDoEscopo } from '@/lib/conta'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
@@ -329,7 +330,7 @@ async function vincularVenda(conciliacaoId: string, alvo: AlvoConciliacao) {
     : []
   if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
 
-  revalidatePathsConciliacao()
+  revalidarTelasDaConciliacao(alvo)
 }
 
 export async function desvincularVendaAction(conciliacaoId: string) {
@@ -349,7 +350,7 @@ async function desvincularVenda(conciliacaoId: string) {
     : []
   if (atualizadas.length === 0) throw new RecusaUsuario(CONCILIACAO_NAO_ENCONTRADA)
 
-  revalidatePathsConciliacao()
+  revalidarTelasDaConciliacao()
 }
 
 /** Linhas pendentes no valor do pagamento; `linha`: a que cobre o pagamento (cartão ou a pix da maquininha). */
@@ -391,17 +392,6 @@ export async function buscarConciliacoesPorValor(valor: number, linha: LinhaProc
 // carregam os lançamentos pelas mesmas funções — ver src/components/pagamentos-conciliacao.tsx.
 
 export type { AlvoConciliacao, AlvoTipo }
-
-// O mesmo status de conciliação aparece em várias telas; todas revalidam juntas
-// para nunca divergirem (uma dizendo "pendente" e a outra "conciliada").
-function revalidatePathsConciliacao() {
-  revalidatePath('/vendas')
-  revalidatePath('/pecas')
-  revalidatePath('/ordens-servico')
-  revalidatePath('/dashboard')
-  revalidatePath('/conciliacao')
-  revalidatePath('/pix-mcp')
-}
 
 // Loja do alvo, já com as lojas permitidas no where: as do grupo ativo (gravação) ou o escopo da Conta (leitura do
 // painel); sem filtro só para o admin_geral. Alvo fora delas e alvo inexistente dão o mesmo null.
@@ -528,12 +518,6 @@ async function exigirAlvoNoGrupoAtivo(alvo: AlvoConciliacao): Promise<Usuario> {
   return usuario
 }
 
-/** Quanto um pagamento PIX de `valor` deve creditar no banco: sem o custo do PIX do grupo; null se o grupo não tem custo. */
-async function esperadoNoBanco(grupoId: string, valor: number): Promise<number | null> {
-  const taxa = await custoPixTaxaDoGrupo(grupoId)
-  return taxa > 0 ? creditoDoPix(valor, taxa).entra : null
-}
-
 /** PIX livres do grupo (sem vínculo, desde o início da conciliação), sem transferência interna. */
 async function pixLivresDoGrupo(grupoId: string, filtro: SQL | undefined): Promise<PixLivre[]> {
   const linhas = await db
@@ -565,15 +549,17 @@ async function pixLivresDoGrupo(grupoId: string, filtro: SQL | undefined): Promi
  * a linha PIX pelo esperado, a TED ou linha sem tipo pelo valor cheio. Fora do grupo ativo não lista nada:
  * vincular e forçar só valem no grupo do PIX.
  */
-export async function buscarPixParaOAlvo(alvo: AlvoConciliacao, valor: number): Promise<{ esperado: number | null; noGrupoAtivo: boolean; pix: PixLivre[] }> {
+export async function buscarPixParaOAlvo(alvo: AlvoConciliacao, valor: number): Promise<{ esperado: number | null; taxa: number; noGrupoAtivo: boolean; pix: PixLivre[] }> {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new Error('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
-  const [noGrupoAtivo, esperado] = await Promise.all([alvoNoGrupoAtivo(usuario, alvo), esperadoNoBanco(grupo.id, valor)])
-  if (!noGrupoAtivo) return { esperado, noGrupoAtivo, pix: [] }
+  const [noGrupoAtivo, taxa] = await Promise.all([alvoNoGrupoAtivo(usuario, alvo), custoPixTaxaDoGrupo(grupo.id)])
+  // A taxa vai junto para a tela preencher o forçar de PIX com o esperado do que falta (#92).
+  const esperado = esperadoComTaxa(valor, taxa)
+  if (!noGrupoAtivo) return { esperado, taxa, noGrupoAtivo, pix: [] }
   const filtro = sql`ABS(${pixRecebimentosMcp.valor}::numeric
     - CASE WHEN ${pixRecebimentosMcp.tipoOperacao} = ${OPERACAO_COM_CUSTO} THEN ${esperado ?? valor}::numeric ELSE ${valor}::numeric END) <= 5`
-  return { esperado, noGrupoAtivo, pix: await pixLivresDoGrupo(grupo.id, filtro) }
+  return { esperado, taxa, noGrupoAtivo, pix: await pixLivresDoGrupo(grupo.id, filtro) }
 }
 
 /** Busca digitada de PIX livres: pagador, descrição, data (AAAA-MM-DD) ou valor, como o crédito aparece no extrato. */
@@ -606,7 +592,7 @@ async function vincularPixAlvo(pixId: string, alvo: AlvoConciliacao) {
     :                                    { tipo: 'venda' as const, vendaId: alvo.id }
   await vincularPix(pixId, grupo.id, vinculo, usuario.id)
 
-  revalidatePathsConciliacao()
+  revalidarTelasDaConciliacao(alvo)
 }
 
 export async function desvincularPixAlvoAction(pixId: string) {
@@ -617,7 +603,7 @@ async function desvincularPixAlvo(pixId: string) {
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
   await desvincularPix(pixId, grupo.id)
-  revalidatePathsConciliacao()
+  revalidarTelasDaConciliacao()
 }
 
 // ─── Forçar conciliação na mão ───────────────────────────────────────────────
@@ -634,40 +620,41 @@ function alvoNaoEncontrado(tipo: AlvoTipo) {
     :                                         'Venda não encontrada')
 }
 
-
-async function alvoParaEdicao(alvo: AlvoConciliacao) {
+// Lê, muda e grava os pagamentos do alvo numa transação com a linha travada: forçar, desfazer e o desvincular de um
+// PIX (pix-vinculo.ts) no mesmo alvo esperam a vez, e nenhum grava por cima do outro.
+type MudarPagamentos = (pgtos: PgtoOS[], usuario: Usuario, tx: ExecutorDoAlvo) => Promise<PgtoOS[]>
+async function editarPagamentos(alvo: AlvoConciliacao, mudar: MudarPagamentos) {
   const usuario = await exigirAlvoNoGrupoAtivo(alvo)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
-  const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo)
-  if (!pgtos) throw alvoNaoEncontrado(alvo.tipo)
-  return { usuario, lojaIdsGrupo, pgtos }
+  await db.transaction(async tx => {
+    const pgtos = await pagamentosDoAlvo(alvo, lojaIdsGrupo, tx, true)
+    if (!pgtos) throw alvoNaoEncontrado(alvo.tipo)
+    await gravarPagamentosDoAlvo(alvo, lojaIdsGrupo, await mudar(pgtos, usuario, tx), tx)
+  })
+  revalidarTelasDaConciliacao(alvo)
 }
 
-async function gravarPagamentos(alvo: AlvoConciliacao, lojaIdsGrupo: string[], pgtos: PgtoOS[]) {
-  await gravarPagamentosDoAlvo(alvo, lojaIdsGrupo, pgtos)
-  if (alvo.tipo === 'os') revalidatePath(`/ordens-servico/${alvo.id}`)
-  revalidatePathsConciliacao()
+const ouRecusa = (r: ResultadoAction<PgtoOS[]>) => {
+  if (!r.ok) throw new RecusaUsuario(r.erro)
+  return r.dados
 }
 
 // Recusa volta como valor: em produção a mensagem de erro lançado não chega à tela (#404).
-export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string) {
-  return acao(() => forcarConciliacao(alvo, idx, motivo))
-}
-async function forcarConciliacao(alvo: AlvoConciliacao, idx: number, motivo: string) {
-  const { usuario, lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
-  const r = comForcado(pgtos, idx, motivo, { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() })
-  if (!r.ok) throw new RecusaUsuario(r.erro)
-  await gravarPagamentos(alvo, lojaIdsGrupo, r.dados)
+/**
+ * `valorRecebido`: na forçada de PIX, o que entrou na conta (#92). `baseVista`: a base que a tela mostrou, só para
+ * conferir; a que vale é a do servidor, e se as duas diferem os lançamentos mudaram e a forçada é recusada.
+ */
+export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string, valorRecebido?: number, baseVista?: number) {
+  return acao(() => editarPagamentos(alvo, async (pgtos, usuario, tx) => {
+    // Quanto os lançamentos do alvo já cobrem do pagamento, pela mesma conta do painel: o PIX parcial força o que falta.
+    const coberto = matchPagamentos(pgtos, await cartoesDoAlvo(alvo, tx), await pixDoAlvo(alvo, tx))[idx]?.coberto ?? 0
+    const autor = { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }
+    return ouRecusa(comForcado(pgtos, idx, motivo, autor, { valorRecebido, coberto, baseVista }))
+  }))
 }
 
 export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, idx: number) {
-  return acao(() => desfazerConciliacaoForcada(alvo, idx))
-}
-async function desfazerConciliacaoForcada(alvo: AlvoConciliacao, idx: number) {
-  const { lojaIdsGrupo, pgtos } = await alvoParaEdicao(alvo)
-  const r = semForcado(pgtos, idx)
-  if (!r.ok) throw new RecusaUsuario(r.erro)
-  await gravarPagamentos(alvo, lojaIdsGrupo, r.dados)
+  return acao(() => editarPagamentos(alvo, async pgtos => ouRecusa(semForcado(pgtos, idx))))
 }
 
 export async function buscarVendasParaVincular(conciliacaoId: string) {

@@ -6,6 +6,7 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import pg from 'pg'
+import { ate } from '@/test/corrida'
 import { sql } from 'drizzle-orm'
 import { semearContaComMotos } from '@/test/semear-motos'
 
@@ -48,11 +49,6 @@ after(async () => {
 
 // Sessões esperando lock por causa da sessão dada.
 const esperandoPor = async (pid: number) => (await linhas(sql`select pid from pg_stat_activity where ${pid} = any(pg_blocking_pids(pid))`)).length
-
-async function ate(condicao: () => Promise<boolean>, oQue: string) {
-  for (let i = 0; i < 400; i++) { if (await condicao()) return; await new Promise(r => setImmediate(r)) }
-  throw new Error('não chegou: ' + oQue)
-}
 
 test('pagamento no cartão gravado na OS durante a remoção: o Remover espera, vê o pagamento e recusa', async () => {
   const m = await conta.novaMoto('1')

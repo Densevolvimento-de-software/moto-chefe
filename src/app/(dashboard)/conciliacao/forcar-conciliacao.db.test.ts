@@ -6,11 +6,12 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearGrupo, semearLoja, type Base } from '@/test/semear-conta'
-import { semearContaComAlvos, semearVendaPeca } from '@/test/semear-alvos-conciliacao'
+import { semearContaComAlvos, semearPixRecebido, semearVendaPeca } from '@/test/semear-alvos-conciliacao'
 import { ALVO_TIPOS } from '@/lib/conciliacao-alvo'
 import type { AlvoConciliacao } from './actions'
 import type { PgtoOS } from '@/lib/conciliacao-status'
 import { sessaoDe, type Sessao } from '@/test/sessao'
+import { ate, sessaoQueSegura } from '@/test/corrida'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -42,6 +43,9 @@ after(async () => {
 // PIX pendente na posição 0 e dinheiro (não concilia) na 1.
 const PAGAMENTOS = [{ tipo: 'pix', valor: 1000 }, { tipo: 'dinheiro', valor: 200 }]
 const MOTIVO = 'PIX caiu na conta pessoal'
+// Forçar PIX pede o valor que entrou na conta (#92): 998 de 1000 dá custo 2.
+const ENTROU = 998
+const PIX_DA_MARCA = { valorRecebido: 998, valorBruto: 1000, custoPix: 2, custoPixTaxa: 0.002 }
 
 type Alvos = Record<AlvoConciliacao['tipo'], string>
 
@@ -62,9 +66,9 @@ test('aux_adm e admin_socio forçam e desfazem o PIX pendente da venda de moto, 
     usuario = sessao(a, papel)
     for (const tipo of TIPOS) {
       const alvo = { tipo, id: a.alvos[tipo] }
-      assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, MOTIVO), { ok: true, dados: undefined }, `${papel} força ${tipo}`)
+      assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, MOTIVO, ENTROU, 1000), { ok: true, dados: undefined }, `${papel} força ${tipo}`)
       const [pix, dinheiro] = await pagamentosDe(tipo, alvo.id)
-      assert.deepEqual({ ...pix.conciliadoManual, em: undefined }, { motivo: MOTIVO, porId: usuario.id, porNome: usuario.nome, em: undefined }, `${papel} em ${tipo}`)
+      assert.deepEqual({ ...pix.conciliadoManual, em: undefined }, { motivo: MOTIVO, porId: usuario.id, porNome: usuario.nome, em: undefined, pix: PIX_DA_MARCA }, `${papel} em ${tipo}`)
       assert.deepEqual(dinheiro, { tipo: 'dinheiro', valor: 200 })
 
       assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, 0), { ok: true, dados: undefined }, `${papel} desfaz ${tipo}`)
@@ -78,7 +82,7 @@ test('admin_geral segue forçando e desfazendo no grupo ativo (comportamento já
   usuario = sessao(a, 'admin_geral', { lojaId: null, contaId: null })
   grupoAtivoNoCookie = a.grupoId
   const alvo = { tipo: 'peca' as const, id: a.alvos.peca }
-  assert.equal((await actions.forcarConciliacaoAction(alvo, 0, MOTIVO)).ok, true)
+  assert.equal((await actions.forcarConciliacaoAction(alvo, 0, MOTIVO, ENTROU, 1000)).ok, true)
   assert.equal((await pagamentosDe('peca', alvo.id))[0].conciliadoManual?.porId, usuario.id)
   assert.equal((await actions.desfazerConciliacaoForcadaAction(alvo, 0)).ok, true)
   assert.deepEqual(await pagamentosDe('peca', alvo.id), PAGAMENTOS)
@@ -93,8 +97,8 @@ test('vendedor e mecânico recebem Sem permissão em qualquer id e com qualquer 
       // Própria loja, outra Conta e inexistente: a resposta é a mesma em qualquer id.
       for (const id of [a.alvos[tipo], b.alvos[tipo], randomUUID()]) {
         const alvo = { tipo, id }
-        assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, MOTIVO), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo}`)
-        assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 'ok'), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo} sem motivo`)
+        assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, MOTIVO, ENTROU, 1000), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo}`)
+        assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 'ok', ENTROU, 1000), { ok: false, erro: 'Sem permissão' }, `${papel} força ${tipo} sem motivo`)
         assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, 0), { ok: false, erro: 'Sem permissão' }, `${papel} desfaz ${tipo}`)
       }
       assert.deepEqual(await pagamentosDe(tipo, a.alvos[tipo]), PAGAMENTOS)
@@ -107,10 +111,10 @@ test('motivo curto ou que não é texto e pagamento que não concilia são recus
   const a = await contaComAlvos()
   usuario = sessao(a, 'aux_adm')
   const alvo = { tipo: 'moto' as const, id: a.alvos.moto }
-  assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, ' ok '), { ok: false, erro: 'Informe o motivo da conciliação forçada' })
+  assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, ' ok ', ENTROU, 1000), { ok: false, erro: 'Informe o motivo da conciliação forçada' })
   // O navegador pode mandar qualquer coisa no lugar do texto.
-  assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 123 as unknown as string), { ok: false, erro: 'Informe o motivo da conciliação forçada' })
-  assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 1, MOTIVO), { ok: false, erro: 'Esse pagamento não precisa de conciliação' })
+  assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 123 as unknown as string, ENTROU, 1000), { ok: false, erro: 'Informe o motivo da conciliação forçada' })
+  assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 1, MOTIVO, ENTROU, 1000), { ok: false, erro: 'Esse pagamento não precisa de conciliação' })
   assert.deepEqual(await pagamentosDe('moto', alvo.id), PAGAMENTOS)
 })
 
@@ -123,16 +127,16 @@ const NAO_ENCONTRADO: Record<AlvoConciliacao['tipo'], string> = {
 async function forcadoNaContaA() {
   const a = await contaComAlvos()
   usuario = sessao(a, 'aux_adm')
-  for (const tipo of TIPOS) assert.equal((await actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, MOTIVO)).ok, true)
+  for (const tipo of TIPOS) assert.equal((await actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, MOTIVO, ENTROU, 1000)).ok, true)
   return { a, comoFicou: await Promise.all(TIPOS.map(t => pagamentosDe(t, a.alvos[t]))) }
 }
 
 async function recusaComoInexistente(rotulo: string, a: Base & { alvos: Alvos }, comoFicou: PgtoOS[][]) {
   for (const tipo of TIPOS) {
     const recusa = { ok: false, erro: NAO_ENCONTRADO[tipo] }
-    assert.deepEqual(await actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, MOTIVO), recusa, `${rotulo} força ${tipo}`)
+    assert.deepEqual(await actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, MOTIVO, ENTROU, 1000), recusa, `${rotulo} força ${tipo}`)
     assert.deepEqual(await actions.desfazerConciliacaoForcadaAction({ tipo, id: a.alvos[tipo] }, 0), recusa, `${rotulo} desfaz ${tipo}`)
-    assert.deepEqual(await actions.forcarConciliacaoAction({ tipo, id: randomUUID() }, 0, MOTIVO), recusa, `${rotulo} id inexistente ${tipo}`)
+    assert.deepEqual(await actions.forcarConciliacaoAction({ tipo, id: randomUUID() }, 0, MOTIVO, ENTROU, 1000), recusa, `${rotulo} id inexistente ${tipo}`)
   }
   assert.deepEqual(await Promise.all(TIPOS.map(t => pagamentosDe(t, a.alvos[t]))), comoFicou, `${rotulo}: Conta A intacta`)
 }
@@ -164,7 +168,7 @@ test('admin_rede (persona real) força no grupo liberado; em grupo não liberado
 
   grupoAtivoNoCookie = liberado.grupoId
   usuario = usuarioDaRede(rede, vivos, grupoAtivoNoCookie)
-  assert.equal((await actions.forcarConciliacaoAction({ tipo: 'os', id: liberado.alvos.os }, 0, MOTIVO)).ok, true)
+  assert.equal((await actions.forcarConciliacaoAction({ tipo: 'os', id: liberado.alvos.os }, 0, MOTIVO, ENTROU, 1000)).ok, true)
   assert.equal((await pagamentosDe('os', liberado.alvos.os))[0].conciliadoManual?.porId, rede.id)
 
   grupoAtivoNoCookie = naoLiberado.grupoId
@@ -179,7 +183,7 @@ test('índice de pagamento forjado é recusado e nada grava', async () => {
   // O navegador manda qualquer coisa no lugar do número.
   for (const idx of ['length', '0', 1.5, -1, 99] as unknown as number[]) {
     const recusa = { ok: false, erro: 'Pagamento não encontrado' }
-    assert.deepEqual(await actions.forcarConciliacaoAction(alvo, idx, MOTIVO), recusa, `força ${idx}`)
+    assert.deepEqual(await actions.forcarConciliacaoAction(alvo, idx, MOTIVO, ENTROU, 1000), recusa, `força ${idx}`)
     assert.deepEqual(await actions.desfazerConciliacaoForcadaAction(alvo, idx), recusa, `desfaz ${idx}`)
   }
   assert.deepEqual(await pagamentosDe('peca', alvo.id), comoFicou[TIPOS.indexOf('peca')])
@@ -191,7 +195,7 @@ test('aux_adm força a venda de outra loja do mesmo grupo', async () => {
   const outraLoja = await semearLoja(db, a.grupoId, 'FC79 outra loja ' + randomUUID())
   const peca = await semearVendaPeca(db, { ...a.balcao, lojaId: outraLoja }, PAGAMENTOS)
   usuario = sessao(a, 'aux_adm')
-  assert.equal((await actions.forcarConciliacaoAction({ tipo: 'peca', id: peca }, 0, MOTIVO)).ok, true)
+  assert.equal((await actions.forcarConciliacaoAction({ tipo: 'peca', id: peca }, 0, MOTIVO, ENTROU, 1000)).ok, true)
   assert.equal((await pagamentosDe('peca', peca))[0].conciliadoManual?.porId, usuario.id)
 })
 
@@ -202,4 +206,223 @@ test('admin_socio da mesma Conta com outro grupo ativo recebe a frase do inexist
   usuario = sessao(a, 'admin_socio', { lojaId: null, gruposAcesso: [a.grupoId, outroGrupo.grupoId] })
   grupoAtivoNoCookie = outroGrupo.grupoId
   await recusaComoInexistente('admin_socio no outro grupo da Conta', a, comoFicou)
+})
+
+// ─── Forçar PIX com o valor que entrou na conta (#92) ──────────────────────────────────────────────
+
+const FORCADO_CARTAO = (u: Sessao) => ({ motivo: 'Operadora não mandou o relatório', porId: u.id, porNome: u.nome ?? '', em: '2026-11-19T12:00:00.000Z' })
+const marcaDe = async (tipo: AlvoConciliacao['tipo'], id: string, idx = 0) => (await pagamentosDe(tipo, id))[idx].conciliadoManual
+
+test('forçar PIX grava na marca o que entrou, o valor do PIX e o custo, nos 3 alvos; desfazer tira tudo', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  for (const tipo of TIPOS) {
+    const alvo = { tipo, id: a.alvos[tipo] }
+    assert.equal((await actions.forcarConciliacaoAction(alvo, 0, MOTIVO, 997.5, 1000)).ok, true, tipo)
+    assert.deepEqual((await marcaDe(tipo, alvo.id))?.pix, { valorRecebido: 997.5, valorBruto: 1000, custoPix: 2.5, custoPixTaxa: 0.0025 }, tipo)
+    assert.equal((await actions.desfazerConciliacaoForcadaAction(alvo, 0)).ok, true)
+    assert.deepEqual(await pagamentosDe(tipo, alvo.id), PAGAMENTOS, `${tipo}: sem marca nenhuma`)
+  }
+})
+
+test('forçar PIX sem valor que se leia é recusado, e o pedido forjado não grava valor do PIX nem custo vindos da tela', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  const alvo = { tipo: 'moto' as const, id: a.alvos.moto }
+  for (const valor of [undefined, 0, -1, '998', null, { valorRecebido: 998, valorBruto: 1, custoPix: 999 }] as unknown as number[]) {
+    assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, MOTIVO, valor, 1000), { ok: false, erro: 'Informe o valor que entrou na conta' }, JSON.stringify(valor))
+  }
+  assert.deepEqual(await pagamentosDe('moto', alvo.id), PAGAMENTOS, 'nada grava')
+  // Argumentos a mais e alvo com campos a mais: a marca é só o que o servidor calcula.
+  const forjado = { ...alvo, valorBruto: 1, custoPix: 999, grupoId: randomUUID() } as unknown as AlvoConciliacao
+  const extra = actions.forcarConciliacaoAction as unknown as (...a: unknown[]) => Promise<{ ok: boolean }>
+  assert.equal((await extra(forjado, 0, MOTIVO, 998, 1000, { custoPix: 999 })).ok, true)
+  const marca = await marcaDe('moto', alvo.id)
+  assert.deepEqual({ ...marca, em: undefined }, { motivo: MOTIVO, porId: usuario.id, porNome: usuario.nome, em: undefined, pix: PIX_DA_MARCA })
+})
+
+test('PIX já forçado não se força por cima: pede para desfazer antes, e a marca fica', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  const alvo = { tipo: 'os' as const, id: a.alvos.os }
+  assert.equal((await actions.forcarConciliacaoAction(alvo, 0, MOTIVO, 998, 1000)).ok, true)
+  const antes = await pagamentosDe('os', alvo.id)
+  assert.deepEqual(await actions.forcarConciliacaoAction(alvo, 0, 'Outro motivo', 900, 1000),
+    { ok: false, erro: 'Este pagamento já foi marcado como recebido. Desfaça antes de marcar de novo.' })
+  assert.deepEqual(await pagamentosDe('os', alvo.id), antes)
+})
+
+// Decisão do Luis registrada na #92: PIX parcial força só o que falta.
+test('PIX parcial (um PIX vinculado cobre parte): a marca guarda só o que faltava (base 600), não o pagamento inteiro', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  const pix = await semearPixRecebido(db, a.grupoId, { valor: 399.2 })
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'venda', venda_id = ${a.alvos.moto},
+    valor_bruto = 400, custo_pix = 0.8, custo_pix_taxa = 0.002 where id = ${pix}`)
+  assert.equal((await actions.forcarConciliacaoAction({ tipo: 'moto', id: a.alvos.moto }, 0, 'Resto caiu na conta pessoal', 598.8, 600)).ok, true)
+  assert.deepEqual((await marcaDe('moto', a.alvos.moto))?.pix, { valorRecebido: 598.8, valorBruto: 600, custoPix: 1.2, custoPixTaxa: 0.002 })
+})
+
+test('PIX parcial pela maquininha (linha pix do Mercado Pago vinculada): a marca guarda só o que faltava', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  await db.execute(sql`insert into conciliacoes_cartao (grupo_id, operadora, data_transacao, valor_bruto, tipo, venda_id, conciliado)
+    values (${a.grupoId}, 'mercadopago', '2026-11-19', 400, 'pix', ${a.alvos.moto}, true)`)
+  assert.equal((await actions.forcarConciliacaoAction({ tipo: 'moto', id: a.alvos.moto }, 0, 'Resto caiu na conta pessoal', 598.8, 600)).ok, true)
+  assert.deepEqual((await marcaDe('moto', a.alvos.moto))?.pix, { valorRecebido: 598.8, valorBruto: 600, custoPix: 1.2, custoPixTaxa: 0.002 })
+})
+
+test('forçar cartão e financiamento ignora o valor que entrou: a marca é só motivo e autor', async () => {
+  const a = await semearContaComAlvos(db, 'FC79', [{ tipo: 'cartao_credito', valor: 500 }, { tipo: 'financiamento', valor: 8000 }])
+  usuario = sessao(a, 'aux_adm')
+  for (const idx of [0, 1]) {
+    assert.equal((await actions.forcarConciliacaoAction({ tipo: 'moto', id: a.alvos.moto }, idx, MOTIVO, 123)).ok, true)
+    assert.deepEqual({ ...(await marcaDe('moto', a.alvos.moto, idx)), em: undefined }, { motivo: MOTIVO, porId: usuario.id, porNome: usuario.nome, em: undefined }, String(idx))
+  }
+})
+
+// Corridas no mesmo alvo (#188): conferir e soltar, forçar e desfazer, cada um esperando a trava do alvo do outro.
+// Uma sessão à parte segura uma linha e o teste confere quem espera por quem, sem depender do tempo.
+const COMPLETA = { ok: false, erro: 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.' }
+const OK = { ok: true, dados: undefined }
+const MUDARAM = { ok: false, erro: 'Os lançamentos deste pagamento mudaram. Confira e marque de novo.' }
+const COLUNA_PIX: Record<AlvoConciliacao['tipo'], [string, string]> = { moto: ['venda', 'venda_id'], os: ['os', 'os_id'], peca: ['peca', 'peca_venda_id'] }
+const ligar = async (a: Awaited<ReturnType<typeof contaComAlvos>>, tipo: AlvoConciliacao['tipo'], valor: number) => {
+  const pix = await semearPixRecebido(db, a.grupoId, { valor })
+  const [corresp, coluna] = COLUNA_PIX[tipo]
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = ${corresp}, ${sql.raw(coluna)} = ${a.alvos[tipo]}, valor_bruto = ${valor} where id = ${pix}`)
+  return pix
+}
+const ligadosAo = async (tipo: AlvoConciliacao['tipo'], id: string) =>
+  ((await execRows(sql`select count(*)::int as n from pix_recebimentos_mcp where ${sql.raw(COLUNA_PIX[tipo][1])} = ${id}`)) as { n: number }[])[0].n
+const comPagamentos = (tipo: AlvoConciliacao['tipo'], id: string, pgtos: PgtoOS[]) =>
+  db.execute(sql`update ${sql.raw(TABELA[tipo])} set pagamentos = ${JSON.stringify(pgtos)}::jsonb where id = ${id}`)
+const marcaParcial = (base: number) => ({ motivo: 'Resto caiu na conta pessoal', porId: usuario.id, porNome: usuario.nome ?? '',
+  em: '2026-11-19T12:00:00.000Z', pix: { valorRecebido: base, valorBruto: base, custoPix: 0, custoPixTaxa: 0 } })
+/** Pid da sessão que espera por uma das dadas (e não é nenhuma das já conhecidas). */
+const novoEsperando = async (s: Awaited<ReturnType<typeof sessaoQueSegura>>, por: number[], conhecidos: number[] = []) => {
+  let pid = 0
+  await ate(async () => { pid = (await s.esperandoPor(por)).find(p => !conhecidos.includes(p)) ?? 0; return pid > 0 }, `alguém esperando ${por.join(',')}`)
+  return pid
+}
+
+for (const tipo of ALVO_TIPOS) {
+  test(`${tipo}: dois desvincular, cada PIX bastaria para a forçada parcial: o 2º espera a trava do alvo e recusa`, async () => {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    const [p1, p2] = [await ligar(a, tipo, 400), await ligar(a, tipo, 400)]
+    await comPagamentos(tipo, a.alvos[tipo], [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaParcial(600) }])
+    const s = await sessaoQueSegura(url!)
+    try {
+      // Segura o PIX 1: o 1º desvincular trava o alvo, confere e para ao soltar o PIX, com a trava na mão.
+      await s.travar('select id from pix_recebimentos_mcp where id = $1 for update', [p1])
+      const r1 = actions.desvincularPixAlvoAction(p1)
+      const d1 = await novoEsperando(s, [s.pid])
+      const r2 = actions.desvincularPixAlvoAction(p2)
+      await novoEsperando(s, [d1])
+      await s.soltar()
+      assert.deepEqual(await Promise.all([r1, r2]), [OK, COMPLETA])
+    } finally { await s.fim() }
+    assert.equal(await ligadosAo(tipo, a.alvos[tipo]), 1)
+  })
+
+  test(`${tipo}: forçar durante o desvincular espera a trava do alvo e recusa, porque o PIX que a tela contava soltou`, async () => {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    const pix = await ligar(a, tipo, 400)
+    const s = await sessaoQueSegura(url!)
+    try {
+      await s.travar('select id from pix_recebimentos_mcp where id = $1 for update', [pix])
+      const solta = actions.desvincularPixAlvoAction(pix)
+      const d = await novoEsperando(s, [s.pid])
+      const forca = actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, 'Resto caiu na conta pessoal', 598.8, 600)
+      await novoEsperando(s, [d])
+      await s.soltar()
+      assert.deepEqual(await Promise.all([solta, forca]), [OK, MUDARAM])
+    } finally { await s.fim() }
+    assert.equal(await ligadosAo(tipo, a.alvos[tipo]), 0)
+    assert.equal(await marcaDe(tipo, a.alvos[tipo]), undefined)
+  })
+
+  test(`${tipo}: desfazer durante o forçar de outra linha espera a vez e não apaga a marca nova`, async () => {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    await comPagamentos(tipo, a.alvos[tipo], [{ tipo: 'pix', valor: 1000 }, { tipo: 'cartao_credito', valor: 500, conciliadoManual: FORCADO_CARTAO(usuario) }])
+    const s = await sessaoQueSegura(url!)
+    try {
+      await s.travar(`select id from ${TABELA[tipo]} where id = $1 for update`, [a.alvos[tipo]])
+      const forca = actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, 'PIX caiu na conta pessoal', 1000, 1000)
+      const f = await novoEsperando(s, [s.pid])
+      const desfaz = actions.desfazerConciliacaoForcadaAction({ tipo, id: a.alvos[tipo] }, 1)
+      await novoEsperando(s, [s.pid, f], [f])
+      await s.soltar()
+      assert.deepEqual(await Promise.all([forca, desfaz]), [OK, OK])
+    } finally { await s.fim() }
+    const pgtos = await pagamentosDe(tipo, a.alvos[tipo])
+    assert.deepEqual(pgtos.map(p => Boolean(p.conciliadoManual)), [true, false])
+  })
+
+  test(`${tipo}: forçar durante o desfazer de outra linha espera a vez e grava em cima do desfeito`, async () => {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    await comPagamentos(tipo, a.alvos[tipo], [{ tipo: 'pix', valor: 1000 }, { tipo: 'cartao_credito', valor: 500, conciliadoManual: FORCADO_CARTAO(usuario) }])
+    const s = await sessaoQueSegura(url!)
+    try {
+      await s.travar(`select id from ${TABELA[tipo]} where id = $1 for update`, [a.alvos[tipo]])
+      const desfaz = actions.desfazerConciliacaoForcadaAction({ tipo, id: a.alvos[tipo] }, 1)
+      const d = await novoEsperando(s, [s.pid])
+      const forca = actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, 'PIX caiu na conta pessoal', 1000, 1000)
+      await novoEsperando(s, [s.pid, d], [d])
+      await s.soltar()
+      assert.deepEqual(await Promise.all([desfaz, forca]), [OK, OK])
+    } finally { await s.fim() }
+    const pgtos = await pagamentosDe(tipo, a.alvos[tipo])
+    assert.deepEqual(pgtos.map(p => Boolean(p.conciliadoManual)), [true, false])
+  })
+
+  test(`${tipo}: dois forçar na mesma linha: o 2º espera e recusa porque já foi marcado`, async () => {
+    const a = await contaComAlvos()
+    usuario = sessao(a, 'aux_adm')
+    const s = await sessaoQueSegura(url!)
+    try {
+      await s.travar(`select id from ${TABELA[tipo]} where id = $1 for update`, [a.alvos[tipo]])
+      const f1 = actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, 'PIX caiu na conta pessoal', 1000, 1000)
+      const p1 = await novoEsperando(s, [s.pid])
+      const f2 = actions.forcarConciliacaoAction({ tipo, id: a.alvos[tipo] }, 0, 'PIX caiu na conta pessoal', 990, 1000)
+      await novoEsperando(s, [s.pid, p1], [p1])
+      await s.soltar()
+      assert.deepEqual(await Promise.all([f1, f2]),
+        [OK, { ok: false, erro: 'Este pagamento já foi marcado como recebido. Desfaça antes de marcar de novo.' }])
+    } finally { await s.fim() }
+    assert.equal((await marcaDe(tipo, a.alvos[tipo]))?.pix?.valorRecebido, 1000)
+  })
+}
+
+// Decisão do Luis registrada na #92: a tela manda a base que mostrou; o pedido com a base de antes é recusado.
+test('forçar PIX com a base que a tela mostrou antes de os lançamentos mudarem: recusa e nada grava', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  // A tela viu o PIX de 400 vinculado (base 600); ele soltou antes do confirmar.
+  const pix = await ligar(a, 'moto', 400)
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = null, venda_id = null where id = ${pix}`)
+  assert.deepEqual(await actions.forcarConciliacaoAction({ tipo: 'moto', id: a.alvos.moto }, 0, 'Resto caiu na conta pessoal', 598.8, 600), MUDARAM)
+  // A tela viu o pagamento inteiro (base 1000); um PIX de 400 vinculou antes do confirmar.
+  await ligar(a, 'moto', 400)
+  assert.deepEqual(await actions.forcarConciliacaoAction({ tipo: 'moto', id: a.alvos.moto }, 0, MOTIVO, 998, 1000), MUDARAM)
+  assert.equal(await marcaDe('moto', a.alvos.moto), undefined)
+})
+
+test('PIX vinculado que completa uma forçada parcial não se desvincula: pede para desfazer a forçada antes', async () => {
+  const a = await contaComAlvos()
+  usuario = sessao(a, 'aux_adm')
+  const pix = await semearPixRecebido(db, a.grupoId, { valor: 399.2 })
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'peca', peca_venda_id = ${a.alvos.peca},
+    valor_bruto = 400, custo_pix = 0.8, custo_pix_taxa = 0.002 where id = ${pix}`)
+  assert.equal((await actions.forcarConciliacaoAction({ tipo: 'peca', id: a.alvos.peca }, 0, 'Resto caiu na conta pessoal', 598.8, 600)).ok, true)
+  assert.deepEqual(await actions.desvincularPixAlvoAction(pix),
+    { ok: false, erro: 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.' })
+  assert.equal((await execRows(sql`select peca_venda_id from pix_recebimentos_mcp where id = ${pix}`))[0].peca_venda_id, a.alvos.peca)
+  // Desfeita a forçada, o PIX se desvincula.
+  assert.equal((await actions.desfazerConciliacaoForcadaAction({ tipo: 'peca', id: a.alvos.peca }, 0)).ok, true)
+  assert.equal((await actions.desvincularPixAlvoAction(pix)).ok, true)
 })

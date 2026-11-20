@@ -5,6 +5,10 @@ import { custoDoPixVinculado } from './custo-pix'
 import { custoPixTaxaDoGrupo } from './custo-pix-grupo'
 import { db } from './db'
 import { pixRecebimentosMcp } from './db/schema'
+import { COMPLETA_FORCADA, pixCompletaForcadaParcial } from './conciliacao-status'
+import { cartoesDoAlvo, pagamentosDoAlvo, pixDoAlvo, type ExecutorDoAlvo } from './alvo-da-conciliacao'
+import { alvoDasColunas, type Alvos } from './conciliacao-alvo'
+import { lojasDoGrupo } from './conta'
 import { ehTransferenciaInterna } from './pix-internos'
 import { RecusaUsuario } from './resultado-action'
 import { ehUuid } from './uuid'
@@ -54,12 +58,45 @@ export async function vincularPix(pixId: string, grupoId: string, vinculo: Vincu
   if (ligados.length === 0) throw new RecusaUsuario(PIX_JA_VINCULADO)
 }
 
-export async function desvincularPix(pixId: string, grupoId: string): Promise<void> {
-  const soltos = ehUuid(pixId)
-    ? await db.update(pixRecebimentosMcp)
+// O alvo do PIX com os pagamentos lidos (e a linha travada) só nas lojas do grupo do PIX (pedido não tem forçada).
+// Cartões e PIX do alvo só depois: eles leem pelo id.
+async function alvoComPagamentos(v: Alvos, lojaIds: string[], tx: ExecutorDoAlvo) {
+  const alvo = alvoDasColunas(v)
+  if (!alvo) return null
+  const pgtos = await pagamentosDoAlvo(alvo, lojaIds, tx, true)
+  if (!pgtos) return null
+  return { pgtos, cartoes: await cartoesDoAlvo(alvo, tx), pix: await pixDoAlvo(alvo, tx) }
+}
+
+async function vinculoDoPix(pixId: string, grupoId: string, tx: ExecutorDoAlvo): Promise<Alvos | null> {
+  const [v] = ehUuid(pixId)
+    ? await tx.select({ vendaId: pixRecebimentosMcp.vendaId, osId: pixRecebimentosMcp.osId, pecaVendaId: pixRecebimentosMcp.pecaVendaId })
+      .from(pixRecebimentosMcp).where(doGrupo(pixId, grupoId)).limit(1)
+    : []
+  return v ?? null
+}
+
+/** Sem este PIX a forçada parcial do alvo fica sem o resto que a completava? */
+async function completaForcada(pixId: string, lojaIds: string[], v: Alvos, tx: ExecutorDoAlvo): Promise<boolean> {
+  const alvo = await alvoComPagamentos(v, lojaIds, tx)
+  return alvo ? pixCompletaForcadaParcial(alvo.pgtos, alvo.cartoes, alvo.pix, pixId) : false
+}
+
+// `fraseSeCompleta`: a recusa quando o PIX completa uma forçada parcial; a action escolhe pelo papel. Confere e
+// solta numa transação com a linha do alvo travada: dois desvincular, ou forçar e desvincular, no mesmo alvo não
+// conferem ao mesmo tempo (cada um veria o PIX do outro e a forçada ficaria sem o dinheiro).
+export async function desvincularPix(pixId: string, grupoId: string, fraseSeCompleta = COMPLETA_FORCADA): Promise<void> {
+  // As lojas antes: dentro da transação, o db pegaria uma 2ª conexão do pool.
+  const lojaIds = (await lojasDoGrupo(grupoId)).map(l => l.id)
+  await db.transaction(async tx => {
+    const vinculo = await vinculoDoPix(pixId, grupoId, tx)
+    if (!vinculo) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
+    if (await completaForcada(pixId, lojaIds, vinculo, tx)) throw new RecusaUsuario(fraseSeCompleta)
+
+    const soltos = await tx.update(pixRecebimentosMcp)
       .set(PIX_SOLTO)
       .where(doGrupo(pixId, grupoId))
       .returning({ id: pixRecebimentosMcp.id })
-    : []
-  if (soltos.length === 0) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
+    if (soltos.length === 0) throw new RecusaUsuario(PIX_NAO_ENCONTRADO)
+  })
 }

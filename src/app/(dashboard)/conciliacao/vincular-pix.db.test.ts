@@ -304,7 +304,7 @@ test('busca de PIX para o alvo: o PIX pelo esperado sem o custo, a TED e a linha
   const semTipoLiquida = await semearPixRecebido(db, a.grupoId, { valor: 9980, tipoOperacao: null })
   const ids = (l: { id: string }[]) => l.map(p => p.id).sort()
   const r = await actions.buscarPixParaOAlvo(alvo, 10000)
-  assert.deepEqual([r.esperado, r.noGrupoAtivo], [9980, true])
+  assert.deepEqual([r.esperado, r.taxa, r.noGrupoAtivo], [9980, 0.002, true])
   assert.deepEqual(ids(r.pix), [pixLiquido, tedCheia, semTipoCheia].sort(), '0,20%: PIX pelo esperado, TED e sem tipo pelo cheio')
   assert.deepEqual(ids(await actions.buscarPixLivres('9980')), [pixLiquido, tedLiquida, semTipoLiquida].sort(), 'valor digitado: como hoje')
   assert.deepEqual(ids(await actions.buscarPixLivres('Pagador antigo')), [semTipoCheia], 'texto digitado: como hoje')
@@ -314,7 +314,7 @@ test('busca de PIX para o alvo: o PIX pelo esperado sem o custo, a TED e a linha
   await semearPixRecebido(db, semCusto.grupoId, { valor: 9980 })
   const cheio = await semearPixRecebido(db, semCusto.grupoId, { valor: 10000 })
   const s = await actions.buscarPixParaOAlvo({ tipo: 'os', id: semCusto.alvos.os }, 10000)
-  assert.deepEqual([s.esperado, s.noGrupoAtivo, ids(s.pix)], [null, true, [cheio]], 'grupo sem custo: como hoje')
+  assert.deepEqual([s.esperado, s.taxa, s.noGrupoAtivo, ids(s.pix)], [null, 0, true, [cheio]], 'grupo sem custo: como hoje')
 })
 
 // ─── Tela (#90, 90b): o que a busca do PIX mostra antes de vincular ─────────────────────────────────

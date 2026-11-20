@@ -3,7 +3,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { ChevronDown, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { estornosDosPagamentos, matchPagamentos, precisaConciliar, type EstornoDoAlvo, type PgtoOS } from '@/lib/conciliacao-status'
+import { PAGAMENTO_PIX, baseDaForcada, estornosDosPagamentos, matchPagamentos, pixDaForcada, precisaConciliar, type EstornoDoAlvo, type PgtoOS } from '@/lib/conciliacao-status'
+import { avisoDeCustoAlto, esperadoComTaxa, percentualDoPix, type CustoDoPix } from '@/lib/custo-pix'
+import { formatarNumeroBR, parseNumeroBR } from '@/lib/numero-br'
 import { nomeOperadora } from '@/lib/operadoras'
 import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import {
@@ -96,7 +98,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   const [candidatosPix, setCandidatosPix] = useState<PixLivre[]>([])
   const [buscaLoading, setBuscaLoading] = useState(false)
   // Só para PIX: o valor esperado no banco (sem o custo do PIX do grupo) e se o alvo é do grupo ativo.
-  const [contextoPix, setContextoPix] = useState<{ esperado: number | null; noGrupoAtivo: boolean } | null>(null)
+  const [contextoPix, setContextoPix] = useState<{ esperado: number | null; taxa: number; noGrupoAtivo: boolean } | null>(null)
   const [vinculando, setVinculando]     = useState(false)
 
   const [buscaLivre, setBuscaLivre]         = useState('')
@@ -107,6 +109,8 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
 
   const [forcandoIdx, setForcandoIdx] = useState<number | null>(null)
   const [motivo, setMotivo]           = useState('')
+  // Forçar PIX (#92): o que entrou na conta, como digitado (padrão brasileiro).
+  const [recebido, setRecebido]       = useState('')
   const [salvando, setSalvando]       = useState(false)
 
   const conciliados = matchPagamentos(pagamentos, concs, pixRecs)
@@ -133,11 +137,11 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
       if (ehPix) {
         // PIX entra pela maquininha Mercado Pago (#51) ou pelo banco (#90): procura nas duas. Fora do grupo ativo
         // nenhuma lista: o servidor não vincula o alvo de outro grupo.
-        const [maquininha, { esperado, noGrupoAtivo, pix }] = await Promise.all([
+        const [maquininha, { esperado, taxa, noGrupoAtivo, pix }] = await Promise.all([
           buscarConciliacoesPorValor(valor, 'pix'),
           buscarPixParaOAlvo(alvo, valor),
         ])
-        setContextoPix({ esperado, noGrupoAtivo })
+        setContextoPix({ esperado, taxa, noGrupoAtivo })
         setCandidatos(noGrupoAtivo ? maquininha : [])
         setCandidatosPix(pix)
       } else {
@@ -204,12 +208,24 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     }
   }
 
-  async function forcar() {
+  // Forçar PIX parte do que falta (decisão do Luis registrada na #92); o campo vem com o esperado dessa parte.
+  function abrirForcar(i: number, p: PgtoOS, coberto: number) {
+    setForcandoIdx(i)
+    setMotivo('')
+    if (!PAGAMENTO_PIX.has(p.tipo)) return
+    const base = baseDaForcada(p.valor, coberto)
+    setRecebido(formatarNumeroBR(esperadoComTaxa(base, contextoPix?.taxa ?? 0) ?? base))
+  }
+
+  // `baseVista`: a base que o formulário mostrou; o servidor recusa se os lançamentos mudaram desde então.
+  async function forcar(baseVista?: number) {
     if (forcandoIdx === null) return
     const idx = forcandoIdx
     setSalvando(true)
     try {
-      const r = await forcarConciliacaoAction(alvo, idx, motivo)
+      // Valor que não se lê vai vazio: o servidor recusa com a frase.
+      const ehPix = PAGAMENTO_PIX.has(pagamentos[idx]?.tipo ?? '')
+      const r = await forcarConciliacaoAction(alvo, idx, motivo, ehPix ? parseNumeroBR(recebido) ?? undefined : undefined, ehPix ? baseVista : undefined)
       if (!r.ok) { toast.error(r.erro); return }
       setForcandoIdx(null)
       setMotivo('')
@@ -241,7 +257,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
     if (buscandoIdx === i || forcandoIdx === i) { setBuscandoIdx(null); setForcandoIdx(null); return }
     setForcandoIdx(null)
     // Financiamento não tem o que buscar: o banco deposita e nada no sistema registra.
-    if (podeGerir && p.tipo !== 'financiamento') abrirBusca(i, p.valor, p.tipo === 'pix')
+    if (podeGerir && p.tipo !== 'financiamento') abrirBusca(i, p.valor, PAGAMENTO_PIX.has(p.tipo))
     else setBuscandoIdx(i)
   }
 
@@ -386,7 +402,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                 )}
               </button>
 
-              {situacao === 'conciliado' && pix && Number(pix.custoPixTaxa) > 0 && <ContaDoPixConciliado pix={pix} />}
+              {situacao === 'conciliado' && pix && Number(pix.custoPixTaxa) > 0 && <ContaDoPixComCusto className="mx-3 mb-3" valorBruto={Number(pix.valorBruto ?? pix.valor)} custoPix={Number(pix.custoPix ?? 0)} custoPixTaxa={Number(pix.custoPixTaxa)} entrou={Number(pix.valor)} />}
 
               {situacao === 'forcado' && podeGerir && (
                 <div className="flex justify-end border-t border-border px-3">
@@ -399,37 +415,10 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
               {aberto && (
                 <div className="space-y-3 border-t border-border p-3">
                   {forcandoIdx === i ? (
-                    <div className="space-y-2 rounded-lg bg-warning/10 p-3">
-                      <p className="text-sm font-medium text-warning">Marcar como recebido sem extrato</p>
-                      <p className="text-xs text-warning">
-                        {p.tipo === 'financiamento'
-                          ? 'Use quando o banco já depositou o financiamento. '
-                          : 'Use quando o dinheiro entrou de verdade, mas o lançamento não existe aqui. '}
-                        Fica registrado com seu nome e o motivo, e pode ser desfeito.
-                      </p>
-                      <textarea
-                        value={motivo}
-                        onChange={e => setMotivo(e.target.value)}
-                        // Enter envia, como no diálogo antigo; Shift+Enter quebra linha.
-                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (motivo.trim().length >= 3) forcar() } }}
-                        placeholder="Por que está marcando? Ex.: PIX caiu na conta pessoal"
-                        aria-label="Motivo"
-                        rows={2}
-                        autoFocus
-                        className="w-full rounded-md border border-input bg-card p-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      />
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setForcandoIdx(null)} disabled={salvando} className="h-11 flex-1 rounded-lg border border-input bg-card text-sm font-medium">Voltar</button>
-                        <button
-                          type="button"
-                          onClick={forcar}
-                          disabled={salvando || motivo.trim().length < 3}
-                          className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-foreground text-sm font-medium text-background disabled:opacity-40"
-                        >
-                          {salvando && <Loader2 className="size-4 animate-spin" />} Marcar como recebido
-                        </button>
-                      </div>
-                    </div>
+                    <FormularioDoForcado
+                      p={p} i={i} coberto={coberto} taxaDoGrupo={contextoPix?.taxa ?? 0} motivo={motivo} onMotivo={setMotivo} recebido={recebido} onRecebido={setRecebido}
+                      salvando={salvando} onCancelar={() => setForcandoIdx(null)} onConfirmar={forcar}
+                    />
                   ) : (
                     <>
                       {mostraBusca && pixForaDoGrupo ? (
@@ -495,8 +484,9 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                           </p>
                           <button
                             type="button"
-                            onClick={() => { setForcandoIdx(i); setMotivo('') }}
-                            className="inline-flex h-11 shrink-0 items-center rounded-lg border border-warning/40 bg-warning/10 px-4 text-sm font-medium text-warning hover:bg-warning/20"
+                            onClick={() => abrirForcar(i, p, coberto)}
+                            disabled={PAGAMENTO_PIX.has(p.tipo) && contextoPix === null}
+                            className="inline-flex h-11 shrink-0 items-center rounded-lg border border-warning/40 bg-warning/10 px-4 text-sm font-medium text-warning hover:bg-warning/20 disabled:opacity-50"
                           >
                             Forçar
                           </button>
@@ -514,15 +504,92 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
   )
 }
 
-// O PIX conciliado com custo: valor do PIX, custo com a taxa gravada no vínculo e o que entrou.
-function ContaDoPixConciliado({ pix }: { pix: PixRec }) {
-  const taxa = (Number(pix.custoPixTaxa) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+// O formulário do Forçar: motivo para todos; para PIX, também o valor que entrou e a conta do custo (#92).
+function FormularioDoForcado({ p, i, coberto, taxaDoGrupo, motivo, onMotivo, recebido, onRecebido, salvando, onCancelar, onConfirmar }: {
+  p: PgtoOS; i: number; coberto: number; taxaDoGrupo: number
+  motivo: string; onMotivo: (v: string) => void
+  recebido: string; onRecebido: (v: string) => void
+  salvando: boolean; onCancelar: () => void; onConfirmar: (baseVista?: number) => void
+}) {
+  const ehPix = PAGAMENTO_PIX.has(p.tipo)
+  const pixForcado = ehPix ? pixDaForcada(p.valor, { valorRecebido: parseNumeroBR(recebido), coberto }) : null
+  const podeConfirmar = motivo.trim().length >= 3 && typeof pixForcado !== 'string'
+  const avisoCusto = pixForcado && typeof pixForcado !== 'string' ? avisoDeCustoAlto(pixForcado, taxaDoGrupo) : null
+  const confirmar = () => onConfirmar(pixForcado && typeof pixForcado !== 'string' ? pixForcado.valorBruto : undefined)
   return (
-    <div className="mx-3 mb-3 overflow-hidden rounded-lg border border-border">
+    <div className="space-y-2 rounded-lg bg-warning/10 p-3">
+      <p className="text-sm font-medium text-warning">Marcar como recebido sem extrato</p>
+      <p className="text-xs text-warning">
+        {p.tipo === 'financiamento'
+          ? 'Use quando o banco já depositou o financiamento. '
+          : 'Use quando o dinheiro entrou de verdade, mas o lançamento não existe aqui. '}
+        Fica registrado com seu nome e o motivo, e pode ser desfeito.
+      </p>
+      {ehPix && (
+        <div className="space-y-2">
+          <label htmlFor={`recebido-${i}`} className="block text-xs font-medium text-foreground">Valor que entrou na conta</label>
+          <div className="flex h-11 items-center gap-2 rounded-md border border-input bg-card px-2 focus-within:ring-2 focus-within:ring-ring">
+            <span className="text-sm text-muted-foreground">R$</span>
+            <input
+              id={`recebido-${i}`}
+              type="text"
+              inputMode="decimal"
+              aria-label="Valor que entrou na conta"
+              value={recebido}
+              onChange={e => onRecebido(e.target.value)}
+              disabled={salvando}
+              autoFocus
+              className="min-w-0 flex-1 bg-transparent text-sm tabular-nums outline-none"
+            />
+          </div>
+          {typeof pixForcado === 'string' ? (
+            <p role="alert" className="text-xs text-destructive">{pixForcado}</p>
+          ) : pixForcado && (
+            <>
+              <ContaDoPixComCusto {...pixForcado} entrou={pixForcado.valorRecebido} />
+              {pixForcado.valorRecebido > pixForcado.valorBruto && (
+                <p className="text-xs text-warning">Entrou mais que o pagamento: fica sem custo do PIX.</p>
+              )}
+              {avisoCusto && <p className="text-xs text-warning">{avisoCusto}</p>}
+            </>
+          )}
+        </div>
+      )}
+      <textarea
+        value={motivo}
+        onChange={e => onMotivo(e.target.value)}
+        // Enter envia, como no diálogo antigo; Shift+Enter quebra linha.
+        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (podeConfirmar) confirmar() } }}
+        placeholder="Por que está marcando? Ex.: PIX caiu na conta pessoal"
+        aria-label="Motivo"
+        rows={2}
+        disabled={salvando}
+        autoFocus={!ehPix}
+        className="w-full rounded-md border border-input bg-card p-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+      <div className="flex gap-2">
+        <button type="button" onClick={onCancelar} disabled={salvando} className="h-11 flex-1 rounded-lg border border-input bg-card text-sm font-medium">Cancelar</button>
+        <button
+          type="button"
+          onClick={confirmar}
+          disabled={salvando || !podeConfirmar}
+          className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-40"
+        >
+          {salvando && <Loader2 className="size-4 animate-spin" />} Marcar como recebido
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Valor do PIX, custo com a taxa e o que entrou: no PIX conciliado (o que o vínculo gravou) e no forçar de PIX.
+function ContaDoPixComCusto({ valorBruto, custoPix, custoPixTaxa, entrou, className }: CustoDoPix & { entrou: number; className?: string }) {
+  return (
+    <div className={cn('overflow-hidden rounded-lg border border-border bg-card', className)}>
       <ContaDoPix linhas={[
-        { rotulo: 'Valor do PIX', valor: Number(pix.valorBruto ?? pix.valor) },
-        { rotulo: `Custo (${taxa}%)`, valor: Number(pix.custoPix ?? 0), custo: true },
-        { rotulo: 'Entrou', valor: Number(pix.valor) },
+        { rotulo: 'Valor do PIX', valor: valorBruto },
+        { rotulo: `Custo (${percentualDoPix(custoPixTaxa)})`, valor: custoPix, custo: true },
+        { rotulo: 'Entrou', valor: entrou },
       ]} />
     </div>
   )

@@ -4,6 +4,12 @@ import { centavos } from './centavos'
 import { parseNumeroBR } from './numero-br'
 import { brutoParaReceber, liquidoDoBruto } from './preco-minimo'
 
+/** O que se grava de um PIX: o valor do PIX, o custo e a taxa (fração), no vínculo (#90) e na forçada (#92). */
+export type CustoDoPix = { valorBruto: number; custoPix: number; custoPixTaxa: number }
+
+// As 6 casas da coluna custo_pix_taxa: o banco arredonda assim ao gravar.
+const seisCasas = (n: number) => Math.round(n * 1e6) / 1e6
+
 /** Do crédito do banco: o valor do PIX (bruto) e o custo. Taxa de 100% ou mais não tem bruto que pague: fica sem custo. */
 export function custoDoPixRecebido(credito: number, taxa: number): { bruto: number; custo: number } {
   const bruto = brutoParaReceber(credito, taxa) ?? credito
@@ -25,7 +31,7 @@ export const CUSTO_PIX_FORA_DA_FAIXA = 'O custo do PIX precisa ser de 0 até men
  */
 export function lerCustoPixTaxa(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN
-  const naColuna = Math.round(n * 1e6) / 1e6
+  const naColuna = seisCasas(n)
   return Number.isFinite(naColuna) && naColuna >= 0 && naColuna < 1 ? naColuna : null
 }
 
@@ -43,8 +49,46 @@ export const OPERACAO_COM_CUSTO = 'PIX'
  * O que se grava no PIX recebido ao vinculá-lo (#90): o valor do PIX, o custo e a taxa da época.
  * Só PIX tem custo; TED e linha antiga sem tipo entram inteiras (custo 0, taxa 0).
  */
-export function custoDoPixVinculado(tipoOperacao: string | null, credito: number, taxa: number): { valorBruto: number; custoPix: number; custoPixTaxa: number } {
+export function custoDoPixVinculado(tipoOperacao: string | null, credito: number, taxa: number): CustoDoPix {
   if (tipoOperacao !== OPERACAO_COM_CUSTO || taxa <= 0) return { valorBruto: credito, custoPix: 0, custoPixTaxa: 0 }
   const { bruto, custo } = custoDoPixRecebido(credito, taxa)
   return { valorBruto: bruto, custoPix: custo, custoPixTaxa: taxa }
+}
+
+/** Quanto um PIX de `valor` deve creditar no banco com o custo `taxa` do grupo; null se o grupo não tem custo. */
+export function esperadoComTaxa(valor: number, taxa: number): number | null {
+  return taxa > 0 ? creditoDoPix(valor, taxa).entra : null
+}
+
+/** Recusa do forçar de PIX sem um valor que entrou na conta que se possa ler (#92). */
+export const VALOR_RECEBIDO_INVALIDO = 'Informe o valor que entrou na conta'
+
+/** Valor que entrou na conta, digitado no forçar de PIX: só número, em centavos, maior que zero. */
+export function lerValorRecebido(v: unknown): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null
+  const emCentavos = centavos(v)
+  return emCentavos > 0 ? emCentavos : null
+}
+
+/**
+ * O que se grava na marca da forçada de um PIX (#92), a partir do que o pagamento esperava (`base`: o valor
+ * do pagamento, ou o que faltava) e do que entrou. Decisão do Luis registrada na #92: custo = base − recebido,
+ * nunca negativo. A taxa gravada é a efetiva (custo ÷ base), escolha da implementação; a do grupo não entra aqui.
+ */
+export function custoDoPixForcado(base: number, recebido: number): CustoDoPix {
+  const custoPix = Math.max(0, centavos(base - recebido))
+  return { valorBruto: base, custoPix, custoPixTaxa: base > 0 ? seisCasas(custoPix / base) : 0 }
+}
+
+/** Custo do PIX em porcentagem, como a tela mostra: "0,20%", "0,2998%". */
+export const percentualDoPix = (taxa: number) =>
+  `${(taxa * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}%`
+
+// Acima disso o custo da forçada costuma ser erro de digitação no valor que entrou (decisão do Luis registrada na #92).
+const CUSTO_ALTO_NA_FORCADA = 0.01
+
+/** Aviso (não bloqueia) quando o custo da forçada de PIX passa de 1% do que o pagamento esperava. */
+export function avisoDeCustoAlto(custo: CustoDoPix, taxaDoGrupo: number): string | null {
+  if (custo.custoPixTaxa <= CUSTO_ALTO_NA_FORCADA) return null
+  return `Custo de ${percentualDoPix(custo.custoPixTaxa)} bem acima do custo do PIX do grupo (${percentualDoPix(taxaDoGrupo)}). Confira o valor que entrou.`
 }
