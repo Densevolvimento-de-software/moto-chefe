@@ -306,12 +306,40 @@ test('desfazer a forçada e desvincular: PIX de outra Conta recebe a frase do in
   assert.equal((await vinculoDe(completa)).venda_id, a.ids.venda)
 })
 
+// Bot do #189 (B-P1): duas forçadas parciais disputam o mesmo PIX; soltar o PIX não deixa marca sem o dinheiro.
+// T-M3: a forçada cheia ao lado fica.
+const marcaDe = (valorBruto?: number) => ({ motivo: 'Teste', porId: 'u1', porNome: 'Gestor', em: '2026-11-19T12:00:00.000Z',
+  ...(valorBruto === undefined ? {} : { pix: { valorRecebido: valorBruto, valorBruto, custoPix: 0, custoPixTaxa: 0 } }) })
+async function vendaCom(a: Awaited<ReturnType<typeof contaComNumeros>>, pgtos: unknown[], pixValor: number) {
+  await db.execute(sql`update vendas set pagamentos = ${JSON.stringify(pgtos)}::jsonb where id = ${a.ids.venda}`)
+  const pix = await semearPixRecebido(db, a.grupoId, { valor: pixValor })
+  await db.execute(sql`update pix_recebimentos_mcp set tipo_correspondencia = 'venda', venda_id = ${a.ids.venda}, valor_bruto = ${pixValor} where id = ${pix}`)
+  return pix
+}
+
+test('desfazer e desvincular o PIX que completa duas forçadas que casam com ele pelo valor: as duas marcas saem', async () => {
+  const a = await contaComNumeros()
+  const pix = await vendaCom(a, [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaDe(900) }, { tipo: 'pix', valor: 500, conciliadoManual: marcaDe(100) }], 500)
+  usuario = await sessao(a, 'aux_adm')
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(pix), { ok: true, dados: undefined })
+  assert.deepEqual(await marcasDe(a.ids.venda), [false, false])
+  assert.deepEqual(await vinculoDe(pix), LIVRE)
+})
+
+test('desfazer e desvincular: a forçada cheia ao lado da parcial fica', async () => {
+  const a = await contaComNumeros()
+  const pix = await vendaCom(a, [{ tipo: 'pix', valor: 1000, conciliadoManual: marcaDe(600) }, { tipo: 'pix', valor: 300, conciliadoManual: marcaDe() }], 400)
+  usuario = await sessao(a, 'aux_adm')
+  assert.deepEqual(await actions.desfazerForcadaERemoverAction(pix), { ok: true, dados: undefined })
+  assert.deepEqual(await marcasDe(a.ids.venda), [false, true])
+})
+
 // A caixa da /pix-mcp: o resumo sai do servidor com as lojas do grupo do PIX.
 test('resumo da forçada que o PIX completa: o do próprio grupo; PIX de outra Conta, inexistente ou que não completa = vazio', async () => {
   const a = await contaComNumeros()
   const { completa, outra } = await vendaComForcadaParcial(a)
   usuario = await sessao(a, 'vendedor')
-  assert.deepEqual(await actions.forcadaDoPixAction(completa), { ok: true, dados: { valor: 1000, marcado: 600, cobre: 400 } })
+  assert.deepEqual(await actions.forcadaDoPixAction(completa), { ok: true, dados: { linhas: [{ valor: 1000, marcado: 600 }], cobre: 400 } })
   assert.deepEqual(await actions.forcadaDoPixAction(outra), { ok: true, dados: null })
   assert.deepEqual(await actions.forcadaDoPixAction(randomUUID()), { ok: true, dados: null })
   const b = await contaComNumeros()

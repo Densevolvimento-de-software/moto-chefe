@@ -94,7 +94,7 @@ test('desvincular envia o PIX; a recusa aparece com a frase e a falha interna co
 // conciliação desfaz a forçada e desvincula de uma vez, depois de confirmar.
 const COMPLETA = 'Este PIX completa um pagamento marcado como recebido. Desfaça a forçada antes de desvincular.'
 const PEDIR = 'Este PIX completa um pagamento marcado como recebido. Peça a quem gere a conciliação para desfazer a forçada.'
-const RESUMO = { valor: 1000, marcado: 600, cobre: 400 }
+const RESUMO = { linhas: [{ valor: 1000, marcado: 600 }], cobre: 400 }
 const TEXTO_DA_CAIXA = 'O pagamento PIX de R$ 1.000,00 da OS #42 foi marcado como recebido com R$ 600,00. Este PIX cobre os R$ 400,00 que faltam.'
 const tela = () => textoDaTela().replace(/\s+/g, ' ')
 
@@ -110,7 +110,7 @@ test('quem gere a conciliação: a recusa vira a caixa com os valores; confirmar
   await clique('Desfazer a forçada e desvincular')
   assert.equal(dialogoAberto(), true)
   assert.ok(tela().includes('Desfazer a forçada e desvincular?'), tela())
-  assert.ok(tela().includes('O pagamento PIX de R$ 1.000,00 da OS #42 volta a ficar pendente, e este PIX fica livre para vincular de novo.'), tela())
+  assert.ok(tela().includes('O pagamento PIX de R$ 1.000,00 da OS #42 deixa de estar marcado como recebido, e este PIX fica livre para vincular de novo.'), tela())
   assert.equal(desfazerERemover.mock.callCount(), 0, 'só depois de confirmar')
   await clique('Desfazer e desvincular', 80)
   assert.deepEqual(desfazerERemover.mock.calls.map(c => c.arguments), [['pix-1']])
@@ -151,4 +151,12 @@ test('sem o resumo (o PIX deixou de completar a forçada no meio), a recusa fica
   await desvincular()
   assert.deepEqual(erros, [COMPLETA])
   assert.equal(tela().includes('Este PIX cobre'), false)
+})
+
+test('a caixa com duas forçadas que o PIX completa, e o PIX cobrindo só parte do que falta', async () => {
+  const { desvincular } = await montar(LIGADO, true)
+  remover.mock.mockImplementation(async () => ({ ok: false, erro: COMPLETA }))
+  forcadaDoPix.mock.mockImplementation(async () => ({ ok: true, dados: { linhas: [{ valor: 1000, marcado: 900 }, { valor: 500, marcado: 100 }], cobre: 300 } }))
+  await desvincular()
+  assert.ok(tela().includes('Os pagamentos PIX de R$ 1.000,00 e R$ 500,00 da OS #42 foram marcados como recebidos com R$ 900,00 e R$ 100,00. Este PIX cobre R$ 300,00 dos R$ 500,00 que faltam.'), tela())
 })

@@ -90,7 +90,7 @@ export function CorrespondenciaForm({ id, correspondencia, podeDesfazerForcada }
           <Unlink size={14} />
           {pending ? 'Desvinculando…' : 'Desvincular'}
         </Button>
-        {forcada && <ForcadaDoPix id={id} rotulo={label} forcada={forcada} podeDesfazer={podeDesfazerForcada} />}
+        {forcada && <ForcadaDoPix id={id} rotulo={label} forcada={forcada} podeDesfazer={podeDesfazerForcada} onDesfeito={() => setForcada(null)} />}
       </div>
     )
   }
