@@ -6,7 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Unlink } from 'lucide-react'
-import { lancarCorrespondenciaAction, removerCorrespondenciaAction } from '../actions'
+import { forcadaDoPixAction, lancarCorrespondenciaAction, removerCorrespondenciaAction } from '../actions'
+import { COMPLETA_FORCADA, COMPLETA_FORCADA_PEDIR_A_GESTOR, type ForcadaQueOPixCompleta } from '@/lib/conciliacao-status'
+import { ForcadaDoPix } from './forcada-do-pix'
 import type { VinculoPix } from '@/lib/pix-vinculo'
 
 type Correspondencia = {
@@ -19,7 +21,8 @@ type Correspondencia = {
   lancadoEm: string | null
 }
 
-type Props = { id: string; correspondencia: Correspondencia }
+// `podeDesfazerForcada`: quem gere a conciliação (podeGerirConciliacao); a action confere de novo.
+type Props = { id: string; correspondencia: Correspondencia; podeDesfazerForcada: boolean }
 
 const labelPorTipo = {
   venda: (c: Correspondencia) => `NF ${c.vendaNf}`,
@@ -35,10 +38,12 @@ export function rotuloCorrespondencia(c: Correspondencia) {
 
 export type { Correspondencia }
 
-export function CorrespondenciaForm({ id, correspondencia }: Props) {
+export function CorrespondenciaForm({ id, correspondencia, podeDesfazerForcada }: Props) {
   const [pending, start] = useTransition()
   const [tipo, setTipo] = useState<VinculoPix['tipo']>('venda')
   const [numero, setNumero] = useState('')
+  // O desvincular foi recusado porque o PIX completa uma forçada parcial (#92): o que a caixa mostra.
+  const [forcada, setForcada] = useState<ForcadaQueOPixCompleta | null>(null)
 
   if (correspondencia.tipo) {
     const label = labelPorTipo[correspondencia.tipo](correspondencia)
@@ -47,6 +52,10 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
       start(async () => {
         try {
           const r = await removerCorrespondenciaAction(id)
+          if (!r.ok && (r.erro === COMPLETA_FORCADA || r.erro === COMPLETA_FORCADA_PEDIR_A_GESTOR)) {
+            const resumo = await forcadaDoPixAction(id)
+            if (resumo.ok && resumo.dados) { setForcada(resumo.dados); return }
+          }
           if (!r.ok) { toast.error(r.erro); return }
           toast.success('Correspondência desvinculada')
         } catch {
@@ -61,7 +70,7 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
       : null
 
     return (
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div>
           <span className="text-xs font-medium text-primary-text border-l-2 border-primary pl-2">
             {label}
@@ -81,6 +90,7 @@ export function CorrespondenciaForm({ id, correspondencia }: Props) {
           <Unlink size={14} />
           {pending ? 'Desvinculando…' : 'Desvincular'}
         </Button>
+        {forcada && <ForcadaDoPix id={id} rotulo={label} forcada={forcada} podeDesfazer={podeDesfazerForcada} />}
       </div>
     )
   }
