@@ -80,9 +80,17 @@ function custoPixDaVenda(c: { id: SQL; pedido: SQL; numero: SQL; loja: SQL; paga
                 AND (pr.venda_id = ${c.id}
                      OR (pr.pedido_id = ${c.pedido}
                          AND ${c.numero} = (SELECT MIN(vp.numero) FROM vendas vp WHERE vp.pedido_venda_id = ${c.pedido})))), 0)
-    + COALESCE((SELECT SUM((pg->'conciliadoManual'->'pix'->>'custoPix')::numeric)
-                FROM jsonb_array_elements(COALESCE(${c.pagamentos}, '[]'::jsonb)) pg), 0)
+    + ${custoDasForcadasPix(c.pagamentos)}
   )`
+}
+
+/**
+ * Custo das forçadas de PIX gravado nas marcas dos pagamentos (#92): soma de conciliadoManual.pix.custoPix.
+ * `pagamentos` é a coluna jsonb do registro (venda, OS ou venda de peça). Exportada para a #94 (OS e peças).
+ */
+export function custoDasForcadasPix(pagamentos: SQL) {
+  return sql`COALESCE((SELECT SUM((pg->'conciliadoManual'->'pix'->>'custoPix')::numeric)
+              FROM jsonb_array_elements(COALESCE(${pagamentos}, '[]'::jsonb)) pg), 0)`
 }
 
 // Qualificado à mão: numa query sem join, ${vendas.id} sai sem a tabela e casaria com o id da tabela de dentro.
