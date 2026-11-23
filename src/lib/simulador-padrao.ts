@@ -4,7 +4,7 @@
  * - 'avista_12x': PIX/dinheiro (o valor mínimo) e o total em 12x que o administrador digita
  *   por modelo, sem taxa nenhuma.
  */
-import { centavos, centavosParaCima } from './centavos'
+import { centavos } from './centavos'
 import { brutoParaReceber } from './preco-minimo'
 
 export const PADROES_SIMULADOR = ['taxas', 'avista_12x'] as const
@@ -86,13 +86,11 @@ export type TaxaDoSimulador = 'maquininha' | 'financiamento'
 type Cobranca = { credito: number; parcela: number }
 
 const COBRANCA: Record<TaxaDoSimulador, (saldo: number, taxa: number, parcelas: number) => Cobranca | null> = {
-  // A parcela sobe ao centavo e o total é a soma das parcelas: o que o cliente paga nunca fica
-  // abaixo do bruto que deixa o mínimo para a loja.
+  // O total é o que a maquininha cobra, o valor exato ao centavo, e a parcela é o total ÷ n ao centavo: a maquininha
+  // acerta os centavos numa das parcelas (#206, decisão do Luis). Como na maquininha, pode faltar meio centavo do mínimo.
   maquininha: (saldo, taxa, parcelas) => {
-    const bruto = brutoParaReceber(saldo, taxa)
-    if (bruto === null) return null
-    const parcela = centavosParaCima(bruto / parcelas)
-    return { credito: centavos(parcela * parcelas), parcela }
+    const credito = brutoParaReceber(saldo, taxa)
+    return credito === null ? null : { credito, parcela: centavos(credito / parcelas) }
   },
   financiamento: (saldo, taxa, parcelas) => {
     const credito = saldo * (1 + taxa)
