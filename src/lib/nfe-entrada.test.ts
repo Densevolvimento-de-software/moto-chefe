@@ -399,3 +399,39 @@ test('separador #: moto sem motor, modelo de 1 palavra e potência solta (format
     { modelo: 'X12', chassi: 'TSTX120000000003', motor: '', cor: 'AZUL' },
   ])
 })
+
+// Nota inventada no formato da nota real de fornecedor (sem cor em lugar nenhum):
+// motos separadas por ";", ";" vazios no meio e texto de endereço no fim.
+const CHASSIS_JET_MAX = [1, 2, 3, 4, 5].map(i => `TSTJM${String(i).padStart(10, '0')}`)
+const CHASSIS_X12 = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => `TSTX12${String(i).padStart(10, '0')}`)
+const INFCPL_SEM_COR =
+  ';' + [...CHASSIS_JET_MAX.map(c => `JET MAX 1000W ${c}`), ...CHASSIS_X12.map(c => `X12 1000W ${c}`)].join(';') +
+  ';;;;ENDERECO DE COLETA:;;RUA: TESTE 1 - CIDADE'
+
+test('moto sem cor entra com cor e motor vazios; modelo sem a potência (JET MAX, X12)', () => {
+  const m = parseMotosInfCpl(INFCPL_SEM_COR)
+  assert.equal(m.length, 14)
+  assert.deepEqual(m[0], { modelo: 'JET MAX', chassi: CHASSIS_JET_MAX[0], motor: '', cor: '' })
+  assert.deepEqual(m[5], { modelo: 'X12', chassi: CHASSIS_X12[0], motor: '', cor: '' })
+  assert.equal(m.filter(x => x.modelo === 'JET MAX').length, 5)
+  assert.equal(m.filter(x => x.modelo === 'X12').length, 9)
+})
+
+test('nota sem cor: motos lidas batem com a soma dos qCom (2 itens, 5 e 9)', () => {
+  const dets = [5, 9].map((q, i) => `<det nItem="${i + 1}"><prod><qCom>${q}.0000</qCom></prod></det>`).join('')
+  const xml = `<nfeProc><NFe><infNFe><ide><nNF>99002</nNF></ide>${dets}` +
+    `<infAdic><infCpl>${INFCPL_SEM_COR}</infCpl></infAdic></infNFe></NFe></nfeProc>`
+  const r = extrairDaNfe(xml)
+  assert.equal(r.qtdProdutos, 14)
+  assert.equal(parseMotosInfCpl(r.infCpl).length, r.qtdProdutos)
+})
+
+test('linhas de endereço e texto sem chassi não viram moto', () => {
+  assert.deepEqual(parseMotosInfCpl('ENDERECO DE COLETA:;;RUA: TESTE 1 - CIDADE;Valor de ICMS credito presumido: R$ 85,03'), [])
+})
+
+test('chassi partido sem cor entra com cor vazia', () => {
+  assert.deepEqual(parseMotosInfCpl('B3 750W TST9000 0101'), [
+    { modelo: 'B3', chassi: 'TST90000101', motor: '', cor: '' },
+  ])
+})
