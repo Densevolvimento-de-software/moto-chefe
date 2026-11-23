@@ -64,7 +64,8 @@ test('o mesmo banco não entra duas vezes no mesmo grupo', async () => {
     await tx.insert(schema.openFinanceContasDespesa).values({ grupoId: a.grupoId, banco: BANCO_A, inicioEm: null })
     await assert.rejects(
       tx.insert(schema.openFinanceContasDespesa).values({ grupoId: a.grupoId, banco: BANCO_A, inicioEm: INICIO }),
-      (erro: { code?: string }) => erro.code === '23505',
+      // O Drizzle embrulha o erro do Postgres: o SQLSTATE fica em cause.
+      (erro: { cause?: { code?: string } }) => erro.cause?.code === '23505',
     )
   })
 })
