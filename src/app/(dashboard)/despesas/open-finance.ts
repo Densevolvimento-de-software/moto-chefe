@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { despesasOpenFinance, despesasOfSyncStatus, despesas, lojas } from '@/lib/db/schema'
 import { buscarSaidasOpenFinance } from '@/lib/mcpai'
+import { contasLiberadasDespesa } from '@/lib/queries/despesa-contas-liberadas'
 import { LOJA_GALPAO_MATRIZ_ID } from '@/lib/loja-galpao'
 import { parearReemissoes } from '@/lib/reemissao-saida'
 import { eq, and, gte, lte, desc, inArray, isNull } from 'drizzle-orm'
@@ -142,7 +143,8 @@ export async function sincronizarSaidas(
   if (cacheValido) return { ok: true, contasPuladas }
 
   const tBusca = performance.now()
-  const resultado = await buscarSaidasOpenFinance(desde, new Date(), grupo.cnpj)
+  const liberadas = await contasLiberadasDespesa(grupo.id)
+  const resultado = await buscarSaidasOpenFinance(desde, new Date(), grupo.cnpj, liberadas)
   medir('buscar_mcpai', tBusca)
   if (!resultado.ok) return { ok: false, erro: resultado.erro }
 
