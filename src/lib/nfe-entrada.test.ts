@@ -377,10 +377,25 @@ test('nota que mistura ; e # não perde moto', () => {
 })
 
 test('separador #: motos lidas batem com a soma dos qCom (nota inventada)', () => {
-  const dets = MOTOS_HASH.map((_, i) => `<det nItem="${i + 1}"><prod><qCom>1.0000</qCom></prod></det>`).join('')
+  // qCom agrupado: 4, 1 e 2 motos em três itens (7 no total).
+  const dets = [4, 1, 2].map((q, i) => `<det nItem="${i + 1}"><prod><qCom>${q}.0000</qCom></prod></det>`).join('')
   const xml = `<nfeProc><NFe><infNFe><ide><nNF>99001</nNF></ide>${dets}` +
     `<infAdic><infCpl>${[TEXTO_INCENTIVO, ...MOTOS_HASH].join('#')}</infCpl></infAdic></infNFe></NFe></nfeProc>`
   const r = extrairDaNfe(xml)
   assert.equal(r.qtdProdutos, 7)
   assert.equal(parseMotosInfCpl(r.infCpl).length, r.qtdProdutos)
+})
+
+test('separador #: moto sem motor, modelo de 1 palavra e potência solta (formato real)', () => {
+  const infCpl = [
+    TEXTO_INCENTIVO,
+    'X12 1000W TSTX120000000001 VERMELHO',
+    'X12 1000W TSTX120000000002 PRETO',
+    'X12 1000W TSTX120000000003 AZUL',
+  ].join('#')
+  assert.deepEqual(parseMotosInfCpl(infCpl), [
+    { modelo: 'X12', chassi: 'TSTX120000000001', motor: '', cor: 'VERMELHO' },
+    { modelo: 'X12', chassi: 'TSTX120000000002', motor: '', cor: 'PRETO' },
+    { modelo: 'X12', chassi: 'TSTX120000000003', motor: '', cor: 'AZUL' },
+  ])
 })
