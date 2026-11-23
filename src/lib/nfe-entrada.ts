@@ -1,7 +1,7 @@
 // Extração de motos das NF-e de entrada (XML) para o módulo Entrada.
 //
 // As motos vêm no campo "Informações Complementares" (infAdic/infCpl) do XML,
-// uma por ";" ou "#", no formato:  MODELO [POTÊNCIA] [VARIANTE] CHASSI [MOTOR] COR
+// uma por ";" ou "#", no formato:  MODELO [POTÊNCIA] [VARIANTE] CHASSI [MOTOR] [COR]
 //
 // A âncora é o CHASSI, achado pelo formato — não a posição nem a potência.
 // A potência é opcional na nota (cada fornecedor escreve de um jeito: "1000W"
@@ -71,8 +71,9 @@ export function parseMotosInfCpl(infCpl: string): MotoNfe[] {
       // cara de código. Tudo o que sobra é cor — inclusive "AZUL TURQUESA".
       const temMotor = RE_MOTOR.test(t[iChassi + 1] ?? '')
       const motor = temMotor ? t[iChassi + 1] : ''
+      // Cor pode vir vazia: há fornecedor que não escreve cor na nota. A moto entra
+      // mesmo assim, e a loja preenche a cor na tela (descartar perdia a moto).
       const cor = t.slice(iChassi + (temMotor ? 2 : 1)).join(' ')
-      if (!cor) return null
 
       return { modelo, chassi, motor, cor }
     })
@@ -103,7 +104,6 @@ function lerChassiPartido(tokens: string[]): MotoNfe | null {
   let colorStartIndex = tailTokens.length
   while (colorStartIndex > 0 && !/\d/.test(tailTokens[colorStartIndex - 1])) colorStartIndex--
   const color = tailTokens.slice(colorStartIndex).join(' ')
-  if (!color) return null
 
   const joinedMotor = tailTokens.slice(0, colorStartIndex).join('')
   const motor = RE_MOTOR.test(joinedMotor) ? joinedMotor : ''
