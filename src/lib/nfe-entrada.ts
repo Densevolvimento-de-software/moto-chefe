@@ -1,7 +1,7 @@
 // Extração de motos das NF-e de entrada (XML) para o módulo Entrada.
 //
 // As motos vêm no campo "Informações Complementares" (infAdic/infCpl) do XML,
-// uma por ";", no formato:  MODELO [POTÊNCIA] [VARIANTE] CHASSI [MOTOR] COR
+// uma por ";" ou "#", no formato:  MODELO [POTÊNCIA] [VARIANTE] CHASSI [MOTOR] COR
 //
 // A âncora é o CHASSI, achado pelo formato — não a posição nem a potência.
 // A potência é opcional na nota (cada fornecedor escreve de um jeito: "1000W"
@@ -52,7 +52,7 @@ export function normalizarModelo(s: string): string {
  */
 export function parseMotosInfCpl(infCpl: string): MotoNfe[] {
   return (infCpl ?? '')
-    .split(';')
+    .split(/[;#]/)
     .map(s => s.trim())
     .filter(Boolean)
     .map(entrada => {
