@@ -1,6 +1,6 @@
 -- #209: contas do mcp.ai cujas saídas viram despesa, por grupo. Eram uma lista fixa por CNPJ no
 -- código; grupo fora dela perdia todas as saídas em silêncio. Só a tabela: os dados reais entram
--- por SQL fora do repo, antes do deploy (sem a carga, Sul de Minas e BH ficam sem saídas).
+-- por SQL fora do repo, antes do deploy (sem a carga, os grupos que hoje dependem da lista fixa ficam sem saídas).
 create table open_finance_contas_despesa (
   id        uuid primary key default gen_random_uuid(),
   grupo_id  uuid not null references grupos(id),
