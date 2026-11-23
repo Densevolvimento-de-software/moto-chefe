@@ -1,7 +1,7 @@
 // Extração de motos das NF-e de entrada (XML) para o módulo Entrada.
 //
 // As motos vêm no campo "Informações Complementares" (infAdic/infCpl) do XML,
-// uma por ";" ou "#", no formato:  MODELO [POTÊNCIA] [VARIANTE] CHASSI [MOTOR] COR
+// uma por ";" ou "#", no formato:  MODELO [POTÊNCIA] [VARIANTE] CHASSI [MOTOR] [COR]
 //
 // A âncora é o CHASSI, achado pelo formato — não a posição nem a potência.
 // A potência é opcional na nota (cada fornecedor escreve de um jeito: "1000W"
@@ -22,6 +22,9 @@ export type MotoNfe = { modelo: string; chassi: string; motor: string; cor: stri
 // usa só dígitos: 172922506150880). Nome de modelo não chega a 10 caracteres
 // grudados com dígito ("X12", "MC20"; "X12-1000W" tem hífen e 9).
 const RE_CHASSI = /^(?=.*\d)[A-Z0-9]{10,}$/i
+// Sem cor, o chassi é a única prova de que a linha é moto: exige cara de VIN.
+// Chave de NF e número de pedido também têm dígito e tamanho de chassi.
+const RE_CHASSI_VIN = /^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{17}$/i
 const RE_SPLIT_CHASSIS_PREFIX = /^[A-Z]{3}\d{4}$/i
 const RE_SPLIT_CHASSIS_SEQUENCE = /^\d{4}$/
 const RE_YEAR_TOKEN = /^(?:19|20)\d{2}$/
@@ -71,8 +74,9 @@ export function parseMotosInfCpl(infCpl: string): MotoNfe[] {
       // cara de código. Tudo o que sobra é cor — inclusive "AZUL TURQUESA".
       const temMotor = RE_MOTOR.test(t[iChassi + 1] ?? '')
       const motor = temMotor ? t[iChassi + 1] : ''
+      // Cor pode vir vazia (fornecedor que não escreve cor); a loja preenche na tela.
       const cor = t.slice(iChassi + (temMotor ? 2 : 1)).join(' ')
-      if (!cor) return null
+      if (!cor && !RE_CHASSI_VIN.test(chassi)) return null
 
       return { modelo, chassi, motor, cor }
     })
@@ -103,6 +107,7 @@ function lerChassiPartido(tokens: string[]): MotoNfe | null {
   let colorStartIndex = tailTokens.length
   while (colorStartIndex > 0 && !/\d/.test(tailTokens[colorStartIndex - 1])) colorStartIndex--
   const color = tailTokens.slice(colorStartIndex).join(' ')
+  // Chassi partido (11 caracteres) não passa na regra do VIN: sem cor, fica de fora.
   if (!color) return null
 
   const joinedMotor = tailTokens.slice(0, colorStartIndex).join('')
