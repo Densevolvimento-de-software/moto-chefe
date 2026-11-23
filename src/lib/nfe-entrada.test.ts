@@ -344,3 +344,43 @@ test('apelido liga cada chassi à ficha correta entre dois itens de moto', () =>
     ['TESTEGIGA0000005', 'MT-GIGA', 'GIGA ELETRICA'],
   ])
 })
+
+// Dados inventados no formato da nota real: texto jurídico antes da 1ª moto e
+// motos separadas por "#", sem ";" nenhum.
+const TEXTO_INCENTIVO = 'TEXTO INVENTADO DE INCENTIVO FISCAL, SEM CHASSI. Valor de ICMS credito presumido: R$ 1,00.'
+const numeroSintetico = (i: number) => String(i + 1).padStart(10, '0')
+const MOTOS_HASH = Array.from({ length: 7 }, (_, i) =>
+  `JET MAX 1000W TSTJM${numeroSintetico(i)} TSTMOT${numeroSintetico(i)} ${i % 2 ? 'PRETO' : 'VERMELHO'}`)
+const motoEsperada = (i: number) => ({
+  modelo: 'JET MAX',
+  chassi: `TSTJM${numeroSintetico(i)}`,
+  motor: `TSTMOT${numeroSintetico(i)}`,
+  cor: i % 2 ? 'PRETO' : 'VERMELHO',
+})
+
+test('separador #: uma moto por item, com chassi, modelo, motor e cor', () => {
+  const m = parseMotosInfCpl([TEXTO_INCENTIVO, ...MOTOS_HASH].join('#'))
+  assert.deepEqual(m, MOTOS_HASH.map((_, i) => motoEsperada(i)))
+})
+
+test('separador #: o texto antes da 1ª moto não entra no modelo dela', () => {
+  const m = parseMotosInfCpl([TEXTO_INCENTIVO, ...MOTOS_HASH].join('#'))
+  assert.equal(m[0].modelo, 'JET MAX')
+  assert.equal(m.some(x => x.modelo.includes('INCENTIVO')), false)
+})
+
+test('nota que mistura ; e # não perde moto', () => {
+  const infCpl = [TEXTO_INCENTIVO, MOTOS_HASH[0], MOTOS_HASH[1]].join('#') + ';' + MOTOS_HASH[2]
+  assert.deepEqual(parseMotosInfCpl(infCpl).map(x => x.chassi), [
+    'TSTJM0000000001', 'TSTJM0000000002', 'TSTJM0000000003',
+  ])
+})
+
+test('separador #: motos lidas batem com a soma dos qCom (nota inventada)', () => {
+  const dets = MOTOS_HASH.map((_, i) => `<det nItem="${i + 1}"><prod><qCom>1.0000</qCom></prod></det>`).join('')
+  const xml = `<nfeProc><NFe><infNFe><ide><nNF>99001</nNF></ide>${dets}` +
+    `<infAdic><infCpl>${[TEXTO_INCENTIVO, ...MOTOS_HASH].join('#')}</infCpl></infAdic></infNFe></NFe></nfeProc>`
+  const r = extrairDaNfe(xml)
+  assert.equal(r.qtdProdutos, 7)
+  assert.equal(parseMotosInfCpl(r.infCpl).length, r.qtdProdutos)
+})
