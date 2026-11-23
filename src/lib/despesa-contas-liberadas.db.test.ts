@@ -62,7 +62,10 @@ test('o mesmo banco não entra duas vezes no mesmo grupo', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearGrupo(tx, 'dup')
     await tx.insert(schema.openFinanceContasDespesa).values({ grupoId: a.grupoId, banco: BANCO_A, inicioEm: null })
-    await assert.rejects(tx.insert(schema.openFinanceContasDespesa).values({ grupoId: a.grupoId, banco: BANCO_A, inicioEm: INICIO }))
+    await assert.rejects(
+      tx.insert(schema.openFinanceContasDespesa).values({ grupoId: a.grupoId, banco: BANCO_A, inicioEm: INICIO }),
+      (erro: { code?: string }) => erro.code === '23505',
+    )
   })
 })
 
