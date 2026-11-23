@@ -402,8 +402,8 @@ test('separador #: moto sem motor, modelo de 1 palavra e potência solta (format
 
 // Nota inventada no formato da nota real de fornecedor (sem cor em lugar nenhum):
 // motos separadas por ";", ";" vazios no meio e texto de endereço no fim.
-const CHASSIS_JET_MAX = [1, 2, 3, 4, 5].map(i => `TSTJM${String(i).padStart(10, '0')}`)
-const CHASSIS_X12 = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => `TSTX12${String(i).padStart(10, '0')}`)
+const CHASSIS_JET_MAX = [1, 2, 3, 4, 5].map(i => `TSTJM${String(i).padStart(12, '0')}`)
+const CHASSIS_X12 = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => `TSTX12${String(i).padStart(11, '0')}`)
 const INFCPL_SEM_COR =
   ';' + [...CHASSIS_JET_MAX.map(c => `JET MAX 1000W ${c}`), ...CHASSIS_X12.map(c => `X12 1000W ${c}`)].join(';') +
   ';;;;ENDERECO DE COLETA:;;RUA: TESTE 1 - CIDADE'
@@ -430,8 +430,25 @@ test('linhas de endereço e texto sem chassi não viram moto', () => {
   assert.deepEqual(parseMotosInfCpl('ENDERECO DE COLETA:;;RUA: TESTE 1 - CIDADE;Valor de ICMS credito presumido: R$ 85,03'), [])
 })
 
-test('chassi partido sem cor entra com cor vazia', () => {
-  assert.deepEqual(parseMotosInfCpl('B3 750W TST9000 0101'), [
-    { modelo: 'B3', chassi: 'TST90000101', motor: '', cor: '' },
+test('chassi partido sem cor não vira moto (11 caracteres não cabem na regra do VIN)', () => {
+  assert.deepEqual(parseMotosInfCpl('B3 750W TST9000 0101'), [])
+})
+
+test('sem cor, linha com token longo de dígitos não vira moto (chave de NF referenciada)', () => {
+  assert.deepEqual(parseMotosInfCpl('Ref NFe ' + '1'.repeat(44)), [])
+})
+
+test('sem cor, número de pedido com 10 dígitos não vira moto', () => {
+  assert.deepEqual(parseMotosInfCpl('PEDIDO COMPRA 1234567890'), [])
+})
+
+test('sem cor, token de 17 só com dígitos não vira moto', () => {
+  assert.deepEqual(parseMotosInfCpl('JET MAX 1000W 12345678901234567'), [])
+})
+
+test('sem cor, chassi de 17 com letra e dígito continua entrando', () => {
+  const chassi = 'TSTX12' + '0'.repeat(10) + 'A'
+  assert.deepEqual(parseMotosInfCpl(`X12 1000W ${chassi}`), [
+    { modelo: 'X12', chassi, motor: '', cor: '' },
   ])
 })
