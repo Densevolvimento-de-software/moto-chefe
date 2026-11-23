@@ -1,7 +1,7 @@
 import {
   pgTable, pgEnum, uuid, text, boolean,
   timestamp, date, numeric, jsonb, pgView, integer, smallint, bigint, primaryKey, unique, uniqueIndex,
-  foreignKey, index,
+  foreignKey, index, check,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import type { StatusAdesao } from '@/lib/adesao-campos'
@@ -1113,7 +1113,10 @@ export const openFinanceContasDespesa = pgTable('open_finance_contas_despesa', {
   banco:     text('banco').notNull(),
   inicioEm:  timestamp('inicio_em', { withTimezone: true }),
   criadoEm:  timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
-}, t => [unique('open_finance_contas_despesa_grupo_banco_key').on(t.grupoId, t.banco)])
+}, t => [
+  unique('open_finance_contas_despesa_grupo_banco_key').on(t.grupoId, t.banco),
+  check('open_finance_contas_despesa_banco_nao_vazio', sql`btrim(${t.banco}) <> ''`),
+])
 
 // ─── configuracao_taxas (uma linha por grupo) ────────────────────────────────
 export const configuracaoTaxas = pgTable('configuracao_taxas', {

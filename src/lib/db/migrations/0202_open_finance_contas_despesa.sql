@@ -7,7 +7,8 @@ create table open_finance_contas_despesa (
   banco     text not null,
   inicio_em timestamptz,
   criado_em timestamptz not null default now(),
-  constraint open_finance_contas_despesa_grupo_banco_key unique (grupo_id, banco)
+  constraint open_finance_contas_despesa_grupo_banco_key unique (grupo_id, banco),
+  constraint open_finance_contas_despesa_banco_nao_vazio check (btrim(banco) <> '')
 );
 
 -- RLS sem policy fecha a tabela para o PostgREST; o app lê e grava pelo Drizzle.

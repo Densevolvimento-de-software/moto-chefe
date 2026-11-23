@@ -65,3 +65,10 @@ test('o mesmo banco não entra duas vezes no mesmo grupo', async () => {
     await assert.rejects(tx.insert(schema.openFinanceContasDespesa).values({ grupoId: a.grupoId, banco: BANCO_A, inicioEm: INICIO }))
   })
 })
+
+test('banco em branco é recusado pelo banco, mesmo com espaços', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const a = await semearGrupo(tx, 'branco')
+    await assert.rejects(tx.insert(schema.openFinanceContasDespesa).values({ grupoId: a.grupoId, banco: '   ', inicioEm: null }))
+  })
+})
