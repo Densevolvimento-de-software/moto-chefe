@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ehMarcaDoPainel, filtroDaUrl, urlDoFiltro, abaDaUrl, opcoesDoPainel, filtrarEstoque, filtrarVendas, resumirEstoque, resumirVendas,
-  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, periodoDoPainel, finalDoChassi, lojasComVendas, lojasPorFaturamento, FILTRO_VAZIO, resumirRede, resumirModelos, lojaDaSelecao,
+  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, periodoDoPainel, finalDoChassi, lojasComVendas, lojasPorFaturamento, FILTRO_VAZIO, resumirRede, resumirModelos, lojaDaSelecao, blocosDaAba,
   type LinhaEstoquePainel, type LojaPainel, type VendaPainel,
 } from './painel-fabrica'
 
@@ -271,4 +271,12 @@ test('loja selecionada: só quando o filtro tem exatamente uma loja da lista; se
   assert.equal(lojaDaSelecao(FILTRO_VAZIO, lojasDoPainel), null)
   assert.equal(lojaDaSelecao({ lojas: ['a', 'b'], modelos: [], cores: [] }, lojasDoPainel), null)
   assert.equal(lojaDaSelecao({ lojas: ['zzz'], modelos: [], cores: [] }, lojasDoPainel), null)
+})
+
+test('blocos por aba: modelos nas duas abas; loja selecionada só na aba Vendas e só com uma loja no filtro', () => {
+  const loja = { lojaId: 'b', lojaNome: 'Loja Norte' }
+  assert.deepEqual(blocosDaAba('estoque', loja), { lojaSelecionada: false, modelos: true })
+  assert.deepEqual(blocosDaAba('estoque', null), { lojaSelecionada: false, modelos: true })
+  assert.deepEqual(blocosDaAba('vendas', loja), { lojaSelecionada: true, modelos: true })
+  assert.deepEqual(blocosDaAba('vendas', null), { lojaSelecionada: false, modelos: true })
 })

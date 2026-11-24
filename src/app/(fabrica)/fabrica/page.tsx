@@ -3,7 +3,7 @@ import { exigirPainelFabrica } from '../exigir-painel'
 import { carregarPainelFabrica } from '@/lib/queries/painel-fabrica'
 import {
   abaDaUrl, filtroDaUrl, filtrarEstoque, filtrarVendas, opcoesDoPainel, paraCsv, planilhaDoPainel, rotuloDaAba, urlDoFiltro,
-  ABAS_PAINEL, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, lojaDaSelecao, resumirEstoque, resumirModelos, resumirRede, resumirVendas,
+  ABAS_PAINEL, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, blocosDaAba, lojaDaSelecao, resumirEstoque, resumirModelos, resumirRede, resumirVendas,
   type ParamsPainel,
 } from '@/lib/painel-fabrica'
 import { hojeBrt } from '@/lib/data-venda'
@@ -32,6 +32,7 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
   const rede = resumirRede(lojas, vendasResumo)
   const linhasModelos = resumirModelos(vendasFiltradas, estoqueFiltrado)
   const lojaSelecionada = lojaDaSelecao(filtro, lojas)
+  const blocos = blocosDaAba(aba, lojaSelecionada)
 
   return (
     <div className="space-y-5">
@@ -71,7 +72,7 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
       <FiltrosPainel aba={aba} lojas={lojas} modelos={modelos} cores={cores} filtro={filtro} de={de} ate={ate} />
       {aba === 'vendas' && limitado && <p role="status" className="text-sm text-warning">{AVISO_TETO_PERIODO}</p>}
 
-      {aba === 'vendas' && lojaSelecionada && (
+      {blocos.lojaSelecionada && lojaSelecionada && (
         <LojaSelecionadaPainel
           loja={lojaSelecionada}
           faturamento={vendasResumo.valor}
@@ -79,7 +80,7 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
           emEstoque={resumirEstoque(estoqueFiltrado).total}
         />
       )}
-      <ModelosPainel modelos={linhasModelos} />
+      {blocos.modelos && <ModelosPainel modelos={linhasModelos} />}
 
       {aba === 'estoque'
         ? <TabelaEstoque lojas={lojas} estoque={estoqueFiltrado} />

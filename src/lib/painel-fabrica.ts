@@ -296,3 +296,8 @@ export function lojaDaSelecao(filtro: FiltroPainel, lojas: LojaPainel[]): LojaPa
   if (filtro.lojas.length !== 1) return null
   return lojas.find(l => l.lojaId === filtro.lojas[0]) ?? null
 }
+
+/** Quais blocos aparecem em cada aba: modelos nas duas; loja selecionada só em Vendas, com uma loja no filtro. */
+export function blocosDaAba(aba: Aba, lojaSelecionada: LojaPainel | null): { lojaSelecionada: boolean; modelos: boolean } {
+  return { lojaSelecionada: aba === 'vendas' && lojaSelecionada !== null, modelos: true }
+}
