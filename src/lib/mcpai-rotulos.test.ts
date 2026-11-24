@@ -17,8 +17,9 @@ const BANK = [
   { id: 'conta-m', item_id: 'cred-m', subtype: 'CHECKING_ACCOUNT', number: '77777-7', taxNumber: CNPJ_DA_CONTA, marketingName: AGENCIA },
   { id: 'conta-s', item_id: 'cred-s', subtype: 'CHECKING_ACCOUNT', number: '55555-5', taxNumber: CNPJ_DA_CONTA, name: 'Sicoob Kojo', marketingName: AGENCIA },
 ]
+// Formato real da lista CREDIT: o cartão vem em account_id e sem id (é o que buscarFaturasCartao lê).
 const CREDIT = [
-  { id: 'cartao-1', item_id: 'cred-c', bank: 'Sicoob', subtype: 'CREDIT_CARD', number: '4000-0000', name: 'Cartão' },
+  { account_id: 'cartao-1', item_id: 'cred-c', bank: 'Sicoob', subtype: 'CREDIT_CARD', number: '4000-0000', name: 'Cartão' },
 ]
 
 const json = (corpo: unknown, sessao?: string) => new Response(

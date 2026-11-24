@@ -733,13 +733,15 @@ type ResultadoRotulos = { ok: true; rotulos: RotuloConta[] } | { ok: false; erro
 
 export const FALHA_AO_ROTULAR = 'Não foi possível consultar o mcp.ai agora.'
 
-type ContaBruta = { id: string; item_id?: string; subtype?: string; bank?: string | null; marketingName?: string | null; name?: string | null }
+// BANK traz o identificador em `id`; CREDIT, em `account_id` (o mesmo que buscarFaturasCartao lê).
+type ContaBruta = { id?: string; account_id?: string; item_id?: string; subtype?: string; bank?: string | null; marketingName?: string | null; name?: string | null }
 
 /** Só o que o rótulo usa: o resto da conta (número, agência, CNPJ) fica para trás já aqui, na fronteira. */
-const paraContaDaChave = (lista: ContaDaChave['lista']) => (c: ContaBruta): ContaDaChave => ({
+const paraContaDaChave = (lista: ContaDaChave['lista']) => (c: ContaBruta): ContaDaChave[] => {
+  const id = lista === 'CREDIT' ? c.account_id : c.id
   // Sem o marketingName: em Londrina ele é "Agência: … | Conta: …" e iria para a tela.
-  id: c.id, itemId: c.item_id, subtype: c.subtype ?? '', banco: nomeDaConta({ bank: c.bank, name: c.name }), lista,
-})
+  return id ? [{ id, itemId: c.item_id, subtype: c.subtype ?? '', banco: nomeDaConta({ bank: c.bank, name: c.name }), lista }] : []
+}
 
 /**
  * O que a chave do mcp.ai enxerga, em rótulos para a tela de Editar Grupo (#253). Ler BANK e CREDIT em
@@ -754,8 +756,8 @@ export async function rotulosDasContasDaChave(url: string): Promise<ResultadoRot
     const credit = payloadDe(await listarContasMcp(url, sessao.sessionId, 'CREDIT')) as { results?: ContaBruta[] } | null
     if (!bank || !credit) return { ok: false, erro: FALHA_AO_ROTULAR }
     const contas = [
-      ...(bank.results ?? []).map(paraContaDaChave('BANK')),
-      ...(credit.results ?? []).map(paraContaDaChave('CREDIT')),
+      ...(bank.results ?? []).flatMap(paraContaDaChave('BANK')),
+      ...(credit.results ?? []).flatMap(paraContaDaChave('CREDIT')),
     ]
     return { ok: true, rotulos: montarRotulos(contas) }
   } catch {
