@@ -27,6 +27,8 @@ type Props = {
   renave: DadosRenave | null
   renaveOrigem: OrigemRenave
   onRenave: (atualizar: (prev: DadosRenave) => DadosRenave) => void
+  /** Venda que exige o DIFAL e a alíquota interna ainda não foi digitada: o reenvio espera (#247). */
+  faltaDifal: boolean
   onSalvarEReenviar: (c: CorrecaoNf) => void
   /** Volta à conferência para emitir de novo, sem correção aqui. */
   onEmitirDeNovo: () => void
@@ -38,7 +40,7 @@ type Props = {
  * "E o número N?", "O que fazer" quando couber, e o código só em "Detalhes técnicos".
  * A correção grava no cadastro de origem e a nota é remontada dele.
  */
-export function NfeRecusa({ nota, previa, pending, erro, renave, renaveOrigem, onRenave, onSalvarEReenviar, onEmitirDeNovo, onVoltar }: Props) {
+export function NfeRecusa({ nota, previa, pending, erro, renave, renaveOrigem, onRenave, faltaDifal, onSalvarEReenviar, onEmitirDeNovo, onVoltar }: Props) {
   const tela = telaDaRecusa(nota, previa.exigeRenave)
   const bloqueada = tela.tipo === 'denegada_cliente' || tela.tipo === 'denegada_empresa' || tela.tipo === 'denegada'
   const n = nota.numero
@@ -194,13 +196,13 @@ export function NfeRecusa({ nota, previa, pending, erro, renave, renaveOrigem, o
       <div className="space-y-2">
         {tela.tipo === 'corrigir' && (
           <>
-            <Button onClick={() => onSalvarEReenviar(correcao())} disabled={pending || faltamRenave > 0} className="h-11 w-full">Salvar e reenviar{n ? ` nº ${n}` : ''}</Button>
+            <Button onClick={() => onSalvarEReenviar(correcao())} disabled={pending || faltamRenave > 0 || faltaDifal} className="h-11 w-full">Salvar e reenviar{n ? ` nº ${n}` : ''}</Button>
             <Button variant="outline" onClick={onVoltar} className="h-11 w-full">Fechar</Button>
           </>
         )}
         {tela.tipo === 'denegada_cliente' && (
           <>
-            <Button onClick={() => onSalvarEReenviar(correcaoIe())} disabled={pending || !ie.indicador} className="h-11 w-full">Salvar e emitir a nova nota</Button>
+            <Button onClick={() => onSalvarEReenviar(correcaoIe())} disabled={pending || !ie.indicador || faltaDifal} className="h-11 w-full">Salvar e emitir a nova nota</Button>
             <Button variant="outline" onClick={onVoltar} className="h-11 w-full">Fechar</Button>
           </>
         )}

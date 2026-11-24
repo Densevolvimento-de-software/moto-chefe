@@ -47,7 +47,9 @@ async function rows<T>(query: ReturnType<typeof sql>): Promise<T[]> {
 }
 const insertId = async (query: ReturnType<typeof sql>) => (await rows<{ id: string }>(query))[0].id
 
-async function fixture(rejected = false, rejectedPayload: unknown = {}, categoria = 'ciclomotor') {
+type OpcoesFixture = { uf?: string; aliquotaInterestadual?: string | null }
+
+async function fixture(rejected = false, rejectedPayload: unknown = {}, categoria = 'ciclomotor', opcoes: OpcoesFixture = {}) {
   const suffix = randomUUID()
   const base = await semearContaBase(db, { prefixo: 'TR650', nome: suffix, cnpj: suffix })
   const id = await semearUsuario(db, base, { papel: 'aux_adm', comConta: true })
@@ -56,8 +58,8 @@ async function fixture(rejected = false, rejectedPayload: unknown = {}, categori
   await db.execute(sql`insert into notagateway_config (grupo_id, token, empresa_id, ambiente)
     values (${base.grupoId}, ${cifrar('credencial-sintetica')}, 'empresa-sintetica-650', 'Homologacao')`)
   await db.execute(sql`insert into regras_fiscais_saida (grupo_id, natureza_operacao, cfop_interno, cst_icms_interno,
-    cfop_interestadual, cst_icms_interestadual, cst_pis, cst_cofins)
-    values (${base.grupoId}, 'Venda', '5102', '00', '6102', '00', '49', '49')`)
+    cfop_interestadual, cst_icms_interestadual, aliquota_icms_interestadual, cst_pis, cst_cofins)
+    values (${base.grupoId}, 'Venda', '5102', '00', '6102', '00', ${opcoes.aliquotaInterestadual ?? null}, '49', '49')`)
   const modelId = await insertId(sql`insert into modelos (marca, modelo, categoria, potencia_w, motor, velocidade_max) values ('Teste', ${suffix}, ${categoria}, '1000W', 'Brushless', '45') returning id`)
   const motoId = await insertId(sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status)
     values (${suffix}, ${modelId}, ${base.lojaId}, 'PRETA', '1', 'vendida') returning id`)
@@ -69,7 +71,7 @@ async function fixture(rejected = false, rejectedPayload: unknown = {}, categori
       cliente_logradouro, cliente_numero, cliente_bairro, cliente_cidade, cliente_estado, cliente_cep,
       valor, forma_pagamento, pagamentos, nf_liberada_em)
     values (${orderId}, ${motoId}, ${base.lojaId}, ${id}, ${id}, 'Comprador sintético', '35281765043',
-      'Rua Comprador', '10', 'Centro', 'Varginha', 'MG', '37000000', 1000, 'dinheiro',
+      'Rua Comprador', '10', 'Centro', 'Varginha', ${opcoes.uf ?? 'MG'}, '37000000', 1000, 'dinheiro',
       '[{"tipo":"dinheiro","valor":1000}]'::jsonb, now()) returning id, numero`)
   const externalId = `mova-homolog-${sale.numero}-1`
   const noteId = rejected ? await insertId(sql`insert into notas_fiscais_saida
@@ -455,4 +457,137 @@ test('recusa com o padrão antigo e a cor da moto mudada depois: a prévia mostr
   const result = await actions.corrigirEReenviarNfAction(f.motoId, { moto: { ncm: '87116000', cest: '' } }, null, undefined, previa.observacaoAnterior)
   assert.equal(result.ok, true, JSON.stringify(result))
   assert.match(net.payloads[0].informacoesAdicionais ?? '', /Cor: PRETA/)
+})
+
+// #247: DIFAL da venda interestadual a não contribuinte. Valor da venda 1000, interestadual 4%, interna 12%.
+const PARA_SP = { uf: 'SP', aliquotaInterestadual: '4.00' }
+const FRASE_SEM_ALIQUOTA = 'Venda para outro estado, para quem não contribui com ICMS: informe a alíquota interna do estado do comprador (e o FCP, se houver).'
+const chavesDeDifal = (p: Payload) => Object.keys(p.itens[0].impostos.icms).filter(k => /Difal$/.test(k))
+const posts = (net: ReturnType<typeof network>) => net.requests.filter(r => r.method === 'POST')
+
+test('interestadual a não contribuinte sem a alíquota interna: recusa com a frase, antes de gravar RENAVE ou nota e sem POST à NG (#247)', async () => {
+  const f = await fixture(false, {}, 'ciclomotor', PARA_SP)
+  user = f.user
+  const net = network(f)
+  const antes = await snapshot(f)
+  const result = await actions.transmitirNfePropriaAction(f.motoId, renave, transport, null, undefined)
+  assert.deepEqual(result, { ok: false, error: FRASE_SEM_ALIQUOTA })
+  assert.deepEqual(posts(net), [])
+  assert.deepEqual(await snapshot(f), antes)
+  const vazio = await actions.transmitirNfePropriaAction(f.motoId, renave, transport, null, { aliquotaInterna: '  ', fcp: '' })
+  assert.equal(vazio.ok ? '' : vazio.error, FRASE_SEM_ALIQUOTA)
+  assert.deepEqual(await snapshot(f), antes)
+})
+
+test('com a alíquota interna o DIFAL vai calculado no servidor; campos a mais do pedido forjado não chegam à nota (#247)', async () => {
+  const f = await fixture(false, {}, 'autopropelido', PARA_SP)
+  user = f.user
+  const net = network(f)
+  const forjado = { aliquotaInterna: '12', fcp: '', valorUFDestinoDifal: 1, baseCalculoUFDestinoDifal: 1, aliquotaInterestadualDifal: 12, grupoId: randomUUID() }
+  const result = await actions.transmitirNfePropriaAction(f.motoId, null, undefined, null, forjado as never)
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.deepEqual(net.payloads[0].itens[0].impostos.icms, {
+    situacaoTributaria: '00', origem: 0, aliquota: 4, baseCalculo: 1000,
+    baseCalculoUFDestinoDifal: 1000, aliquotaUFDestinoDifal: 12, valorUFDestinoDifal: 80, valorUFOrigemDifal: 0,
+    aliquotaInterestadualDifal: 4, percentualPartilhaInterestadualDifal: 100,
+    baseCalculoFundoCombatePobrezaDifal: 1000, percentualFCPDifal: 0, valorFCPDifal: 0,
+  })
+  const notes = (await snapshot(f)).notes as { payload: Payload }[]
+  assert.deepEqual(notes[0].payload, net.payloads[0])
+})
+
+test('FCP digitado com vírgula entra no icms (#247)', async () => {
+  const f = await fixture(false, {}, 'autopropelido', PARA_SP)
+  user = f.user
+  const net = network(f)
+  const result = await actions.transmitirNfePropriaAction(f.motoId, null, undefined, null, { aliquotaInterna: '12,5', fcp: '2' })
+  assert.equal(result.ok, true, JSON.stringify(result))
+  const icms = net.payloads[0].itens[0].impostos.icms
+  assert.deepEqual([icms.aliquotaUFDestinoDifal, icms.valorUFDestinoDifal, icms.percentualFCPDifal, icms.valorFCPDifal], [12.5, 85, 2, 20])
+})
+
+test('venda dentro do estado ignora o DIFAL mandado pelo navegador (#247)', async () => {
+  const f = await fixture(false, {}, 'autopropelido', { aliquotaInterestadual: '4.00' })
+  user = f.user
+  const net = network(f)
+  const result = await actions.transmitirNfePropriaAction(f.motoId, null, undefined, null, { aliquotaInterna: '12', fcp: '' })
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.deepEqual(chavesDeDifal(net.payloads[0]), [])
+})
+
+test('a prévia diz que pede o DIFAL só na venda interestadual a não contribuinte (#247)', async () => {
+  const sp = await fixture(false, {}, 'autopropelido', PARA_SP)
+  user = sp.user
+  network(sp)
+  assert.equal((await previaOk(sp.motoId)).exigeDifal, true)
+  const mg = await fixture(false, {}, 'autopropelido', { aliquotaInterestadual: '4.00' })
+  user = mg.user
+  network(mg)
+  assert.equal((await previaOk(mg.motoId)).exigeDifal, false)
+})
+
+test('salvar e reenviar leva o DIFAL ao mesmo id e à mesma linha; sem ele recusa com a frase (#247)', async () => {
+  const f = await fixture(true, {}, 'autopropelido', PARA_SP)
+  user = f.user
+  const net = network(f)
+  // NCM diferente do da ficha: se a correção fosse gravada antes da recusa, o snapshot mudaria.
+  const correcao = { moto: { ncm: '87119000', cest: '' } }
+  const antes = await snapshot(f)
+  const sem = await actions.corrigirEReenviarNfAction(f.motoId, correcao, null, undefined, null, undefined)
+  assert.equal(sem.ok ? '' : sem.error, FRASE_SEM_ALIQUOTA)
+  assert.deepEqual(posts(net), [])
+  assert.deepEqual(await snapshot(f), antes)
+  const com = await actions.corrigirEReenviarNfAction(f.motoId, correcao, null, undefined, null, { aliquotaInterna: '12', fcp: '' })
+  assert.equal(com.ok, true, JSON.stringify(com))
+  assert.equal(net.payloads[0].itens[0].impostos.icms.valorUFDestinoDifal, 80)
+  assert.equal(((await snapshot(f)).notes as unknown[]).length, 1)
+})
+
+test('Conta B com DIFAL na moto da Conta A recebe a resposta de moto inexistente e nada muda (#247)', async () => {
+  const a = await fixture(true, {}, 'autopropelido', PARA_SP)
+  const b = await fixture()
+  user = b.user
+  const net = network(a)
+  const inexistente = randomUUID()
+  const difal = { aliquotaInterna: '12', fcp: '' }
+  const antes = await snapshot(a)
+  const transmitir = await actions.transmitirNfePropriaAction(a.motoId, null, undefined, null, difal)
+  const corrigir = await actions.corrigirEReenviarNfAction(a.motoId, { moto: { ncm: '87119000', cest: '' } }, null, undefined, null, difal)
+  assert.equal(transmitir.ok, false)
+  assert.deepEqual(transmitir, await actions.transmitirNfePropriaAction(inexistente, null, undefined, null, difal))
+  assert.deepEqual(corrigir, await actions.corrigirEReenviarNfAction(inexistente, { moto: { ncm: '87119000', cest: '' } }, null, undefined, null, difal))
+  assert.deepEqual(net.requests, [])
+  assert.deepEqual(await snapshot(a), antes)
+})
+
+const CORRIGIDO_PARA = (uf: string) => ({
+  comprador: {
+    clienteNome: 'Comprador sintético', clienteCpf: '35281765043', clienteCep: '37000000', clienteLogradouro: 'Rua Comprador',
+    clienteNumero: '10', clienteComplemento: null, clienteBairro: 'Centro', clienteCidade: 'Varginha', clienteEstado: uf,
+    clienteInscricaoEstadual: null,
+  },
+})
+const estadoDaVenda = async (f: Awaited<ReturnType<typeof fixture>>) =>
+  (await rows<{ cliente_estado: string }>(sql`select cliente_estado from vendas where id = ${f.saleId}`))[0].cliente_estado
+
+test('salvar e reenviar que passa a venda para outro estado sem a alíquota: recusa e a UF corrigida não fica gravada (#247)', async () => {
+  const f = await fixture(true, {}, 'autopropelido', { aliquotaInterestadual: '4.00' })
+  user = f.user
+  const net = network(f)
+  const antes = await snapshot(f)
+  const r = await actions.corrigirEReenviarNfAction(f.motoId, CORRIGIDO_PARA('SP'), null, undefined, null, undefined)
+  assert.equal(r.ok ? '' : r.error, FRASE_SEM_ALIQUOTA)
+  assert.equal(await estadoDaVenda(f), 'MG')
+  assert.deepEqual(posts(net), [])
+  assert.deepEqual(await snapshot(f), antes)
+})
+
+test('salvar e reenviar que traz a venda para dentro do estado não exige o DIFAL que a tela pedia (#247)', async () => {
+  const f = await fixture(true, {}, 'autopropelido', PARA_SP)
+  user = f.user
+  const net = network(f)
+  const r = await actions.corrigirEReenviarNfAction(f.motoId, CORRIGIDO_PARA('MG'), null, undefined, null, undefined)
+  assert.equal(r.ok, true, JSON.stringify(r))
+  assert.equal(await estadoDaVenda(f), 'MG')
+  assert.deepEqual(chavesDeDifal(net.payloads[0]), [])
 })

@@ -25,6 +25,7 @@ import type { IndicadorIe } from '../documento'
 import { operacaoExigeEntrega, type VeiculoNovo } from './veiculo'
 import { validarDadosTransporte, type DadosTransporte } from './transporte'
 import { centavos } from '@/lib/centavos'
+import { camposDifalIcms, ehInterestadual, validarDifalDigitado, vendaExigeDifal, type CamposDifalIcms, type DifalDigitado, type VendaParaDifal } from './difal'
 
 export type RegraSaida = {
   naturezaOperacao: string
@@ -96,6 +97,8 @@ export type DadosVendaMoto = {
     veiculo?: VeiculoNovo
   }
   valor: number
+  /** DIFAL digitado por quem emite; só entra na venda interestadual a não contribuinte (./difal). */
+  difal?: DifalDigitado
   /** Já no vocabulário da API — ver `formaPagamentoNfe` em ./venda. */
   pagamentos: FormaPagamentoNfe[]
   informacoesAdicionais?: string
@@ -115,7 +118,7 @@ export type ImpostosItem = {
     }
     fonte: string
   }
-  icms: { situacaoTributaria: string; origem: number; aliquota?: number; baseCalculo?: number }
+  icms: { situacaoTributaria: string; origem: number; aliquota?: number; baseCalculo?: number } & Partial<CamposDifalIcms>
   // A alíquota vai dentro de `porAliquota` (confirmado pelo suporte em
   // 29/09/2026). Solta no objeto, a API ignora calada e o PIS sai 0%.
   pis: TributoPorAliquota
@@ -172,6 +175,18 @@ function porAliquota(cst: string, aliquota: string | null): TributoPorAliquota {
   return { situacaoTributaria: cst, ...(a !== undefined ? { porAliquota: { aliquota: a } } : {}) }
 }
 
+/**
+ * O DIFAL que a venda leva, conferido no servidor: só a interestadual a não contribuinte exige,
+ * e nela a alíquota interna digitada é obrigatória. Os outros casos seguem sem DIFAL.
+ */
+export function difalDaVenda(
+  venda: VendaParaDifal, regra: Pick<RegraSaida, 'aliquotaIcmsInterestadual'>, entrada: unknown,
+): { ok: true; difal?: DifalDigitado } | { ok: false; erro: string } {
+  if (!vendaExigeDifal(venda)) return { ok: true }
+  const v = validarDifalDigitado(entrada, num(regra.aliquotaIcmsInterestadual) ?? null)
+  return v.ok ? { ok: true, difal: v.dados } : v
+}
+
 export function montarNfeVendaMoto(venda: DadosVendaMoto, regra: RegraSaida) {
   const { moto, cliente } = venda
 
@@ -192,18 +207,18 @@ export function montarNfeVendaMoto(venda: DadosVendaMoto, regra: RegraSaida) {
   const transporteValidado = operacaoExigeEntrega(moto.veiculo?.tipoOperacao) ? validarDadosTransporte(venda.transporte) : null
   if (transporteValidado && !transporteValidado.ok) throw new Error(transporteValidado.erro)
 
-  const interestadual = cliente.endereco.uf.toUpperCase() !== venda.ufEmitente.toUpperCase()
+  const interestadual = ehInterestadual(venda)
 
+  const aliqInterestadual = interestadual ? num(regra.aliquotaIcmsInterestadual) : undefined
+  // Sem o DIFAL a NG monta o destino com a interestadual da dupla de UFs e a SEFAZ recusa a origem 2 (#247).
+  const difal = venda.difal && aliqInterestadual !== undefined && vendaExigeDifal(venda)
+    ? camposDifalIcms({ valor: venda.valor, aliquotaInterestadual: aliqInterestadual, difal: venda.difal })
+    : {}
   const icms: ImpostosItem['icms'] = {
     situacaoTributaria: interestadual ? regra.cstIcmsInterestadual : regra.cstIcmsInterno,
     origem: Number(regra.origemFixa ?? origemDeSaida(moto.origem)),
-  }
-  if (interestadual) {
-    const aliq = num(regra.aliquotaIcmsInterestadual)
-    if (aliq !== undefined) {
-      icms.aliquota = aliq
-      icms.baseCalculo = venda.valor
-    }
+    ...(aliqInterestadual !== undefined ? { aliquota: aliqInterestadual, baseCalculo: venda.valor } : {}),
+    ...difal,
   }
 
   const impostos: ImpostosItem = {

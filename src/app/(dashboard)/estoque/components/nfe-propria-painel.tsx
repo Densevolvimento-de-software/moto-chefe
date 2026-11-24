@@ -14,6 +14,8 @@ import { RenaveForm } from './renave-form'
 import { camposFaltando, faltandoPorParte, PARTES_RENAVE, operacaoExigeEntrega, type DadosRenave, type OrigemRenave } from '@/lib/notagateway/veiculo'
 import { NfeRecusa } from './nfe-recusa'
 import { TransporteForm } from './transporte-form'
+import { DifalForm } from './difal-form'
+import type { EntradaDifal } from '@/lib/notagateway/difal'
 import { DADOS_TRANSPORTE_VAZIOS, validarDadosTransporte, type DadosTransporte } from '@/lib/notagateway/transporte'
 import { tipoPessoa } from '@/lib/notagateway/venda'
 import type { CorrecaoNf } from '@/lib/notagateway/correcao'
@@ -75,6 +77,8 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
   const [renave, setRenave] = useState<DadosRenave | null>(null)
   const [renaveOrigem, setRenaveOrigem] = useState<OrigemRenave>({})
   const [transporte, setTransporte] = useState<DadosTransporte>(DADOS_TRANSPORTE_VAZIOS)
+  // Venda para outro estado a não contribuinte: alíquota interna do destino e FCP, digitados aqui (#247).
+  const [difal, setDifal] = useState<EntradaDifal>({ aliquotaInterna: '', fcp: '' })
   // Ciclomotor: uma etapa por vez (Desta moto, Do modelo, Da operação) e depois a conferência.
   const [passo, setPasso] = useState(0)
   const [pending, startTransition] = useTransition()
@@ -136,7 +140,7 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
     setErro('')
     setTransmitindo(true)
     startTransition(async () => {
-      const r = await transmitirNfePropriaAction(motoId, renave, transporte, observacao)
+      const r = await transmitirNfePropriaAction(motoId, renave, transporte, observacao, previa?.exigeDifal ? difal : null)
       setTransmitindo(false)
       if (r.nota) {
         if (r.nota.status === 'Autorizada' && r.nota.ambiente === 'Producao') {
@@ -170,7 +174,7 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
     setErroCorrecao(null)
     setTransmitindo(true)
     startTransition(async () => {
-      const r = await corrigirEReenviarNfAction(motoId, c, renave, transporte, observacao)
+      const r = await corrigirEReenviarNfAction(motoId, c, renave, transporte, observacao, previa?.exigeDifal ? difal : null)
       setTransmitindo(false)
       if (r.nota) setResultado({ nota: r.nota, erro: r.ok ? undefined : r.error })
       else if (!r.ok) setErroCorrecao(r.error)
@@ -213,6 +217,7 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
   }
 
   const teste = previa.ambiente === 'Homologacao'
+  const faltaDifal = previa.exigeDifal && !difal.aliquotaInterna.trim()
 
   if (transmitindo) {
     return (
@@ -230,8 +235,11 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
       {ehRecusada(resultado.nota.status) && exigeEntrega && (
         <TransporteForm dados={transporte} onChange={atualizar => setTransporte(prev => atualizar(prev))} />
       )}
+      {ehRecusada(resultado.nota.status) && previa.exigeDifal && (
+        <DifalForm dados={difal} onChange={atualizar => setDifal(prev => atualizar(prev))} />
+      )}
       <Resultado
-        r={resultado} teste={teste} previa={previa} erroCorrecao={erroCorrecao} pending={pending}
+        r={resultado} teste={teste} previa={previa} erroCorrecao={erroCorrecao} pending={pending} faltaDifal={faltaDifal}
         renave={renave} renaveOrigem={renaveOrigem} onRenave={atualizarRenave}
         onReconsultar={reconsultar} onAtualizada={nota => setResultado({ nota })} onTentarDeNovo={tentarDeNovo}
         onSalvarEReenviar={salvarEReenviar} onVoltar={onVoltar}
@@ -437,6 +445,15 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
         </p>
       )}
 
+      {r && !bloqueadaProducao && previa.exigeDifal && (
+        <DifalForm dados={difal} onChange={atualizar => setDifal(prev => atualizar(prev))} />
+      )}
+      {faltaDifal && !bloqueadaProducao && (
+        <p className="border-l-2 border-l-destructive pl-3 text-sm text-destructive">
+          Informe a alíquota interna do estado do comprador antes de transmitir.
+        </p>
+      )}
+
       {erro && cestEdicao == null && <p className="whitespace-pre-line border-l-2 border-l-destructive pl-3 text-sm text-destructive">{erro}</p>}
 
       {r && !bloqueadaProducao && (
@@ -455,7 +472,7 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
         {!r || bloqueadaProducao ? (
           <Button variant="outline" onClick={onVoltar} disabled={pending} className="h-11 flex-1">Voltar</Button>
         ) : (
-          <Button onClick={transmitir} disabled={pending || !conferido || faltamRenave > 0 || faltamTransporte} className="h-12 flex-1 gap-2 text-base">
+          <Button onClick={transmitir} disabled={pending || !conferido || faltamRenave > 0 || faltamTransporte || faltaDifal} className="h-12 flex-1 gap-2 text-base">
             <Send className="size-4" /> {teste ? 'Transmitir teste' : 'Emitir pelo MOVA'} · {brl(r.valor)}
           </Button>
         )}
@@ -609,11 +626,12 @@ function Historico({ notas, onAtualizada }: { notas: NotaResumo[]; onAtualizada:
   )
 }
 
-function Resultado({ r, teste, previa, erroCorrecao, pending, renave, renaveOrigem, onRenave, onReconsultar, onAtualizada, onTentarDeNovo, onSalvarEReenviar, onVoltar }: {
+function Resultado({ r, teste, previa, erroCorrecao, pending, faltaDifal, renave, renaveOrigem, onRenave, onReconsultar, onAtualizada, onTentarDeNovo, onSalvarEReenviar, onVoltar }: {
   r: { nota: NotaResumo; erro?: string }
   teste: boolean
   previa: Previa | null
   erroCorrecao: string | null
+  faltaDifal: boolean
   renave: DadosRenave | null
   renaveOrigem: OrigemRenave
   onRenave: (atualizar: (prev: DadosRenave) => DadosRenave) => void
@@ -676,7 +694,7 @@ function Resultado({ r, teste, previa, erroCorrecao, pending, renave, renaveOrig
       // Recusa nova depois do reenvio: os campos partem do cadastro de novo.
       key={`${nota.id}-${nota.motivoStatus}`}
       nota={nota} previa={previa!} pending={pending} erro={erroCorrecao}
-      renave={renave} renaveOrigem={renaveOrigem} onRenave={onRenave}
+      renave={renave} renaveOrigem={renaveOrigem} onRenave={onRenave} faltaDifal={faltaDifal}
       onSalvarEReenviar={onSalvarEReenviar} onEmitirDeNovo={onTentarDeNovo} onVoltar={onVoltar}
     />
   )

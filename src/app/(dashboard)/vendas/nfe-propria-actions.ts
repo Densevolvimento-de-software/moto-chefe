@@ -13,7 +13,8 @@ import { situacaoNfDaVenda } from '@/lib/assinatura/consulta'
 import { motivoBloqueioNf } from '@/lib/assinatura/nf'
 import { normalizarCest } from '@/lib/nfe-fiscal'
 import { observacaoDaNota, observacaoDoPayload, observacaoEditada, observacoesVendaMoto } from '@/lib/nfe-observacoes'
-import { montarNfeVendaMoto, type DadosVendaMoto, type RegraSaida } from '@/lib/notagateway/payload'
+import { difalDaVenda, montarNfeVendaMoto, type DadosVendaMoto, type RegraSaida } from '@/lib/notagateway/payload'
+import { vendaExigeDifal, type EntradaDifal } from '@/lib/notagateway/difal'
 import { formaPagamentoNfe, idExternoNfe, pendenciasDaVenda, tipoPessoa, type PagamentoMova } from '@/lib/notagateway/venda'
 import { escolherTentativa, gravarEnvio, registrarEnvio } from '@/lib/notagateway/tentativa'
 import { cancelarNfe, configNotaGateway, consultarNfe, enviarNfe, ufDaEmpresa, CancelamentoRecusado, NfeRecusada, type ConfigNotaGateway, type NfeConsultada } from '@/lib/notagateway/client'
@@ -87,6 +88,8 @@ export type PreviaNfe =
       exigeRenave: boolean
       renave: DadosRenave | null
       renaveOrigem: OrigemRenave
+      /** Venda interestadual a não contribuinte: a tela pede a alíquota interna do destino e o FCP (#247). */
+      exigeDifal: boolean
       /** Frete e entrega da recusa em aberto, para corrigir sem digitar de novo. */
       transporteAnterior: DadosTransporte | null
       /** Observação editada que foi na recusa em aberto; nula quando foi o texto padrão. */
@@ -218,9 +221,16 @@ type Emissao = Awaited<ReturnType<typeof montarEmissao>>
 
 const cfgDaNota = (grupoId: string, e: Pick<Emissao, 'grupoId' | 'cfg'>) => configDaNotaExistente(grupoId, e, configNotaGateway)
 
+/** UF e indicador do comprador como a nota os lê; o DIFAL depende dos dois (#247). */
+const compradorDaNota = (v: { clienteEstado: string | null; clienteIndicadorIe: string | null }) => ({
+  indicadorIe: v.clienteIndicadorIe && isIndicadorIe(v.clienteIndicadorIe) ? v.clienteIndicadorIe : null,
+  uf: (v.clienteEstado ?? '').trim().toUpperCase(),
+})
+
 function dadosDaVenda(e: Emissao, ufEmitente: string, idExterno: string, transporte?: DadosTransporte): DadosVendaMoto {
   const v = e.venda
   const f = e.ficha!
+  const { indicadorIe, uf: ufCliente } = compradorDaNota(v)
   return {
     idExterno,
     ambiente: e.cfg.ambiente,
@@ -231,10 +241,10 @@ function dadosDaVenda(e: Emissao, ufEmitente: string, idExterno: string, transpo
       cpfCnpj: v.clienteCpf,
       email: v.clienteEmail?.trim() || undefined,
       telefone: v.clienteCelular?.trim() || undefined,
-      indicadorIe: v.clienteIndicadorIe && isIndicadorIe(v.clienteIndicadorIe) ? v.clienteIndicadorIe : null,
+      indicadorIe,
       inscricaoEstadual: v.clienteInscricaoEstadual?.trim() || undefined,
       endereco: {
-        uf: (v.clienteEstado ?? '').trim().toUpperCase(),
+        uf: ufCliente,
         cidade: (v.clienteCidade ?? '').trim(),
         logradouro: (v.clienteLogradouro ?? '').trim(),
         numero: (v.clienteNumero ?? '').trim(),
@@ -294,10 +304,13 @@ export async function previsualizarNfePropriaAction(motoId: string): Promise<Pre
     const recusa = await payloadDaRecusa(e.venda.id, e.grupoId, e.cfg.ambiente)
 
     let resumo: Extract<PreviaNfe, { ok: true }>['resumo'] = null
+    let exigeDifal = false
     if (e.ficha && e.regra && !e.pendencias.length) {
       const uf = await ufDaEmpresa(e.cfg)
       // O veículo ainda vai ser preenchido na tela: a prévia é o resto da nota.
-      const p = montarNfeVendaMoto(dadosDaVenda({ ...e, renave: null }, uf, 'previa'), e.regra)
+      const dados = dadosDaVenda({ ...e, renave: null }, uf, 'previa')
+      exigeDifal = vendaExigeDifal(dados)
+      const p = montarNfeVendaMoto(dados, e.regra)
       const item = p.itens[0]
       const v = e.venda
       resumo = {
@@ -346,6 +359,7 @@ export async function previsualizarNfePropriaAction(motoId: string): Promise<Pre
         : null,
       sugestao: e.sugestao,
       exigeRenave: e.renaveExigido,
+      exigeDifal,
       renave: e.renave,
       renaveOrigem: e.renaveOrigem,
       transporteAnterior: e.renaveExigido ? transporteDoPayload(recusa) : null,
@@ -423,6 +437,7 @@ export async function salvarCestMotoAction(motoId: string, cestBruto: string): P
  */
 export async function corrigirEReenviarNfAction(
   motoId: string, correcao: CorrecaoNf, renave?: DadosRenave | null, transporte?: DadosTransporte, observacao?: string | null,
+  difal?: EntradaDifal | null,
 ): Promise<ResultadoTransmissao> {
   try {
     const usuario = await exigirPapel('corrigir')
@@ -433,8 +448,19 @@ export async function corrigirEReenviarNfAction(
     if (t && !t.ok) return { ok: false, error: t.erro }
     const o = observacaoDaNota(observacao, e.observacao)
     if (!o.ok) return o
-    await db.transaction(tx => gravarCorrecaoDaNf(tx, usuario, motoId, e.cfg.ambiente, correcao))
-    return transmitirNfePropriaAction(motoId, r.dados, t?.ok ? t.dados : undefined, observacao)
+    const ufEmitente = await ufDaEmpresa(e.cfg)
+    await db.transaction(async tx => {
+      await gravarCorrecaoDaNf(tx, usuario, motoId, e.cfg.ambiente, correcao)
+      // A correção pode trocar a UF ou o indicador do comprador, e o DIFAL depende dos dois: confere
+      // com o cadastro já corrigido e, faltando a alíquota, o erro desfaz a correção inteira (#247).
+      if (!e.regra) return
+      const [depois] = await tx.select({ clienteEstado: vendas.clienteEstado, clienteIndicadorIe: vendas.clienteIndicadorIe })
+        .from(vendas).where(eq(vendas.id, e.venda.id)).limit(1)
+      const { indicadorIe, uf } = compradorDaNota(depois)
+      const d = difalDaVenda({ ufEmitente, cliente: { indicadorIe, endereco: { uf } } }, e.regra, difal)
+      if (!d.ok) throw new Error(d.erro)
+    })
+    return transmitirNfePropriaAction(motoId, r.dados, t?.ok ? t.dados : undefined, observacao, difal)
   } catch (err) {
     return { ok: false, error: (err as Error).message }
   }
@@ -517,9 +543,11 @@ async function resumoDaNota(id: string): Promise<NotaResumo> {
 /**
  * `renave`: o formulário do veículo como está na tela (só ciclomotor).
  * `observacao`: o texto editado na prévia; vazio ou ausente, sai o padrão.
+ * `difal`: o que a tela digitou; só vale (e só é exigido) na venda interestadual a não contribuinte (#247).
  */
 export async function transmitirNfePropriaAction(
   motoId: string, renave?: DadosRenave | null, transporte?: DadosTransporte, observacao?: string | null,
+  difal?: EntradaDifal | null,
 ): Promise<ResultadoTransmissao> {
   let notaId: string | null = null
   try {
@@ -593,14 +621,19 @@ export async function transmitirNfePropriaAction(
     }
     const idExterno = escolha.idExterno
 
+    // Confere o DIFAL antes de gravar qualquer coisa: sem ele a nota sairia recusada (697, #247).
+    const uf = await ufDaEmpresa(e.cfg)
+    const dados = dadosDaVenda(eDaNota, uf, idExterno, transporteValidado)
+    const d = difalDaVenda(dados, e.regra, difal)
+    if (!d.ok) return { ok: false, error: d.erro }
+
     // Grava só aqui, depois dos retornos antecipados: o que fica é o que vai na nota.
     if (e.renaveExigido && renaveValidado) {
       const g = await gravarRenaveDaMoto(usuario, motoId, renaveValidado, usuario.id)
       if (!g.ok) return { ok: false, error: g.erro }
     }
 
-    const uf = await ufDaEmpresa(e.cfg)
-    const payload = montarNfeVendaMoto(dadosDaVenda(eDaNota, uf, idExterno, transporteValidado), e.regra)
+    const payload = montarNfeVendaMoto({ ...dados, ...(d.difal ? { difal: d.difal } : {}) }, e.regra)
 
     notaId = await gravarEnvio(db, escolha, {
       vendaId: e.venda.id, vendaNumero: e.venda.numero, grupoId: e.grupoId, ambiente: e.cfg.ambiente, payload, emitidaPor: usuario.id,
