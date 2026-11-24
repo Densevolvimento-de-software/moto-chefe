@@ -9,6 +9,7 @@ import { getUsuarioLogado } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { cifrar, decifrar } from '@/lib/cripto'
 import { resumirEndpoint } from '@/lib/mcpai-credencial'
+import { idsContasPixDoPedido } from '@/lib/pix-contas-liberadas'
 import { alterarTransferenciaEntreGrupos } from '@/lib/transferencia-grupos'
 import { count } from 'drizzle-orm'
 import { acao, RecusaUsuario, type ResultadoAction } from '@/lib/resultado-action'
@@ -73,6 +74,11 @@ type GrupoInput = {
    */
   mcpaiEndpointUrl?: string
   mcpaiRemover?: boolean
+  /**
+   * Ids de contas do mcp.ai de outro CNPJ que entram na tela PIX (#236), só no Editar. Ausente não mexe; vazio
+   * apaga. Recusado em grupo sem chave própria: na chave global (de outra empresa) o id nem pode existir.
+   */
+  mcpaiContasPix?: string
   /**
    * Access Token do Mercado Pago (só no Editar). Vazio não mexe; `mpRemover` apaga. Conferido no
    * Mercado Pago antes de gravar (src/lib/mercadopago/credencial.ts).
@@ -148,10 +154,14 @@ export async function editarGrupoAction(id: string, dados: GrupoInput): Promise<
 async function editarGrupo(id: string, dados: GrupoInput) {
   const usuario = await assertAdmin()
   exigirNomeECnpj(dados)
-  const [existe] = ehUuid(id) ? await db.select({ id: grupos.id }).from(grupos).where(eq(grupos.id, id)).limit(1) : []
+  const [existe] = ehUuid(id) ? await db.select({ id: grupos.id, chave: grupos.mcpaiEndpointUrl }).from(grupos).where(eq(grupos.id, id)).limit(1) : []
   if (!existe) throw new RecusaUsuario('Grupo não encontrado')
 
   const chaveMcp = cifrarChaveMcp(dados)
+  const idsPix = idsContasPixDoPedido({
+    texto: dados.mcpaiContasPix, jaTinha: !!existe.chave, chaveNova: typeof chaveMcp === 'string', remover: chaveMcp === null,
+  })
+  if (!idsPix.ok) throw new RecusaUsuario(idsPix.erro)
   // O Mercado Pago é consultado antes, fora da transação; grupo e credencial gravam juntos ou nada grava.
   const mp = await conferirCredencialMp({ mpToken: dados.mpToken, mpRemover: dados.mpRemover }, dados.cnpj, DEPENDENCIAS_CREDENCIAL_MP)
   if (!mp.ok) throw new RecusaUsuario(mp.erro)
@@ -165,6 +175,7 @@ async function editarGrupo(id: string, dados: GrupoInput) {
       // coluna nem entra no UPDATE — é o que faz "campo em branco" preservar a
       // credencial já cadastrada.
       ...(chaveMcp !== undefined ? { mcpaiEndpointUrl: chaveMcp } : {}),
+      ...(idsPix.ids !== undefined ? { mcpaiContasPixIds: idsPix.ids } : {}),
       blingClientId: dados.blingClientId?.trim() || null,
       blingClientSecret: dados.blingClientSecret?.trim() || null,
       razaoSocial: dados.razaoSocial?.trim() || null,
