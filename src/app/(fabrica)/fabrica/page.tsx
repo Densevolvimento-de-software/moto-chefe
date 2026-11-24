@@ -3,7 +3,7 @@ import { exigirPainelFabrica } from '../exigir-painel'
 import { carregarPainelFabrica } from '@/lib/queries/painel-fabrica'
 import {
   abaDaUrl, filtroDaUrl, filtrarEstoque, filtrarVendas, opcoesDoPainel, paraCsv, planilhaDoPainel, rotuloDaAba, urlDoFiltro,
-  ABAS_PAINEL, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, type ParamsPainel,
+  ABAS_PAINEL, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, resumirRede, resumirVendas, type ParamsPainel,
 } from '@/lib/painel-fabrica'
 import { hojeBrt } from '@/lib/data-venda'
 import { periodoBr } from '@/lib/notas-emitidas'
@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { FiltrosPainel } from './components/filtros-painel'
 import { TabelaEstoque, TabelaVendas } from './components/tabelas-painel'
 import { AcoesPainel } from './components/acoes-painel'
+import { RedePainel } from './components/rede-painel'
 
 export default async function PainelFabricaPage({ searchParams }: { searchParams: Promise<ParamsPainel> }) {
   // Antes de qualquer busca (#579): lê todas as Contas; só o login da fábrica e o admin_geral.
@@ -24,6 +25,7 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
   const estoqueFiltrado = filtrarEstoque(estoque, filtro)
   const vendasFiltradas = filtrarVendas(vendas, filtro)
   const planilha = planilhaDoPainel(aba, { lojas, estoque: estoqueFiltrado, vendas: vendasFiltradas, de, ate, hoje: hojeBrt() })
+  const rede = resumirRede(lojas, resumirVendas(vendasFiltradas))
 
   return (
     <div className="space-y-5">
@@ -42,6 +44,8 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
         />
       </div>
 
+      <RedePainel rede={rede} periodo={periodoBr(de, ate)} />
+
       <nav className="flex gap-1 border-b" aria-label="Abas do painel">
         {ABAS_PAINEL.map(a => (
           <Link
@@ -49,7 +53,7 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
             href={`${ROTA_PAINEL_FABRICA}?${urlDoFiltro(filtro, de, ate, a.id)}`}
             aria-current={a.id === aba ? 'page' : undefined}
             className={cn(
-              'px-4 py-2 text-sm font-medium border-b-2 -mb-px',
+              'px-4 py-2 min-h-11 inline-flex items-center text-sm font-medium border-b-2 -mb-px',
               a.id === aba ? 'border-primary text-primary-text' : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
