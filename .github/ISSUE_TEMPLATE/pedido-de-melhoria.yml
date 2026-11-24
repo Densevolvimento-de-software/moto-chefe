@@ -2,8 +2,8 @@ name: Pedido de melhoria
 description: Algo novo ou diferente que o MOVA deveria fazer.
 type: Feature
 labels: [needs-triage]
-projects: [Meu-mova/2]
-assignees: [LuisCarlos01]
+projects: [Densevolvimento-de-software/1]
+assignees: [LuisCarlos-SE]
 body:
   - type: textarea
     id: problema
