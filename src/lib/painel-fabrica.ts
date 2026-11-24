@@ -29,6 +29,19 @@ export function ehMarcaDoPainel(marca: string | null | undefined): boolean {
   return !!marca && chaveMarca(marca) === chaveMarca(MARCA_PAINEL_FABRICA)
 }
 
+/** O que a regra "loja do painel" lê da loja, do grupo e da Conta. */
+export type LojaParaPainel = {
+  ativa: boolean
+  fabricaEmail: string | null
+  grupoAtivo: boolean
+  contaDesativadaEm: Date | null
+}
+
+/** Mesma regra do SQL `lojaDoPainel()` (@/lib/queries/painel-fabrica): o db test confere as duas. */
+export function ehLojaDoPainel(loja: LojaParaPainel): boolean {
+  return loja.ativa && (loja.fabricaEmail ?? '').trim() !== '' && loja.grupoAtivo && loja.contaDesativadaEm === null
+}
+
 export type LojaPainel = { lojaId: string; lojaNome: string }
 
 export type LinhaEstoquePainel = {
