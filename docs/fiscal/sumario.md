@@ -10,3 +10,4 @@ Um arquivo por assunto da Nota Gateway, escrito à mão: o que a doc oficial diz
 | [ng-veiculo-transporte.md](ng-veiculo-transporte.md) | Veículo novo, faturamento direto e transporte na Nota Gateway | Antes de alterar tpOp, modalidade de frete ou local de entrega em NF-e de veículo novo |
 | [ng-informacoes-adicionais.md](ng-informacoes-adicionais.md) | Observação (informações adicionais) da NF-e: limite e texto que a NG acrescenta | Antes de mudar o texto padrão da garantia, a edição da observação ou o limite |
 | [ng-autenticacao.md](ng-autenticacao.md) | Autenticação: o token da API no header `Authorization: Basic` | Antes de mexer em como o token da NG é colado, gravado, enviado ou logado |
+| [ng-difal.md](ng-difal.md) | DIFAL na NF-e interestadual para não contribuinte: campos do `icms`, o que a NG monta sozinha e a rejeição 697 | Antes de mexer no grupo `icms` do payload, em alíquota interestadual ou interna, FCP ou nas rejeições de ICMS interestadual |
