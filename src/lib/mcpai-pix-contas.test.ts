@@ -15,16 +15,24 @@ mock.module('./mcpai-credencial', {
   },
 })
 
+const OUTRO_CNPJ = '99999999000199'
 const CONTAS = [
-  { id: 'conta-grupo', bank: 'Banco A', subtype: 'CHECKING_ACCOUNT', taxNumber: CNPJ, name: 'A' },
-  { id: 'conta-outra', bank: 'Banco B', subtype: 'CHECKING_ACCOUNT', taxNumber: '99999999000199', name: 'B' },
+  { id: 'conta-grupo', item_id: 'cred-grupo', bank: 'Banco A', subtype: 'CHECKING_ACCOUNT', taxNumber: CNPJ, name: 'A' },
+  { id: 'conta-outra', item_id: 'cred-outra', bank: 'Banco B', subtype: 'CHECKING_ACCOUNT', taxNumber: OUTRO_CNPJ, name: 'B' },
+  // Credencial 'cred-x' (outro CNPJ): uma conta corrente e uma poupança. O cartão dela só aparece no type CREDIT.
+  { id: 'conta-x-corrente', item_id: 'cred-x', bank: 'Banco X', subtype: 'CHECKING_ACCOUNT', taxNumber: OUTRO_CNPJ, name: 'X' },
+  { id: 'conta-x-poupanca', item_id: 'cred-x', bank: 'Banco X', subtype: 'SAVINGS_ACCOUNT', taxNumber: OUTRO_CNPJ, name: 'X poupança' },
 ]
+const CARTOES = [{ id: 'cartao-x', item_id: 'cred-x', bank: 'Banco X', subtype: 'CREDIT_CARD', name: 'X cartão' }]
 const tx = (id: string, type: 'CREDIT' | 'DEBIT') => ({
   id, date: '2026-09-02T12:00:00.000Z', amount: type === 'CREDIT' ? '10.00' : '-10.00', type, operationType: 'PIX', description: id,
 })
 const TRANSACOES: Record<string, ReturnType<typeof tx>[]> = {
   'conta-grupo': [tx('pix-grupo', 'CREDIT'), tx('saida-grupo', 'DEBIT')],
   'conta-outra': [tx('pix-outra', 'CREDIT'), tx('saida-outra', 'DEBIT')],
+  'conta-x-corrente': [tx('pix-x', 'CREDIT'), tx('saida-x', 'DEBIT')],
+  'conta-x-poupanca': [tx('pix-x-poupanca', 'CREDIT')],
+  'cartao-x': [tx('compra-cartao-x', 'DEBIT')],
 }
 
 const json = (corpo: unknown, sessao?: string) => new Response(
@@ -34,12 +42,12 @@ const json = (corpo: unknown, sessao?: string) => new Response(
 
 let contasLidas: string[] = []
 function mcpFalso(init?: RequestInit): Response {
-  const corpo = JSON.parse(String(init?.body ?? '{}')) as { id: number; method: string; params?: { name?: string; arguments?: { account_id?: string } } }
+  const corpo = JSON.parse(String(init?.body ?? '{}')) as { id: number; method: string; params?: { name?: string; arguments?: { account_id?: string; type?: string } } }
   if (corpo.method === 'initialize') return json({ jsonrpc: '2.0', id: corpo.id, result: {} }, 's1')
   const nome = corpo.params?.name
   if (nome === 'openfinance_force_sync') return json({ jsonrpc: '2.0', id: corpo.id, result: {} })
   const texto = (payload: unknown) => ({ jsonrpc: '2.0', id: corpo.id, result: { content: [{ text: JSON.stringify(payload) }] } })
-  if (nome === 'openfinance_list_accounts') return json(texto({ results: CONTAS }))
+  if (nome === 'openfinance_list_accounts') return json(texto({ results: corpo.params?.arguments?.type === 'CREDIT' ? CARTOES : CONTAS }))
   if (nome === 'openfinance_list_transactions') {
     const conta = corpo.params?.arguments?.account_id ?? ''
     contasLidas.push(conta)
@@ -96,5 +104,30 @@ test('Despesas não lê a conta liberada para o PIX, mesmo com o banco dela libe
   const r = await mcpai.buscarSaidasOpenFinance(PERIODO.inicio, PERIODO.fim, CNPJ, liberadas)
   assert.equal(r.ok, true, r.ok ? '' : r.erro)
   assert.deepEqual(r.ok ? r.transacoes.map(t => t.transacaoId) : [], ['saida-grupo'])
+  assert.deepEqual(contasLidas, ['conta-grupo'])
+})
+
+test('PIX com id da credencial traz a conta corrente dela; poupança e cartão da mesma credencial ficam de fora', async () => {
+  credencial = { ...credencial, contasPixIds: ['cred-x'] }
+  assert.deepEqual(await pixLidos(), ['pix-grupo', 'pix-x'])
+  assert.deepEqual(contasLidas.sort(), ['conta-grupo', 'conta-x-corrente'])
+})
+
+test('PIX com id da credencial mas sem chave própria (chave global) ignora o id', async () => {
+  credencial = { ...credencial, chavePropria: false, contasPixIds: ['cred-x'] }
+  assert.deepEqual(await pixLidos(), ['pix-grupo'])
+  assert.deepEqual(contasLidas, ['conta-grupo'])
+})
+
+test('id de credencial que o mcp.ai não lista é ignorado, sem erro', async () => {
+  credencial = { ...credencial, contasPixIds: ['cred-que-nao-existe'] }
+  assert.deepEqual(await pixLidos(), ['pix-grupo'])
+})
+
+test('Despesas não lê a conta de uma credencial liberada para o PIX', async () => {
+  credencial = { ...credencial, contasPixIds: ['cred-x'] }
+  globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => mcpFalso(init)) as typeof fetch
+  const r = await mcpai.buscarSaidasOpenFinance(PERIODO.inicio, PERIODO.fim, CNPJ, [{ banco: 'Banco A', inicioEm: null }, { banco: 'Banco X', inicioEm: null }])
+  assert.equal(r.ok, true, r.ok ? '' : r.erro)
   assert.deepEqual(contasLidas, ['conta-grupo'])
 })
