@@ -5,11 +5,11 @@ import { Wallet } from 'lucide-react'
 import { precisaConciliar, type PgtoOS, type StatusConc } from '@/lib/conciliacao-status'
 import { PagamentosConciliacao, useConciliacaoAlvo } from '@/components/pagamentos-conciliacao'
 
-type Props = { vendaId: string; numero: number; pagamentos: unknown; papel: string; status: StatusConc }
+type Props = { vendaId: string; numero: number; pagamentos: unknown; papel: string; podeForcar: boolean; status: StatusConc }
 
 // A tabela de peças não tem tela de detalhe — este dialog é o único lugar onde dá pra
 // mexer na conciliação de uma venda de peça. Ver src/components/pagamentos-conciliacao.tsx.
-export function ConciliacaoPecaDialog({ vendaId, numero, pagamentos, papel, status }: Props) {
+export function ConciliacaoPecaDialog({ vendaId, numero, pagamentos, papel, podeForcar, status }: Props) {
   const [open, setOpen] = useState(false)
 
   const pgtos = ((pagamentos ?? []) as PgtoOS[])
@@ -46,6 +46,7 @@ export function ConciliacaoPecaDialog({ vendaId, numero, pagamentos, papel, stat
             pagamentos={pgtos}
             dados={dados}
             papel={papel}
+            podeForcar={podeForcar}
             somenteConciliaveis
           />
         </DialogContent>

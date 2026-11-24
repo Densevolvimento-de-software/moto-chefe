@@ -146,7 +146,7 @@ test('edição pendente (peca_edicao) aprovada depois da troca não desfaz o cli
     // O pedido guarda o nome de quando foi feito; a aprovação aplica só itens e pagamentos.
     const pedido = { vendaId: venda.id, numero: venda.numero, itens: [{ pecaId: a.pecaId, quantidade: 1 }], pagamentos: [{ tipo: 'financiamento', valor: 50 }], clienteNome: 'Fulano' }
     await editarClienteVendaPecaTx(tx, a.aux, venda.id, { clienteNome: 'Ciclano', clienteTipoPessoa: 'fisica', clienteDocumento: '111.444.777-35' })
-    await aplicarEdicaoAprovadaTx(tx, pedido, a.aux.id)
+    await aplicarEdicaoAprovadaTx(tx, pedido, a.aux.id, 'admin_socio')
     const v = await vendaDb(tx, venda.id)
     assert.equal(v.cliente_nome, 'Ciclano')
     assert.equal(v.cliente_documento?.replace(/\D/g, ''), '11144477735')

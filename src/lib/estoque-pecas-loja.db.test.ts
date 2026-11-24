@@ -88,7 +88,7 @@ test('edição acerta a diferença na loja da venda e exclusão devolve nela (#1
     const { id: vendaId } = await aplicarVendaPeca(tx, s.x.vendId, venda(s.x.lojaId, s.pecaA, 2))
 
     await editarVendaPecaTx(tx, {
-      vendaId, grupoId: s.grupoA, usuarioId: s.x.vendId,
+      vendaId, grupoId: s.grupoA, papel: 'admin_socio', usuarioId: s.x.vendId,
       itens: [{ pecaId: s.pecaA, quantidade: 5 }], pagamentos: [{ tipo: 'pix', valor: 250 }],
     })
     assert.equal(await estoque.saldoNaLoja(tx, s.pecaA, s.x.lojaId), -5)
@@ -157,7 +157,7 @@ test('venda e edição recusam quantidade decimal mesmo vindo de aprovação, se
     await assert.rejects(aplicarVendaPeca(tx, s.x.vendId, venda(s.x.lojaId, s.pecaA, 1.5)), /Quantidade é em unidades inteiras/)
     const { id: vendaId } = await aplicarVendaPeca(tx, s.x.vendId, venda(s.x.lojaId, s.pecaA, 1))
     await assert.rejects(editarVendaPecaTx(tx, {
-      vendaId, grupoId: s.grupoA, usuarioId: s.x.vendId,
+      vendaId, grupoId: s.grupoA, papel: 'admin_socio', usuarioId: s.x.vendId,
       itens: [{ pecaId: s.pecaA, quantidade: 2.5 }], pagamentos: [{ tipo: 'pix', valor: 125 }],
     }), /Quantidade é em unidades inteiras/)
     assert.equal(await estoque.saldoNaLoja(tx, s.pecaA, s.x.lojaId), -1)

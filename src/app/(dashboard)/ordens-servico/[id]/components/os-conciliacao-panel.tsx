@@ -3,9 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PAGAMENTO_PIX, TIPOS_CARTAO, matchPagamentos, type PgtoOS } from '@/lib/conciliacao-status'
 import { PagamentosConciliacao, useConciliacaoAlvo } from '@/components/pagamentos-conciliacao'
 
-type Props = { osId: string; pagamentos: PgtoOS[]; papel: string }
+type Props = { osId: string; pagamentos: PgtoOS[]; papel: string; podeForcar: boolean }
 
-export function OSConciliacaoPanel({ osId, pagamentos, papel }: Props) {
+export function OSConciliacaoPanel({ osId, pagamentos, papel, podeForcar }: Props) {
   const temCartao = pagamentos.some(p => TIPOS_CARTAO.has(p.tipo))
   const temPix    = pagamentos.some(p => PAGAMENTO_PIX.has(p.tipo))
 
@@ -26,6 +26,7 @@ export function OSConciliacaoPanel({ osId, pagamentos, papel }: Props) {
           pagamentos={pagamentos}
           dados={dados}
           papel={papel}
+          podeForcar={podeForcar}
           somenteConciliaveis
         />
 

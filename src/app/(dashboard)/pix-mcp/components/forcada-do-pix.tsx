@@ -34,7 +34,7 @@ export function ForcadaDoPix({ id, rotulo, forcada, podeDesfazer, onDesfeito }: 
           <Undo2 size={14} /> Desfazer a forçada e desvincular
         </Button>
       ) : (
-        <p className="text-muted-foreground">Para desvincular, peça a quem gere a conciliação (sócio ou aux. adm.) para desfazer a forçada.</p>
+        <p className="text-muted-foreground">Para desvincular, peça a quem pode desfazer a forçada (sócio, ou aux. adm. se o grupo permitir) para desfazer.</p>
       )}
       {/* Desktop: diálogo; celular: a gaveta de baixo do repo, como no protótipo v2 (decisão do Luis registrada na #92). */}
       <ConfirmarDesfazerForcada

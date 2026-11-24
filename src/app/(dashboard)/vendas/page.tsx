@@ -3,6 +3,7 @@ import { Kpi } from '@/components/kpi'
 import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { podeEditarVendaDaLoja } from '@/lib/acesso-registro'
+import { podeForcarNoGrupo } from '@/lib/conciliacao-forcar-opcao'
 import { listarLojaIdsDoGrupoAtivo, listarLojasDoGrupoAtivo, podeAprovarVendaBaixoValor, podeAprovarPagamentoSensivelNoGrupoAtivo, getGrupoAtivo, contaDoGrupoAtivo } from '@/lib/grupo'
 import { listarUsuariosDoGrupo } from '@/lib/usuarios-do-grupo'
 import { listarModelosDaConta, nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
@@ -104,6 +105,7 @@ export default async function VendasPage({
 
   // Origem da venda, para efetivar pedido: catálogo do grupo ativo.
   const grupoAtivo = await getGrupoAtivo(usuario)
+  const podeForcar = await podeForcarNoGrupo(usuario.papel, grupoAtivo.id)
   const origens = await listarOrigensAtivasDoGrupo(grupoAtivo.id)
   const lojaIdsPermitidos = isAdmin ? lojaIdsGrupo : (usuario.lojaId ? [usuario.lojaId] : [])
   const lojaParamBruto = params.loja !== undefined ? parseParam(params.loja) : []
@@ -263,7 +265,7 @@ export default async function VendasPage({
           dataFimInicial={params.ate ?? ''}
           podeConciliacao={podeConciliacao}
         />
-        <VendasTable vendas={vendasList} papel={usuario.papel} lojasEditaveis={lojasEditaveis} vendedores={vendedoresOpts} origens={origens} descontos={descontos} />
+        <VendasTable vendas={vendasList} papel={usuario.papel} podeForcar={podeForcar} lojasEditaveis={lojasEditaveis} vendedores={vendedoresOpts} origens={origens} descontos={descontos} />
         {resumoDesconto && resumoDesconto.estimados > 0 && (
           <p className="text-[11px] text-muted-foreground">
             * {resumoDesconto.estimados} desconto{resumoDesconto.estimados === 1 ? '' : 's'} reconstruído{resumoDesconto.estimados === 1 ? '' : 's'} com a

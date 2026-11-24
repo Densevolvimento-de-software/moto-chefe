@@ -1,5 +1,7 @@
 'use server'
 import { aplicarEdicaoAprovadaTx, type EdicaoPendente } from '@/lib/editar-venda-peca'
+import { auxAdmPodeForcarDaLoja } from '@/lib/conciliacao-forcar-opcao'
+import { recusaDePagamentoForcado } from '@/lib/pagamentos-gravacao'
 import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
 import { getUsuarioLogado } from '@/lib/auth'
 import { registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
@@ -1365,6 +1367,8 @@ async function editarVenda(vendaId: string, dados: {
     const daVenda = and(eq(vendas.id, vendaId), eq(vendas.lojaId, vendaAtual.lojaId))
     const [gravada] = await tx.select({ pagamentos: vendas.pagamentos }).from(vendas).where(daVenda).for('update')
     if (!gravada) throw new RecusaUsuario('Venda não encontrada')
+    const recusaForcado = recusaDePagamentoForcado(usuario.papel, await auxAdmPodeForcarDaLoja(vendaAtual.lojaId, tx), dados.pagamentos, CAMPOS_PAGAMENTO_VENDA, gravada.pagamentos)
+    if (recusaForcado) throw new RecusaUsuario(recusaForcado)
     const pagamentos = pagamentosParaGravar(dados.pagamentos, CAMPOS_PAGAMENTO_VENDA, gravada.pagamentos)
     const formaPagamento = pagamentos.length === 1 ? pagamentos[0].tipo : 'multiplos'
 
@@ -1749,7 +1753,7 @@ async function aprovarVenda(aprovacaoId: string) {
         .returning({ id: aprovacoesVenda.id })
       if (!claimed) throw new RecusaUsuario('Esta solicitação não está mais pendente. Recarregue a página.')
 
-      await aplicarEdicaoAprovadaTx(tx, aprovacao.dadosVenda as unknown as EdicaoPendente, aprovacao.vendedorId)
+      await aplicarEdicaoAprovadaTx(tx, aprovacao.dadosVenda as unknown as EdicaoPendente, aprovacao.vendedorId, usuario.papel)
     })
     revalidatePath('/vendas')
     revalidatePath('/pecas')

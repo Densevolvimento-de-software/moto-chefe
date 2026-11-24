@@ -338,7 +338,7 @@ async function editarVendaPeca(
       return { aguardandoAprovacao: true as const, numero: atual.numero }
     }
 
-    const e = await editarVendaPecaTx(tx, { vendaId, grupoId: venda.grupoId, usuarioId: usuario.id, itens, pagamentos })
+    const e = await editarVendaPecaTx(tx, { vendaId, grupoId: venda.grupoId, usuarioId: usuario.id, papel: usuario.papel, itens, pagamentos })
     return { aguardandoAprovacao: false as const, numero: e.numero }
   })
   if (r.aguardandoAprovacao) {
