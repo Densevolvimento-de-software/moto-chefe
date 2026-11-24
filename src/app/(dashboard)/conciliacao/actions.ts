@@ -639,7 +639,7 @@ async function desvincularPixAlvo(pixId: string) {
 
 // ─── Forçar conciliação na mão ───────────────────────────────────────────────
 // Fecha a pendência quando o dinheiro entrou mas não existe lançamento no sistema.
-// Quem gere a conciliação força e desfaz (podeGerirConciliacao, #79).
+// Quem força e desfaz: podeForcarConciliacao (#79), com a opção do grupo da loja do registro (#220).
 // A marcação mora no próprio item do array `pagamentos` — ver
 // docs/superpowers/specs/2026-07-31-forcar-conciliacao-design.md.
 

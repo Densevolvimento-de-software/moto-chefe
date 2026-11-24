@@ -97,7 +97,7 @@ type Props = {
 export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, podeForcar, somenteConciliaveis = false }: Props) {
   const { concs, pixRecs, loading, recarregar } = dados
 
-  // Buscar, vincular, forçar e desfazer: a mesma regra das actions (#79).
+  // Buscar e vincular: podeGerirConciliacao (a mesma regra das actions). Forçar e desfazer: a prop podeForcar (#220).
   const podeGerir = podeGerirConciliacao(papel)
 
   const [buscandoIdx, setBuscandoIdx]   = useState<number | null>(null)
