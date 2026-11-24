@@ -273,6 +273,7 @@ async function listarTransacoesBrutas(dataInicio: Date, dataFim: Date, cnpjGrupo
     // banco). Quais dessas contas interessam é decisão de CADA módulo, não
     // daqui: ver bancoEntraNoPix() e saidaEntraNaDespesa(). Filtrar banco neste
     // ponto foi o que sumiu com a Sicredi do Sul de Minas das despesas.
+    // Na origem 'despesas' a liberação chega com ids [] (ver acima): contaEntraNoPix vira só o filtro de CNPJ do grupo.
     const contas = (contasPayload.results ?? [])
       .filter(c => c.subtype !== 'SAVINGS_ACCOUNT' && contaEntraNoPix({ id: c.id, doCnpjDoGrupo: mesmoCnpj(c.taxNumber, cnpjGrupo) }, liberacao))
       .map(c => ({ ...c, bank: nomeDaConta(c) }))
