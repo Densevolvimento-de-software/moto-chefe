@@ -112,7 +112,7 @@ test('edição de venda da Conta B recusa trocar o item por peça da Conta A (#1
     const { id: vendaId } = await aplicarVendaPeca(tx, b.vendId, venda(b.lojaId, b.pecaId))
 
     await assert.rejects(editarVendaPecaTx(tx, {
-      vendaId, grupoId: b.grupoId, usuarioId: b.vendId,
+      vendaId, grupoId: b.grupoId, papel: 'admin_socio', usuarioId: b.vendId,
       itens: [{ pecaId: a.pecaId, quantidade: 1 }], pagamentos: [{ tipo: 'pix', valor: 50 }],
     }), /Peça não encontrada/)
     assert.equal(await estoque(tx, a), 8)

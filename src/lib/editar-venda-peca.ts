@@ -13,7 +13,8 @@ import { daContaDaLoja } from '@/lib/pecas-da-conta'
 import { moverSaldo } from '@/lib/estoque-pecas-loja'
 import { recusaDaQuantidadeVendida } from '@/lib/quantidade-vendida'
 import { sincronizarCaixaDaVendaPeca } from '@/lib/caixa-venda-peca'
-import { CAMPOS_PAGAMENTO_VENDA, pagamentosParaGravar } from '@/lib/pagamentos-gravacao'
+import { CAMPOS_PAGAMENTO_VENDA, pagamentosParaGravar, recusaDePagamentoForcado } from '@/lib/pagamentos-gravacao'
+import { auxAdmPodeForcarDaLoja } from '@/lib/conciliacao-forcar-opcao'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -21,6 +22,8 @@ export type EdicaoVendaPeca = {
   vendaId: string
   grupoId: string
   usuarioId: string
+  /** Quem grava (#220): gestor de conciliação sem a opção do grupo não mexe no pagamento marcado. */
+  papel: string
   /** `valorUnitario` só chega de gestor; sem ele vale o preço que a peça já tinha na venda, ou o do catálogo. */
   itens: { pecaId: string; quantidade: number; valorUnitario?: number }[]
   pagamentos: { tipo: string; valor: number; operadora?: string; parcelas?: number; autorizacao?: string }[]
@@ -31,6 +34,8 @@ export async function editarVendaPecaTx(tx: Tx, e: EdicaoVendaPeca) {
   const [venda] = await tx.select().from(vendasPecas)
     .where(and(eq(vendasPecas.id, e.vendaId), inArray(vendasPecas.lojaId, lojasDoGrupo))).for('update')
   if (!venda) throw new RecusaUsuario('Venda não encontrada')
+  const recusaForcado = recusaDePagamentoForcado(e.papel, await auxAdmPodeForcarDaLoja(venda.lojaId, tx), e.pagamentos, CAMPOS_PAGAMENTO_VENDA, venda.pagamentos)
+  if (recusaForcado) throw new RecusaUsuario(recusaForcado)
   const pagamentos = pagamentosParaGravar(e.pagamentos, CAMPOS_PAGAMENTO_VENDA, venda.pagamentos)
 
   const antigos = await tx.select().from(vendasPecasItens).where(eq(vendasPecasItens.vendaPecaId, e.vendaId))
@@ -119,7 +124,7 @@ export type EdicaoPendente = {
  * loja da venda, lido agora; o histórico fica em nome de quem pediu a edição — quem
  * aprovou está na própria aprovação.
  */
-export async function aplicarEdicaoAprovadaTx(tx: Tx, e: EdicaoPendente, solicitanteId: string) {
+export async function aplicarEdicaoAprovadaTx(tx: Tx, e: EdicaoPendente, solicitanteId: string, papelDeQuemAplica: string) {
   const [venda] = await tx
     .select({ grupoId: lojas.grupoId })
     .from(vendasPecas)
@@ -127,6 +132,6 @@ export async function aplicarEdicaoAprovadaTx(tx: Tx, e: EdicaoPendente, solicit
     .where(eq(vendasPecas.id, e.vendaId))
   if (!venda) throw new RecusaUsuario(`Venda não encontrada: a venda de peças #${e.numero} pode ter sido excluída`)
   return editarVendaPecaTx(tx, {
-    vendaId: e.vendaId, grupoId: venda.grupoId, usuarioId: solicitanteId, itens: e.itens, pagamentos: e.pagamentos,
+    vendaId: e.vendaId, grupoId: venda.grupoId, usuarioId: solicitanteId, papel: papelDeQuemAplica, itens: e.itens, pagamentos: e.pagamentos,
   })
 }

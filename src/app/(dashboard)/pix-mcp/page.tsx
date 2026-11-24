@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { getGrupoAtivo } from '@/lib/grupo'
+import { podeForcarNoGrupo } from '@/lib/conciliacao-forcar-opcao'
 import { cachePixValido, ultimaSincronizacaoPix } from '@/lib/pix-sync'
 import { db } from '@/lib/db'
 import { pixRecebimentosMcp } from '@/lib/db/schema'
@@ -11,7 +12,6 @@ import { rotulosDoVinculoPix } from '@/lib/rotulos-alvo'
 import { nomesDeUsuariosVisiveis } from '@/lib/conta'
 import { PixTopo } from './components/pix-topo'
 import { PixLista, type LinhaPix } from './components/pix-lista'
-import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
 import { hojeBrt, primeiroDiaDoMesBrt } from '@/lib/data-venda'
 import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-periodo'
@@ -47,6 +47,7 @@ export default async function PixMcpPage({
   if (!usuarioPodeAcessar(usuario, '/pix-mcp')) redirect('/dashboard')
 
   const grupo = await getGrupoAtivo(usuario)
+  const podeDesfazerForcada = await podeForcarNoGrupo(usuario.papel, grupo.id)
   tempo('sessao_e_grupo', tPagina)
 
   const params = await searchParams
@@ -151,7 +152,7 @@ export default async function PixMcpPage({
         rotuloSync={ultimaSync ? rotuloSyncBrt(ultimaSync) : 'Ainda não sincronizado'}
         sincronizarAoAbrir={sincronizarAoAbrir}
       />
-      <PixLista linhas={linhasLista} podeDesfazerForcada={podeGerirConciliacao(usuario.papel)} />
+      <PixLista linhas={linhasLista} podeDesfazerForcada={podeDesfazerForcada} />
     </div>
   )
 }

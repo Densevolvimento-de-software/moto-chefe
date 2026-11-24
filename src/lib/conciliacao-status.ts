@@ -15,7 +15,7 @@ export function tiposDoPagamentoDaLinha(tipoLinha: string | undefined): Readonly
   return tipoLinha === LINHA_PIX ? PAGAMENTO_PIX : TIPOS_CARTAO
 }
 
-// Conciliação forçada na mão (quem pode: podeGerirConciliacao): o dinheiro entrou, mas não existe
+// Conciliação forçada na mão (quem pode: podeForcarConciliacao, com a opção do grupo, #220): o dinheiro entrou, mas não existe
 // lançamento correspondente no sistema (relatório da operadora não importado, PIX
 // fora do Open Finance, transferência avulsa). Fica gravada no próprio item do array
 // `pagamentos` — ver docs/superpowers/specs/2026-07-31-forcar-conciliacao-design.md.
@@ -45,7 +45,7 @@ type PgtoItem = { tipo: string; valor: number; conciliadoManual?: ConciliadoManu
  * FINANCIAMENTO não tem: o banco deposita e nada no sistema sabe disso, então ele
  * fica pendente até alguém confirmar na mão que caiu — decisão do Cesar em
  * 01/09/2026, que trocou a aprovação no momento da venda por essa conferência
- * depois. Quem força: podeGerirConciliacao (src/lib/conciliacao-papeis.ts).
+ * depois. Quem força: podeForcarConciliacao (src/lib/conciliacao-papeis.ts).
  *
  * Dinheiro, cortesia, bonificação e cupom de revisão ficam de fora: não há
  * depósito a esperar, e cobrá-los criaria pendência que nunca fecha.

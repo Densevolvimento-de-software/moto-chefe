@@ -88,14 +88,16 @@ type Props = {
   pagamentos: PgtoOS[]
   dados: ReturnType<typeof useConciliacaoAlvo>
   papel: string
+  /** Forçar e desfazer forçada (#220): a página decide pela função pura, com a opção do grupo da loja. */
+  podeForcar: boolean
   /** OS e peça mostram só o que precisa conciliar; a venda mostra o carrinho inteiro. */
   somenteConciliaveis?: boolean
 }
 
-export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteConciliaveis = false }: Props) {
+export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, podeForcar, somenteConciliaveis = false }: Props) {
   const { concs, pixRecs, loading, recarregar } = dados
 
-  // Buscar, vincular, forçar e desfazer: a mesma regra das actions (#79).
+  // Buscar e vincular: podeGerirConciliacao (a mesma regra das actions). Forçar e desfazer: a prop podeForcar (#220).
   const podeGerir = podeGerirConciliacao(papel)
 
   const [buscandoIdx, setBuscandoIdx]   = useState<number | null>(null)
@@ -424,7 +426,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
 
               {situacao === 'conciliado' && pix && Number(pix.custoPixTaxa) > 0 && <ContaDoPixComCusto className="mx-3 mb-3" valorBruto={Number(pix.valorBruto ?? pix.valor)} custoPix={Number(pix.custoPix ?? 0)} custoPixTaxa={Number(pix.custoPixTaxa)} entrou={Number(pix.valor)} />}
 
-              {situacao === 'forcado' && podeGerir && (
+              {situacao === 'forcado' && podeForcar && (
                 <div className="flex justify-end border-t border-border px-3">
                   <button type="button" onClick={() => desfazer(i)} disabled={salvando} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50">
                     {salvando && <Loader2 className="size-4 animate-spin" />} Desfazer forçado
@@ -495,7 +497,7 @@ export function PagamentosConciliacao({ alvo, pagamentos, dados, papel, somenteC
                         </>
                       )}
 
-                      {podeGerir && !(mostraBusca && pixForaDoGrupo) && (
+                      {podeForcar && !(mostraBusca && pixForaDoGrupo) && (
                         <div className={cn('flex items-center gap-3', mostraBusca && 'border-t border-border pt-3')}>
                           <p className="min-w-0 flex-1 text-xs text-muted-foreground">
                             {p.tipo === 'financiamento'

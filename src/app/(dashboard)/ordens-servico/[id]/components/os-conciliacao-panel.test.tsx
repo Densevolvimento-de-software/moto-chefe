@@ -41,7 +41,7 @@ const pix = (valor: string, valorBruto: string | null): PixDoAlvo =>
 
 async function montar() {
   const { OSConciliacaoPanel } = await import('./os-conciliacao-panel')
-  const tela = await montarDialogo(OSConciliacaoPanel, { osId: '2c9d47e2-c479-42bf-9372-f7a34308299f', pagamentos: [{ tipo: 'pix', valor: 10000 }], papel: 'aux_adm' })
+  const tela = await montarDialogo(OSConciliacaoPanel, { osId: '2c9d47e2-c479-42bf-9372-f7a34308299f', pagamentos: [{ tipo: 'pix', valor: 10000 }], papel: 'aux_adm', podeForcar: true })
   desmontagens.push(tela.desmontar)
   await tela.act(() => esperar(50))
 }

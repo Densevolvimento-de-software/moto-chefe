@@ -266,7 +266,7 @@ test('edição de venda de peça com o grupo de outra Conta: "Venda não encontr
   const venda = await semearVendaPeca(db, balcao(c), [PIX_FORCADO, CARTAO])
   await assert.rejects(
     db.transaction(tx => editarVendaPecaTx(tx, {
-      vendaId: venda, grupoId: outra.grupoId, usuarioId: outra.vendedorId,
+      vendaId: venda, grupoId: outra.grupoId, papel: 'admin_socio', usuarioId: outra.vendedorId,
       itens: [{ pecaId: c.pecaId, quantidade: 1 }], pagamentos: [{ tipo: 'dinheiro', valor: 1500 }],
     })),
     /Venda não encontrada/,
@@ -283,4 +283,106 @@ test('pagamento da OS com a loja de outra Conta: "OS não encontrada" e nada mud
     /OS não encontrada/,
   )
   assert.deepEqual(await pagamentosDe('ordens_servico', sql`id = ${osId}`), [[PIX_FORCADO, CARTAO]])
+})
+
+// #220 (D1): aux_adm de grupo com a opção desligada não muda nem tira um pagamento marcado como recebido;
+// o pedido forjado com a marca não conta, e a recusa vem com a frase e nada grava.
+const FRASE_PAGAMENTO_FORCADO = 'Esse pagamento está marcado como recebido. Peça a quem gere a conciliação para desfazer a forçada.'
+const semOpcaoDeForcar = (c: Conta) => db.execute(sql`update grupos set aux_adm_pode_forcar_conciliacao = false where id = ${c.grupoId}`)
+const PIX_MUDADO = { tipo: 'pix', valor: 900, conciliadoManual: MARCA_DO_PEDIDO }
+const CARTAO_TROCADO = { ...CARTAO, valor: 600 }
+
+test('D1: aux_adm de grupo desligado não muda o valor do pagamento marcado na venda de moto; recusa e nada grava', async () => {
+  const c = await novaConta()
+  await semOpcaoDeForcar(c)
+  const venda = await semearVendaMoto(db, balcao(c), [PIX_FORCADO, CARTAO])
+  entrarComo(c, 'aux_adm')
+  assert.deepEqual(await vendas.editarVendaAction(venda, edicaoDeMoto([PIX_MUDADO, CARTAO_TROCADO])), { ok: false, erro: FRASE_PAGAMENTO_FORCADO })
+  assert.deepEqual(await pagamentosDe('vendas', sql`id = ${venda}`), [[PIX_FORCADO, CARTAO]])
+})
+
+test('D1: aux_adm de grupo desligado não tira o pagamento marcado da venda de moto; recusa e nada grava', async () => {
+  const c = await novaConta()
+  await semOpcaoDeForcar(c)
+  const venda = await semearVendaMoto(db, balcao(c), [PIX_FORCADO, CARTAO])
+  entrarComo(c, 'aux_adm')
+  // Soma continua 1.500 (o total da venda), só sem o PIX marcado.
+  const sem = [{ ...CARTAO, valor: 1500 }]
+  assert.deepEqual(await vendas.editarVendaAction(venda, edicaoDeMoto(sem)), { ok: false, erro: FRASE_PAGAMENTO_FORCADO })
+  assert.deepEqual(await pagamentosDe('vendas', sql`id = ${venda}`), [[PIX_FORCADO, CARTAO]])
+})
+
+test('D1: aux_adm de grupo desligado edita só o que não é a marca (parcelas do cartão); a marca fica e grava', async () => {
+  const c = await novaConta()
+  await semOpcaoDeForcar(c)
+  const venda = await semearVendaMoto(db, balcao(c), [PIX_FORCADO, CARTAO])
+  entrarComo(c, 'aux_adm')
+  ok(await vendas.editarVendaAction(venda, edicaoDeMoto([PIX, { ...CARTAO, parcelas: 4 }])), 'editar parcelas')
+  assert.deepEqual(await pagamentosDe('vendas', sql`id = ${venda}`), [[PIX_FORCADO, { ...CARTAO, parcelas: 4 }]])
+})
+
+test('D1: aux_adm de grupo desligado não muda o valor do pagamento marcado na venda de peça; recusa e nada grava', async () => {
+  const c = await novaConta()
+  await semOpcaoDeForcar(c)
+  const venda = await semearVendaPeca(db, balcao(c), [PIX_FORCADO, CARTAO])
+  entrarComo(c, 'aux_adm')
+  assert.deepEqual(await pecas.editarVendaPecaAction(venda, { itens: [{ pecaId: c.pecaId, quantidade: 1 }], pagamentos: [PIX_MUDADO, CARTAO_TROCADO] } as never),
+    { ok: false, erro: FRASE_PAGAMENTO_FORCADO })
+  assert.deepEqual(await pagamentosDe('vendas_pecas', sql`id = ${venda}`), [[PIX_FORCADO, CARTAO]])
+})
+
+test('D1: aux_adm de grupo desligado não muda o valor do pagamento marcado na OS; recusa e nada grava', async () => {
+  const c = await novaConta()
+  await semOpcaoDeForcar(c)
+  const osId = await semearOs(db, balcao(c), [PIX_FORCADO, CARTAO])
+  entrarComo(c, 'aux_adm')
+  assert.deepEqual(await os.registrarPagamentoOSAction(osId, { valorTotal: 1500, pagamentos: [PIX_MUDADO, CARTAO_TROCADO] } as never),
+    { ok: false, erro: FRASE_PAGAMENTO_FORCADO })
+  assert.deepEqual(await pagamentosDe('ordens_servico', sql`id = ${osId}`), [[PIX_FORCADO, CARTAO]])
+})
+
+test('D1: admin_socio de grupo desligado muda o valor do pagamento marcado (a marca sai, como hoje)', async () => {
+  const c = await novaConta()
+  await semOpcaoDeForcar(c)
+  const venda = await semearVendaMoto(db, balcao(c), [PIX_FORCADO, CARTAO])
+  entrarComo(c, 'admin_socio')
+  ok(await vendas.editarVendaAction(venda, edicaoDeMoto([PIX_MUDADO, CARTAO_TROCADO])), 'sócio edita')
+  assert.deepEqual(await pagamentosDe('vendas', sql`id = ${venda}`), [[{ tipo: 'pix', valor: 900 }, CARTAO_TROCADO]])
+})
+
+test('D1: aux_adm de grupo ligado muda o valor do pagamento marcado (comportamento de hoje)', async () => {
+  const c = await novaConta()
+  const venda = await semearVendaMoto(db, balcao(c), [PIX_FORCADO, CARTAO])
+  entrarComo(c, 'aux_adm')
+  ok(await vendas.editarVendaAction(venda, edicaoDeMoto([PIX_MUDADO, CARTAO_TROCADO])), 'aux_adm ligado edita')
+  assert.deepEqual(await pagamentosDe('vendas', sql`id = ${venda}`), [[{ tipo: 'pix', valor: 900 }, CARTAO_TROCADO]])
+})
+
+// #220 (D1) pela aprovação: a edição guardada é aplicada com o papel de quem aprova. O app só deixa aprovar
+// admin_geral e admin_socio (aprovacao-permissao.ts), e para eles a D1 nunca recusa; por isso o caso de aux_adm
+// é testado na função que aplica, e pela action a barreira de permissão recusa antes de gravar.
+test('aprovação de edição de peça com aux_adm de grupo desligado: a função que aplica recusa e nada grava', async () => {
+  const c = await novaConta()
+  await semOpcaoDeForcar(c)
+  const venda = await semearVendaPeca(db, balcao(c), [PIX_FORCADO, CARTAO])
+  const { aplicarEdicaoAprovadaTx } = await import('@/lib/editar-venda-peca')
+  const edicao = { vendaId: venda, numero: 0, itens: [{ pecaId: c.pecaId, quantidade: 1 }], pagamentos: [PIX_MUDADO, { tipo: 'financiamento', valor: 500 }] }
+  await assert.rejects(db.transaction(tx => aplicarEdicaoAprovadaTx(tx, edicao as never, c.vendedorId, 'aux_adm')), { message: FRASE_PAGAMENTO_FORCADO })
+  assert.deepEqual(await pagamentosDe('vendas_pecas', sql`id = ${venda}`), [[PIX_FORCADO, CARTAO]])
+})
+
+test('aprovação de edição de peça pela action: aux_adm não aprova (barreira de permissão) e a aprovação fica pendente', async () => {
+  const c = await novaConta()
+  await semOpcaoDeForcar(c)
+  const venda = await semearVendaPeca(db, balcao(c), [PIX_FORCADO, CARTAO])
+  const aprovacao = await guardarAprovacao(c, {
+    origem: 'peca_edicao',
+    dadosVenda: { vendaId: venda, numero: 0, itens: [{ pecaId: c.pecaId, quantidade: 1 }], pagamentos: [PIX_MUDADO, { tipo: 'financiamento', valor: 500 }] },
+  })
+  usuario = { ...sessao(c, 'aux_adm'), aprovaPagamentoSensivel: true }
+  grupoAtivoNoCookie = c.grupoId
+  assert.deepEqual(await vendas.aprovarVendaAction(aprovacao), { ok: false, erro: 'Sem permissão para aprovar esta venda' })
+  const [status] = await execRows(sql`select status from aprovacoes_venda where id = ${aprovacao}`) as { status: string }[]
+  assert.equal(status.status, 'pendente')
+  assert.deepEqual(await pagamentosDe('vendas_pecas', sql`id = ${venda}`), [[PIX_FORCADO, CARTAO]])
 })

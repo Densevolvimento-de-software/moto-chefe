@@ -5,7 +5,9 @@ import {
   CAMPOS_PAGAMENTO_ENTRADA,
   CAMPOS_PAGAMENTO_OS,
   CAMPOS_PAGAMENTO_VENDA,
+  FRASE_PAGAMENTO_FORCADO,
   pagamentosParaGravar,
+  recusaDePagamentoForcado,
 } from './pagamentos-gravacao'
 
 const MARCA_GRAVADA = { motivo: 'caiu na conta', porId: 'u-gestor', porNome: 'Gestor', em: '2026-11-01T12:00:00.000Z' }
@@ -80,4 +82,34 @@ test('registro sem lista de pagamentos gravada (nulo ou formato antigo) não dá
   for (const gravados of [null, undefined, { tipo: 'pix', valor: 1000, conciliadoManual: MARCA_GRAVADA }]) {
     assert.deepEqual(pagamentosParaGravar(daTela, CAMPOS_PAGAMENTO_VENDA, gravados), [{ tipo: 'pix', valor: 1000 }])
   }
+})
+
+// #220 (D1): quem grava e a opção do grupo decidem a recusa; a marca só conta se sai trocada ou removida.
+const PIX_GRAVADO = { tipo: 'pix', valor: 1000, conciliadoManual: MARCA_GRAVADA }
+const CARTAO_GRAVADO = { tipo: 'cartao_credito', valor: 500 }
+const GRAVADOS = [PIX_GRAVADO, CARTAO_GRAVADO]
+const TELA_MANTIDA = [{ tipo: 'pix', valor: 1000 }, { tipo: 'cartao_credito', valor: 600 }]
+const TELA_TROCADA = [{ tipo: 'pix', valor: 900 }, { tipo: 'cartao_credito', valor: 600 }]
+const TELA_REMOVIDA = [{ tipo: 'cartao_credito', valor: 1500 }]
+
+test('recusaDePagamentoForcado: só aux_adm de grupo desligado recebe a frase, e só se a marca sai trocada ou removida', () => {
+  const casos: [string, string, boolean, PgtoOS[], string | null][] = [
+    ['aux_adm', 'desligada', false, TELA_MANTIDA, null],
+    ['aux_adm', 'desligada', false, TELA_TROCADA, FRASE_PAGAMENTO_FORCADO],
+    ['aux_adm', 'desligada', false, TELA_REMOVIDA, FRASE_PAGAMENTO_FORCADO],
+    ['aux_adm', 'ligada', true, TELA_MANTIDA, null],
+    ['aux_adm', 'ligada', true, TELA_TROCADA, null],
+    ['aux_adm', 'ligada', true, TELA_REMOVIDA, null],
+    ['admin_socio', 'desligada', false, TELA_TROCADA, null],
+    ['admin_geral', 'desligada', false, TELA_REMOVIDA, null],
+    // Demais papéis: hoje não recusa; a decisão sobre o vendedor é do Luis e fica para depois.
+    ['vendedor', 'desligada', false, TELA_TROCADA, null],
+  ]
+  for (const [papel, opcao, auxAdmPodeForcar, daTela, esperado] of casos) {
+    assert.equal(recusaDePagamentoForcado(papel, auxAdmPodeForcar, daTela, CAMPOS_PAGAMENTO_VENDA, GRAVADOS), esperado, `${papel} com opção ${opcao} e ${daTela.length} pagamento(s) na tela`)
+  }
+})
+
+test('recusaDePagamentoForcado: sem marca gravada nada é recusado, mesmo para aux_adm de grupo desligado', () => {
+  assert.equal(recusaDePagamentoForcado('aux_adm', false, TELA_TROCADA, CAMPOS_PAGAMENTO_VENDA, [{ tipo: 'pix', valor: 1000 }, CARTAO_GRAVADO]), null)
 })
