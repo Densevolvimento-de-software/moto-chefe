@@ -18,11 +18,16 @@ const modelos: ModeloPainel[] = [
 const textoVisivel = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/ |&nbsp;/g, ' ').replace(/\s+/g, ' ')
 const html = (m: ModeloPainel[]) => renderToStaticMarkup(createElement(ModelosPainel, { modelos: m }))
 
-test('modelos: cada modelo mostra vendidas, receita, preço médio e estoque, nas colunas da tabela', () => {
-  const texto = textoVisivel(html(modelos))
+test('modelos: na tabela do computador, cada linha tem vendidas, receita, preço médio e estoque nessa ordem', () => {
+  const tabela = html(modelos).match(/<table[\s\S]*?<\/table>/)?.[0] ?? ''
+  assert.ok(tabela, 'a tabela do computador existe')
+  const texto = textoVisivel(tabela)
   assert.match(texto, /JETMAX 2 R\$ 23\.500,50 R\$ 11\.750,25 0/)
   assert.match(texto, /X12 3 R\$ 40\.380,30 R\$ 13\.460,10 4/)
-  assert.match(texto, /Vendas e estoque por modelo/)
+})
+
+test('modelos: a seção tem o título "Vendas e estoque por modelo"', () => {
+  assert.match(textoVisivel(html(modelos)), /Vendas e estoque por modelo/)
 })
 
 test('modelos: sem linha nenhuma, mostra o aviso e não NaN nem traço', () => {
