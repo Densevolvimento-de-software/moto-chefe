@@ -27,6 +27,7 @@ Ponto de entrada da documentação. Para trabalhar no código, comece pelo
 
 ## Operação (runbooks)
 
+- [`infra/loja-nova-mercadopago.md`](infra/loja-nova-mercadopago.md): roteiro de loja nova com maquininha Mercado Pago: cadastro da maquininha e token do grupo.
 - [`infra/staging.md`](infra/staging.md): o ambiente de staging (`mova-staging`), como criar,
   acessar e conferir.
 - [`infra/backup-restore.md`](infra/backup-restore.md): backup da produção e como restaurar.
