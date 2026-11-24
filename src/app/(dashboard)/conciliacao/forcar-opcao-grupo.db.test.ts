@@ -49,6 +49,8 @@ const ENTROU = 998
 // Pagamento pendente (pix) na posição 0 e dinheiro (não concilia) na 1.
 const PAGAMENTOS: PgtoOS[] = [{ tipo: 'pix', valor: 1000 }, { tipo: 'dinheiro', valor: 200 }]
 
+const vendaDoPix = async (pixId: string) => (await execRows(sql`select venda_id from pix_recebimentos_mcp where id = ${pixId}`))[0].venda_id
+const vendaDaLinha = async (linhaId: string) => (await execRows(sql`select venda_id from conciliacoes_cartao where id = ${linhaId}`))[0].venda_id
 const pagamentosDe = async (tipo: (typeof ALVOS)[number], id: string): Promise<PgtoOS[]> =>
   (await execRows(sql`select pagamentos from ${sql.raw(TABELA[tipo])} where id = ${id}`))[0].pagamentos
 const sessao = (b: { lojaId: string; contaId: string }, papel: string, extra: Partial<Sessao> = {}): Sessao =>
@@ -129,10 +131,11 @@ test('B3: aux_adm de grupo desligado não desfaz a forçada que o sócio fez; a 
 test('B4: aux_adm de grupo desligado não desfaz a forçada parcial pela linha de cartão; linha continua vinculada', async () => {
   const a = await contaComOpcao(false)
   const linha = await linhaQueCompletaForcada(a)
+  const antes = await pagamentosDe('moto', a.alvos.moto)
   usuario = sessao(a, 'aux_adm')
   assert.deepEqual(await actions.desfazerForcadaEDesvincularLinhaAction(linha, null), SEM_PERMISSAO)
-  const [v] = await execRows(sql`select venda_id from conciliacoes_cartao where id = ${linha}`) as { venda_id: string | null }[]
-  assert.equal(v.venda_id, a.alvos.moto)
+  assert.equal(await vendaDaLinha(linha), a.alvos.moto)
+  assert.deepEqual(await pagamentosDe('moto', a.alvos.moto), antes, 'a forçada parcial continua na venda')
 })
 
 // ─── B5: desfazer forçada parcial pela /pix-mcp ────────────────────────────────────────────────────
@@ -140,10 +143,11 @@ test('B4: aux_adm de grupo desligado não desfaz a forçada parcial pela linha d
 test('B5: aux_adm de grupo desligado não desfaz a forçada pela /pix-mcp; o PIX continua vinculado', async () => {
   const a = await contaComOpcao(false)
   const pix = await pixQueCompletaForcada(a)
+  const antes = await pagamentosDe('moto', a.alvos.moto)
   usuario = sessao(a, 'aux_adm')
   assert.deepEqual(await pixMcp.desfazerForcadaERemoverAction(pix, null), SEM_PERMISSAO)
-  const [v] = await execRows(sql`select venda_id from pix_recebimentos_mcp where id = ${pix}`) as { venda_id: string | null }[]
-  assert.equal(v.venda_id, a.alvos.moto)
+  assert.equal(await vendaDoPix(pix), a.alvos.moto)
+  assert.deepEqual(await pagamentosDe('moto', a.alvos.moto), antes, 'a forçada parcial continua na venda')
 })
 
 // ─── B6: frase do desvincular que completa forçada ─────────────────────────────────────────────────
@@ -151,22 +155,31 @@ test('B5: aux_adm de grupo desligado não desfaz a forçada pela /pix-mcp; o PIX
 test('B6: aux_adm de grupo desligado desvinculando o PIX da /pix-mcp recebe a frase de pedir ao gestor', async () => {
   const a = await contaComOpcao(false)
   const pix = await pixQueCompletaForcada(a)
+  const antes = await pagamentosDe('moto', a.alvos.moto)
   usuario = sessao(a, 'aux_adm')
   assert.deepEqual(await pixMcp.removerCorrespondenciaAction(pix), { ok: false, erro: COMPLETA_FORCADA_PEDIR_A_GESTOR })
+  assert.equal(await vendaDoPix(pix), a.alvos.moto)
+  assert.deepEqual(await pagamentosDe('moto', a.alvos.moto), antes)
 })
 
 test('B6b: aux_adm de grupo desligado desvinculando a linha de cartão da /conciliacao recebe a frase de pedir ao gestor', async () => {
   const a = await contaComOpcao(false)
   const linha = await linhaQueCompletaForcada(a)
+  const antes = await pagamentosDe('moto', a.alvos.moto)
   usuario = sessao(a, 'aux_adm')
   assert.deepEqual(await actions.desvincularVendaAction(linha), { ok: false, erro: COMPLETA_FORCADA_PEDIR_A_GESTOR })
+  assert.equal(await vendaDaLinha(linha), a.alvos.moto)
+  assert.deepEqual(await pagamentosDe('moto', a.alvos.moto), antes)
 })
 
 test('B6c: aux_adm de grupo desligado desvinculando o PIX pela /conciliacao recebe a frase de pedir ao gestor', async () => {
   const a = await contaComOpcao(false)
   const pix = await pixQueCompletaForcada(a)
+  const antes = await pagamentosDe('moto', a.alvos.moto)
   usuario = sessao(a, 'aux_adm')
   assert.deepEqual(await actions.desvincularPixAlvoAction(pix), { ok: false, erro: COMPLETA_FORCADA_PEDIR_A_GESTOR })
+  assert.equal(await vendaDoPix(pix), a.alvos.moto)
+  assert.deepEqual(await pagamentosDe('moto', a.alvos.moto), antes)
 })
 
 test('B6d: aux_adm de grupo ligado recebe a frase que manda desfazer a forçada (comportamento de hoje)', async () => {

@@ -492,10 +492,15 @@ test('C1b (#220): aux_adm de grupo com a opção desligada não vê Desfazer for
   assert.equal(botao('Desfazer forçado'), undefined)
 })
 
-test('C2 (#220): aux_adm de grupo com a opção ligada vê Forçar e Desfazer forçado', async () => {
+test('C2 (#220): aux_adm de grupo com a opção ligada vê Forçar', async () => {
   const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 1000 }], [], [], [], { cobertura: null }, true)
   await tocar(linha('PIX'))
   assert.ok(botao('Forçar'))
+})
+
+test('C2b (#220): aux_adm de grupo com a opção ligada vê Desfazer forçado', async () => {
+  await montar('aux_adm', [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }], [], [], [], { cobertura: null }, true)
+  assert.ok(botao('Desfazer forçado'))
 })
 
 test('C3 (#220): admin_socio de grupo com a opção desligada vê Forçar', async () => {
