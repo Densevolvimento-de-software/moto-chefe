@@ -58,6 +58,7 @@ const ABAS: [Tab, string][] = [['resumo', 'Resumo'], ['pagamento', 'Pagamento'],
 type Props = {
   venda: VendaComDetalhes
   papel: string
+  podeForcar: boolean
   desconto?: DescontoDaVenda
   /** Troca o botão padrão por outro (ex.: os botões do painel da venda). */
   gatilho?: (abrir: () => void) => React.ReactNode
@@ -74,7 +75,7 @@ function Par({ rotulo, children, mono }: { rotulo: string; children: React.React
 
 const link = 'text-primary-text underline-offset-2 hover:underline'
 
-export function DetalhesVendaDialog({ venda: v, papel, desconto, gatilho }: Props) {
+export function DetalhesVendaDialog({ venda: v, papel, podeForcar, desconto, gatilho }: Props) {
   const [open, setOpen]        = useState(false)
   const [tab, setTab]          = useState<Tab>('resumo')
   const [hist, setHist]        = useState<Hist[] | null>(null)
@@ -215,7 +216,7 @@ export function DetalhesVendaDialog({ venda: v, papel, desconto, gatilho }: Prop
               {tab === 'pagamento' && (
                 <div className="py-2">
                   {pagamentos.length > 0 ? (
-                    <PagamentosConciliacao alvo={{ tipo: 'moto', id: v.id }} pagamentos={pagamentos} dados={dados} papel={papel} />
+                    <PagamentosConciliacao alvo={{ tipo: 'moto', id: v.id }} pagamentos={pagamentos} dados={dados} papel={papel} podeForcar={podeForcar} />
                   ) : (
                     <p className="text-muted-foreground">{tipoLabel[v.formaPagamento] ?? v.formaPagamento} — {formatCurrency(v.valor)}</p>
                   )}

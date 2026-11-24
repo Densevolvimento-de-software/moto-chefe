@@ -47,6 +47,8 @@ function calcStatus(
 type Props = {
   vendas: VendaComDetalhes[]
   papel: string
+  /** Forçar e desfazer forçada (#220), decidido pela página com a opção do grupo. */
+  podeForcar: boolean
   /** Lojas cujas vendas o usuário edita, pela regra do servidor (podeEditarVendaDaLoja). */
   lojasEditaveis: ReadonlySet<string>
   vendedores: { id: string; nome: string }[]
@@ -63,7 +65,7 @@ const botaoGrade = 'flex h-16 w-full flex-col items-center justify-center gap-1 
  * larga no topo e as outras numa grade igual, com o cancelar em vermelho no fim. Permissões
  * iguais às da antiga coluna de ações da tabela.
  */
-function AcoesVenda({ v, papel, lojasEditaveis, vendedores, origens, descontos }: Omit<Props, 'vendas'> & { v: VendaComDetalhes }) {
+function AcoesVenda({ v, papel, podeForcar, lojasEditaveis, vendedores, origens, descontos }: Omit<Props, 'vendas'> & { v: VendaComDetalhes }) {
   const podeEditarVenda = lojasEditaveis.has(v.lojaId)
   const podeEmitirNf    = !v.notaFiscalSaida && podeOperarNfSaida(papel)
   const blocos = 1 + (podeEditarVenda ? 1 : 0) + (podeGarantia.has(papel) ? 1 : 0) + (PAPEIS_QUE_CANCELAM_VENDA.has(papel) ? 1 : 0)
@@ -84,6 +86,7 @@ function AcoesVenda({ v, papel, lojasEditaveis, vendedores, origens, descontos }
         <DetalhesVendaDialog
           venda={v}
           papel={papel}
+          podeForcar={podeForcar}
           desconto={descontos?.get(v.id)}
           gatilho={abrir => <button type="button" onClick={abrir} className={botaoGrade}><Eye className="size-4 text-muted-foreground" /> Detalhes</button>}
         />
@@ -122,7 +125,7 @@ function AcoesVenda({ v, papel, lojasEditaveis, vendedores, origens, descontos }
 }
 
 export function VendasTable(props: Props) {
-  const { vendas, papel, descontos } = props
+  const { vendas, papel, podeForcar, descontos } = props
   const [nfAberta, setNfAberta] = useState<NfDaVenda | null>(null)
   // Guarda só o id: depois de uma action, o revalidatePath traz a venda nova e o painel mostra ela.
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null)
