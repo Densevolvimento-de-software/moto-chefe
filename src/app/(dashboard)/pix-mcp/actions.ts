@@ -7,8 +7,7 @@ import { revalidatePath } from 'next/cache'
 import { getUsuarioLogado } from '@/lib/auth'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
-import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
-import { COMPLETA_FORCADA, COMPLETA_FORCADA_PEDIR_A_GESTOR } from '@/lib/conciliacao-status'
+import { fraseCompletaForcadaDoGrupo, podeForcarNoGrupo } from '@/lib/conciliacao-forcar-opcao'
 import { revalidarTelasDaConciliacao } from '@/lib/revalidar-conciliacao'
 import { desfazerForcadaEDesvincularPix, desvincularPix, forcadaQueOPixCompleta, vincularPix, type VinculoPix } from '@/lib/pix-vinculo'
 
@@ -72,7 +71,7 @@ async function removerCorrespondencia(id: string) {
   const usuario = await getUsuarioLogado()
   if (!PAPEIS_PERMITIDOS.includes(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
-  await desvincularPix(id, grupo.id, podeGerirConciliacao(usuario.papel) ? COMPLETA_FORCADA : COMPLETA_FORCADA_PEDIR_A_GESTOR)
+  await desvincularPix(id, grupo.id, await fraseCompletaForcadaDoGrupo(usuario.papel, grupo.id))
   revalidatePath('/pix-mcp')
 }
 
@@ -84,8 +83,8 @@ export async function desfazerForcadaERemoverAction(id: string, resumoVisto?: un
 }
 async function desfazerForcadaERemover(id: string, resumoVisto: unknown) {
   const usuario = await getUsuarioLogado()
-  if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
+  if (!(await podeForcarNoGrupo(usuario.papel, grupo.id))) throw new RecusaUsuario('Sem permissão')
   // A forçada muda o status da venda, OS ou peça nas listas; revalida também a /pix-mcp.
   revalidarTelasDaConciliacao(await desfazerForcadaEDesvincularPix(id, grupo.id, resumoVisto ?? null))
 }

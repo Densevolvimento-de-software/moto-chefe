@@ -8,7 +8,8 @@ import { conciliacoesCartao, pixRecebimentosMcp, vendas, modelos, motos, vendasP
 import { eq, and, or, desc, gte, sql, isNull, ilike, inArray, type SQL } from 'drizzle-orm'
 import { getUsuarioLogado } from '@/lib/auth'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
-import { podeGerirConciliacao } from '@/lib/conciliacao-papeis'
+import { podeForcarConciliacao, podeGerirConciliacao } from '@/lib/conciliacao-papeis'
+import { auxAdmPodeForcarDaLoja, fraseCompletaForcadaDoGrupo, podeForcarNoGrupo } from '@/lib/conciliacao-forcar-opcao'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { INICIO_CONCILIACAO, INICIO_CONCILIACAO_EM } from '@/lib/conciliacao-periodo'
 import { ehTransferenciaInterna } from '@/lib/pix-internos'
@@ -338,7 +339,7 @@ async function desvincularVenda(conciliacaoId: string) {
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
   // A linha pix da maquininha pode ser o resto de uma forçada parcial de PIX (#166), como o PIX do banco.
-  revalidarTelasDaConciliacao(await desvincularNaTrava(linhaDoCartao(conciliacaoId, grupo.id), grupo.id))
+  revalidarTelasDaConciliacao(await desvincularNaTrava(linhaDoCartao(conciliacaoId, grupo.id), grupo.id, await fraseCompletaForcadaDoGrupo(usuario.papel, grupo.id)))
 }
 
 // #166 (variante 2 do protótipo): a linha completa uma forçada parcial; quem gere desfaz a forçada e desvincula de uma
@@ -351,6 +352,7 @@ async function desfazerForcadaEDesvincularLinha(conciliacaoId: string, resumoVis
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
+  if (!(await podeForcarNoGrupo(usuario.papel, grupo.id))) throw new RecusaUsuario('Sem permissão')
   revalidarTelasDaConciliacao(await desfazerForcadaEDesvincular(linhaDoCartao(conciliacaoId, grupo.id), grupo.id, resumoVisto ?? null))
 }
 
@@ -536,6 +538,17 @@ async function exigirAlvoNoGrupoAtivo(alvo: AlvoConciliacao): Promise<Usuario> {
   return usuario
 }
 
+/**
+ * Forçar e desfazer (#220): o aux_adm só com a opção ligada no grupo da loja do registro. Vem depois de
+ * exigirAlvoNoGrupoAtivo, para o registro de outra Conta responder igual ao inexistente.
+ */
+async function exigirPodeForcar(alvo: AlvoConciliacao): Promise<Usuario> {
+  const usuario = await exigirAlvoNoGrupoAtivo(alvo)
+  const lojaId = await lojaIdDoAlvo(alvo, await listarLojaIdsDoGrupoAtivo(usuario))
+  if (!lojaId || !podeForcarConciliacao(usuario.papel, await auxAdmPodeForcarDaLoja(lojaId))) throw new RecusaUsuario('Sem permissão')
+  return usuario
+}
+
 /** PIX livres do grupo (sem vínculo, desde o início da conciliação), sem transferência interna. */
 async function pixLivresDoGrupo(grupoId: string, filtro: SQL | undefined): Promise<PixLivre[]> {
   const linhas = await db
@@ -620,7 +633,7 @@ async function desvincularPixAlvo(pixId: string) {
   const usuario = await getUsuarioLogado()
   if (!podeGerirConciliacao(usuario.papel)) throw new RecusaUsuario('Sem permissão')
   const grupo = await getGrupoAtivo(usuario)
-  await desvincularPix(pixId, grupo.id)
+  await desvincularPix(pixId, grupo.id, await fraseCompletaForcadaDoGrupo(usuario.papel, grupo.id))
   revalidarTelasDaConciliacao()
 }
 
@@ -663,16 +676,22 @@ const ouRecusa = (r: ResultadoAction<PgtoOS[]>) => {
  * conferir; a que vale é a do servidor, e se as duas diferem os lançamentos mudaram e a forçada é recusada.
  */
 export async function forcarConciliacaoAction(alvo: AlvoConciliacao, idx: number, motivo: string, valorRecebido?: number, baseVista?: number) {
-  return acao(() => editarPagamentos(alvo, async (pgtos, usuario, tx) => {
-    // Quanto os lançamentos do alvo já cobrem do pagamento, pela mesma conta do painel: o PIX parcial força o que falta.
-    const coberto = matchPagamentos(pgtos, await cartoesDoAlvo(alvo, tx), await pixDoAlvo(alvo, tx))[idx]?.coberto ?? 0
-    const autor = { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }
-    return ouRecusa(comForcado(pgtos, idx, motivo, autor, { valorRecebido, coberto, baseVista }))
-  }))
+  return acao(async () => {
+    await exigirPodeForcar(alvo)
+    return editarPagamentos(alvo, async (pgtos, usuario, tx) => {
+      // Quanto os lançamentos do alvo já cobrem do pagamento, pela mesma conta do painel: o PIX parcial força o que falta.
+      const coberto = matchPagamentos(pgtos, await cartoesDoAlvo(alvo, tx), await pixDoAlvo(alvo, tx))[idx]?.coberto ?? 0
+      const autor = { porId: usuario.id, porNome: usuario.nome, em: new Date().toISOString() }
+      return ouRecusa(comForcado(pgtos, idx, motivo, autor, { valorRecebido, coberto, baseVista }))
+    })
+  })
 }
 
 export async function desfazerConciliacaoForcadaAction(alvo: AlvoConciliacao, idx: number) {
-  return acao(() => editarPagamentos(alvo, async pgtos => ouRecusa(semForcado(pgtos, idx))))
+  return acao(async () => {
+    await exigirPodeForcar(alvo)
+    return editarPagamentos(alvo, async pgtos => ouRecusa(semForcado(pgtos, idx)))
+  })
 }
 
 export async function buscarVendasParaVincular(conciliacaoId: string) {
