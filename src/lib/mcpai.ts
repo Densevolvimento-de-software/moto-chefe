@@ -71,6 +71,35 @@ async function chamarMcp(url: string, sessionId: string | null, body: Record<str
   return { json, sessionId: res.headers.get('mcp-session-id'), bytes: texto.length }
 }
 
+type SessaoMcp = { ok: true; sessionId: string } | { ok: false; erro: string }
+
+/** Abre a sessão MCP (initialize). Devolve a frase de erro pronta para quem chama repassar. */
+async function abrirSessaoMcp(url: string): Promise<SessaoMcp> {
+  const init = await chamarMcp(url, null, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'moto-chefe', version: '1.0' },
+    },
+  })
+  if (init.json.error) return { ok: false, erro: init.json.error.message ?? 'Erro ao iniciar sessão com mcp.ai' }
+  if (!init.sessionId) return { ok: false, erro: 'mcp.ai não retornou identificador de sessão' }
+  return { ok: true, sessionId: init.sessionId }
+}
+
+/** `openfinance_list_accounts` de um tipo, cru: cada leitor trata o erro e o formato do seu jeito. */
+function listarContasMcp(url: string, sessionId: string, tipo: 'BANK' | 'CREDIT'): Promise<RespostaMcp> {
+  return chamarMcp(url, sessionId, {
+    jsonrpc: '2.0',
+    id: tipo === 'BANK' ? 2 : 3,
+    method: 'tools/call',
+    params: { name: 'openfinance_list_accounts', arguments: { type: tipo } },
+  })
+}
+
 async function forcarSyncContas(url: string, sessionId: string, ids: string[]): Promise<void> {
   await Promise.all(ids.map(id =>
     chamarMcp(url, sessionId, {
@@ -225,34 +254,13 @@ async function listarTransacoesBrutas(dataInicio: Date, dataFim: Date, cnpjGrupo
     // Contas liberadas de outro CNPJ valem só no PIX (#236): Despesas segue só com o CNPJ do grupo.
     const liberacao = { chavePropria, ids: origem === 'pix' ? contasPixIds : [] }
     const tInit = agora()
-    const init = await chamarMcp(url, null, {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2025-06-18',
-        capabilities: {},
-        clientInfo: { name: 'moto-chefe', version: '1.0' },
-      },
-    })
+    const sessao = await abrirSessaoMcp(url)
     logTempo({ origem, etapa: 'initialize', ms: decorrido(tInit) })
-    if (init.json.error) {
-      return { ok: false, erro: init.json.error.message ?? 'Erro ao iniciar sessão com mcp.ai' }
-    }
-    if (!init.sessionId) {
-      return { ok: false, erro: 'mcp.ai não retornou identificador de sessão' }
-    }
+    if (!sessao.ok) return sessao
+    const sessionId = sessao.sessionId
 
     const tContas = agora()
-    const contasChamada = await chamarMcp(url, init.sessionId, {
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'tools/call',
-      params: {
-        name: 'openfinance_list_accounts',
-        arguments: { type: 'BANK' },
-      },
-    })
+    const contasChamada = await listarContasMcp(url, sessionId, 'BANK')
     logTempo({ origem, etapa: 'listar_contas', ms: decorrido(tContas), bytes: contasChamada.bytes })
     if (contasChamada.json.error) {
       return { ok: false, erro: contasChamada.json.error.message ?? 'Erro ao buscar contas no mcp.ai' }
@@ -293,7 +301,7 @@ async function listarTransacoesBrutas(dataInicio: Date, dataFim: Date, cnpjGrupo
       const tForce = agora()
       // O mcp.ai não atualiza a conta em tempo real sozinho — sem forçar o
       // sync, transações recebidas/enviadas nas últimas horas não aparecem ainda.
-      await chamarMcp(url, init.sessionId, {
+      await chamarMcp(url, sessionId, {
         jsonrpc: '2.0',
         id: 4,
         method: 'tools/call',
@@ -309,7 +317,7 @@ async function listarTransacoesBrutas(dataInicio: Date, dataFim: Date, cnpjGrupo
       // Paginação manual (page_size 500): sem ela o mcp.ai corta em 5000 e perde os mais antigos em
       // silêncio (a Sicoob tem 5689). Ver paginacao-mcpai.ts.
       const buscarPagina: BuscaPagina<TxMcp> = async pagina => {
-        const chamada = await chamarMcp(url, init.sessionId, {
+        const chamada = await chamarMcp(url, sessionId, {
           jsonrpc: '2.0',
           id: 3,
           method: 'tools/call',
@@ -539,32 +547,11 @@ export async function buscarSaidasOpenFinance(dataInicio: Date, dataFim: Date, c
 export async function buscarSaldosBancarios(cnpjGrupo: string): Promise<ResultadoSaldos> {
   try {
     const url = await endpointMcpDoGrupo(cnpjGrupo)
-    const init = await chamarMcp(url, null, {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2025-06-18',
-        capabilities: {},
-        clientInfo: { name: 'moto-chefe', version: '1.0' },
-      },
-    })
-    if (init.json.error) {
-      return { ok: false, erro: init.json.error.message ?? 'Erro ao iniciar sessão com mcp.ai' }
-    }
-    if (!init.sessionId) {
-      return { ok: false, erro: 'mcp.ai não retornou identificador de sessão' }
-    }
+    const sessao = await abrirSessaoMcp(url)
+    if (!sessao.ok) return sessao
+    const sessionId = sessao.sessionId
 
-    const chamada = await chamarMcp(url, init.sessionId, {
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'tools/call',
-      params: {
-        name: 'openfinance_list_accounts',
-        arguments: { type: 'BANK' },
-      },
-    })
+    const chamada = await listarContasMcp(url, sessionId, 'BANK')
     if (chamada.json.error) {
       return { ok: false, erro: chamada.json.error.message ?? 'Erro ao buscar contas no mcp.ai' }
     }
@@ -587,7 +574,7 @@ export async function buscarSaldosBancarios(cnpjGrupo: string): Promise<Resultad
       r => r.subtype !== 'SAVINGS_ACCOUNT' && mesmoCnpj(r.taxNumber, cnpjGrupo),
     )
 
-    const saldosAoVivo = await buscarSaldosAoVivo(url, init.sessionId, resultados.map(r => r.id))
+    const saldosAoVivo = await buscarSaldosAoVivo(url, sessionId, resultados.map(r => r.id))
 
     const contas: ContaBancaria[] = resultados.map(r => ({
       id: r.id,
@@ -679,26 +666,11 @@ async function buscarLancamentosCartao(url: string, sessionId: string, accountId
 export async function buscarFaturasCartao(cnpjGrupo: string): Promise<ResultadoCartoes> {
   try {
     const url = await endpointMcpDoGrupo(cnpjGrupo)
-    const init = await chamarMcp(url, null, {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2025-06-18',
-        capabilities: {},
-        clientInfo: { name: 'moto-chefe', version: '1.0' },
-      },
-    })
-    if (init.json.error) return { ok: false, erro: init.json.error.message ?? 'Erro ao iniciar sessão com mcp.ai' }
-    if (!init.sessionId) return { ok: false, erro: 'mcp.ai não retornou identificador de sessão' }
-    const sessionId = init.sessionId
+    const sessao = await abrirSessaoMcp(url)
+    if (!sessao.ok) return sessao
+    const sessionId = sessao.sessionId
 
-    const contas = payloadDe(await chamarMcp(url, sessionId, {
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'tools/call',
-      params: { name: 'openfinance_list_accounts', arguments: { type: 'BANK' } },
-    })) as { results?: { item_id: string; taxNumber: string }[] } | null
+    const contas = payloadDe(await listarContasMcp(url, sessionId, 'BANK')) as { results?: { item_id: string; taxNumber: string }[] } | null
     if (!contas) return { ok: false, erro: 'Não foi possível identificar as conexões do grupo' }
 
     const cnpjPorItem = new Map<string, string>()
@@ -706,12 +678,7 @@ export async function buscarFaturasCartao(cnpjGrupo: string): Promise<ResultadoC
       if (c.item_id && c.taxNumber) cnpjPorItem.set(c.item_id, c.taxNumber)
     }
 
-    const cartoesBrutos = payloadDe(await chamarMcp(url, sessionId, {
-      jsonrpc: '2.0',
-      id: 3,
-      method: 'tools/call',
-      params: { name: 'openfinance_list_accounts', arguments: { type: 'CREDIT' } },
-    })) as { results?: Array<{
+    const cartoesBrutos = payloadDe(await listarContasMcp(url, sessionId, 'CREDIT')) as { results?: Array<{
       account_id: string
       bank: string
       name: string
