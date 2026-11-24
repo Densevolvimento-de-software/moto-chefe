@@ -4,6 +4,7 @@ import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { getGrupoAtivo } from '@/lib/grupo'
 import { listarMaquininhasDoCadastro } from '@/lib/maquininhas-admin'
+import { temCredencialMercadoPago } from '@/lib/mercadopago/credencial'
 import { MaquininhasTable } from './components/maquininhas-table'
 
 export default async function MaquininhasPage() {
@@ -12,6 +13,7 @@ export default async function MaquininhasPage() {
 
   const grupo = await getGrupoAtivo(usuario)
   const maquininhas = await listarMaquininhasDoCadastro(db, grupo.id)
+  const temCredencialMp = await temCredencialMercadoPago(grupo.id)
 
   return (
     <div className="space-y-6">
@@ -22,7 +24,7 @@ export default async function MaquininhasPage() {
           venda de peças. Cada grupo tem as suas.
         </p>
       </div>
-      <MaquininhasTable maquininhas={maquininhas} />
+      <MaquininhasTable maquininhas={maquininhas} temCredencialMp={temCredencialMp} />
     </div>
   )
 }
