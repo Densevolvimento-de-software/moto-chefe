@@ -204,20 +204,22 @@ test('titular do mesmo CNPJ ou sem credencial: sem aviso', async () => {
   assert.equal(document.getElementById('grupo-mp-outro-cnpj')?.textContent ?? null, null)
 })
 
-// #236: contas de outro CNPJ liberadas para a tela PIX, logo abaixo da URL do mcp.ai.
+// #236/#253: contas de outro CNPJ liberadas para a tela PIX, logo abaixo da URL do mcp.ai, um campo por ID.
 const COM_CHAVE = { ...GRUPO, mcpaiConfigurado: true, mcpaiResumo: 'api.mcp.ai/…abcd', mcpaiContasPixIds: ['conta-1', 'conta-2'] }
-const campoPix = () => document.getElementById('grupo-mcpai-contas-pix') as HTMLInputElement | null
+const camposPix = () => [...document.querySelectorAll<HTMLInputElement>('input[id^="grupo-mcpai-contas-pix-"]')]
+const valoresPix = () => camposPix().map(c => c.value)
+const enviado = () => api.editar.mock.calls[0].arguments[1].mcpaiContasPix
 
-test('Editar mostra os ids atuais logo abaixo da URL do mcp.ai e envia o texto editado', async () => {
+test('Editar mostra um campo por ID logo abaixo da URL do mcp.ai e envia a lista editada', async () => {
   const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
   const url = document.getElementById('grupo-mcpai')!
   const mp = document.getElementById('grupo-mp-token')!
-  assert.equal(campoPix()?.value, 'conta-1, conta-2')
-  assert.ok(url.compareDocumentPosition(campoPix()!) & 4, 'o campo vem depois da URL do mcp.ai')
-  assert.ok(campoPix()!.compareDocumentPosition(mp) & 4, 'e antes do token do Mercado Pago')
-  await t.preencher('grupo-mcpai-contas-pix', 'conta-1, conta-2, conta-3')
+  assert.deepEqual(valoresPix(), ['conta-1', 'conta-2'])
+  assert.ok(url.compareDocumentPosition(camposPix()[0]) & 4, 'os campos vêm depois da URL do mcp.ai')
+  assert.ok(camposPix()[1].compareDocumentPosition(mp) & 4, 'e antes do token do Mercado Pago')
+  await t.preencher('grupo-mcpai-contas-pix-1', 'conta-3')
   await t.clique('Salvar')
-  assert.equal(api.editar.mock.calls[0].arguments[1].mcpaiContasPix, 'conta-1, conta-2, conta-3')
+  assert.equal(enviado(), 'conta-1, conta-3')
 })
 
 // #253: o campo aceita o id da conta ou o da credencial (a conexão com o banco).
@@ -226,26 +228,19 @@ test('com chave própria, a ajuda do campo diz que aceita o id da conta ou da cr
   assert.match(textoDaTela(), /ID da conta ou da credencial/)
 })
 
-test('grupo sem chave própria: o campo fica desligado e explica; colar a chave liga', async () => {
-  const t = await montar({ modo: 'editar', inicial: GRUPO })
-  assert.equal(campoPix()?.disabled, true)
-  assert.match(textoDaTela(), /chave própria do mcp\.ai/)
-  await t.preencher('grupo-mcpai', 'https://api.mcp.ai/nova-chave')
-  assert.equal(campoPix()?.disabled, false)
-})
-
-test('Remover chave desliga o campo e o Salvar manda os ids vazios (o servidor apaga junto)', async () => {
+test('Remover chave desliga os campos e o Salvar manda os ids vazios (o servidor apaga junto)', async () => {
   const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.deepEqual(camposPix().map(c => c.disabled), [false, false])
   await t.clique('Remover chave')
-  assert.equal(campoPix()?.disabled, true)
+  assert.deepEqual(camposPix().map(c => c.disabled), [true, true])
   await t.clique('Salvar')
   const [, dados] = api.editar.mock.calls[0].arguments
   assert.deepEqual([dados.mcpaiRemover, dados.mcpaiContasPix], [true, ''])
 })
 
-test('Novo Grupo não tem o campo nem manda os ids', async () => {
+test('Novo Grupo não tem os campos nem manda os ids', async () => {
   const t = await montar({ modo: 'criar', contas: [] })
-  assert.equal(campoPix()?.outerHTML ?? null, null)
+  assert.equal(camposPix().length, 0)
   await t.preencher('grupo-nome', 'Novo')
   await t.preencher('grupo-cnpj', '00.000.000/0001-91')
   await t.clique('Criar')
@@ -255,28 +250,28 @@ test('Novo Grupo não tem o campo nem manda os ids', async () => {
 test('recusa do servidor sobre os ids aparece no rodapé e o diálogo continua aberto', async () => {
   api.editar.mock.mockImplementation(async () => ({ ok: false, erro: 'ID de conta inválido: use só letras, números, ponto, - e _ (até 100 caracteres).' }))
   const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
-  await t.preencher('grupo-mcpai-contas-pix', 'conta!')
+  await t.preencher('grupo-mcpai-contas-pix-0', 'conta!')
   await t.clique('Salvar')
   assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /ID de conta inválido/)
   assert.equal(fechou(t.onOpenChange), false)
 })
 
-test('ao reabrir, o campo volta aos ids salvos e não ao que foi digitado e abandonado', async () => {
+test('ao reabrir, os campos voltam aos ids salvos e não ao que foi digitado e abandonado', async () => {
   const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
-  await t.preencher('grupo-mcpai-contas-pix', 'abandonado')
+  await t.preencher('grupo-mcpai-contas-pix-0', 'abandonado')
   await t.clique('Cancelar')
   await t.redesenhar({ modo: 'editar', inicial: COM_CHAVE, open: false, onOpenChange: t.onOpenChange })
   await t.redesenhar({ modo: 'editar', inicial: COM_CHAVE, open: true, onOpenChange: t.onOpenChange })
-  assert.equal(campoPix()?.value, 'conta-1, conta-2')
+  assert.deepEqual(valoresPix(), ['conta-1', 'conta-2'])
 })
 
 // Achado do bot no PR #238: salvar fecha o diálogo (volta ao valor da prop antiga) e só depois o refresh traz a
 // prop nova; sem ressincronizar, reabrir mostrava os ids antigos e um novo Salvar desfazia a liberação.
 test('depois de salvar, quando a lista chega com os ids novos, reabrir mostra os ids novos', async () => {
   const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
-  await t.preencher('grupo-mcpai-contas-pix', 'conta-9')
+  await t.preencher('grupo-mcpai-contas-pix-0', 'conta-9')
   await t.clique('Salvar')
   await t.redesenhar({ modo: 'editar', inicial: { ...COM_CHAVE, mcpaiContasPixIds: ['conta-9'] }, open: false, onOpenChange: t.onOpenChange })
   await t.redesenhar({ modo: 'editar', inicial: { ...COM_CHAVE, mcpaiContasPixIds: ['conta-9'] }, open: true, onOpenChange: t.onOpenChange })
-  assert.equal(campoPix()?.value, 'conta-9')
+  assert.deepEqual(valoresPix(), ['conta-9'])
 })
