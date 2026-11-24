@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { Plus, Pencil } from 'lucide-react'
+import { Plus, Pencil, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { criarGrupoAction, editarGrupoAction } from '../actions'
 import { AVISO_OUTRO_CNPJ, ehRecusaDoMp } from '@/lib/mercadopago/frases'
@@ -47,6 +47,9 @@ type Props = {
   onOpenChange?: (v: boolean) => void
 }
 
+/** Linhas dos campos de ID em texto para a action: sem espaço nas pontas e sem linha vazia (o servidor valida cada ID). */
+const textoDosIdsPix = (linhas: readonly string[]) => linhas.map(l => l.trim()).filter(Boolean).join(', ')
+
 export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -63,14 +66,15 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
   // significa "mantém o que está lá".
   const [mcpaiEndpointUrl, setMcpaiEndpointUrl] = useState('')
   const [mcpaiRemover, setMcpaiRemover] = useState(false)
-  const idsPixSalvos = (inicial?.mcpaiContasPixIds ?? []).join(', ')
-  const [mcpaiContasPix, setMcpaiContasPix] = useState(idsPixSalvos)
+  const idsPixSalvos = inicial?.mcpaiContasPixIds ?? []
+  const [linhasPix, setLinhasPix] = useState(idsPixSalvos)
   // O diálogo segue montado quando a lista é recarregada depois do Salvar: sem acompanhar a prop, reabrir mostraria
   // os ids antigos e o próximo Salvar desfaria a liberação (ajuste de estado durante o render, como a doc do React).
-  const [idsPixVistos, setIdsPixVistos] = useState(idsPixSalvos)
-  if (idsPixVistos !== idsPixSalvos) {
-    setIdsPixVistos(idsPixSalvos)
-    setMcpaiContasPix(idsPixSalvos)
+  // Compara pelo texto porque a prop chega como array novo a cada render; id não tem vírgula (lerIdsContasPix).
+  const [idsPixVistos, setIdsPixVistos] = useState(idsPixSalvos.join(','))
+  if (idsPixVistos !== idsPixSalvos.join(',')) {
+    setIdsPixVistos(idsPixSalvos.join(','))
+    setLinhasPix(idsPixSalvos)
   }
   // Como o mcp.ai: começa vazio, vazio mantém, remover apaga ao salvar.
   const [mpToken, setMpToken] = useState('')
@@ -89,7 +93,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
   // colada, remoção marcada, recusa) não pode valer na próxima.
   function mudarAberto(aberto: boolean) {
     if (!aberto) {
-      setMcpaiEndpointUrl(''); setMcpaiRemover(false); setMcpaiContasPix(idsPixSalvos)
+      setMcpaiEndpointUrl(''); setMcpaiRemover(false); setLinhasPix(idsPixSalvos)
       setMpToken(''); setMpRemover(false)
       setErro(null)
     }
@@ -120,7 +124,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
       // As actions devolvem a recusa como valor: lançada, ela some no build de produção (#404).
       const r = modo === 'criar'
         ? await criarGrupoAction({ ...dados, contaId: contaId || null })
-        : await editarGrupoAction(inicial!.id, { ...dados, mpToken, mpRemover, mcpaiContasPix: chavePropria ? mcpaiContasPix : '' })
+        : await editarGrupoAction(inicial!.id, { ...dados, mpToken, mpRemover, mcpaiContasPix: chavePropria ? textoDosIdsPix(linhasPix) : '' })
       if (!r.ok) {
         setErro(r.erro)
         return
@@ -296,18 +300,39 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                 </div>
                 {modo === 'editar' && (
                   <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="grupo-mcpai-contas-pix" className="text-xs">IDs de outras contas do Open Finance</Label>
-                    <Input
-                      id="grupo-mcpai-contas-pix"
-                      value={mcpaiContasPix}
-                      onChange={e => setMcpaiContasPix(e.target.value)}
-                      placeholder="Separe por vírgula"
-                      className="h-9 text-sm"
-                      disabled={!chavePropria}
-                    />
+                    <Label id="grupo-mcpai-contas-pix-rotulo" className="text-xs">IDs de outras contas do Open Finance</Label>
+                    <div role="group" aria-labelledby="grupo-mcpai-contas-pix-rotulo" className="space-y-2">
+                      {linhasPix.map((id, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <Input
+                            id={`grupo-mcpai-contas-pix-${i}`}
+                            aria-label={`ID da conta ou da credencial ${i + 1}`}
+                            value={id}
+                            onChange={e => setLinhasPix(linhas => linhas.map((l, j) => (j === i ? e.target.value : l)))}
+                            placeholder="ID da conta ou da credencial"
+                            className="h-9 min-w-0 flex-1 text-sm"
+                            disabled={!chavePropria}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label={`Remover ID ${i + 1}`}
+                            onClick={() => setLinhasPix(linhas => linhas.filter((_, j) => j !== i))}
+                            disabled={!chavePropria}
+                          >
+                            <X />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setLinhasPix(linhas => [...linhas, ''])} disabled={!chavePropria}>
+                        <Plus />
+                        Adicionar conta ou credencial
+                      </Button>
+                    </div>
                     <p className="text-[11px] text-muted-foreground">
                       {chavePropria
-                        ? 'Contas de outro CNPJ do mesmo dono. Entram só na tela PIX; Despesas e saldos não mudam.'
+                        ? 'Aceita o ID da conta ou da credencial (a conexão com o banco; só as contas correntes dela entram). Contas de outro CNPJ do mesmo dono. Entram só na tela PIX; Despesas, saldos e cartões não mudam.'
                         : 'Precisa da chave própria do mcp.ai deste grupo. Sem ela não dá para liberar outras contas.'}
                     </p>
                   </div>

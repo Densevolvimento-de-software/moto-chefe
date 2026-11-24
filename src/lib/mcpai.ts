@@ -263,7 +263,7 @@ async function listarTransacoesBrutas(dataInicio: Date, dataFim: Date, cnpjGrupo
 
     const contasPayload = JSON.parse(contasConteudo) as {
       results?: Array<{
-        id: string; bank?: string | null; marketingName?: string | null; name?: string | null
+        id: string; item_id?: string; bank?: string | null; marketingName?: string | null; name?: string | null
         subtype: string; taxNumber: string
       }>
     }
@@ -275,7 +275,7 @@ async function listarTransacoesBrutas(dataInicio: Date, dataFim: Date, cnpjGrupo
     // ponto foi o que sumiu com a Sicredi do Sul de Minas das despesas.
     // Na origem 'despesas' a liberação chega com ids [] (ver acima): contaEntraNoPix vira só o filtro de CNPJ do grupo.
     const contas = (contasPayload.results ?? [])
-      .filter(c => c.subtype !== 'SAVINGS_ACCOUNT' && contaEntraNoPix({ id: c.id, doCnpjDoGrupo: mesmoCnpj(c.taxNumber, cnpjGrupo) }, liberacao))
+      .filter(c => c.subtype !== 'SAVINGS_ACCOUNT' && contaEntraNoPix({ id: c.id, itemId: c.item_id, subtype: c.subtype, doCnpjDoGrupo: mesmoCnpj(c.taxNumber, cnpjGrupo) }, liberacao))
       .map(c => ({ ...c, bank: nomeDaConta(c) }))
 
     const inicioMs = dataInicio.getTime()

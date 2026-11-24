@@ -6,13 +6,20 @@ export type LiberacaoPix = { chavePropria: boolean; ids: readonly string[] }
 /**
  * A conta entra no PIX? Do CNPJ do grupo, sempre; de outro CNPJ, só com id liberado E chave própria do
  * mcp.ai: na chave global da env (de outra empresa) o id liberado não vale, nem que esteja gravado.
+ * O id liberado pode ser o da conta ou o da credencial dela (`itemId`, a conexão com o banco; #253). Pela
+ * credencial entra só conta corrente: outro tipo de conta da mesma conexão fica fora.
  */
-export function contaEntraNoPix(conta: { id: string; doCnpjDoGrupo: boolean }, liberacao: LiberacaoPix): boolean {
-  return conta.doCnpjDoGrupo || (liberacao.chavePropria && liberacao.ids.includes(conta.id))
+export function contaEntraNoPix(
+  conta: { id: string; itemId?: string; subtype?: string; doCnpjDoGrupo: boolean },
+  liberacao: LiberacaoPix,
+): boolean {
+  const pelaConta = liberacao.ids.includes(conta.id)
+  const pelaCredencial = conta.itemId !== undefined && conta.subtype === 'CHECKING_ACCOUNT' && liberacao.ids.includes(conta.itemId)
+  return conta.doCnpjDoGrupo || (liberacao.chavePropria && (pelaConta || pelaCredencial))
 }
 
 const MAX_IDS = 20
-// Formato real do id do mcp.ai não conferido: aceita só o que não quebra a leitura (letra, número, ponto, - e _).
+// Vale para o id da conta e o da credencial (#253). Formato real do mcp.ai não conferido: aceita só o que não quebra a leitura (letra, número, ponto, - e _).
 const ID_VALIDO = /^[A-Za-z0-9_.-]{1,100}$/
 
 export type IdsContasPix = { ok: true; ids: string[] } | { ok: false; erro: string }
