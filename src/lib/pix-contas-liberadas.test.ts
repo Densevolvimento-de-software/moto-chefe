@@ -67,3 +67,11 @@ test('idsContasPixDoPedido: campo ausente não mexe; vazio apaga; remover a chav
   assert.equal(idsContasPixDoPedido({ texto: 'a1', jaTinha: false, chaveNova: false, remover: false }).ok, false)
   assert.deepEqual(idsContasPixDoPedido({ texto: 'a1', jaTinha: false, chaveNova: true, remover: false }), { ok: true, ids: ['a1'] })
 })
+
+test('idsContasPixDoPedido: valor que não é texto (pedido forjado) é recusado, não lança', () => {
+  const base = { jaTinha: true, chaveNova: false, remover: false }
+  for (const forjado of [42, null, { a: 1 }, ['a1'], true]) {
+    const r = idsContasPixDoPedido({ texto: forjado as unknown as string, ...base })
+    assert.equal(r.ok, false, `valor ${JSON.stringify(forjado)} devia ser recusado`)
+  }
+})

@@ -47,11 +47,13 @@ export function idsContasPixParaGravar(o: { texto: string; chavePropriaAposSalva
  * lista = substituir (vazia apaga). Remover a chave apaga os ids junto: eles valem só com a chave que os listou.
  */
 export function idsContasPixDoPedido(o: {
-  texto: string | undefined
+  // `unknown`: o campo vem do navegador (Server Action) e o tipo declarado não vale em execução.
+  texto: unknown
   jaTinha: boolean
   chaveNova: boolean
   remover: boolean
 }): { ok: true; ids: string[] | undefined } | { ok: false; erro: string } {
   if (o.texto === undefined) return { ok: true, ids: o.remover ? [] : undefined }
+  if (typeof o.texto !== 'string') return { ok: false, erro: 'Lista de IDs de conta inválida.' }
   return idsContasPixParaGravar({ texto: o.texto, chavePropriaAposSalvar: chavePropriaAposSalvar(o) })
 }

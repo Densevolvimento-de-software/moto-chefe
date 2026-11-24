@@ -318,3 +318,16 @@ test('id com caractere inválido é recusado e nada grava', async () => {
   assert.equal(r.ok, false)
   assert.deepEqual(await idsPix(a.grupoId), [])
 })
+
+test('pedido forjado: ids que não são texto (número, nulo, objeto, lista) voltam como recusa e nada grava', async () => {
+  const a = await conta('A')
+  comoAdmin(a)
+  await comChavePropria(a.grupoId)
+  await editar(a.grupoId, { mcpaiContasPix: 'conta-1' })
+  const valor = <T,>(p: Promise<T>) => p.catch((e: Error) => ({ lancou: e.message }))
+  for (const forjado of [42, null, { a: 1 }, ['conta-9']]) {
+    const r = await valor(editar(a.grupoId, { mcpaiContasPix: forjado }))
+    assert.equal((r as { ok?: boolean }).ok, false, `valor ${JSON.stringify(forjado)}: ${JSON.stringify(r)}`)
+  }
+  assert.deepEqual(await idsPix(a.grupoId), ['conta-1'])
+})
