@@ -11,7 +11,7 @@ export type TransacaoCartao = {
   valorBruto: number
   valorLiquido?: number
   parcelas: number
-  // 'pix' (LINHA_PIX) só vem da maquininha Mercado Pago (#51): o Pix dela é conciliado aqui, não em /pix-mcp.
+  // 'pix' (LINHA_PIX) vem da maquininha Mercado Pago (#51) e do relatório de PIX da InfinitePay (#237): o Pix delas é conciliado aqui, não em /pix-mcp.
   tipo: 'credito' | 'debito' | typeof LINHA_PIX
   status: string
   rawData?: Record<string, unknown>
@@ -73,7 +73,7 @@ export function chaveDedup(t: TransacaoCartao): { campo: 'nsu' | 'id'; valor: st
 }
 
 // Rótulos da linha da conciliação de cartão: a lista (curto) e a sugestão do painel de pagamentos.
-// O tipo 'pix' é o Pix da maquininha Mercado Pago (#51).
+// O tipo 'pix' é o Pix da maquininha Mercado Pago (#51) ou da InfinitePay (#237).
 export function rotuloCurtoDaLinha(tipo: string, parcelas: number): string {
   if (tipo === 'credito') return `Cré ${parcelas}x`
   return tipo === LINHA_PIX ? 'PIX' : 'Déb'
