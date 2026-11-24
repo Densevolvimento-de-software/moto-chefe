@@ -220,6 +220,12 @@ test('Editar mostra os ids atuais logo abaixo da URL do mcp.ai e envia o texto e
   assert.equal(api.editar.mock.calls[0].arguments[1].mcpaiContasPix, 'conta-1, conta-2, conta-3')
 })
 
+// #253: o campo aceita o id da conta ou o da credencial (a conexão com o banco).
+test('com chave própria, a ajuda do campo diz que aceita o id da conta ou da credencial', async () => {
+  await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.match(textoDaTela(), /ID da conta ou da credencial/)
+})
+
 test('grupo sem chave própria: o campo fica desligado e explica; colar a chave liga', async () => {
   const t = await montar({ modo: 'editar', inicial: GRUPO })
   assert.equal(campoPix()?.disabled, true)

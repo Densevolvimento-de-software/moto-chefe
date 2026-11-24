@@ -301,13 +301,13 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                       id="grupo-mcpai-contas-pix"
                       value={mcpaiContasPix}
                       onChange={e => setMcpaiContasPix(e.target.value)}
-                      placeholder="Separe por vírgula"
+                      placeholder="ID da conta ou da credencial, separados por vírgula"
                       className="h-9 text-sm"
                       disabled={!chavePropria}
                     />
                     <p className="text-[11px] text-muted-foreground">
                       {chavePropria
-                        ? 'Contas de outro CNPJ do mesmo dono. Entram só na tela PIX; Despesas e saldos não mudam.'
+                        ? 'Aceita o ID da conta ou da credencial (a conexão com o banco; só as contas correntes dela entram). Contas de outro CNPJ do mesmo dono. Entram só na tela PIX; Despesas, saldos e cartões não mudam.'
                         : 'Precisa da chave própria do mcp.ai deste grupo. Sem ela não dá para liberar outras contas.'}
                     </p>
                   </div>
