@@ -1,16 +1,15 @@
 import { notFound } from 'next/navigation'
-import { buscarVenda } from '@/lib/queries/vendas'
+import { buscarVendaDoCertificado } from '@/lib/queries/certificado-bateria'
 import { getUsuarioLogado } from '@/lib/auth'
-import { podeAgirNaLoja } from '@/lib/acesso-registro'
 import { PrintTrigger } from '@/components/print-trigger'
 import { rotuloDocumento } from '@/lib/documento'
 
 export default async function CertificadoBateriaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const [venda, usuario] = await Promise.all([buscarVenda(id), getUsuarioLogado()])
+  const usuario = await getUsuarioLogado()
+  // Venda de outra Conta ou loja, fora da regra "loja MotoChefe" e id inexistente: o mesmo notFound.
+  const venda = await buscarVendaDoCertificado(id, usuario)
   if (!venda) notFound()
-
-  if (!(await podeAgirNaLoja(usuario, venda.lojaId))) notFound()
 
   return (
     <>
