@@ -27,8 +27,8 @@ test('Pix negada fica de fora (sem vermelho: o filtro de status já valia)', () 
   assert.deepEqual(ler(pixInfinitePay({ 'Status': 'Negada' })), [])
 })
 
-test('outro meio (Dinheiro) segue de fora (sem vermelho: já valia)', () => {
-  assert.deepEqual(ler(pixInfinitePay({ 'Meio - Meio': 'Dinheiro' })), [])
+test('meio desconhecido segue de fora (sem vermelho: já valia)', () => {
+  assert.deepEqual(ler(pixInfinitePay({ 'Meio - Meio': 'Outro meio' })), [])
 })
 
 test('crédito à vista, crédito parcelado e débito saem como antes (sem vermelho: já valia)', () => {

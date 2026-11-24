@@ -7,7 +7,7 @@ import { LINHA_PIX, type TransacaoCartao } from '@/lib/conciliacao-cartao'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
 
 // A InfinitePay exporta o PIX num relatório separado, com o mesmo cabeçalho do cartão e Meio = "Pix" (#237).
-// Meio fora desta lista (Dinheiro...) não é venda de maquininha para conciliar.
+// Meio fora desta lista segue descartado, como sempre foi.
 const TIPO_DO_MEIO = new Map<string, TransacaoCartao['tipo']>([['Crédito', 'credito'], ['Débito', 'debito'], ['Pix', LINHA_PIX]])
 
 function parseCSVLine(line: string): string[] {
