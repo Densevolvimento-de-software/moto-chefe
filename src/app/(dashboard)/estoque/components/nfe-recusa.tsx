@@ -12,6 +12,8 @@ import { fraseDaRecusa, telaDaRecusa, type GrupoCorrecao } from '@/lib/notagatew
 import { camposFaltando, type DadosRenave, type OrigemRenave } from '@/lib/notagateway/veiculo'
 import type { CorrecaoNf } from '@/lib/notagateway/correcao'
 import type { NotaResumo, PreviaNfe } from '../../vendas/nfe-propria-actions'
+import { compradorParaDifal, vendaExigeDifal, type EntradaDifal } from '@/lib/notagateway/difal'
+import { DifalForm } from './difal-form'
 import { RenaveForm } from './renave-form'
 
 type Previa = Extract<PreviaNfe, { ok: true }>
@@ -27,9 +29,11 @@ type Props = {
   renave: DadosRenave | null
   renaveOrigem: OrigemRenave
   onRenave: (atualizar: (prev: DadosRenave) => DadosRenave) => void
-  /** Venda que exige o DIFAL e a alíquota interna ainda não foi digitada: o reenvio espera (#247). */
-  faltaDifal: boolean
-  onSalvarEReenviar: (c: CorrecaoNf) => void
+  /** DIFAL digitado no painel. Quem pede é esta tela, pelo comprador como ele está sendo corrigido (#247). */
+  difal: EntradaDifal
+  onDifal: (atualizar: (prev: EntradaDifal) => EntradaDifal) => void
+  /** O segundo argumento é o DIFAL, só quando a venda corrigida o exige. */
+  onSalvarEReenviar: (c: CorrecaoNf, difal: EntradaDifal | null) => void
   /** Volta à conferência para emitir de novo, sem correção aqui. */
   onEmitirDeNovo: () => void
   onVoltar: () => void
@@ -40,7 +44,7 @@ type Props = {
  * "E o número N?", "O que fazer" quando couber, e o código só em "Detalhes técnicos".
  * A correção grava no cadastro de origem e a nota é remontada dele.
  */
-export function NfeRecusa({ nota, previa, pending, erro, renave, renaveOrigem, onRenave, faltaDifal, onSalvarEReenviar, onEmitirDeNovo, onVoltar }: Props) {
+export function NfeRecusa({ nota, previa, pending, erro, renave, renaveOrigem, onRenave, difal, onDifal, onSalvarEReenviar, onEmitirDeNovo, onVoltar }: Props) {
   const tela = telaDaRecusa(nota, previa.exigeRenave)
   const bloqueada = tela.tipo === 'denegada_cliente' || tela.tipo === 'denegada_empresa' || tela.tipo === 'denegada'
   const n = nota.numero
@@ -57,6 +61,17 @@ export function NfeRecusa({ nota, previa, pending, erro, renave, renaveOrigem, o
   })
 
   const faltamRenave = renave ? camposFaltando(renave).length : 0
+  // A correção pode trocar a UF ou o indicador do comprador, e o DIFAL depende dos dois: recalcula com o que está na tela.
+  const corrigido = compradorParaDifal({
+    clienteEstado: comprador.clienteEstado,
+    clienteIndicadorIe: tela.tipo === 'denegada_cliente' ? ie.indicador : comprador.clienteIndicadorIe,
+  })
+  const exigeDifal = previa.ufEmitente
+    ? vendaExigeDifal({ ufEmitente: previa.ufEmitente, cliente: { indicadorIe: corrigido.indicadorIe, endereco: { uf: corrigido.uf } } })
+    : previa.exigeDifal
+  const pedeDifal = exigeDifal && (tela.tipo === 'corrigir' || tela.tipo === 'denegada_cliente')
+  const faltaDifal = pedeDifal && !difal.aliquotaInterna.trim()
+  const reenviar = (c: CorrecaoNf) => onSalvarEReenviar(c, pedeDifal ? difal : null)
   const corrigidos = emLista([
     `a venda nº ${previa.vendaNumero}`,
     ...(previa.ficha ? ['a ficha fiscal da moto'] : []),
@@ -186,6 +201,8 @@ export function NfeRecusa({ nota, previa, pending, erro, renave, renaveOrigem, o
         </div>
       )}
 
+      {pedeDifal && <DifalForm dados={difal} onChange={onDifal} />}
+
       {erro && <p role="alert" className="border-l-2 border-l-destructive pl-3 text-sm text-destructive">{erro}</p>}
 
       <details className="text-xs text-muted-foreground">
@@ -196,13 +213,13 @@ export function NfeRecusa({ nota, previa, pending, erro, renave, renaveOrigem, o
       <div className="space-y-2">
         {tela.tipo === 'corrigir' && (
           <>
-            <Button onClick={() => onSalvarEReenviar(correcao())} disabled={pending || faltamRenave > 0 || faltaDifal} className="h-11 w-full">Salvar e reenviar{n ? ` nº ${n}` : ''}</Button>
+            <Button onClick={() => reenviar(correcao())} disabled={pending || faltamRenave > 0 || faltaDifal} className="h-11 w-full">Salvar e reenviar{n ? ` nº ${n}` : ''}</Button>
             <Button variant="outline" onClick={onVoltar} className="h-11 w-full">Fechar</Button>
           </>
         )}
         {tela.tipo === 'denegada_cliente' && (
           <>
-            <Button onClick={() => onSalvarEReenviar(correcaoIe())} disabled={pending || !ie.indicador || faltaDifal} className="h-11 w-full">Salvar e emitir a nova nota</Button>
+            <Button onClick={() => reenviar(correcaoIe())} disabled={pending || !ie.indicador || faltaDifal} className="h-11 w-full">Salvar e emitir a nova nota</Button>
             <Button variant="outline" onClick={onVoltar} className="h-11 w-full">Fechar</Button>
           </>
         )}

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { mascararTrechos, varrerArquivo } from './postman-ng'
+import { mascarar, mascararTrechos, varrerArquivo } from './postman-ng'
 
 const TOKEN = 'tok3n-super-secreto-123'
 const EMPRESA = '9f1c2b3a-4d5e-6f70-8192-a3b4c5d6e7f8'
@@ -56,4 +56,12 @@ test('varrerArquivo em log limpo não mexe no arquivo', () => {
   const antes = statSync(arq).mtimeMs
   assert.equal(varrerArquivo(arq, [EMPRESA]), 0)
   assert.equal(statSync(arq).mtimeMs, antes)
+})
+
+test('mascarar não devolve nenhum caractere do valor, qualquer que seja o tamanho (#250)', () => {
+  for (const valor of ['', 'abc', 'abcdefgh', 'abcdefghi', EMPRESA, TOKEN]) {
+    const m = mascarar(valor)
+    assert.equal(m, '****', `valor de ${valor.length} caracteres`)
+    for (const c of new Set(valor)) assert.ok(!m.includes(c), `o caractere "${c}" vazou`)
+  }
 })

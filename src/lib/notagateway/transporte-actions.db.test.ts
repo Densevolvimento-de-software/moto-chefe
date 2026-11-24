@@ -519,7 +519,10 @@ test('a prévia diz que pede o DIFAL só na venda interestadual a não contribui
   const sp = await fixture(false, {}, 'autopropelido', PARA_SP)
   user = sp.user
   network(sp)
-  assert.equal((await previaOk(sp.motoId)).exigeDifal, true)
+  const daSp = await previaOk(sp.motoId)
+  assert.equal(daSp.exigeDifal, true)
+  // A tela da recusa recalcula a exigência com o comprador corrigido: precisa da UF do emitente.
+  assert.equal(daSp.ufEmitente, 'MG')
   const mg = await fixture(false, {}, 'autopropelido', { aliquotaInterestadual: '4.00' })
   user = mg.user
   network(mg)

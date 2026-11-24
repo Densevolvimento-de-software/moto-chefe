@@ -1,5 +1,5 @@
 import { centavos } from '@/lib/centavos'
-import type { IndicadorIe } from '@/lib/documento'
+import { isIndicadorIe, type IndicadorIe } from '@/lib/documento'
 import { parseNumeroBR } from '@/lib/numero-br'
 
 /**
@@ -40,6 +40,12 @@ export function exigeDifal(o: { interestadual: boolean; indicadorIe: IndicadorIe
 
 /** O que decide se a venda leva DIFAL: a UF do emitente e a UF e o indicador do comprador. */
 export type VendaParaDifal = { ufEmitente: string; cliente: { indicadorIe?: IndicadorIe | null; endereco: { uf: string } } }
+
+/** UF e indicador do comprador como a nota os lê. A tela da recusa e o servidor usam este mesmo cálculo (#247). */
+export const compradorParaDifal = (v: { clienteEstado?: string | null; clienteIndicadorIe?: string | null }) => ({
+  indicadorIe: v.clienteIndicadorIe && isIndicadorIe(v.clienteIndicadorIe) ? v.clienteIndicadorIe : null,
+  uf: (v.clienteEstado ?? '').trim().toUpperCase(),
+})
 
 export const ehInterestadual = (v: VendaParaDifal) => v.cliente.endereco.uf.toUpperCase() !== v.ufEmitente.toUpperCase()
 
