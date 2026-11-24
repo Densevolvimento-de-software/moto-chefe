@@ -1,5 +1,8 @@
 # Catálogo de Serviços — Design
 
+> Nota (hotfix #228): criar, editar, inativar e reativar serviços é só do `admin_geral`. Listar
+> continua para `GESTORES`. As regras de permissão abaixo são da versão original (jul/2026).
+
 ## Contexto
 
 Hoje, ao montar os itens de uma OS (`os_itens`), quem monta digita a

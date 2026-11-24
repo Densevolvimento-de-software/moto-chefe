@@ -1,5 +1,6 @@
 'use server'
 import { getUsuarioLogado } from '@/lib/auth'
+import { exigirAdminGeral } from '@/lib/admin-geral'
 import { db } from '@/lib/db'
 import { servicosCatalogo } from '@/lib/db/schema'
 import { eq, asc } from 'drizzle-orm'
@@ -28,7 +29,7 @@ export async function listarServicosAction(params?: { apenasAtivos?: boolean }) 
 }
 
 export async function criarServicoAction(input: ServicoInput) {
-  await verificarAcesso()
+  await exigirAdminGeral()
   const nome = input.nome.trim()
   if (!nome) throw new Error('Nome é obrigatório')
   if (input.valor < 0) throw new Error('Valor não pode ser negativo')
@@ -44,7 +45,7 @@ export async function criarServicoAction(input: ServicoInput) {
 }
 
 export async function atualizarServicoAction(id: string, input: ServicoInput) {
-  await verificarAcesso()
+  await exigirAdminGeral()
   const nome = input.nome.trim()
   if (!nome) throw new Error('Nome é obrigatório')
   if (input.valor < 0) throw new Error('Valor não pode ser negativo')
@@ -60,7 +61,7 @@ export async function atualizarServicoAction(id: string, input: ServicoInput) {
 }
 
 export async function inativarServicoAction(id: string) {
-  await verificarAcesso()
+  await exigirAdminGeral()
   await db.update(servicosCatalogo)
     .set({ ativo: false, atualizadoEm: new Date() })
     .where(eq(servicosCatalogo.id, id))
@@ -68,7 +69,7 @@ export async function inativarServicoAction(id: string) {
 }
 
 export async function reativarServicoAction(id: string) {
-  await verificarAcesso()
+  await exigirAdminGeral()
   await db.update(servicosCatalogo)
     .set({ ativo: true, atualizadoEm: new Date() })
     .where(eq(servicosCatalogo.id, id))

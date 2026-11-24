@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { inativarServicoAction, reativarServicoAction } from '../actions'
 
-export function ServicoAtivoToggle({ id, ativo }: { id: string; ativo: boolean }) {
+export function ServicoAtivoToggle({ id, ativo, podeGerir }: { id: string; ativo: boolean; podeGerir: boolean }) {
   const [pending, start] = useTransition()
 
   function toggle() {
@@ -18,11 +18,16 @@ export function ServicoAtivoToggle({ id, ativo }: { id: string; ativo: boolean }
     })
   }
 
+  const selo = (
+    <Badge variant={ativo ? 'default' : 'outline'}>
+      {pending ? '...' : ativo ? 'Ativo' : 'Inativo'}
+    </Badge>
+  )
+  if (!podeGerir) return selo
+
   return (
     <button onClick={toggle} disabled={pending} className="disabled:opacity-50" title={ativo ? 'Clique para inativar' : 'Clique para reativar'}>
-      <Badge variant={ativo ? 'default' : 'outline'}>
-        {pending ? '...' : ativo ? 'Ativo' : 'Inativo'}
-      </Badge>
+      {selo}
     </button>
   )
 }
