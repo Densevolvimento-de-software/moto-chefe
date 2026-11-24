@@ -1,6 +1,7 @@
 import { agruparEmFaturas, type Fatura, type FaturaBruta, type LancamentoBruto } from './cartao-fatura'
 import { credencialMcpDoGrupo, endpointMcpDoGrupo } from './mcpai-credencial'
 import { contaEntraNoPix } from './pix-contas-liberadas'
+import { montarRotulos, type ContaDaChave, type RotuloConta } from './rotulos-contas-mcp'
 import { saidaEntraNaDespesa, type ContaLiberadaDespesa } from './despesa-contas-liberadas'
 import { lerTodasAsPaginas, vaziaSuspeita, type BuscaPagina } from './paginacao-mcpai'
 
@@ -725,5 +726,39 @@ export async function buscarFaturasCartao(cnpjGrupo: string): Promise<ResultadoC
     return { ok: true, cartoes }
   } catch (e) {
     return { ok: false, erro: e instanceof Error ? e.message : 'Erro ao conectar com o mcp.ai' }
+  }
+}
+
+type ResultadoRotulos = { ok: true; rotulos: RotuloConta[] } | { ok: false; erro: string }
+
+const FALHA_AO_ROTULAR = 'Não foi possível consultar o mcp.ai agora.'
+
+type ContaBruta = { id: string; item_id?: string; subtype?: string; bank?: string | null; marketingName?: string | null; name?: string | null }
+
+/** Só o que o rótulo usa: o resto da conta (número, agência, CNPJ) fica para trás já aqui, na fronteira. */
+const paraContaDaChave = (lista: ContaDaChave['lista']) => (c: ContaBruta): ContaDaChave => ({
+  // Sem o marketingName: em Londrina ele é "Agência: … | Conta: …" e iria para a tela.
+  id: c.id, itemId: c.item_id, subtype: c.subtype ?? '', banco: nomeDaConta({ bank: c.bank, name: c.name }), lista,
+})
+
+/**
+ * O que a chave do mcp.ai enxerga, em rótulos para a tela de Editar Grupo (#253). Ler BANK e CREDIT em
+ * sequência, nunca juntas: respostas simultâneas na mesma sessão chegam cruzadas (ver buscarFaturasCartao).
+ * Qualquer falha vira a frase genérica: a URL da chave carrega o segredo e o erro do mcp.ai não sobe para a tela.
+ */
+export async function rotulosDasContasDaChave(url: string): Promise<ResultadoRotulos> {
+  try {
+    const sessao = await abrirSessaoMcp(url)
+    if (!sessao.ok) return { ok: false, erro: FALHA_AO_ROTULAR }
+    const bank = payloadDe(await listarContasMcp(url, sessao.sessionId, 'BANK')) as { results?: ContaBruta[] } | null
+    const credit = payloadDe(await listarContasMcp(url, sessao.sessionId, 'CREDIT')) as { results?: ContaBruta[] } | null
+    if (!bank || !credit) return { ok: false, erro: FALHA_AO_ROTULAR }
+    const contas = [
+      ...(bank.results ?? []).map(paraContaDaChave('BANK')),
+      ...(credit.results ?? []).map(paraContaDaChave('CREDIT')),
+    ]
+    return { ok: true, rotulos: montarRotulos(contas) }
+  } catch {
+    return { ok: false, erro: FALHA_AO_ROTULAR }
   }
 }
