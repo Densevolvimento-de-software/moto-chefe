@@ -16,7 +16,7 @@ Venda interestadual para consumidor final que não contribui com ICMS leva o gru
   - `valorUFOrigemDifal`: "Valor do ICMS Interestadual para a UF de Origem";
   - `aliquotaInterestadualDifal`: "Alíquota Interestadual do DIFAL";
   - `baseCalculoFundoCombatePobrezaDifal`, `percentualFCPDifal`, `valorFCPDifal`: base, percentual e valor do FCP do DIFAL.
-- `percentualPartilhaInterestadualDifal` **não está no manual nem na página**. O nome vem do JSON que o Hermes consultou da nota 2820 (série 1) em 24/11/2026. O MOVA manda 100 (partilha toda para o destino).
+- `percentualPartilhaInterestadualDifal` **não está no manual nem na página**. O nome vem do JSON de uma nota que o suporte da NG (Hermes) consultou em 24/11/2026. O MOVA manda 100 (partilha toda para o destino).
 
 ## O que a doc NÃO diz
 
