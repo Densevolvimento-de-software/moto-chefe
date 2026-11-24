@@ -15,7 +15,8 @@ import type { RegraSaida } from '../../src/lib/notagateway/payload'
 
 export type Regra = { [K in keyof RegraSaida]: RegraSaida[K] }
 
-export const mascarar = (s: string) => (s.length <= 8 ? '****' : `${s.slice(0, 4)}…${s.slice(-4)}`)
+// Nenhum caractere do valor sai daqui: nem começo nem fim, nem o tamanho (#250).
+export const mascarar = (_valor: string) => '****'
 
 // Trecho menor que isso não se distingue de texto comum; maior já não pode aparecer.
 const MINIMO_TRECHO = 8
