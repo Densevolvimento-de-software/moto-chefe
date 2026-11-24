@@ -7,7 +7,7 @@ import { RENAVE_COMPLETO_FATURAMENTO_DIRETO } from '@/test/renave-completo'
 import type { DadosTransporte } from '@/lib/notagateway/transporte'
 import type { NotaResumo } from '../../vendas/nfe-propria-actions'
 import { montarDom } from '@/test/montar-dom'
-import { clicar, digitarTexto } from '@/test/eventos-dom'
+import { clicar, digitar, digitarTexto } from '@/test/eventos-dom'
 
 const { dom, desmontar } = montarDom()
 after(desmontar)
@@ -26,6 +26,7 @@ const preview: Extract<PreviaNfe, { ok: true }> = {
   ficha: { xProd: 'Ciclomotor de teste', ncm: '87116000', cest: '', unidade: 'UN', origem: '0' },
   sugestao: { xProd: 'Ciclomotor de teste', ncm: '87116000', cest: '', unidade: 'UN', origem: '0' },
   exigeRenave: true,
+  exigeDifal: false,
   renave: {
     ...RENAVE_COMPLETO_FATURAMENTO_DIRETO,
   },
@@ -144,7 +145,7 @@ test('o envio inicial leva a modalidade escolhida e a entrega que veio do compra
   await act(async () => conferi.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
   await click(/Transmitir teste/)
 
-  assert.deepEqual(chamadas, [['moto-teste', RENAVE_COMPLETO_FATURAMENTO_DIRETO, { modalidade: modalidade4, enderecoEntrega: entregaDoComprador }, null]])
+  assert.deepEqual(chamadas, [['moto-teste', RENAVE_COMPLETO_FATURAMENTO_DIRETO, { modalidade: modalidade4, enderecoEntrega: entregaDoComprador }, null, null]])
 })
 
 test('reabrir a recusa mostra o transporte do envio anterior e o reenvio leva o que o operador deixar', async () => {
@@ -326,4 +327,48 @@ test('reabrir a recusa traz a observação editada do envio anterior e o reenvio
   await click(/^Salvar e reenviar/)
   assert.equal(chamadas.length, 1)
   assert.equal(chamadas[0][4], 'EDITADO ANTES')
+})
+
+// #247: venda para outro estado a não contribuinte pede a alíquota interna do destino e o FCP.
+const campoDifal = (container: Element, id: 'aliquotaInterna' | 'fcp') => container.querySelector<HTMLInputElement>(`input#difal-${id}`)
+
+test('venda que exige DIFAL: o botão de transmitir espera a alíquota interna e a action recebe o que foi digitado (#247)', async () => {
+  const chamadas: unknown[][] = []
+  acoes = { ...acoes, previsualizarNfePropriaAction: async () => ({ ...previaSemRenave, exigeDifal: true }),
+    transmitirNfePropriaAction: async (...args: unknown[]) => { chamadas.push(args); return { ok: true } } }
+  const { container, click } = await abrirPainel()
+  await marcarConferido(container)
+  assert.equal(botao(container, /Transmitir teste/)?.disabled, true)
+  assert.match(textoDaTela(container), /Informe a alíquota interna do estado do comprador antes de transmitir/)
+  await digitar(campoDifal(container, 'aliquotaInterna')!, '12')
+  await digitar(campoDifal(container, 'fcp')!, '2')
+  assert.equal(botao(container, /Transmitir teste/)?.disabled, false)
+  await click(/Transmitir teste/)
+  assert.deepEqual(chamadas[0][4], { aliquotaInterna: '12', fcp: '2' })
+})
+
+test('venda que não exige DIFAL: nenhum campo na tela e a action não recebe DIFAL (#247)', async () => {
+  const chamadas: unknown[][] = []
+  acoes = { ...acoes, previsualizarNfePropriaAction: async () => previaSemRenave,
+    transmitirNfePropriaAction: async (...args: unknown[]) => { chamadas.push(args); return { ok: true } } }
+  const { container, click } = await abrirPainel()
+  assert.equal(campoDifal(container, 'aliquotaInterna'), null)
+  assert.equal(campoDifal(container, 'fcp'), null)
+  await marcarConferido(container)
+  await click(/Transmitir teste/)
+  assert.equal(chamadas[0][4], null)
+})
+
+test('recusa 697 de venda que exige DIFAL: os campos aparecem, o salvar e reenviar espera a alíquota e leva o digitado (#247)', async () => {
+  const chamadas: unknown[][] = []
+  const recusa697: NotaResumo = { ...recusa478, motivoStatus: '697 - Rejeição: alíquota interestadual inválida' }
+  acoes = { ...acoes, previsualizarNfePropriaAction: async () => ({ ...previaSemRenave, exigeDifal: true, notas: [recusa697] }),
+    corrigirEReenviarNfAction: async (...args: unknown[]) => { chamadas.push(args); return { ok: true } } }
+  const { container, click } = await abrirPainel()
+  assert.equal(botao(container, /^Salvar e reenviar/)?.disabled, true)
+  await digitar(campoDifal(container, 'aliquotaInterna')!, '12,5')
+  assert.equal(botao(container, /^Salvar e reenviar/)?.disabled, false)
+  await click(/^Salvar e reenviar/)
+  assert.equal(chamadas.length, 1)
+  assert.deepEqual(chamadas[0][5], { aliquotaInterna: '12,5', fcp: '' })
 })
