@@ -386,3 +386,45 @@ test('aprovação de edição de peça pela action: aux_adm não aprova (barreir
   assert.equal(status.status, 'pendente')
   assert.deepEqual(await pagamentosDe('vendas_pecas', sql`id = ${venda}`), [[PIX_FORCADO, CARTAO]])
 })
+
+// Troca de vendedor depois da venda: só os sócios (admin_geral e admin_socio). O vendedor decide a
+// comissão. A tela manda sempre o vendedor atual, então mandar o mesmo vendedor não é troca.
+const FRASE_TROCA_VENDEDOR = 'O vendedor da venda só pode ser trocado pelos sócios.'
+const vendedorDe = async (venda: string) =>
+  (await execRows(sql`select v.vendedor_id as venda, p.vendedor_id as pedido from vendas v join pedidos_venda p on p.id = v.pedido_venda_id where v.id = ${venda}`))[0]
+
+test('aux_adm não troca o vendedor da venda: recusa e nada muda na venda nem no pedido', async () => {
+  const c = await novaConta()
+  const outra = await semearUsuario(db, c, { papel: 'vendedor', rotulo: 'vendedora2', comGrupo: true })
+  const venda = await semearVendaMoto(db, balcao(c), [PIX, CARTAO])
+  entrarComo(c, 'aux_adm')
+  assert.deepEqual(await vendas.editarVendaAction(venda, { ...edicaoDeMoto([PIX, CARTAO]), vendedorId: outra }),
+    { ok: false, erro: FRASE_TROCA_VENDEDOR })
+  assert.deepEqual(await vendedorDe(venda), { venda: c.vendedorId, pedido: c.vendedorId })
+})
+
+test('aux_adm edita a venda mandando o mesmo vendedor (como a tela manda)', async () => {
+  const c = await novaConta()
+  const venda = await semearVendaMoto(db, balcao(c), [PIX, CARTAO])
+  entrarComo(c, 'aux_adm')
+  ok(await vendas.editarVendaAction(venda, { ...edicaoDeMoto([PIX, CARTAO]), vendedorId: c.vendedorId }), 'aux_adm edita')
+  assert.deepEqual(await vendedorDe(venda), { venda: c.vendedorId, pedido: c.vendedorId })
+})
+
+test('admin_socio troca o vendedor da venda, na venda e no pedido', async () => {
+  const c = await novaConta()
+  const outra = await semearUsuario(db, c, { papel: 'vendedor', rotulo: 'vendedora2', comGrupo: true })
+  const venda = await semearVendaMoto(db, balcao(c), [PIX, CARTAO])
+  entrarComo(c, 'admin_socio')
+  ok(await vendas.editarVendaAction(venda, { ...edicaoDeMoto([PIX, CARTAO]), vendedorId: outra }), 'sócio troca o vendedor')
+  assert.deepEqual(await vendedorDe(venda), { venda: outra, pedido: outra })
+})
+
+test('aux_adm com vendedor de outra Conta recebe a mesma recusa e nada muda', async () => {
+  const [c, deFora] = [await novaConta(), await novaConta()]
+  const venda = await semearVendaMoto(db, balcao(c), [PIX, CARTAO])
+  entrarComo(c, 'aux_adm')
+  assert.deepEqual(await vendas.editarVendaAction(venda, { ...edicaoDeMoto([PIX, CARTAO]), vendedorId: deFora.vendedorId }),
+    { ok: false, erro: FRASE_TROCA_VENDEDOR })
+  assert.deepEqual(await vendedorDe(venda), { venda: c.vendedorId, pedido: c.vendedorId })
+})
