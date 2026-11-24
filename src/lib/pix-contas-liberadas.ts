@@ -41,3 +41,17 @@ export function idsContasPixParaGravar(o: { texto: string; chavePropriaAposSalva
   }
   return lidos
 }
+
+/**
+ * O que o pedido de editar o grupo faz com os ids. `ids: undefined` = não mexer na coluna (campo não veio);
+ * lista = substituir (vazia apaga). Remover a chave apaga os ids junto: eles valem só com a chave que os listou.
+ */
+export function idsContasPixDoPedido(o: {
+  texto: string | undefined
+  jaTinha: boolean
+  chaveNova: boolean
+  remover: boolean
+}): { ok: true; ids: string[] | undefined } | { ok: false; erro: string } {
+  if (o.texto === undefined) return { ok: true, ids: o.remover ? [] : undefined }
+  return idsContasPixParaGravar({ texto: o.texto, chavePropriaAposSalvar: chavePropriaAposSalvar(o) })
+}

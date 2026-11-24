@@ -61,7 +61,7 @@ export type CredencialMcp = {
   url: string
   /** A URL veio da chave do próprio grupo (não da env global, de outra empresa). */
   chavePropria: boolean
-  /** Ids de contas de outro CNPJ liberadas para o PIX (#236). Só valem com `chavePropria`. */
+  /** Ids de contas de outro CNPJ liberadas para o PIX (#236). Vazio sem `chavePropria`, mesmo que haja ids gravados. */
   contasPixIds: string[]
 }
 
@@ -101,7 +101,7 @@ export async function credencialMcpDoGrupo(cnpjGrupo: string): Promise<Credencia
     doGrupo,
     global: process.env.MCPAI_ENDPOINT_URL,
   })
-  return { url, chavePropria: !!doGrupo?.trim(), contasPixIds: grupo.contasPixIds }
+  return { url, chavePropria: !!doGrupo?.trim(), contasPixIds: doGrupo?.trim() ? grupo.contasPixIds : [] }
 }
 
 /** Endpoint do mcp.ai do grupo dono deste CNPJ. Lança se não houver nenhum. */

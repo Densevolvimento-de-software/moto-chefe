@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { chavePropriaAposSalvar, contaEntraNoPix, idsContasPixParaGravar, lerIdsContasPix } from './pix-contas-liberadas'
+import { chavePropriaAposSalvar, contaEntraNoPix, idsContasPixDoPedido, idsContasPixParaGravar, lerIdsContasPix } from './pix-contas-liberadas'
 
 const DO_GRUPO = { id: 'conta-grupo', doCnpjDoGrupo: true }
 const DE_OUTRO = { id: 'conta-outra', doCnpjDoGrupo: false }
@@ -54,4 +54,15 @@ test('idsContasPixParaGravar: id sem chave própria é recusado; vazio sempre po
   assert.deepEqual(idsContasPixParaGravar({ texto: '', chavePropriaAposSalvar: false }), { ok: true, ids: [] })
   assert.deepEqual(idsContasPixParaGravar({ texto: 'a1, b2', chavePropriaAposSalvar: true }), { ok: true, ids: ['a1', 'b2'] })
   assert.equal(idsContasPixParaGravar({ texto: 'a!', chavePropriaAposSalvar: true }).ok, false)
+})
+
+test('idsContasPixDoPedido: campo ausente não mexe; vazio apaga; remover a chave apaga e recusa id junto', () => {
+  const tem = { jaTinha: true, chaveNova: false }
+  assert.deepEqual(idsContasPixDoPedido({ texto: undefined, ...tem, remover: false }), { ok: true, ids: undefined })
+  assert.deepEqual(idsContasPixDoPedido({ texto: '', ...tem, remover: false }), { ok: true, ids: [] })
+  assert.deepEqual(idsContasPixDoPedido({ texto: 'a1', ...tem, remover: false }), { ok: true, ids: ['a1'] })
+  assert.deepEqual(idsContasPixDoPedido({ texto: undefined, ...tem, remover: true }), { ok: true, ids: [] })
+  assert.equal(idsContasPixDoPedido({ texto: 'a1', ...tem, remover: true }).ok, false)
+  assert.equal(idsContasPixDoPedido({ texto: 'a1', jaTinha: false, chaveNova: false, remover: false }).ok, false)
+  assert.deepEqual(idsContasPixDoPedido({ texto: 'a1', jaTinha: false, chaveNova: true, remover: false }), { ok: true, ids: ['a1'] })
 })
