@@ -3,11 +3,7 @@
 import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { contas, grupos, lojas, modelos, motos, vendas } from '@/lib/db/schema'
-import { podeAgirNaLoja } from '@/lib/acesso-registro'
 import { temCertificadoBateria } from '@/lib/certificado-bateria'
-import { buscarVenda } from '@/lib/queries/vendas'
-
-type Usuario = Parameters<typeof podeAgirNaLoja>[0]
 
 /** Dos ids pedidos, os das vendas que têm certificado de bateria. */
 export async function vendasComCertificadoBateria(ids: string[]): Promise<Set<string>> {
@@ -29,11 +25,4 @@ export async function vendasComCertificadoBateria(ids: string[]): Promise<Set<st
       .filter(l => temCertificadoBateria({ marca: l.marca, loja: { ativa: l.ativa, fabricaEmail: l.fabricaEmail, grupoAtivo: l.grupoAtivo, contaDesativadaEm: l.contaDesativadaEm } }))
       .map(l => l.id),
   )
-}
-
-/** A venda do certificado, ou null: de outra Conta, de outra loja, fora da regra e inexistente dão o mesmo null. */
-export async function buscarVendaDoCertificado(id: string, usuario: Usuario) {
-  const venda = await buscarVenda(id)
-  if (!venda || !(await podeAgirNaLoja(usuario, venda.lojaId))) return null
-  return (await vendasComCertificadoBateria([id])).has(id) ? venda : null
 }

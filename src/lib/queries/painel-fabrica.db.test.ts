@@ -17,11 +17,13 @@ process.env.DATABASE_URL = url
 type Db = typeof import('@/lib/db')
 type Painel = typeof import('@/lib/queries/painel-fabrica')
 type Certificado = typeof import('@/lib/queries/certificado-bateria')
+type Vendas = typeof import('@/lib/queries/vendas')
 type PainelPuro = typeof import('@/lib/painel-fabrica')
 let db: Db['db']
 let execRows: Db['execRows']
 let painel: Painel
 let certificado: Certificado
+let vendasQ: Vendas
 let ehLojaDoPainel: PainelPuro['ehLojaDoPainel']
 
 // a: Conta A, loja MotoChefe · b: Conta B, loja MotoChefe · semPortal: Conta A, sem login da
@@ -43,6 +45,7 @@ before(async () => {
   ;({ db, execRows } = await import('@/lib/db'))
   painel = await import('@/lib/queries/painel-fabrica')
   certificado = await import('@/lib/queries/certificado-bateria')
+  vendasQ = await import('@/lib/queries/vendas')
   ;({ ehLojaDoPainel } = await import('@/lib/painel-fabrica'))
 
   modelos.mc = (await linha(sql`insert into modelos (marca, modelo, categoria, potencia_w, motor, velocidade_max) values ('MotoChefe', ' x819 ', 'autopropelido', '1000', '', '') returning id`)).id
@@ -208,11 +211,11 @@ const aux = (lojaId: string, contaId: string) => ({ papel: 'aux_adm', lojaId, gr
 
 test('certificado: a loja da venda abre; venda fora da regra não abre (null)', async () => {
   const contaA = contas[0]
-  const aberta = await certificado.buscarVendaDoCertificado(vendaId.a15, aux(lojas.a, contaA))
+  const aberta = await vendasQ.buscarVendaDoCertificado(vendaId.a15, aux(lojas.a, contaA))
   assert.equal(aberta?.id, vendaId.a15)
-  assert.equal(await certificado.buscarVendaDoCertificado(vendaId.voi, aux(lojas.a, contaA)), null, 'moto Voi')
-  assert.equal(await certificado.buscarVendaDoCertificado(vendaId.semPortal, aux(lojas.semPortal, contaA)), null, 'loja sem portal')
-  assert.equal(await certificado.buscarVendaDoCertificado(vendaId.inativa, aux(lojas.inativa, contaA)), null, 'loja inativa')
+  assert.equal(await vendasQ.buscarVendaDoCertificado(vendaId.voi, aux(lojas.a, contaA)), null, 'moto Voi')
+  assert.equal(await vendasQ.buscarVendaDoCertificado(vendaId.semPortal, aux(lojas.semPortal, contaA)), null, 'loja sem portal')
+  assert.equal(await vendasQ.buscarVendaDoCertificado(vendaId.inativa, aux(lojas.inativa, contaA)), null, 'loja inativa')
 })
 
 test('certificado: a Conta B não abre venda da Conta A, e a resposta é a mesma de fora da regra e de id inexistente', async () => {
@@ -221,16 +224,24 @@ test('certificado: a Conta B não abre venda da Conta A, e a resposta é a mesma
   const socioB = { papel: 'admin_socio', lojaId: lojas.b, gruposAcesso: [], contaId: contaB } as const
   const naoExiste = '00000000-0000-0000-0000-000000000000'
   for (const u of [deB, socioB]) {
-    const respostas = await Promise.all([vendaId.a15, vendaId.voi, naoExiste].map(id => certificado.buscarVendaDoCertificado(id, u)))
+    const respostas = await Promise.all([vendaId.a15, vendaId.voi, naoExiste].map(id => vendasQ.buscarVendaDoCertificado(id, u)))
     assert.deepEqual(respostas, [null, null, null])
   }
   // E a Conta A também não abre a da B.
-  assert.equal(await certificado.buscarVendaDoCertificado(vendaId.b20, aux(lojas.a, contaA)), null)
-  assert.equal((await certificado.buscarVendaDoCertificado(vendaId.b20, deB))?.id, vendaId.b20)
+  assert.equal(await vendasQ.buscarVendaDoCertificado(vendaId.b20, aux(lojas.a, contaA)), null)
+  assert.equal((await vendasQ.buscarVendaDoCertificado(vendaId.b20, deB))?.id, vendaId.b20)
 })
 
 test('certificado: sócio abre venda MotoChefe do grupo que vê e não a de outra loja fora da regra', async () => {
   const socioA = { papel: 'admin_socio', lojaId: lojas.a, gruposAcesso: [], contaId: contas[0] } as const
-  assert.equal((await certificado.buscarVendaDoCertificado(vendaId.a15, socioA))?.id, vendaId.a15)
-  assert.equal(await certificado.buscarVendaDoCertificado(vendaId.voi, socioA), null)
+  assert.equal((await vendasQ.buscarVendaDoCertificado(vendaId.a15, socioA))?.id, vendaId.a15)
+  assert.equal(await vendasQ.buscarVendaDoCertificado(vendaId.voi, socioA), null)
+})
+
+test('lista de vendas: cada linha diz se tem certificado, e o e-mail da fábrica da loja não vai junto', async () => {
+  const lista = await vendasQ.listarVendas({ lojaId: Object.values(lojas), dataInicio: '2026-10-01', dataFim: '2026-10-31' })
+  const flag = new Map(lista.map(v => [v.id, v.certificadoBateria]))
+  for (const chave of ['a15', 'b20'] as const) assert.equal(flag.get(vendaId[chave]), true, chave)
+  for (const chave of ['voi', 'semPortal', 'inativa', 'desativada'] as const) assert.equal(flag.get(vendaId[chave]), false, chave)
+  assert.ok(!JSON.stringify(lista).includes('fabrica'), 'nada do portal da fábrica na linha')
 })

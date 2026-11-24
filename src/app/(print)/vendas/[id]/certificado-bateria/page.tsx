@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { buscarVendaDoCertificado } from '@/lib/queries/certificado-bateria'
+import { buscarVendaDoCertificado } from '@/lib/queries/vendas'
 import { getUsuarioLogado } from '@/lib/auth'
 import { PrintTrigger } from '@/components/print-trigger'
 import { rotuloDocumento } from '@/lib/documento'
