@@ -101,7 +101,8 @@ export async function credencialMcpDoGrupo(cnpjGrupo: string): Promise<Credencia
     doGrupo,
     global: process.env.MCPAI_ENDPOINT_URL,
   })
-  return { url, chavePropria: !!doGrupo?.trim(), contasPixIds: doGrupo?.trim() ? grupo.contasPixIds : [] }
+  const chavePropria = !!doGrupo?.trim()
+  return { url, chavePropria, contasPixIds: chavePropria ? grupo.contasPixIds : [] }
 }
 
 /** Endpoint do mcp.ai do grupo dono deste CNPJ. Lança se não houver nenhum. */
