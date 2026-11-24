@@ -5,6 +5,7 @@ import { recusaDePagamentoForcado } from '@/lib/pagamentos-gravacao'
 import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
 import { getUsuarioLogado } from '@/lib/auth'
 import { registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
+import { registrarTrocaDeVendedor } from '@/lib/troca-vendedor-venda'
 import { db } from '@/lib/db'
 import { conferirMaquininhas, operadorasGravadas } from '@/lib/maquininhas'
 import { motos, modelos, modeloBlingCodigos, pedidosVenda, vendas, reservas, historicoEstoque, lancamentosCaixa, precificacao, configuracaoTaxas, usuarios, clientes, aprovacoesVenda, demandas, notasFiscaisSaida, nfeBlingArquivo } from '@/lib/db/schema'
@@ -1368,7 +1369,7 @@ async function editarVenda(vendaId: string, dados: {
     ? (dados.notaFiscalSaida?.trim() || vendaAtual.notaFiscalSaida)
     : vendaAtual.notaFiscalSaida
 
-  await db.transaction(async tx => {
+  const vendedorAnterior = await db.transaction(async tx => {
     const daVenda = and(eq(vendas.id, vendaId), eq(vendas.lojaId, vendaAtual.lojaId))
     const [gravada] = await tx.select({ pagamentos: vendas.pagamentos, vendedorId: vendas.vendedorId }).from(vendas).where(daVenda).for('update')
     if (!gravada) throw new RecusaUsuario('Venda não encontrada')
@@ -1431,6 +1432,14 @@ async function editarVenda(vendaId: string, dados: {
         vendaId,
       })
     }
+    // O vendedor de antes, lido com a venda travada: é o que a troca substituiu.
+    return gravada.vendedorId
+  })
+
+  // Depois do commit: a troca já está gravada, e erro no log não desfaz a resposta.
+  await registrarTrocaDeVendedor({
+    usuarioId: usuario.id, venda: { id: vendaId, numero: vendaAtual.numero, lojaId: vendaAtual.lojaId },
+    anterior: vendedorAnterior, novo: dados.vendedorId, grupoLiberado: usuario.grupoLiberado,
   })
 
   revalidatePath('/vendas')
