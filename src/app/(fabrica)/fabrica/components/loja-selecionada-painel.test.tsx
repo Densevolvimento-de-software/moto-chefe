@@ -12,13 +12,13 @@ before(async () => { ({ LojaSelecionadaPainel } = await import('./loja-seleciona
 
 const textoVisivel = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/ |&nbsp;/g, ' ').replace(/\s+/g, ' ')
 
-test('loja selecionada: nome, faturamento, motos vendidas e motos em estoque da loja', () => {
+test('loja selecionada: mostra o nome, o faturamento da loja e as motos vendidas, e só isso (sem estoque)', () => {
   const html = renderToStaticMarkup(createElement(LojaSelecionadaPainel, {
-    loja: { lojaId: 'b', lojaNome: 'Loja Norte' }, faturamento: 40400.5, motos: 3, emEstoque: 1,
+    loja: { lojaId: 'b', lojaNome: 'Loja Norte' }, faturamento: 40400.5, motos: 3,
   }))
   const texto = textoVisivel(html)
   assert.match(texto, /Loja Norte/)
   assert.match(texto, /Faturamento da loja R\$ 40\.400,50/)
   assert.match(texto, /Motos vendidas 3/)
-  assert.match(texto, /Motos em estoque 1/)
+  assert.doesNotMatch(texto, /estoque/i)
 })

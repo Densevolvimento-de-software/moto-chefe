@@ -3,7 +3,7 @@ import { exigirPainelFabrica } from '../exigir-painel'
 import { carregarPainelFabrica } from '@/lib/queries/painel-fabrica'
 import {
   abaDaUrl, filtroDaUrl, filtrarEstoque, filtrarVendas, opcoesDoPainel, paraCsv, planilhaDoPainel, rotuloDaAba, urlDoFiltro,
-  ABAS_PAINEL, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, blocosDaAba, lojaDaSelecao, resumirEstoque, resumirModelos, resumirRede, resumirVendas,
+  ABAS_PAINEL, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, blocosDaAba, lojaDaSelecao, resumirModelos, resumirRede, resumirVendas,
   type ParamsPainel,
 } from '@/lib/painel-fabrica'
 import { hojeBrt } from '@/lib/data-venda'
@@ -77,7 +77,6 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
           loja={lojaSelecionada}
           faturamento={vendasResumo.valor}
           motos={vendasResumo.total}
-          emEstoque={resumirEstoque(estoqueFiltrado).total}
         />
       )}
       {blocos.modelos && <ModelosPainel modelos={linhasModelos} />}
