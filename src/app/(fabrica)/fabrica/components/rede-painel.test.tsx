@@ -19,7 +19,7 @@ const html = (r: Rede) => renderToStaticMarkup(createElement(RedePainel, { rede:
 test('rede: mostra o faturamento das motos, as motos, as lojas e a média por loja', () => {
   const texto = textoVisivel(html(rede))
   assert.match(texto, /Faturamento das motos R\$ 63\.880,80/)
-  assert.match(texto, /5 motos vendidas/)
+  assert.match(texto, /Motos vendidas 5/)
   assert.match(texto, /Lojas com venda 2/)
   assert.match(texto, /Faturamento médio por loja com venda R\$ 31\.940,40/)
   assert.match(texto, /01\/10\/2026 a 31\/10\/2026/)
@@ -36,6 +36,6 @@ test('rede: nenhum bloco sem dado do painel (meta, projeção, oficina, DRE, tic
 test('rede: sem venda no período, mostra zero em vez de NaN ou traço', () => {
   const texto = textoVisivel(html({ lojasComVenda: 0, motos: 0, valor: 0, mediaPorLoja: 0 }))
   assert.match(texto, /R\$ 0,00/)
-  assert.match(texto, /0 motos vendidas/)
+  assert.match(texto, /Motos vendidas 0/)
   assert.doesNotMatch(texto, /NaN/)
 })
