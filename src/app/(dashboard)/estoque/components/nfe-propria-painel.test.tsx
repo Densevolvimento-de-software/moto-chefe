@@ -359,13 +359,15 @@ test('venda que não exige DIFAL: nenhum campo na tela e a action não recebe DI
   assert.equal(chamadas[0][4], null)
 })
 
-test('recusa 697 de venda que exige DIFAL: os campos aparecem e o salvar e reenviar leva o digitado (#247)', async () => {
+test('recusa 697 de venda que exige DIFAL: os campos aparecem, o salvar e reenviar espera a alíquota e leva o digitado (#247)', async () => {
   const chamadas: unknown[][] = []
   const recusa697: NotaResumo = { ...recusa478, motivoStatus: '697 - Rejeição: alíquota interestadual inválida' }
   acoes = { ...acoes, previsualizarNfePropriaAction: async () => ({ ...previaSemRenave, exigeDifal: true, notas: [recusa697] }),
     corrigirEReenviarNfAction: async (...args: unknown[]) => { chamadas.push(args); return { ok: true } } }
   const { container, click } = await abrirPainel()
+  assert.equal(botao(container, /^Salvar e reenviar/)?.disabled, true)
   await digitar(campoDifal(container, 'aliquotaInterna')!, '12,5')
+  assert.equal(botao(container, /^Salvar e reenviar/)?.disabled, false)
   await click(/^Salvar e reenviar/)
   assert.equal(chamadas.length, 1)
   assert.deepEqual(chamadas[0][5], { aliquotaInterna: '12,5', fcp: '' })

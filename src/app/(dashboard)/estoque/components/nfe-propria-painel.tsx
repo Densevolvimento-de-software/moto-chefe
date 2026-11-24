@@ -217,6 +217,7 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
   }
 
   const teste = previa.ambiente === 'Homologacao'
+  const faltaDifal = previa.exigeDifal && !difal.aliquotaInterna.trim()
 
   if (transmitindo) {
     return (
@@ -238,7 +239,7 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
         <DifalForm dados={difal} onChange={atualizar => setDifal(prev => atualizar(prev))} />
       )}
       <Resultado
-        r={resultado} teste={teste} previa={previa} erroCorrecao={erroCorrecao} pending={pending}
+        r={resultado} teste={teste} previa={previa} erroCorrecao={erroCorrecao} pending={pending} faltaDifal={faltaDifal}
         renave={renave} renaveOrigem={renaveOrigem} onRenave={atualizarRenave}
         onReconsultar={reconsultar} onAtualizada={nota => setResultado({ nota })} onTentarDeNovo={tentarDeNovo}
         onSalvarEReenviar={salvarEReenviar} onVoltar={onVoltar}
@@ -251,7 +252,6 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
   const bloqueadaProducao = !teste && !!previa.jaFaturada
   const faltamRenave = renave ? camposFaltando(renave).length : 0
   const faltamTransporte = exigeEntrega && !validarDadosTransporte(transporte).ok
-  const faltaDifal = previa.exigeDifal && !difal.aliquotaInterna.trim()
   const porParte = renave ? faltandoPorParte(renave) : null
   const comEtapas = !!(r && renave && porParte && !bloqueadaProducao)
   const passos = comEtapas && porParte && (
@@ -626,11 +626,12 @@ function Historico({ notas, onAtualizada }: { notas: NotaResumo[]; onAtualizada:
   )
 }
 
-function Resultado({ r, teste, previa, erroCorrecao, pending, renave, renaveOrigem, onRenave, onReconsultar, onAtualizada, onTentarDeNovo, onSalvarEReenviar, onVoltar }: {
+function Resultado({ r, teste, previa, erroCorrecao, pending, faltaDifal, renave, renaveOrigem, onRenave, onReconsultar, onAtualizada, onTentarDeNovo, onSalvarEReenviar, onVoltar }: {
   r: { nota: NotaResumo; erro?: string }
   teste: boolean
   previa: Previa | null
   erroCorrecao: string | null
+  faltaDifal: boolean
   renave: DadosRenave | null
   renaveOrigem: OrigemRenave
   onRenave: (atualizar: (prev: DadosRenave) => DadosRenave) => void
@@ -693,7 +694,7 @@ function Resultado({ r, teste, previa, erroCorrecao, pending, renave, renaveOrig
       // Recusa nova depois do reenvio: os campos partem do cadastro de novo.
       key={`${nota.id}-${nota.motivoStatus}`}
       nota={nota} previa={previa!} pending={pending} erro={erroCorrecao}
-      renave={renave} renaveOrigem={renaveOrigem} onRenave={onRenave}
+      renave={renave} renaveOrigem={renaveOrigem} onRenave={onRenave} faltaDifal={faltaDifal}
       onSalvarEReenviar={onSalvarEReenviar} onEmitirDeNovo={onTentarDeNovo} onVoltar={onVoltar}
     />
   )
