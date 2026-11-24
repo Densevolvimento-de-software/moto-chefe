@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ehMarcaDoPainel, filtroDaUrl, urlDoFiltro, abaDaUrl, opcoesDoPainel, filtrarEstoque, filtrarVendas, resumirEstoque, resumirVendas,
-  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, periodoDoPainel, finalDoChassi, lojasComVendas, lojasPorFaturamento, FILTRO_VAZIO,
+  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, periodoDoPainel, finalDoChassi, lojasComVendas, lojasPorFaturamento, FILTRO_VAZIO, resumirRede,
   type LinhaEstoquePainel, type LojaPainel, type VendaPainel,
 } from './painel-fabrica'
 
@@ -211,4 +211,14 @@ test('sem período, ou com data inválida, é o mês corrente de Brasília', () 
 
 test('só o início muito antigo na URL: corta para 92 dias até hoje', () => {
   assert.deepEqual(periodoDoPainel({ de: '2025-01-01' }, AGORA), { de: '2026-08-15', ate: '2026-11-14', limitado: true })
+})
+
+test('rede: lojas na rede são todas as da lista, com ou sem venda; faturamento médio = faturamento ÷ lojas', () => {
+  const lojasRede: LojaPainel[] = [{ lojaId: 'a', lojaNome: 'A' }, { lojaId: 'b', lojaNome: 'B' }, { lojaId: 'c', lojaNome: 'C' }]
+  const r = resumirRede(lojasRede, resumirVendas(vendas))
+  assert.deepEqual(r, { lojas: 3, motos: 5, valor: 63880.8, valorPorLoja: 21293.6 })
+})
+
+test('rede: sem loja nem venda, tudo zero (sem divisão por zero)', () => {
+  assert.deepEqual(resumirRede([], resumirVendas([])), { lojas: 0, motos: 0, valor: 0, valorPorLoja: 0 })
 })
