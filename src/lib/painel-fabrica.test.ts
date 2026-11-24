@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ehMarcaDoPainel, filtroDaUrl, urlDoFiltro, abaDaUrl, opcoesDoPainel, filtrarEstoque, filtrarVendas, resumirEstoque, resumirVendas,
-  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, periodoDoPainel, finalDoChassi, lojasComVendas, lojasPorFaturamento, FILTRO_VAZIO,
+  planilhaDoPainel, celulasDaVenda, nomeDaLoja, paraCsv, periodoDoPainel, finalDoChassi, lojasComVendas, lojasPorFaturamento, FILTRO_VAZIO, resumirRede, resumirModelos, lojaDaSelecao, blocosDaAba,
   type LinhaEstoquePainel, type LojaPainel, type VendaPainel,
 } from './painel-fabrica'
 
@@ -211,4 +211,72 @@ test('sem período, ou com data inválida, é o mês corrente de Brasília', () 
 
 test('só o início muito antigo na URL: corta para 92 dias até hoje', () => {
   assert.deepEqual(periodoDoPainel({ de: '2025-01-01' }, AGORA), { de: '2026-08-15', ate: '2026-11-14', limitado: true })
+})
+
+test('rede: lojas com venda no filtro (não a lista toda); média = faturamento ÷ essas lojas', () => {
+  const lojasRede: LojaPainel[] = [{ lojaId: 'a', lojaNome: 'A' }, { lojaId: 'b', lojaNome: 'B' }, { lojaId: 'c', lojaNome: 'C' }]
+  const r = resumirRede(lojasRede, resumirVendas(vendas))
+  assert.deepEqual(r, { lojasComVenda: 2, motos: 5, valor: 63880.8, mediaPorLoja: 31940.4 })
+})
+
+test('rede com filtro: uma loja e um modelo mostram só o que o filtro deixa, e a média divide pelas lojas com venda', () => {
+  const lojasRede: LojaPainel[] = [{ lojaId: 'a', lojaNome: 'A' }, { lojaId: 'b', lojaNome: 'B' }, { lojaId: 'c', lojaNome: 'C' }]
+  const daLoja = resumirRede(lojasRede, resumirVendas(filtrarVendas(vendas, { lojas: ['a'], modelos: [], cores: [] })))
+  assert.deepEqual(daLoja, { lojasComVenda: 1, motos: 2, valor: 23480.3, mediaPorLoja: 23480.3 })
+  const doModelo = resumirRede(lojasRede, resumirVendas(filtrarVendas(vendas, { lojas: [], modelos: ['JETMAX'], cores: [] })))
+  assert.deepEqual(doModelo, { lojasComVenda: 1, motos: 2, valor: 23500.5, mediaPorLoja: 23500.5 })
+})
+
+test('rede com filtro sem venda: zero lojas com venda, média zero, sem divisão por zero', () => {
+  const lojasRede: LojaPainel[] = [{ lojaId: 'a', lojaNome: 'A' }]
+  const semVenda = resumirRede(lojasRede, resumirVendas(filtrarVendas(vendas, { lojas: [], modelos: ['NADA'], cores: [] })))
+  assert.deepEqual(semVenda, { lojasComVenda: 0, motos: 0, valor: 0, mediaPorLoja: 0 })
+})
+
+test('rede: sem loja nem venda, tudo zero (sem divisão por zero)', () => {
+  assert.deepEqual(resumirRede([], resumirVendas([])), { lojasComVenda: 0, motos: 0, valor: 0, mediaPorLoja: 0 })
+})
+
+const estoqueModelos: LinhaEstoquePainel[] = [
+  { lojaId: 'a', modelo: 'X12', cor: 'PRETO', quantidade: 3 },
+  { lojaId: 'b', modelo: 'X12', cor: 'BRANCO', quantidade: 1 },
+  { lojaId: 'a', modelo: 'URBANA', cor: 'AZUL', quantidade: 2 },
+]
+
+test('modelos: vendidas, receita e preço médio (receita ÷ motos) batem com a lista; estoque por modelo, sem venda incluído', () => {
+  assert.deepEqual(resumirModelos(vendas, estoqueModelos), [
+    { modelo: 'JETMAX', vendidas: 2, receita: 23500.5, precoMedio: 11750.25, emEstoque: 0 },
+    { modelo: 'URBANA', vendidas: 0, receita: 0, precoMedio: 0, emEstoque: 2 },
+    { modelo: 'X12', vendidas: 3, receita: 40380.3, precoMedio: 13460.1, emEstoque: 4 },
+  ])
+})
+
+test('modelos com filtro de modelo: só a linha do modelo escolhido, com os mesmos números', () => {
+  const f = { lojas: [], modelos: ['JETMAX'], cores: [] }
+  assert.deepEqual(resumirModelos(filtrarVendas(vendas, f), filtrarEstoque(estoqueModelos, f)), [
+    { modelo: 'JETMAX', vendidas: 2, receita: 23500.5, precoMedio: 11750.25, emEstoque: 0 },
+  ])
+})
+
+test('modelos sem venda no período: preço médio zero, sem NaN', () => {
+  const r = resumirModelos([], estoqueModelos)
+  assert.deepEqual(r.map(m => m.modelo), ['URBANA', 'X12'])
+  assert.deepEqual(r.map(m => m.precoMedio), [0, 0])
+  assert.deepEqual(r.map(m => m.emEstoque), [2, 4])
+})
+
+test('loja selecionada: só quando o filtro tem exatamente uma loja da lista; senão nenhuma', () => {
+  const lojasDoPainel: LojaPainel[] = [{ lojaId: 'a', lojaNome: 'Loja Centro' }, { lojaId: 'b', lojaNome: 'Loja Norte' }]
+  assert.deepEqual(lojaDaSelecao({ lojas: ['b'], modelos: [], cores: [] }, lojasDoPainel), { lojaId: 'b', lojaNome: 'Loja Norte' })
+  assert.equal(lojaDaSelecao(FILTRO_VAZIO, lojasDoPainel), null)
+  assert.equal(lojaDaSelecao({ lojas: ['a', 'b'], modelos: [], cores: [] }, lojasDoPainel), null)
+  assert.equal(lojaDaSelecao({ lojas: ['zzz'], modelos: [], cores: [] }, lojasDoPainel), null)
+})
+
+test('blocos por aba: modelos nas duas abas; loja selecionada só na aba Vendas e só com uma loja no filtro', () => {
+  const loja = { lojaId: 'b', lojaNome: 'Loja Norte' }
+  assert.deepEqual(blocosDaAba('estoque', loja), { lojaSelecionada: false, modelos: true })
+  assert.deepEqual(blocosDaAba('estoque', null), { lojaSelecionada: false, modelos: true })
+  assert.deepEqual(blocosDaAba('vendas', loja), { lojaSelecionada: true, modelos: true })
+  assert.deepEqual(blocosDaAba('vendas', null), { lojaSelecionada: false, modelos: true })
 })

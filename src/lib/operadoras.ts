@@ -16,13 +16,28 @@ export const OPERADORAS = [
 
 // Só estas têm leitor de relatório na conciliação; as outras se conciliam à mão.
 const COM_RELATORIO = new Set(['infinitypay', 'stone', 'pagueveloz', 'rede', 'cielo', 'rendimento'])
+// Entram pela integração (token do grupo em Grupos), nunca pelo upload de relatório (#205).
+const PELA_INTEGRACAO = new Set(['mercadopago'])
+
+export type SituacaoOperadora = 'relatorio' | 'integracao' | 'integracao_sem_token' | 'manual'
+
+/** Regra única das duas telas (cadastro de maquininhas e conciliação). */
+export function situacaoDaOperadora(operadora: string, temCredencial: boolean): SituacaoOperadora {
+  if (COM_RELATORIO.has(operadora)) return 'relatorio'
+  if (PELA_INTEGRACAO.has(operadora)) return temCredencial ? 'integracao' : 'integracao_sem_token'
+  return 'manual'
+}
 
 export function temRelatorio(operadora: string): boolean {
   return COM_RELATORIO.has(operadora)
 }
 
+// Manual é só o que se concilia à mão. A integração não entra, com ou sem token: a conciliação não a cita.
 export function separarPorRelatorio<T extends { operadora: string }>(lista: T[]) {
-  return { comRelatorio: lista.filter(m => temRelatorio(m.operadora)), manuais: lista.filter(m => !temRelatorio(m.operadora)) }
+  return {
+    comRelatorio: lista.filter(m => temRelatorio(m.operadora)),
+    manuais: lista.filter(m => situacaoDaOperadora(m.operadora, true) === 'manual'),
+  }
 }
 
 /** Código gravado: o da lista, ou o nome livre de "Outra" sem acento e espaço. Vazio = inválido. */
@@ -46,3 +61,4 @@ const NOMES: Record<string, string> = {
 export function nomeOperadora(codigo: string): string {
   return NOMES[codigo] ?? codigo
 }
+

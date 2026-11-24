@@ -87,7 +87,7 @@ Fonte única do "como" para issues, quadro, labels e releases; o porquê está n
 [0013](docs/adr/0013-prefixo-livre-e-branch-apagada-a-mao.md).
 
 **Quadro.** O GitHub Project
-[MOVA — Desenvolvimento](https://github.com/orgs/Meu-mova/projects/2) é onde o Cesar acompanha
+[MOVA — Desenvolvimento](https://github.com/orgs/Densevolvimento-de-software/projects/1) é onde o Cesar acompanha
 o trabalho. Colunas: Backlog → Em andamento → Em revisão (PR aberto) → Pronto p/ subir (merge
 na `dev`) → Em produção (saiu na release). Cada item tem **Módulo** (Comercial, Oficina,
 Estoque, Financeiro, Gestão, Configuração, Fiscal, Integrações, Infra/Dev) e **Prioridade**

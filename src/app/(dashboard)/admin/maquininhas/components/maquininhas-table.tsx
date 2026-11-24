@@ -10,20 +10,34 @@ import {
 } from '@/components/ui/dialog'
 import { Pencil, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { OPERADORAS, nomeOperadora, temRelatorio } from '@/lib/operadoras'
+import { OPERADORAS, nomeOperadora, situacaoDaOperadora, type SituacaoOperadora } from '@/lib/operadoras'
 import type { MaquininhaDoCadastro } from '@/lib/maquininhas-admin'
 import { criarMaquininhaAction, editarMaquininhaAction, definirMaquininhaAtivaAction } from '../actions'
 
 const AVISO_MANUAL = 'A conciliação desta maquininha é manual: o relatório dela não é importado.'
+const FRASE_INTEGRADA = 'Importada pela integração do Mercado Pago.'
+const FRASE_SEM_TOKEN = 'Cadastre o token do Mercado Pago em Grupos para importar.'
+
+// Texto da coluna "Conciliação" e aviso (caixa do Editar e title da célula) por situação.
+const CONCILIACAO: Record<SituacaoOperadora, { texto: string; aviso?: string }> = {
+  relatorio: { texto: 'Importa relatório' },
+  integracao: { texto: 'Integração', aviso: FRASE_INTEGRADA },
+  integracao_sem_token: { texto: 'Integração sem token', aviso: FRASE_SEM_TOKEN },
+  manual: { texto: 'Manual', aviso: AVISO_MANUAL },
+}
 
 // Código gravado fora da lista (nome livre) volta ao diálogo como "Outra".
 const escolhaDe = (operadora: string) =>
   OPERADORAS.some(o => o.codigo === operadora) ? operadora : 'outra'
 
-function MaquininhaDialog({ onClose, inicial }: { onClose: () => void; inicial?: MaquininhaDoCadastro }) {
+function MaquininhaDialog({ onClose, inicial, temCredencialMp }: {
+  onClose: () => void; inicial?: MaquininhaDoCadastro; temCredencialMp: boolean
+}) {
   const [escolha, setEscolha] = useState(inicial ? escolhaDe(inicial.operadora) : '')
   const [nome, setNome] = useState(inicial?.nome ?? '')
   const [pending, startTransition] = useTransition()
+  const situacaoDaEscolha = escolha ? situacaoDaOperadora(escolha, temCredencialMp) : null
+  const avisoDaEscolha = situacaoDaEscolha ? CONCILIACAO[situacaoDaEscolha].aviso : undefined
 
   function trocarEscolha(v: string) {
     // Nome ainda vazio ou igual ao da operadora anterior acompanha a troca.
@@ -66,8 +80,10 @@ function MaquininhaDialog({ onClose, inicial }: { onClose: () => void; inicial?:
             <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Rede Itaú, Stone da loja…" />
             <p className="text-xs text-muted-foreground">É o nome que o vendedor escolhe no pagamento com cartão.</p>
           </div>
-          {escolha && !temRelatorio(escolha) && (
-            <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">{AVISO_MANUAL}</p>
+          {avisoDaEscolha && (
+            <p className={situacaoDaEscolha === 'integracao'
+              ? 'text-sm text-muted-foreground'
+              : 'rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning'}>{avisoDaEscolha}</p>
           )}
         </div>
         <DialogFooter>
@@ -81,7 +97,9 @@ function MaquininhaDialog({ onClose, inicial }: { onClose: () => void; inicial?:
   )
 }
 
-export function MaquininhasTable({ maquininhas }: { maquininhas: MaquininhaDoCadastro[] }) {
+export function MaquininhasTable({ maquininhas, temCredencialMp }: {
+  maquininhas: MaquininhaDoCadastro[]; temCredencialMp: boolean
+}) {
   const [novaOpen, setNovaOpen] = useState(false)
   const [editando, setEditando] = useState<MaquininhaDoCadastro | null>(null)
   const [pending, startTransition] = useTransition()
@@ -93,6 +111,8 @@ export function MaquininhasTable({ maquininhas }: { maquininhas: MaquininhaDoCad
       toast.success(m.ativo ? 'Maquininha desativada' : 'Maquininha reativada')
     })
   }
+
+  const linhas = maquininhas.map(m => ({ ...m, situacao: situacaoDaOperadora(m.operadora, temCredencialMp) }))
 
   return (
     <div className="space-y-4">
@@ -121,12 +141,15 @@ export function MaquininhasTable({ maquininhas }: { maquininhas: MaquininhaDoCad
                 </TableCell>
               </TableRow>
             )}
-            {maquininhas.map(m => (
+            {linhas.map(m => (
               <TableRow key={m.id} className={m.ativo ? '' : 'opacity-60'}>
                 <TableCell className="font-medium">{m.nome}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{nomeOperadora(m.operadora)}</TableCell>
-                <TableCell className="text-sm text-muted-foreground" title={temRelatorio(m.operadora) ? undefined : AVISO_MANUAL}>
-                  {temRelatorio(m.operadora) ? 'Importa relatório' : 'Manual'}
+                <TableCell
+                  className={m.situacao === 'integracao_sem_token' ? 'text-sm text-warning' : 'text-sm text-muted-foreground'}
+                  title={CONCILIACAO[m.situacao].aviso}
+                >
+                  {CONCILIACAO[m.situacao].texto}
                 </TableCell>
                 <TableCell>
                   {m.ativo
@@ -149,8 +172,10 @@ export function MaquininhasTable({ maquininhas }: { maquininhas: MaquininhaDoCad
         </Table>
       </div>
 
-      {novaOpen && <MaquininhaDialog onClose={() => setNovaOpen(false)} />}
-      {editando && <MaquininhaDialog key={editando.id} inicial={editando} onClose={() => setEditando(null)} />}
+      {novaOpen && <MaquininhaDialog onClose={() => setNovaOpen(false)} temCredencialMp={temCredencialMp} />}
+      {editando && (
+        <MaquininhaDialog key={editando.id} inicial={editando} onClose={() => setEditando(null)} temCredencialMp={temCredencialMp} />
+      )}
     </div>
   )
 }

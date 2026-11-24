@@ -2,8 +2,8 @@ name: Algo quebrou
 description: Uma tela, botão ou cálculo do MOVA não funcionou como devia.
 type: Bug
 labels: [needs-triage]
-projects: [Meu-mova/2]
-assignees: [LuisCarlos01]
+projects: [Densevolvimento-de-software/1]
+assignees: [LuisCarlos-SE]
 body:
   - type: input
     id: onde
