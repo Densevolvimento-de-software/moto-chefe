@@ -38,7 +38,8 @@ export function exigeDifal(o: { interestadual: boolean; indicadorIe: IndicadorIe
   return o.interestadual && (o.indicadorIe ?? 'nao_contribuinte') === 'nao_contribuinte'
 }
 
-type VendaParaDifal = { ufEmitente: string; cliente: { indicadorIe?: IndicadorIe | null; endereco: { uf: string } } }
+/** O que decide se a venda leva DIFAL: a UF do emitente e a UF e o indicador do comprador. */
+export type VendaParaDifal = { ufEmitente: string; cliente: { indicadorIe?: IndicadorIe | null; endereco: { uf: string } } }
 
 export const ehInterestadual = (v: VendaParaDifal) => v.cliente.endereco.uf.toUpperCase() !== v.ufEmitente.toUpperCase()
 

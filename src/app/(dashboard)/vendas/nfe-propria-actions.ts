@@ -221,9 +221,16 @@ type Emissao = Awaited<ReturnType<typeof montarEmissao>>
 
 const cfgDaNota = (grupoId: string, e: Pick<Emissao, 'grupoId' | 'cfg'>) => configDaNotaExistente(grupoId, e, configNotaGateway)
 
+/** UF e indicador do comprador como a nota os lê; o DIFAL depende dos dois (#247). */
+const compradorDaNota = (v: { clienteEstado: string | null; clienteIndicadorIe: string | null }) => ({
+  indicadorIe: v.clienteIndicadorIe && isIndicadorIe(v.clienteIndicadorIe) ? v.clienteIndicadorIe : null,
+  uf: (v.clienteEstado ?? '').trim().toUpperCase(),
+})
+
 function dadosDaVenda(e: Emissao, ufEmitente: string, idExterno: string, transporte?: DadosTransporte): DadosVendaMoto {
   const v = e.venda
   const f = e.ficha!
+  const { indicadorIe, uf: ufCliente } = compradorDaNota(v)
   return {
     idExterno,
     ambiente: e.cfg.ambiente,
@@ -234,10 +241,10 @@ function dadosDaVenda(e: Emissao, ufEmitente: string, idExterno: string, transpo
       cpfCnpj: v.clienteCpf,
       email: v.clienteEmail?.trim() || undefined,
       telefone: v.clienteCelular?.trim() || undefined,
-      indicadorIe: v.clienteIndicadorIe && isIndicadorIe(v.clienteIndicadorIe) ? v.clienteIndicadorIe : null,
+      indicadorIe,
       inscricaoEstadual: v.clienteInscricaoEstadual?.trim() || undefined,
       endereco: {
-        uf: (v.clienteEstado ?? '').trim().toUpperCase(),
+        uf: ufCliente,
         cidade: (v.clienteCidade ?? '').trim(),
         logradouro: (v.clienteLogradouro ?? '').trim(),
         numero: (v.clienteNumero ?? '').trim(),
@@ -441,7 +448,18 @@ export async function corrigirEReenviarNfAction(
     if (t && !t.ok) return { ok: false, error: t.erro }
     const o = observacaoDaNota(observacao, e.observacao)
     if (!o.ok) return o
-    await db.transaction(tx => gravarCorrecaoDaNf(tx, usuario, motoId, e.cfg.ambiente, correcao))
+    const ufEmitente = await ufDaEmpresa(e.cfg)
+    await db.transaction(async tx => {
+      await gravarCorrecaoDaNf(tx, usuario, motoId, e.cfg.ambiente, correcao)
+      // A correção pode trocar a UF ou o indicador do comprador, e o DIFAL depende dos dois: confere
+      // com o cadastro já corrigido e, faltando a alíquota, o erro desfaz a correção inteira (#247).
+      if (!e.regra) return
+      const [depois] = await tx.select({ clienteEstado: vendas.clienteEstado, clienteIndicadorIe: vendas.clienteIndicadorIe })
+        .from(vendas).where(eq(vendas.id, e.venda.id)).limit(1)
+      const { indicadorIe, uf } = compradorDaNota(depois)
+      const d = difalDaVenda({ ufEmitente, cliente: { indicadorIe, endereco: { uf } } }, e.regra, difal)
+      if (!d.ok) throw new Error(d.erro)
+    })
     return transmitirNfePropriaAction(motoId, r.dados, t?.ok ? t.dados : undefined, observacao, difal)
   } catch (err) {
     return { ok: false, error: (err as Error).message }

@@ -530,10 +530,13 @@ test('salvar e reenviar leva o DIFAL ao mesmo id e à mesma linha; sem ele recus
   const f = await fixture(true, {}, 'autopropelido', PARA_SP)
   user = f.user
   const net = network(f)
-  const correcao = { moto: { ncm: '87116000', cest: '' } }
+  // NCM diferente do da ficha: se a correção fosse gravada antes da recusa, o snapshot mudaria.
+  const correcao = { moto: { ncm: '87119000', cest: '' } }
+  const antes = await snapshot(f)
   const sem = await actions.corrigirEReenviarNfAction(f.motoId, correcao, null, undefined, null, undefined)
   assert.equal(sem.ok ? '' : sem.error, FRASE_SEM_ALIQUOTA)
   assert.deepEqual(posts(net), [])
+  assert.deepEqual(await snapshot(f), antes)
   const com = await actions.corrigirEReenviarNfAction(f.motoId, correcao, null, undefined, null, { aliquotaInterna: '12', fcp: '' })
   assert.equal(com.ok, true, JSON.stringify(com))
   assert.equal(net.payloads[0].itens[0].impostos.icms.valorUFDestinoDifal, 80)
@@ -555,4 +558,36 @@ test('Conta B com DIFAL na moto da Conta A recebe a resposta de moto inexistente
   assert.deepEqual(corrigir, await actions.corrigirEReenviarNfAction(inexistente, { moto: { ncm: '87119000', cest: '' } }, null, undefined, null, difal))
   assert.deepEqual(net.requests, [])
   assert.deepEqual(await snapshot(a), antes)
+})
+
+const CORRIGIDO_PARA = (uf: string) => ({
+  comprador: {
+    clienteNome: 'Comprador sintético', clienteCpf: '35281765043', clienteCep: '37000000', clienteLogradouro: 'Rua Comprador',
+    clienteNumero: '10', clienteComplemento: null, clienteBairro: 'Centro', clienteCidade: 'Varginha', clienteEstado: uf,
+    clienteInscricaoEstadual: null,
+  },
+})
+const estadoDaVenda = async (f: Awaited<ReturnType<typeof fixture>>) =>
+  (await rows<{ cliente_estado: string }>(sql`select cliente_estado from vendas where id = ${f.saleId}`))[0].cliente_estado
+
+test('salvar e reenviar que passa a venda para outro estado sem a alíquota: recusa e a UF corrigida não fica gravada (#247)', async () => {
+  const f = await fixture(true, {}, 'autopropelido', { aliquotaInterestadual: '4.00' })
+  user = f.user
+  const net = network(f)
+  const antes = await snapshot(f)
+  const r = await actions.corrigirEReenviarNfAction(f.motoId, CORRIGIDO_PARA('SP'), null, undefined, null, undefined)
+  assert.equal(r.ok ? '' : r.error, FRASE_SEM_ALIQUOTA)
+  assert.equal(await estadoDaVenda(f), 'MG')
+  assert.deepEqual(posts(net), [])
+  assert.deepEqual(await snapshot(f), antes)
+})
+
+test('salvar e reenviar que traz a venda para dentro do estado não exige o DIFAL que a tela pedia (#247)', async () => {
+  const f = await fixture(true, {}, 'autopropelido', PARA_SP)
+  user = f.user
+  const net = network(f)
+  const r = await actions.corrigirEReenviarNfAction(f.motoId, CORRIGIDO_PARA('MG'), null, undefined, null, undefined)
+  assert.equal(r.ok, true, JSON.stringify(r))
+  assert.equal(await estadoDaVenda(f), 'MG')
+  assert.deepEqual(chavesDeDifal(net.payloads[0]), [])
 })

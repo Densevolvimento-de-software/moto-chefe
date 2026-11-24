@@ -25,7 +25,7 @@ import type { IndicadorIe } from '../documento'
 import { operacaoExigeEntrega, type VeiculoNovo } from './veiculo'
 import { validarDadosTransporte, type DadosTransporte } from './transporte'
 import { centavos } from '@/lib/centavos'
-import { camposDifalIcms, ehInterestadual, validarDifalDigitado, vendaExigeDifal, type CamposDifalIcms, type DifalDigitado } from './difal'
+import { camposDifalIcms, ehInterestadual, validarDifalDigitado, vendaExigeDifal, type CamposDifalIcms, type DifalDigitado, type VendaParaDifal } from './difal'
 
 export type RegraSaida = {
   naturezaOperacao: string
@@ -180,7 +180,7 @@ function porAliquota(cst: string, aliquota: string | null): TributoPorAliquota {
  * e nela a alíquota interna digitada é obrigatória. Os outros casos seguem sem DIFAL.
  */
 export function difalDaVenda(
-  venda: Pick<DadosVendaMoto, 'ufEmitente' | 'cliente'>, regra: Pick<RegraSaida, 'aliquotaIcmsInterestadual'>, entrada: unknown,
+  venda: VendaParaDifal, regra: Pick<RegraSaida, 'aliquotaIcmsInterestadual'>, entrada: unknown,
 ): { ok: true; difal?: DifalDigitado } | { ok: false; erro: string } {
   if (!vendaExigeDifal(venda)) return { ok: true }
   const v = validarDifalDigitado(entrada, num(regra.aliquotaIcmsInterestadual) ?? null)
