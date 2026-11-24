@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { montarNfeVendaMoto, origemDeSaida, type DadosVendaMoto, type RegraSaida } from './payload'
+import { difalDaVenda, montarNfeVendaMoto, origemDeSaida, type DadosVendaMoto, type RegraSaida } from './payload'
 
 // Regra do Sul de Minas, extraída das 198 notas que ele já emitiu pelo Bling.
 const REGRA: RegraSaida = {
@@ -320,4 +320,14 @@ test('interestadual para contribuinte ou isento não leva DIFAL', () => {
 
 test('sem o dado digitado o payload não inventa DIFAL (quem barra é a action)', () => {
   assert.deepEqual(chavesDeDifal({ ...PARA_SP, difal: undefined }, REGRA_DIFAL), [])
+})
+
+test('difalDaVenda: só a interestadual a não contribuinte exige e devolve o DIFAL lido', () => {
+  const entrada = { aliquotaInterna: '12', fcp: '' }
+  assert.deepEqual(difalDaVenda(PARA_SP, REGRA_DIFAL, entrada), { ok: true, difal: { aliquotaInterna: 12, percentualFcp: 0 } })
+  assert.equal(difalDaVenda(PARA_SP, REGRA_DIFAL, undefined).ok, false)
+  // Dentro do estado: nada a exigir e nada a levar, mesmo com entrada.
+  const interna = { ...PARA_SP, cliente: { ...PARA_SP.cliente, endereco: { ...PARA_SP.cliente.endereco, uf: 'MG' } } }
+  assert.deepEqual(difalDaVenda(interna, REGRA_DIFAL, entrada), { ok: true })
+  assert.deepEqual(difalDaVenda(interna, REGRA_DIFAL, undefined), { ok: true })
 })

@@ -26,6 +26,7 @@ const preview: Extract<PreviaNfe, { ok: true }> = {
   ficha: { xProd: 'Ciclomotor de teste', ncm: '87116000', cest: '', unidade: 'UN', origem: '0' },
   sugestao: { xProd: 'Ciclomotor de teste', ncm: '87116000', cest: '', unidade: 'UN', origem: '0' },
   exigeRenave: true,
+  exigeDifal: false,
   renave: {
     ...RENAVE_COMPLETO_FATURAMENTO_DIRETO,
   },

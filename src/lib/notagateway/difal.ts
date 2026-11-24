@@ -11,6 +11,9 @@ import { parseNumeroBR } from '@/lib/numero-br'
  * não há tabela por UF (docs/fiscal/ng-difal.md).
  */
 
+/** O que a tela manda: o texto como foi digitado. O servidor lê e valida (`validarDifalDigitado`). */
+export type EntradaDifal = { aliquotaInterna: string; fcp: string }
+
 /** O que quem emite informa, já lido como número. */
 export type DifalDigitado = { aliquotaInterna: number; percentualFcp: number }
 
@@ -34,6 +37,13 @@ export const SEM_ALIQUOTA_INTERNA =
 export function exigeDifal(o: { interestadual: boolean; indicadorIe: IndicadorIe | null | undefined }): boolean {
   return o.interestadual && (o.indicadorIe ?? 'nao_contribuinte') === 'nao_contribuinte'
 }
+
+type VendaParaDifal = { ufEmitente: string; cliente: { indicadorIe?: IndicadorIe | null; endereco: { uf: string } } }
+
+export const ehInterestadual = (v: VendaParaDifal) => v.cliente.endereco.uf.toUpperCase() !== v.ufEmitente.toUpperCase()
+
+/** A mesma pergunta para a prévia, a action e o payload: esta venda leva o DIFAL? */
+export const vendaExigeDifal = (v: VendaParaDifal) => exigeDifal({ interestadual: ehInterestadual(v), indicadorIe: v.cliente.indicadorIe })
 
 const percentual = (n: number | null): n is number => n !== null && n >= 0 && n <= 100
 

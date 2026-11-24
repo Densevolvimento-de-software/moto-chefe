@@ -25,7 +25,7 @@ import type { IndicadorIe } from '../documento'
 import { operacaoExigeEntrega, type VeiculoNovo } from './veiculo'
 import { validarDadosTransporte, type DadosTransporte } from './transporte'
 import { centavos } from '@/lib/centavos'
-import { camposDifalIcms, exigeDifal, type CamposDifalIcms, type DifalDigitado } from './difal'
+import { camposDifalIcms, ehInterestadual, validarDifalDigitado, vendaExigeDifal, type CamposDifalIcms, type DifalDigitado } from './difal'
 
 export type RegraSaida = {
   naturezaOperacao: string
@@ -175,6 +175,18 @@ function porAliquota(cst: string, aliquota: string | null): TributoPorAliquota {
   return { situacaoTributaria: cst, ...(a !== undefined ? { porAliquota: { aliquota: a } } : {}) }
 }
 
+/**
+ * O DIFAL que a venda leva, conferido no servidor: só a interestadual a não contribuinte exige,
+ * e nela a alíquota interna digitada é obrigatória. Os outros casos seguem sem DIFAL.
+ */
+export function difalDaVenda(
+  venda: Pick<DadosVendaMoto, 'ufEmitente' | 'cliente'>, regra: Pick<RegraSaida, 'aliquotaIcmsInterestadual'>, entrada: unknown,
+): { ok: true; difal?: DifalDigitado } | { ok: false; erro: string } {
+  if (!vendaExigeDifal(venda)) return { ok: true }
+  const v = validarDifalDigitado(entrada, num(regra.aliquotaIcmsInterestadual) ?? null)
+  return v.ok ? { ok: true, difal: v.dados } : v
+}
+
 export function montarNfeVendaMoto(venda: DadosVendaMoto, regra: RegraSaida) {
   const { moto, cliente } = venda
 
@@ -195,11 +207,11 @@ export function montarNfeVendaMoto(venda: DadosVendaMoto, regra: RegraSaida) {
   const transporteValidado = operacaoExigeEntrega(moto.veiculo?.tipoOperacao) ? validarDadosTransporte(venda.transporte) : null
   if (transporteValidado && !transporteValidado.ok) throw new Error(transporteValidado.erro)
 
-  const interestadual = cliente.endereco.uf.toUpperCase() !== venda.ufEmitente.toUpperCase()
+  const interestadual = ehInterestadual(venda)
 
   const aliqInterestadual = interestadual ? num(regra.aliquotaIcmsInterestadual) : undefined
   // Sem o DIFAL a NG monta o destino com a interestadual da dupla de UFs e a SEFAZ recusa a origem 2 (#247).
-  const difal = venda.difal && aliqInterestadual !== undefined && exigeDifal({ interestadual, indicadorIe: cliente.indicadorIe })
+  const difal = venda.difal && aliqInterestadual !== undefined && vendaExigeDifal(venda)
     ? camposDifalIcms({ valor: venda.valor, aliquotaInterestadual: aliqInterestadual, difal: venda.difal })
     : {}
   const icms: ImpostosItem['icms'] = {
