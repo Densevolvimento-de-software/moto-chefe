@@ -7,7 +7,8 @@ import type { PgtoOS } from '@/lib/conciliacao-status'
 import { TIPO_PAGAMENTO_CUPOM, normalizarCodigoCupom } from '@/lib/cupom-revisao'
 import { conferirMaquininhas, operadorasGravadas } from '@/lib/maquininhas'
 import { RecusaUsuario } from '@/lib/resultado-action'
-import { CAMPOS_PAGAMENTO_OS, pagamentosParaGravar } from '@/lib/pagamentos-gravacao'
+import { CAMPOS_PAGAMENTO_OS, pagamentosParaGravar, recusaDePagamentoForcado } from '@/lib/pagamentos-gravacao'
+import { auxAdmPodeForcarDaLoja } from '@/lib/conciliacao-forcar-opcao'
 
 export type DadosPagamentoOS = {
   valorTotal: number
@@ -49,6 +50,8 @@ export async function aplicarPagamentoOS(os: { id: string; lojaId: string }, dad
       .where(daOS)
       .for('update')
     if (!osAtual) throw new RecusaUsuario('OS não encontrada')
+    const recusaForcado = recusaDePagamentoForcado(usuario.papel, await auxAdmPodeForcarDaLoja(osAtual.lojaId, tx), daTela, CAMPOS_PAGAMENTO_OS, osAtual.pagamentos)
+    if (recusaForcado) throw new RecusaUsuario(recusaForcado)
     const pagamentos = pagamentosParaGravar(daTela, CAMPOS_PAGAMENTO_OS, osAtual.pagamentos)
     // Aqui, e não só no fechamento: a aprovação de pagamento sensível chega direto (#460).
     await conferirMaquininhas(tx, osAtual.lojaId, pagamentos, operadorasGravadas(osAtual.pagamentos))

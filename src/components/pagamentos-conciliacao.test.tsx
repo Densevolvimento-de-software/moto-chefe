@@ -8,6 +8,7 @@ import { botao, clicar, esperar, montarDialogo } from '@/test/dialogo-em-tela'
 import type { AlvoConciliacao, PixLivre } from '@/app/(dashboard)/conciliacao/actions'
 import type { EstornoDoAlvo, PgtoOS } from '@/lib/conciliacao-status'
 import type { ResultadoAction } from '@/lib/resultado-action'
+import { podeForcarConciliacao } from '@/lib/conciliacao-papeis'
 
 const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
@@ -73,10 +74,11 @@ const linha = (tipo: string) => linhas().find(b => (b.textContent ?? '').startsW
 type Conc = { id: string; autorizacao: string | null; valorBruto: string; valorLiquido: string | null; operadora: string; tipo: string; dataTransacao: string }
 // `cobertura` undefined: ainda carregando; `coberturaFalhou`: a busca da cobertura falhou.
 type Estado = { cobertura?: Cobertura; coberturaFalhou?: boolean }
-async function montar(papel: string, pagamentos: PgtoOS[], pixRecs: PixRec[] = [], estornos: EstornoDoAlvo[] = [], concs: Conc[] = [], estado: Estado = { cobertura: null }) {
+/** `auxAdmPodeForcar`: a opção do grupo da loja (#220); a tela recebe o `podeForcar` já decidido pela função pura. */
+async function montar(papel: string, pagamentos: PgtoOS[], pixRecs: PixRec[] = [], estornos: EstornoDoAlvo[] = [], concs: Conc[] = [], estado: Estado = { cobertura: null }, auxAdmPodeForcar = true) {
   const { PagamentosConciliacao } = await import('./pagamentos-conciliacao')
   const dados = { concs, pixRecs, estornos, cobertura: estado.cobertura, coberturaFalhou: estado.coberturaFalhou ?? false, loading: false, recarregar: async () => {} }
-  const tela = await montarDialogo(PagamentosConciliacao, { alvo: ALVO, pagamentos, dados, papel })
+  const tela = await montarDialogo(PagamentosConciliacao, { alvo: ALVO, pagamentos, dados, papel, podeForcar: podeForcarConciliacao(papel, auxAdmPodeForcar) })
   desmontagens.push(tela.desmontar)
   const tocar = (el: Element | undefined) => tela.act(async () => { clicar(el); await esperar(50) })
   const escreverMotivo = async (texto: string) => {
@@ -475,4 +477,34 @@ test('linha da forçada de PIX: sem custo enquanto a cobertura carrega, e o avis
   assert.deepEqual(custoDaLinha(), [])
   await montar('aux_adm', pgtos, [], [], [], { coberturaFalhou: true })
   assert.deepEqual(custoDaLinha(), ['Não deu para carregar o custo do PIX.'])
+})
+
+// #220: Forçar e Desfazer forçado seguem a opção do grupo do aux_adm; buscar e vincular não mudam.
+test('C1 (#220): aux_adm de grupo com a opção desligada não vê Forçar e continua abrindo a linha pendente', async () => {
+  const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 1000 }], [], [], [], { cobertura: null }, false)
+  await tocar(linha('PIX'))
+  assert.equal(botao('Forçar'), undefined)
+  assert.equal(linha('PIX')?.disabled, false)
+})
+
+test('C1b (#220): aux_adm de grupo com a opção desligada não vê Desfazer forçado', async () => {
+  await montar('aux_adm', [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }], [], [], [], { cobertura: null }, false)
+  assert.equal(botao('Desfazer forçado'), undefined)
+})
+
+test('C2 (#220): aux_adm de grupo com a opção ligada vê Forçar', async () => {
+  const { tocar } = await montar('aux_adm', [{ tipo: 'pix', valor: 1000 }], [], [], [], { cobertura: null }, true)
+  await tocar(linha('PIX'))
+  assert.ok(botao('Forçar'))
+})
+
+test('C2b (#220): aux_adm de grupo com a opção ligada vê Desfazer forçado', async () => {
+  await montar('aux_adm', [{ tipo: 'pix', valor: 1000, conciliadoManual: FORCADO }], [], [], [], { cobertura: null }, true)
+  assert.ok(botao('Desfazer forçado'))
+})
+
+test('C3 (#220): admin_socio de grupo com a opção desligada vê Forçar', async () => {
+  const { tocar } = await montar('admin_socio', [{ tipo: 'pix', valor: 1000 }], [], [], [], { cobertura: null }, false)
+  await tocar(linha('PIX'))
+  assert.ok(botao('Forçar'))
 })

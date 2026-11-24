@@ -93,7 +93,7 @@ test('edição de venda de peça mantém a operadora antiga, mas não troca para
     await linhas(tx, sql`update vendas_pecas set pagamentos = '[{"tipo":"cartao_credito","valor":50,"operadora":"infinitypay","parcelas":1}]'::jsonb where id = ${vendaId}`)
     const [{ grupo_id: grupoId }] = await linhas(tx, sql`select grupo_id from lojas where id = ${b.lojaId}`)
     const editar = (operadora: string) => editarVendaPecaTx(tx, {
-      vendaId, grupoId, usuarioId: b.vendId,
+      vendaId, grupoId, papel: 'admin_socio', usuarioId: b.vendId,
       itens: [{ pecaId: b.pecaId, quantidade: 1 }],
       pagamentos: [{ tipo: 'cartao_credito', valor: 50, parcelas: 1, operadora }],
     })

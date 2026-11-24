@@ -48,13 +48,13 @@ const data = (d: Date) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digi
 const dataHora = (d: Date) => new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
 const bonificada = (v: VendaPeca) => parseFloat(v.valorTotal) < 0.01
 
-type Props = { vendas: VendaPeca[]; papel: string; pecas: PecaCatalogo[] }
+type Props = { vendas: VendaPeca[]; papel: string; podeForcar: boolean; pecas: PecaCatalogo[] }
 
 /**
  * Vendas de peças no padrão de Vendas (#247): celular/tablet em cartões, e o toque abre a gaveta com o
  * detalhe; no desktop, tabela enxuta e o painel à direita. Recibo, editar e excluir ficam no detalhe.
  */
-export function VendasPecasTable({ vendas, papel, pecas }: Props) {
+export function VendasPecasTable({ vendas, papel, podeForcar, pecas }: Props) {
   // Só o id: depois de editar, o revalidatePath traz a venda nova e o detalhe mostra ela.
   const [selId, setSelId] = useState<string | null>(null)
   const [gavetaId, setGavetaId] = useState<string | null>(null)
@@ -93,7 +93,7 @@ export function VendasPecasTable({ vendas, papel, pecas }: Props) {
         {gaveta && (
           <>
             <SheetTitle className="text-lg">Venda de peças #{gaveta.v.numero}</SheetTitle>
-            <DetalheVendaPeca v={gaveta.v} status={gaveta.status} papel={papel} pecas={pecas} />
+            <DetalheVendaPeca v={gaveta.v} status={gaveta.status} papel={papel} podeForcar={podeForcar} pecas={pecas} />
           </>
         )}
       </GavetaDeBaixo>
@@ -148,7 +148,7 @@ export function VendasPecasTable({ vendas, papel, pecas }: Props) {
         </div>
         {sel && (
           <PainelLateral key={sel.v.id} legenda={`Venda de peças #${sel.v.numero}`} onFechar={() => setSelId(null)}>
-            <DetalheVendaPeca v={sel.v} status={sel.status} papel={papel} pecas={pecas} />
+            <DetalheVendaPeca v={sel.v} status={sel.status} papel={papel} podeForcar={podeForcar} pecas={pecas} />
           </PainelLateral>
         )}
       </div>
@@ -156,7 +156,7 @@ export function VendasPecasTable({ vendas, papel, pecas }: Props) {
   )
 }
 
-function DetalheVendaPeca({ v, status, papel, pecas }: { v: VendaPeca; status: StatusConc; papel: string; pecas: PecaCatalogo[] }) {
+function DetalheVendaPeca({ v, status, papel, podeForcar, pecas }: { v: VendaPeca; status: StatusConc; papel: string; podeForcar: boolean; pecas: PecaCatalogo[] }) {
   // Apagar venda é o mesmo nível de quem define preço no catálogo — vendedor não mexe.
   const gestor = podeGerirPecas(papel)
   return (
@@ -180,7 +180,7 @@ function DetalheVendaPeca({ v, status, papel, pecas }: { v: VendaPeca; status: S
         <LinhaDeDetalhe rotulo="Conciliação">
           <span className="inline-flex items-center gap-1">
             <ConcBadge status={status} />
-            <ConciliacaoPecaDialog vendaId={v.id} numero={v.numero} pagamentos={v.pagamentos} papel={papel} status={status} />
+            <ConciliacaoPecaDialog vendaId={v.id} numero={v.numero} pagamentos={v.pagamentos} papel={papel} podeForcar={podeForcar} status={status} />
           </span>
         </LinhaDeDetalhe>
       </div>

@@ -4,6 +4,7 @@ import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { listarPecas } from '@/lib/pecas-da-conta'
+import { podeForcarNoGrupo } from '@/lib/conciliacao-forcar-opcao'
 import { contaDoGrupoAtivo, getGrupoAtivo, listarLojasDoGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { listarUsuariosDoGrupo } from '@/lib/usuarios-do-grupo'
 import { hojeBrt, primeiroDiaDoMesBrt } from '@/lib/data-venda'
@@ -35,6 +36,7 @@ export default async function PecasPage({
   const isGestor = podeGerirPecas(usuario.papel)
   const isAdmin = ['admin_geral', 'admin_socio'].includes(usuario.papel)
   const podeVender = podeVenderPeca(usuario.papel)
+  const podeForcar = await podeForcarNoGrupo(usuario.papel, (await getGrupoAtivo(usuario)).id)
   // Mesma regra da Entrada: o servidor das actions também confere.
   const podeImportar = acessaModulo(usuario, 'entrada')
 
@@ -126,7 +128,7 @@ export default async function PecasPage({
               />
             </div>
 
-            <VendasPecasTable vendas={vendas} papel={usuario.papel} pecas={pecas.filter(p => p.ativo)} />
+            <VendasPecasTable vendas={vendas} papel={usuario.papel} podeForcar={podeForcar} pecas={pecas.filter(p => p.ativo)} />
           </TabsContent>
         )}
 
