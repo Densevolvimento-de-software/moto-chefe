@@ -1,5 +1,5 @@
-// Tela do catálogo de Serviços: quem não é admin_geral vê a lista com o status só como selo (sem
-// "Novo Serviço", sem lápis, sem botão de ativar); com podeGerir, os três aparecem. As actions são a
+// Tela do catálogo de Serviços, com e sem podeGerir. Sem ele, o teste prova que a lista e o status
+// aparecem e que nenhum botão de criar, editar ou ativar/inativar está na tela. As actions são a
 // fronteira de fora; o resto roda de verdade.
 import { createElement } from 'react'
 import test, { after, afterEach, mock } from 'node:test'
@@ -44,7 +44,7 @@ const texto = () => document.body.textContent ?? ''
 const botoesDaLista = () => [...document.querySelectorAll('tbody button')]
 const botaoDeAtivar = () => document.querySelector('button[title="Clique para inativar"]')
 
-test('sem podeGerir (aux_adm, admin_socio): lista e status aparecem; sem Novo Serviço, sem lápis, sem botão de ativar', async () => {
+test('sem podeGerir: mostra o nome e o status de cada serviço, e nenhum botão na lista', async () => {
   await montar(false)
   assert.ok(texto().includes('Troca de óleo') && texto().includes('Revisão geral'))
   assert.ok(texto().includes('Ativo') && texto().includes('Inativo'))

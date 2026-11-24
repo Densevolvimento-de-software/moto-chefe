@@ -45,7 +45,7 @@ export function ServicosCatalogo({ servicos, podeGerir }: { servicos: ServicoLin
             {servicos.map(s => (
               <TableRow key={s.id}>
                 <TableCell className="font-medium">{s.nome}</TableCell>
-                <TableCell>{s.tempoPrevistoMinutos ? `${s.tempoPrevistoMinutos} min` : '—'}</TableCell>
+                <TableCell>{s.tempoPrevistoMinutos ? `${s.tempoPrevistoMinutos} min` : 'Não informado'}</TableCell>
                 <TableCell>
                   {parseFloat(s.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </TableCell>
