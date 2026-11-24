@@ -19,7 +19,7 @@ export function contaEntraNoPix(
 }
 
 const MAX_IDS = 20
-// Formato real do id do mcp.ai não conferido: aceita só o que não quebra a leitura (letra, número, ponto, - e _).
+// Vale para o id da conta e o da credencial (#253). Formato real do mcp.ai não conferido: aceita só o que não quebra a leitura (letra, número, ponto, - e _).
 const ID_VALIDO = /^[A-Za-z0-9_.-]{1,100}$/
 
 export type IdsContasPix = { ok: true; ids: string[] } | { ok: false; erro: string }
