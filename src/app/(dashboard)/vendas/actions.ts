@@ -35,7 +35,7 @@ import { podeCriarPedido } from '@/lib/pedido-venda-regras'
 import { PAPEIS_QUE_CANCELAM_VENDA, travaDoPapel } from '@/lib/cancelar-venda'
 import { efetivarPedidoTx } from '@/lib/efetivar-pedido'
 import { cancelarPedidoTx, criarPedidoTx } from '@/lib/pedido-venda'
-import { travaDoValorVenda } from '@/lib/valor-venda'
+import { travaDoValorVenda, travaDoVendedorVenda } from '@/lib/valor-venda'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { pedidoDoUsuario } from '@/lib/pedido-do-usuario'
 import { motoDoUsuario, travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
@@ -1335,6 +1335,10 @@ async function editarVenda(vendaId: string, dados: {
   const origemCorrigida = dados.origemId
     ? await garantirOrigemValida(vendaAtual.lojaId, dados.origemId, dados.origemDetalhe)
     : null
+
+  // Antes de procurar o vendedor: a recusa não depende de o id existir nem de qual Conta ele é.
+  const travaVendedor = travaDoVendedorVenda(usuario.papel, vendaAtual.vendedorId, dados.vendedorId)
+  if (travaVendedor) throw new RecusaUsuario(travaVendedor)
 
   if (dados.vendedorId && !(await vendedorDaConta(dados.vendedorId, vendaAtual.lojaId, usuario.grupoLiberado))) {
     throw new RecusaUsuario('Vendedor não encontrado')
