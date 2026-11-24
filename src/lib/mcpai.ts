@@ -1,7 +1,7 @@
 import { agruparEmFaturas, type Fatura, type FaturaBruta, type LancamentoBruto } from './cartao-fatura'
 import { credencialMcpDoGrupo, endpointMcpDoGrupo } from './mcpai-credencial'
 import { contaEntraNoPix } from './pix-contas-liberadas'
-import { montarRotulos, type ContaDaChave, type RotuloConta } from './rotulos-contas-mcp'
+import { FALHA_AO_ROTULAR, montarRotulos, type ContaDaChave, type RotuloConta } from './rotulos-contas-mcp'
 import { saidaEntraNaDespesa, type ContaLiberadaDespesa } from './despesa-contas-liberadas'
 import { lerTodasAsPaginas, vaziaSuspeita, type BuscaPagina } from './paginacao-mcpai'
 
@@ -730,8 +730,6 @@ export async function buscarFaturasCartao(cnpjGrupo: string): Promise<ResultadoC
 }
 
 type ResultadoRotulos = { ok: true; rotulos: RotuloConta[] } | { ok: false; erro: string }
-
-export const FALHA_AO_ROTULAR = 'Não foi possível consultar o mcp.ai agora.'
 
 // BANK traz o identificador em `id`; CREDIT, em `account_id` (o mesmo que buscarFaturasCartao lê).
 type ContaBruta = { id?: string; account_id?: string; item_id?: string; subtype?: string; bank?: string | null; marketingName?: string | null; name?: string | null }

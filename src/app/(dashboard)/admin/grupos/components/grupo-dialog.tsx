@@ -10,7 +10,7 @@ import { toast } from 'sonner'
 import { criarGrupoAction, editarGrupoAction, rotulosDosIdsAction } from '../actions'
 import { AVISO_OUTRO_CNPJ, ehRecusaDoMp } from '@/lib/mercadopago/frases'
 import { chavePropriaAposSalvar } from '@/lib/pix-contas-liberadas'
-import { NAO_ENCONTRADO } from '@/lib/rotulos-contas-mcp'
+import { FALHA_AO_ROTULAR, NAO_ENCONTRADO } from '@/lib/rotulos-contas-mcp'
 
 type Grupo = {
   id: string
@@ -91,7 +91,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
       setRotulos(r.ok ? new Map(r.dados.map(x => [x.id, x.texto])) : null)
       setErroRotulos(r.ok ? null : r.erro)
     }).catch(() => {
-      if (!descartado) setErroRotulos('Não foi possível mostrar os nomes das contas agora.')
+      if (!descartado) setErroRotulos(FALHA_AO_ROTULAR)
     })
     return () => { descartado = true }
   }, [consultaRotulos, idDoGrupo])

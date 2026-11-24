@@ -2,6 +2,8 @@
 // Só o que ajuda a reconhecer o ID: nome do banco e tipo. Número, agência e CNPJ não entram aqui.
 
 export const NAO_ENCONTRADO = 'Não encontrado nesta chave'
+/** Frase única para qualquer falha de consulta ao mcp.ai: a URL da chave tem segredo e o erro dele não sobe para a tela. */
+export const FALHA_AO_ROTULAR = 'Não foi possível consultar o mcp.ai agora.'
 
 /** Uma conta como a chave a enxerga, já sem nada além do que o rótulo usa. `banco` vem de `nomeDaConta`. */
 export type ContaDaChave = {

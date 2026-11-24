@@ -387,6 +387,6 @@ test('sem chave própria salva, e no Novo Grupo, a tela não consulta o mcp.ai',
 test('se a action lança em vez de devolver a recusa, a tela mostra uma frase e segue editável', async () => {
   api.rotulos.mock.mockImplementation(async () => { throw new Error('rede caiu') })
   await montar({ modo: 'editar', inicial: COM_CHAVE })
-  assert.match(textoDaTela(), /Não foi possível mostrar os nomes das contas agora/)
+  assert.match(textoDaTela(), /Não foi possível consultar o mcp\.ai agora\./)
   assert.deepEqual(camposPix().map(c => c.disabled), [false, false])
 })
