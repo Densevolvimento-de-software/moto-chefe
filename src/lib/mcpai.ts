@@ -1,5 +1,6 @@
 import { agruparEmFaturas, type Fatura, type FaturaBruta, type LancamentoBruto } from './cartao-fatura'
-import { endpointMcpDoGrupo } from './mcpai-credencial'
+import { credencialMcpDoGrupo, endpointMcpDoGrupo } from './mcpai-credencial'
+import { contaEntraNoPix } from './pix-contas-liberadas'
 import { saidaEntraNaDespesa, type ContaLiberadaDespesa } from './despesa-contas-liberadas'
 import { lerTodasAsPaginas, vaziaSuspeita, type BuscaPagina } from './paginacao-mcpai'
 
@@ -220,7 +221,9 @@ async function listarTransacoesBrutas(dataInicio: Date, dataFim: Date, cnpjGrupo
   const t0 = agora()
   logTempo({ origem, etapa: 'inicio' })
   try {
-    const url = await endpointMcpDoGrupo(cnpjGrupo)
+    const { url, chavePropria, contasPixIds } = await credencialMcpDoGrupo(cnpjGrupo)
+    // Contas liberadas de outro CNPJ valem só no PIX (#236): Despesas segue só com o CNPJ do grupo.
+    const liberacao = { chavePropria, ids: origem === 'pix' ? contasPixIds : [] }
     const tInit = agora()
     const init = await chamarMcp(url, null, {
       jsonrpc: '2.0',
@@ -271,7 +274,7 @@ async function listarTransacoesBrutas(dataInicio: Date, dataFim: Date, cnpjGrupo
     // daqui: ver bancoEntraNoPix() e saidaEntraNaDespesa(). Filtrar banco neste
     // ponto foi o que sumiu com a Sicredi do Sul de Minas das despesas.
     const contas = (contasPayload.results ?? [])
-      .filter(c => c.subtype !== 'SAVINGS_ACCOUNT' && mesmoCnpj(c.taxNumber, cnpjGrupo))
+      .filter(c => c.subtype !== 'SAVINGS_ACCOUNT' && contaEntraNoPix({ id: c.id, doCnpjDoGrupo: mesmoCnpj(c.taxNumber, cnpjGrupo) }, liberacao))
       .map(c => ({ ...c, bank: nomeDaConta(c) }))
 
     const inicioMs = dataInicio.getTime()

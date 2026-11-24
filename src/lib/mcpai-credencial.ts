@@ -57,14 +57,22 @@ export function resumirEndpoint(url: string): string {
   }
 }
 
-/** Endpoint do mcp.ai do grupo dono deste CNPJ. Lança se não houver nenhum. */
-export async function endpointMcpDoGrupo(cnpjGrupo: string): Promise<string> {
+export type CredencialMcp = {
+  url: string
+  /** A URL veio da chave do próprio grupo (não da env global, de outra empresa). */
+  chavePropria: boolean
+  /** Ids de contas de outro CNPJ liberadas para o PIX (#236). Só valem com `chavePropria`. */
+  contasPixIds: string[]
+}
+
+/** Credencial do mcp.ai do grupo dono deste CNPJ. Lança se não houver nenhuma. */
+export async function credencialMcpDoGrupo(cnpjGrupo: string): Promise<CredencialMcp> {
   const digitos = somenteDigitos(cnpjGrupo)
   // Os CNPJs ficam formatados em `grupos.cnpj` e chegam aqui do mesmo cadastro,
   // mas comparar por dígitos é o que já se faz no resto do módulo (`mesmoCnpj`)
   // — um cadastro sem pontuação não pode fazer a chave "sumir".
   const ativos = await db
-    .select({ nome: grupos.nome, cnpj: grupos.cnpj, url: grupos.mcpaiEndpointUrl })
+    .select({ nome: grupos.nome, cnpj: grupos.cnpj, url: grupos.mcpaiEndpointUrl, contasPixIds: grupos.mcpaiContasPixIds })
     .from(grupos)
     .where(eq(grupos.ativo, true))
 
@@ -88,9 +96,15 @@ export async function endpointMcpDoGrupo(cnpjGrupo: string): Promise<string> {
     }
   }
 
-  return escolherEndpointMcp({
+  const url = escolherEndpointMcp({
     grupoNome: grupo.nome,
     doGrupo,
     global: process.env.MCPAI_ENDPOINT_URL,
   })
+  return { url, chavePropria: !!doGrupo?.trim(), contasPixIds: grupo.contasPixIds }
+}
+
+/** Endpoint do mcp.ai do grupo dono deste CNPJ. Lança se não houver nenhum. */
+export async function endpointMcpDoGrupo(cnpjGrupo: string): Promise<string> {
+  return (await credencialMcpDoGrupo(cnpjGrupo)).url
 }

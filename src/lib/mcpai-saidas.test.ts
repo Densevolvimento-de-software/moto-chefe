@@ -9,7 +9,13 @@ const BANCO_B = 'Banco B Empresas'
 const INICIO = new Date('2026-09-01T03:00:00.000Z')
 const PERIODO = { inicio: new Date('2026-08-01T03:00:00.000Z'), fim: new Date('2026-09-30T02:59:59.000Z') }
 
-mock.module('./mcpai-credencial', { namedExports: { endpointMcpDoGrupo: async () => 'https://mcp.invalido.test/mcp' } })
+const URL_FALSA = 'https://mcp.invalido.test/mcp'
+mock.module('./mcpai-credencial', {
+  namedExports: {
+    credencialMcpDoGrupo: async () => ({ url: URL_FALSA, chavePropria: true, contasPixIds: [] }),
+    endpointMcpDoGrupo: async () => URL_FALSA,
+  },
+})
 
 type Tx = { id: string; date: string; amount: string; type: string; operationType: string; description: string }
 
