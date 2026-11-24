@@ -53,7 +53,7 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
             href={`${ROTA_PAINEL_FABRICA}?${urlDoFiltro(filtro, de, ate, a.id)}`}
             aria-current={a.id === aba ? 'page' : undefined}
             className={cn(
-              'px-4 py-2 min-h-11 inline-flex items-center text-sm font-medium border-b-2 -mb-px',
+              'px-4 py-2 text-sm font-medium border-b-2 -mb-px',
               a.id === aba ? 'border-primary text-primary-text' : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >

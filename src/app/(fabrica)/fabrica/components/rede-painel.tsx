@@ -26,7 +26,7 @@ export function RedePainel({ rede, periodo }: { rede: Rede; periodo: string }) {
         </div>
         <div className="rounded-md bg-muted/50 px-3 py-2">
           <dt className={rotulo}>Faturamento médio por loja</dt>
-          <dd className={numero}>{fmtBRL(rede.valorPorLoja)}</dd>
+          <dd className={numero}>{fmtBRL(rede.mediaPorLoja)}</dd>
         </div>
       </dl>
     </section>

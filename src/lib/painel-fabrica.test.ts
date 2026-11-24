@@ -216,9 +216,9 @@ test('só o início muito antigo na URL: corta para 92 dias até hoje', () => {
 test('rede: lojas na rede são todas as da lista, com ou sem venda; faturamento médio = faturamento ÷ lojas', () => {
   const lojasRede: LojaPainel[] = [{ lojaId: 'a', lojaNome: 'A' }, { lojaId: 'b', lojaNome: 'B' }, { lojaId: 'c', lojaNome: 'C' }]
   const r = resumirRede(lojasRede, resumirVendas(vendas))
-  assert.deepEqual(r, { lojas: 3, motos: 5, valor: 63880.8, valorPorLoja: 21293.6 })
+  assert.deepEqual(r, { lojas: 3, motos: 5, valor: 63880.8, mediaPorLoja: 21293.6 })
 })
 
 test('rede: sem loja nem venda, tudo zero (sem divisão por zero)', () => {
-  assert.deepEqual(resumirRede([], resumirVendas([])), { lojas: 0, motos: 0, valor: 0, valorPorLoja: 0 })
+  assert.deepEqual(resumirRede([], resumirVendas([])), { lojas: 0, motos: 0, valor: 0, mediaPorLoja: 0 })
 })
