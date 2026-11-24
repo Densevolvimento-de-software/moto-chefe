@@ -256,3 +256,12 @@ export function periodoDoPainel(params: { de?: string; ate?: string }, agora: Da
   const inicioMinimo = addDias(ate, -(TETO_PERIODO_DIAS - 1))
   return de < inicioMinimo ? { de: inicioMinimo, ate, limitado: true } : { de, ate, limitado: false }
 }
+
+/** Números da rede no topo da tela, no filtro: lojas com venda nele (não a lista toda) e a média por essas lojas. */
+export type RedePainel = { lojasComVenda: number; motos: number; valor: number; mediaPorLoja: number }
+
+export function resumirRede(lojas: LojaPainel[], r: ResumoVendas): RedePainel {
+  const lojasComVenda = lojasComVendas(lojas, r).length
+  const mediaPorLoja = lojasComVenda > 0 ? centavos(r.valor / lojasComVenda) : 0
+  return { lojasComVenda, motos: r.total, valor: r.valor, mediaPorLoja }
+}
