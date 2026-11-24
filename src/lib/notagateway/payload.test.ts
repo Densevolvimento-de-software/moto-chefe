@@ -268,3 +268,56 @@ test('faturamento direto não monta payload sem transporte e endereço de entreg
   const veiculo = { tipoOperacao: 'FaturamentoDiretoConsumidorFinal', chassi: '9C2ABC12345678901' } as DadosVendaMoto['moto']['veiculo']
   assert.throws(() => montarNfeVendaMoto({ ...VENDA, moto: { ...VENDA.moto, veiculo } }, REGRA), /Selecione a modalidade do frete/)
 })
+
+// #247: o DIFAL vai no icms só na venda interestadual a quem não contribui. Origem 2, interestadual 4%.
+const REGRA_DIFAL: RegraSaida = { ...REGRA, cstIcmsInterestadual: '00', aliquotaIcmsInterestadual: '4.00', origemFixa: '2' }
+const PARA_SP: DadosVendaMoto = {
+  ...VENDA,
+  valor: 9900,
+  pagamentos: [{ tipo: 'PagamentoInstantaneoPix', valor: 9900 }],
+  cliente: { ...VENDA.cliente, endereco: { ...VENDA.cliente.endereco, uf: 'SP', cidade: 'Maringá' } },
+  difal: { aliquotaInterna: 12, percentualFcp: 0 },
+}
+const CHAVES_DIFAL = [
+  'baseCalculoUFDestinoDifal', 'aliquotaUFDestinoDifal', 'valorUFDestinoDifal', 'valorUFOrigemDifal', 'aliquotaInterestadualDifal',
+  'percentualPartilhaInterestadualDifal', 'baseCalculoFundoCombatePobrezaDifal', 'percentualFCPDifal', 'valorFCPDifal',
+]
+const chavesDeDifal = (v: DadosVendaMoto, r: RegraSaida) =>
+  Object.keys(montarNfeVendaMoto(v, r).itens[0].impostos.icms).filter(k => CHAVES_DIFAL.includes(k))
+
+test('interestadual para não contribuinte manda o DIFAL no icms, com a interestadual da regra', () => {
+  const icms = montarNfeVendaMoto(PARA_SP, REGRA_DIFAL).itens[0].impostos.icms
+  assert.equal(icms.origem, 2)
+  assert.equal(icms.aliquota, 4)
+  assert.deepEqual(
+    { ...icms, origem: undefined, situacaoTributaria: undefined },
+    {
+      origem: undefined, situacaoTributaria: undefined, aliquota: 4, baseCalculo: 9900,
+      baseCalculoUFDestinoDifal: 9900, aliquotaUFDestinoDifal: 12, valorUFDestinoDifal: 792, valorUFOrigemDifal: 0,
+      aliquotaInterestadualDifal: 4, percentualPartilhaInterestadualDifal: 100,
+      baseCalculoFundoCombatePobrezaDifal: 9900, percentualFCPDifal: 0, valorFCPDifal: 0,
+    },
+  )
+})
+
+test('o FCP digitado entra no icms', () => {
+  const icms = montarNfeVendaMoto({ ...PARA_SP, difal: { aliquotaInterna: 12, percentualFcp: 2 } }, REGRA_DIFAL).itens[0].impostos.icms
+  assert.equal(icms.percentualFCPDifal, 2)
+  assert.equal(icms.valorFCPDifal, 198)
+})
+
+test('venda dentro do estado não leva nenhum campo de DIFAL, mesmo com o dado digitado', () => {
+  const interna = { ...PARA_SP, cliente: { ...PARA_SP.cliente, endereco: { ...PARA_SP.cliente.endereco, uf: 'MG' } } }
+  assert.deepEqual(chavesDeDifal(interna, REGRA_DIFAL), [])
+})
+
+test('interestadual para contribuinte ou isento não leva DIFAL', () => {
+  for (const indicadorIe of ['contribuinte', 'isento'] as const) {
+    const v = { ...PARA_SP, cliente: { ...CLIENTE_PJ, indicadorIe, inscricaoEstadual: '0623079040081', endereco: PARA_SP.cliente.endereco } }
+    assert.deepEqual(chavesDeDifal(v, REGRA_DIFAL), [], indicadorIe)
+  }
+})
+
+test('sem o dado digitado o payload não inventa DIFAL (quem barra é a action)', () => {
+  assert.deepEqual(chavesDeDifal({ ...PARA_SP, difal: undefined }, REGRA_DIFAL), [])
+})
