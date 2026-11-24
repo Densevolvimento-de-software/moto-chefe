@@ -213,12 +213,26 @@ test('só o início muito antigo na URL: corta para 92 dias até hoje', () => {
   assert.deepEqual(periodoDoPainel({ de: '2025-01-01' }, AGORA), { de: '2026-08-15', ate: '2026-11-14', limitado: true })
 })
 
-test('rede: lojas na rede são todas as da lista, com ou sem venda; faturamento médio = faturamento ÷ lojas', () => {
+test('rede: lojas com venda no filtro (não a lista toda); média = faturamento ÷ essas lojas', () => {
   const lojasRede: LojaPainel[] = [{ lojaId: 'a', lojaNome: 'A' }, { lojaId: 'b', lojaNome: 'B' }, { lojaId: 'c', lojaNome: 'C' }]
   const r = resumirRede(lojasRede, resumirVendas(vendas))
-  assert.deepEqual(r, { lojas: 3, motos: 5, valor: 63880.8, mediaPorLoja: 21293.6 })
+  assert.deepEqual(r, { lojasComVenda: 2, motos: 5, valor: 63880.8, mediaPorLoja: 31940.4 })
+})
+
+test('rede com filtro: uma loja e um modelo mostram só o que o filtro deixa, e a média divide pelas lojas com venda', () => {
+  const lojasRede: LojaPainel[] = [{ lojaId: 'a', lojaNome: 'A' }, { lojaId: 'b', lojaNome: 'B' }, { lojaId: 'c', lojaNome: 'C' }]
+  const daLoja = resumirRede(lojasRede, resumirVendas(filtrarVendas(vendas, { lojas: ['a'], modelos: [], cores: [] })))
+  assert.deepEqual(daLoja, { lojasComVenda: 1, motos: 2, valor: 23480.3, mediaPorLoja: 23480.3 })
+  const doModelo = resumirRede(lojasRede, resumirVendas(filtrarVendas(vendas, { lojas: [], modelos: ['JETMAX'], cores: [] })))
+  assert.deepEqual(doModelo, { lojasComVenda: 1, motos: 2, valor: 23500.5, mediaPorLoja: 23500.5 })
+})
+
+test('rede com filtro sem venda: zero lojas com venda, média zero, sem divisão por zero', () => {
+  const lojasRede: LojaPainel[] = [{ lojaId: 'a', lojaNome: 'A' }]
+  const semVenda = resumirRede(lojasRede, resumirVendas(filtrarVendas(vendas, { lojas: [], modelos: ['NADA'], cores: [] })))
+  assert.deepEqual(semVenda, { lojasComVenda: 0, motos: 0, valor: 0, mediaPorLoja: 0 })
 })
 
 test('rede: sem loja nem venda, tudo zero (sem divisão por zero)', () => {
-  assert.deepEqual(resumirRede([], resumirVendas([])), { lojas: 0, motos: 0, valor: 0, mediaPorLoja: 0 })
+  assert.deepEqual(resumirRede([], resumirVendas([])), { lojasComVenda: 0, motos: 0, valor: 0, mediaPorLoja: 0 })
 })

@@ -257,10 +257,11 @@ export function periodoDoPainel(params: { de?: string; ate?: string }, agora: Da
   return de < inicioMinimo ? { de: inicioMinimo, ate, limitado: true } : { de, ate, limitado: false }
 }
 
-/** Números da rede no topo da tela: lojas da lista (com ou sem venda), motos e faturamento do filtro. */
-export type RedePainel = { lojas: number; motos: number; valor: number; mediaPorLoja: number }
+/** Números da rede no topo da tela, no filtro: lojas com venda nele (não a lista toda) e a média por essas lojas. */
+export type RedePainel = { lojasComVenda: number; motos: number; valor: number; mediaPorLoja: number }
 
 export function resumirRede(lojas: LojaPainel[], r: ResumoVendas): RedePainel {
-  const mediaPorLoja = lojas.length > 0 ? centavos(r.valor / lojas.length) : 0
-  return { lojas: lojas.length, motos: r.total, valor: r.valor, mediaPorLoja }
+  const lojasComVenda = lojasComVendas(lojas, r).length
+  const mediaPorLoja = lojasComVenda > 0 ? centavos(r.valor / lojasComVenda) : 0
+  return { lojasComVenda, motos: r.total, valor: r.valor, mediaPorLoja }
 }

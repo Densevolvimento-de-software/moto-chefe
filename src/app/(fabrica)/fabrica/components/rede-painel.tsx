@@ -1,4 +1,4 @@
-// Rede no topo do painel (variante C): faturamento e motos do filtro, lojas da lista e média por loja.
+// Rede no topo do painel (variante C): faturamento e motos do filtro, lojas com venda nele e média por essas lojas.
 // Os números vêm de resumirRede (src/lib/painel-fabrica.ts). Só o que o painel já lê: sem meta, oficina ou DRE.
 import type { RedePainel as Rede } from '@/lib/painel-fabrica'
 import { fmtBRL } from '@/lib/preco-minimo'
@@ -21,11 +21,11 @@ export function RedePainel({ rede, periodo }: { rede: Rede; periodo: string }) {
       </div>
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="rounded-md bg-muted/50 px-3 py-2">
-          <dt className={rotulo}>Lojas na rede</dt>
-          <dd className={numero}>{rede.lojas}</dd>
+          <dt className={rotulo}>Lojas com venda</dt>
+          <dd className={numero}>{rede.lojasComVenda}</dd>
         </div>
         <div className="rounded-md bg-muted/50 px-3 py-2">
-          <dt className={rotulo}>Faturamento médio por loja</dt>
+          <dt className={rotulo}>Faturamento médio por loja com venda</dt>
           <dd className={numero}>{fmtBRL(rede.mediaPorLoja)}</dd>
         </div>
       </dl>
