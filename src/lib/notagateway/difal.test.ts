@@ -86,3 +86,10 @@ test('validar: devolve só os dois campos, sem repassar o que o navegador mandou
   const r = validarDifalDigitado({ aliquotaInterna: '12', fcp: '', valorUFDestinoDifal: 1, grupoId: 'outra-conta' }, 4)
   assert.deepEqual(r, { ok: true, dados: { aliquotaInterna: 12, percentualFcp: 0 } })
 })
+
+test('validar: os limites são aceitos (interna igual à interestadual, 100 e FCP 0 ou 100)', () => {
+  assert.deepEqual(validarDifalDigitado({ aliquotaInterna: '4', fcp: '0' }, 4), { ok: true, dados: { aliquotaInterna: 4, percentualFcp: 0 } })
+  assert.deepEqual(validarDifalDigitado({ aliquotaInterna: '100', fcp: '100' }, 4), { ok: true, dados: { aliquotaInterna: 100, percentualFcp: 100 } })
+  // Interna igual à interestadual: DIFAL de zero, não erro.
+  assert.equal(camposDifalIcms({ valor: 9900, aliquotaInterestadual: 4, difal: { aliquotaInterna: 4, percentualFcp: 0 } }).valorUFDestinoDifal, 0)
+})
