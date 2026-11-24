@@ -22,7 +22,7 @@ test('id liberado sem chave própria (chave global) não vale', () => {
   assert.equal(contaEntraNoPix(DE_OUTRO, { chavePropria: false, ids: ['conta-outra'] }), false)
 })
 
-const DA_CREDENCIAL = { id: 'conta-outra', itemId: 'credencial-x', doCnpjDoGrupo: false }
+const DA_CREDENCIAL = { id: 'conta-outra', itemId: 'credencial-x', subtype: 'CHECKING_ACCOUNT', doCnpjDoGrupo: false }
 
 test('conta de outro CNPJ entra pelo id da credencial liberado, com chave própria', () => {
   assert.equal(contaEntraNoPix(DA_CREDENCIAL, { chavePropria: true, ids: ['credencial-x'] }), true)
@@ -35,6 +35,16 @@ test('id da credencial liberado sem chave própria (chave global) não vale', ()
 test('conta de outra credencial, ou sem credencial informada, fica fora', () => {
   assert.equal(contaEntraNoPix(DA_CREDENCIAL, { chavePropria: true, ids: ['credencial-y'] }), false)
   assert.equal(contaEntraNoPix(DE_OUTRO, { chavePropria: true, ids: ['credencial-x'] }), false)
+})
+
+test('pela credencial só entra conta corrente; outro tipo de conta da mesma credencial fica fora', () => {
+  const liberacao = { chavePropria: true, ids: ['credencial-x'] }
+  assert.equal(contaEntraNoPix({ ...DA_CREDENCIAL, subtype: 'PAYMENT_ACCOUNT' }, liberacao), false)
+  assert.equal(contaEntraNoPix({ id: 'conta-outra', itemId: 'credencial-x', doCnpjDoGrupo: false }, liberacao), false)
+})
+
+test('conta liberada pelo id dela entra qualquer que seja o tipo (a restrição é só da credencial)', () => {
+  assert.equal(contaEntraNoPix({ ...DA_CREDENCIAL, subtype: 'PAYMENT_ACCOUNT' }, { chavePropria: true, ids: ['conta-outra'] }), true)
 })
 
 test('lerIdsContasPix aceita o id de credencial (UUID) junto com id de conta no mesmo campo', () => {

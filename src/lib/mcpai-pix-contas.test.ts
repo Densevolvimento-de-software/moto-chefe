@@ -19,9 +19,10 @@ const OUTRO_CNPJ = '99999999000199'
 const CONTAS = [
   { id: 'conta-grupo', item_id: 'cred-grupo', bank: 'Banco A', subtype: 'CHECKING_ACCOUNT', taxNumber: CNPJ, name: 'A' },
   { id: 'conta-outra', item_id: 'cred-outra', bank: 'Banco B', subtype: 'CHECKING_ACCOUNT', taxNumber: OUTRO_CNPJ, name: 'B' },
-  // Credencial 'cred-x' (outro CNPJ): uma conta corrente e uma poupança. O cartão dela só aparece no type CREDIT.
+  // Credencial 'cred-x' (outro CNPJ): uma conta corrente, uma poupança e uma conta de pagamento. O cartão dela só aparece no type CREDIT.
   { id: 'conta-x-corrente', item_id: 'cred-x', bank: 'Banco X', subtype: 'CHECKING_ACCOUNT', taxNumber: OUTRO_CNPJ, name: 'X' },
   { id: 'conta-x-poupanca', item_id: 'cred-x', bank: 'Banco X', subtype: 'SAVINGS_ACCOUNT', taxNumber: OUTRO_CNPJ, name: 'X poupança' },
+  { id: 'conta-x-pagamento', item_id: 'cred-x', bank: 'Banco X', subtype: 'PAYMENT_ACCOUNT', taxNumber: OUTRO_CNPJ, name: 'X pagamento' },
 ]
 const CARTOES = [{ id: 'cartao-x', item_id: 'cred-x', bank: 'Banco X', subtype: 'CREDIT_CARD', name: 'X cartão' }]
 const tx = (id: string, type: 'CREDIT' | 'DEBIT') => ({
@@ -32,6 +33,7 @@ const TRANSACOES: Record<string, ReturnType<typeof tx>[]> = {
   'conta-outra': [tx('pix-outra', 'CREDIT'), tx('saida-outra', 'DEBIT')],
   'conta-x-corrente': [tx('pix-x', 'CREDIT'), tx('saida-x', 'DEBIT')],
   'conta-x-poupanca': [tx('pix-x-poupanca', 'CREDIT')],
+  'conta-x-pagamento': [tx('pix-x-pagamento', 'CREDIT')],
   'cartao-x': [tx('compra-cartao-x', 'DEBIT')],
 }
 
@@ -107,7 +109,7 @@ test('Despesas não lê a conta liberada para o PIX, mesmo com o banco dela libe
   assert.deepEqual(contasLidas, ['conta-grupo'])
 })
 
-test('PIX com id da credencial traz a conta corrente dela; poupança e cartão da mesma credencial ficam de fora', async () => {
+test('PIX com id da credencial traz a conta corrente dela; poupança, conta de pagamento e cartão da mesma credencial ficam de fora', async () => {
   credencial = { ...credencial, contasPixIds: ['cred-x'] }
   assert.deepEqual(await pixLidos(), ['pix-grupo', 'pix-x'])
   assert.deepEqual(contasLidas.sort(), ['conta-grupo', 'conta-x-corrente'])
