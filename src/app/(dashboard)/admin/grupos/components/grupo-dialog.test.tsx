@@ -247,7 +247,7 @@ test('Novo Grupo não tem o campo nem manda os ids', async () => {
 })
 
 test('recusa do servidor sobre os ids aparece no rodapé e o diálogo continua aberto', async () => {
-  api.editar.mock.mockImplementation(async () => ({ ok: false, erro: 'ID de conta inválido: use só letras, números, - e _ (até 100 caracteres).' }))
+  api.editar.mock.mockImplementation(async () => ({ ok: false, erro: 'ID de conta inválido: use só letras, números, ponto, - e _ (até 100 caracteres).' }))
   const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
   await t.preencher('grupo-mcpai-contas-pix', 'conta!')
   await t.clique('Salvar')

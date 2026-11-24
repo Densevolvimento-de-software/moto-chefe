@@ -27,9 +27,10 @@ test('lerIdsContasPix separa por vírgula, espaço e quebra de linha, sem vazios
   assert.deepEqual(lerIdsContasPix('  '), { ok: true, ids: [] })
 })
 
-test('lerIdsContasPix recusa caractere fora de letra, número, - e _', () => {
-  const r = lerIdsContasPix('a1, b!2')
-  assert.equal(r.ok, false)
+test('lerIdsContasPix aceita ponto no id e recusa o resto fora de letra, número, - e _', () => {
+  assert.deepEqual(lerIdsContasPix('a.1, b_2-c'), { ok: true, ids: ['a.1', 'b_2-c'] })
+  assert.equal(lerIdsContasPix('a1, b!2').ok, false)
+  assert.equal(lerIdsContasPix('a/1').ok, false)
 })
 
 test('lerIdsContasPix recusa mais de 20 ids e id com mais de 100 caracteres', () => {

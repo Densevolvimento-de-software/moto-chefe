@@ -12,8 +12,8 @@ export function contaEntraNoPix(conta: { id: string; doCnpjDoGrupo: boolean }, l
 }
 
 const MAX_IDS = 20
-// Formato real do id do mcp.ai não conferido: aceita só o que não quebra a leitura (letra, número, - e _).
-const ID_VALIDO = /^[A-Za-z0-9_-]{1,100}$/
+// Formato real do id do mcp.ai não conferido: aceita só o que não quebra a leitura (letra, número, ponto, - e _).
+const ID_VALIDO = /^[A-Za-z0-9_.-]{1,100}$/
 
 export type IdsContasPix = { ok: true; ids: string[] } | { ok: false; erro: string }
 
@@ -21,7 +21,7 @@ export type IdsContasPix = { ok: true; ids: string[] } | { ok: false; erro: stri
 export function lerIdsContasPix(texto: string): IdsContasPix {
   const ids = [...new Set(texto.split(/[\s,;]+/).filter(Boolean))]
   if (ids.some(id => !ID_VALIDO.test(id))) {
-    return { ok: false, erro: 'ID de conta inválido: use só letras, números, - e _ (até 100 caracteres).' }
+    return { ok: false, erro: 'ID de conta inválido: use só letras, números, ponto, - e _ (até 100 caracteres).' }
   }
   if (ids.length > MAX_IDS) return { ok: false, erro: `No máximo ${MAX_IDS} contas por grupo.` }
   return { ok: true, ids }
