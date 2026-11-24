@@ -276,8 +276,8 @@ export type ModeloPainel = { modelo: string; vendidas: number; receita: number; 
 export function resumirModelos(vendas: VendaPainel[], estoque: LinhaEstoquePainel[]): ModeloPainel[] {
   const porModeloVendas = contarPor(vendas, v => v.modelo)
   const receitaPorModelo = resumirPor(vendas, v => v.modelo, somarValores)
-  const emEstoque = resumirEstoque(estoque).porModelo
-  const modelos = [...new Set([...porModeloVendas.keys(), ...emEstoque.map(p => p.chave)])].sort(ordemPt)
+  const emEstoque = new Map(resumirEstoque(estoque).porModelo.map(p => [p.chave, p.quantidade]))
+  const modelos = [...new Set([...porModeloVendas.keys(), ...emEstoque.keys()])].sort(ordemPt)
   return modelos.map(modelo => {
     const vendidas = porModeloVendas.get(modelo) ?? 0
     const receita = receitaPorModelo.get(modelo) ?? 0
@@ -286,7 +286,7 @@ export function resumirModelos(vendas: VendaPainel[], estoque: LinhaEstoquePaine
       vendidas,
       receita,
       precoMedio: vendidas > 0 ? centavos(receita / vendidas) : 0,
-      emEstoque: emEstoque.find(p => p.chave === modelo)?.quantidade ?? 0,
+      emEstoque: emEstoque.get(modelo) ?? 0,
     }
   })
 }
