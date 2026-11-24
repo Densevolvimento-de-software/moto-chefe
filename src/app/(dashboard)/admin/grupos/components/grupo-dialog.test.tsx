@@ -5,7 +5,7 @@ import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import type { ResultadoAction } from '@/lib/resultado-action'
 import { montarDom } from '@/test/montar-dom'
-import { apertarEscape, montarDialogo, textoDaTela } from '@/test/dialogo-em-tela'
+import { apertarEscape, botao, clicar, montarDialogo, textoDaTela } from '@/test/dialogo-em-tela'
 import { AVISO_OUTRO_CNPJ, FRASES_MP } from '@/lib/mercadopago/frases'
 import type { GrupoDialog as Dialogo } from './grupo-dialog'
 
@@ -206,6 +206,7 @@ test('titular do mesmo CNPJ ou sem credencial: sem aviso', async () => {
 
 // #236/#253: contas de outro CNPJ liberadas para a tela PIX, logo abaixo da URL do mcp.ai, um campo por ID.
 const COM_CHAVE = { ...GRUPO, mcpaiConfigurado: true, mcpaiResumo: 'api.mcp.ai/…abcd', mcpaiContasPixIds: ['conta-1', 'conta-2'] }
+const COM_CHAVE_SEM_IDS = { ...COM_CHAVE, mcpaiContasPixIds: [] as string[] }
 const camposPix = () => [...document.querySelectorAll<HTMLInputElement>('input[id^="grupo-mcpai-contas-pix-"]')]
 const valoresPix = () => camposPix().map(c => c.value)
 const enviado = () => api.editar.mock.calls[0].arguments[1].mcpaiContasPix
@@ -274,4 +275,64 @@ test('depois de salvar, quando a lista chega com os ids novos, reabrir mostra os
   await t.redesenhar({ modo: 'editar', inicial: { ...COM_CHAVE, mcpaiContasPixIds: ['conta-9'] }, open: false, onOpenChange: t.onOpenChange })
   await t.redesenhar({ modo: 'editar', inicial: { ...COM_CHAVE, mcpaiContasPixIds: ['conta-9'] }, open: true, onOpenChange: t.onOpenChange })
   assert.deepEqual(valoresPix(), ['conta-9'])
+})
+
+// #253, variante (a) do protótipo: cada ID num campo próprio, com × para remover e "Adicionar conta ou credencial".
+const ADICIONAR = 'Adicionar conta ou credencial'
+const removerLinha = (n: number) => document.querySelector<HTMLButtonElement>(`button[aria-label="Remover ID ${n}"]`)
+
+test('Adicionar abre um campo vazio no fim; o ID digitado nele é enviado junto', async () => {
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  await t.clique(ADICIONAR)
+  assert.deepEqual(valoresPix(), ['conta-1', 'conta-2', ''])
+  await t.preencher('grupo-mcpai-contas-pix-2', 'cred-9')
+  await t.clique('Salvar')
+  assert.equal(enviado(), 'conta-1, conta-2, cred-9')
+})
+
+test('× remove só a linha dele e o Salvar não envia o ID removido', async () => {
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  await t.act(async () => { clicar(removerLinha(1)) })
+  assert.deepEqual(valoresPix(), ['conta-2'])
+  await t.clique('Salvar')
+  assert.equal(enviado(), 'conta-2')
+})
+
+test('remover todas as linhas envia vazio (o servidor apaga a lista)', async () => {
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  await t.act(async () => { clicar(removerLinha(2)); clicar(removerLinha(1)) })
+  assert.deepEqual(valoresPix(), [])
+  await t.clique('Salvar')
+  assert.equal(enviado(), '')
+})
+
+test('linha vazia ou só com espaços é ignorada, e o ID leva trim', async () => {
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  await t.clique(ADICIONAR)
+  await t.clique(ADICIONAR)
+  await t.preencher('grupo-mcpai-contas-pix-2', '   ')
+  await t.preencher('grupo-mcpai-contas-pix-0', '  conta-1  ')
+  await t.clique('Salvar')
+  assert.equal(enviado(), 'conta-1, conta-2')
+})
+
+test('grupo sem ID começa só com o botão Adicionar', async () => {
+  await montar({ modo: 'editar', inicial: COM_CHAVE_SEM_IDS })
+  assert.deepEqual(valoresPix(), [])
+  assert.ok(botao(ADICIONAR), 'o botão Adicionar aparece')
+})
+
+test('grupo sem chave própria: Adicionar e × ficam desligados e a tela explica; colar a chave liga', async () => {
+  const t = await montar({ modo: 'editar', inicial: { ...GRUPO, mcpaiContasPixIds: ['conta-1'] } })
+  assert.equal(botao(ADICIONAR)?.disabled, true)
+  assert.equal(removerLinha(1)?.disabled, true)
+  assert.match(textoDaTela(), /chave própria do mcp\.ai/)
+  await t.preencher('grupo-mcpai', 'https://api.mcp.ai/nova-chave')
+  assert.equal(botao(ADICIONAR)?.disabled, false)
+  assert.equal(removerLinha(1)?.disabled, false)
+})
+
+test('Novo Grupo não mostra o botão Adicionar', async () => {
+  await montar({ modo: 'criar', contas: [] })
+  assert.equal(botao(ADICIONAR) === undefined, true)
 })

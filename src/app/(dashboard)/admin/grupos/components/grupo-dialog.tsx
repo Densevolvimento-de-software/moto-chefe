@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { Plus, Pencil } from 'lucide-react'
+import { Plus, Pencil, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { criarGrupoAction, editarGrupoAction } from '../actions'
 import { AVISO_OUTRO_CNPJ, ehRecusaDoMp } from '@/lib/mercadopago/frases'
@@ -303,17 +303,32 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                     <Label id="grupo-mcpai-contas-pix-rotulo" className="text-xs">IDs de outras contas do Open Finance</Label>
                     <div role="group" aria-labelledby="grupo-mcpai-contas-pix-rotulo" className="space-y-2">
                       {linhasPix.map((id, i) => (
-                        <Input
-                          key={i}
-                          id={`grupo-mcpai-contas-pix-${i}`}
-                          aria-label={`ID da conta ou da credencial ${i + 1}`}
-                          value={id}
-                          onChange={e => setLinhasPix(linhas => linhas.map((l, j) => (j === i ? e.target.value : l)))}
-                          placeholder="ID da conta ou da credencial"
-                          className="h-9 text-sm"
-                          disabled={!chavePropria}
-                        />
+                        <div key={i} className="flex items-center gap-2">
+                          <Input
+                            id={`grupo-mcpai-contas-pix-${i}`}
+                            aria-label={`ID da conta ou da credencial ${i + 1}`}
+                            value={id}
+                            onChange={e => setLinhasPix(linhas => linhas.map((l, j) => (j === i ? e.target.value : l)))}
+                            placeholder="ID da conta ou da credencial"
+                            className="h-9 min-w-0 flex-1 text-sm"
+                            disabled={!chavePropria}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label={`Remover ID ${i + 1}`}
+                            onClick={() => setLinhasPix(linhas => linhas.filter((_, j) => j !== i))}
+                            disabled={!chavePropria}
+                          >
+                            <X />
+                          </Button>
+                        </div>
                       ))}
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setLinhasPix(linhas => [...linhas, ''])} disabled={!chavePropria}>
+                        <Plus />
+                        Adicionar conta ou credencial
+                      </Button>
                     </div>
                     <p className="text-[11px] text-muted-foreground">
                       {chavePropria
