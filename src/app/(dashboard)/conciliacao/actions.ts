@@ -24,7 +24,7 @@ import { parseBRL, parseInfinityPay } from '@/lib/conciliacao-infinitepay-csv'
 import { casarPorAutorizacao, linhaDaTransacao } from '@/lib/conciliacao-casamento'
 import { tiposDoPagamentoDaLinha } from '@/lib/conciliacao-status'
 import { detectarFormato } from '@/lib/conciliacao-formato'
-import { ehLinhaProcurada, type LinhaProcurada, type TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
+import { ehLinhaProcurada, type LinhaProcurada, type TransacaoCartao, type TransacaoDoRelatorio } from '@/lib/conciliacao-cartao'
 import { lerRelatorioCielo } from '@/lib/conciliacao-cielo'
 import { lerRelatorioRede } from '@/lib/conciliacao-rede'
 import { lerRelatorioRendimento } from '@/lib/conciliacao-rendimento'
@@ -38,7 +38,7 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 // Linha comum aos leitores de relatório, o que a gravação precisa de cada transação.
 type LinhaRelatorio = {
   dataTransacao: string
-  tipo: 'credito' | 'debito'
+  tipo: TransacaoCartao['tipo']
   bandeira: string
   parcelas: number
   autorizacao: string | null

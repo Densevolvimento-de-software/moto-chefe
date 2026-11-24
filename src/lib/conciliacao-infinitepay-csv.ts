@@ -1,9 +1,14 @@
-// Leitor do relatório CSV da InfinitePay (cartão). Função pura: recebe o texto já decodificado e
+// Leitor do relatório CSV da InfinitePay (cartão e PIX). Função pura: recebe o texto já decodificado e
 // devolve as linhas aprovadas. Sem banco, sem rede, sem data atual.
 //
 // Colunas (por posição): 0 Data e hora, 1 Meio, 2 Bandeira, 3 Parcelas, 5 Dados adicionais (serial),
 // 6 Identificador, 7 Status, 8 Valor, 9 Líquido, 13 NSU, 14 Origem - Nome.
+import { LINHA_PIX, type TransacaoCartao } from '@/lib/conciliacao-cartao'
 import { extrairTerminalInfinityPay } from '@/lib/conciliacao-terminal'
+
+// A InfinitePay exporta o PIX num relatório separado, com o mesmo cabeçalho do cartão e Meio = "Pix" (#237).
+// Meio fora desta lista (Dinheiro...) não é venda de maquininha para conciliar.
+const TIPO_DO_MEIO = new Map<string, TransacaoCartao['tipo']>([['Crédito', 'credito'], ['Débito', 'debito'], ['Pix', LINHA_PIX]])
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = []
@@ -31,12 +36,13 @@ export function parseInfinityPay(text: string) {
     const c = parseCSVLine(lines[i])
     // c[7] = Status, c[1] = Meio
     if (c[7] !== 'Aprovada') continue
-    if (!['Crédito', 'Débito'].includes(c[1])) continue
+    const tipo = TIPO_DO_MEIO.get(c[1])
+    if (!tipo) continue
 
     const [dd, mm, yyyy] = (c[0].split(' ')[0]).split('/')
     rows.push({
       dataTransacao: `${yyyy}-${mm}-${dd}`,
-      tipo:          c[1] === 'Débito' ? 'debito' as const : 'credito' as const,
+      tipo,
       bandeira:      c[2],
       parcelas:      c[3] === 'À Vista' ? 1 : (parseInt(c[3], 10) || 1),
       autorizacao:   c[6] !== '000000' ? c[6] : null,
