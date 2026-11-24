@@ -55,7 +55,7 @@ type Conta = Awaited<ReturnType<typeof semearConta>>
 const vender = (tx: Tx, c: Conta, pagamentos: { tipo: string; valor: number }[]) =>
   aplicarVendaPeca(tx, c.aux.id, { lojaId: c.lojaId, itens: [{ pecaId: c.pecaId, quantidade: 2 }], pagamentos })
 const editar = (tx: Tx, c: Conta, vendaId: string, pagamentos: { tipo: string; valor: number }[]) =>
-  editarVendaPecaTx(tx, { vendaId, grupoId: c.grupoId, usuarioId: c.aux.id, itens: [{ pecaId: c.pecaId, quantidade: 2 }], pagamentos })
+  editarVendaPecaTx(tx, { vendaId, grupoId: c.grupoId, papel: 'admin_socio', usuarioId: c.aux.id, itens: [{ pecaId: c.pecaId, quantidade: 2 }], pagamentos })
 const caixa = (tx: Tx, vendaId: string) =>
   linhas(tx, sql`select loja_id, tipo, categoria, valor::text, data::text, usuario_id from lancamentos_caixa where venda_peca_id = ${vendaId} order by valor`)
 const caixaDaLoja = (tx: Tx, lojaId: string) =>

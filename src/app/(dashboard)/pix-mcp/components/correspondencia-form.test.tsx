@@ -147,7 +147,7 @@ test('quem não gere a conciliação: a caixa com os valores manda pedir a quem 
   forcadaDoPix.mock.mockImplementation(async () => ({ ok: true, dados: RESUMO }))
   await desvincular()
   assert.ok(tela().includes(TEXTO_DA_CAIXA), tela())
-  assert.ok(tela().includes('Para desvincular, peça a quem gere a conciliação (sócio ou aux. adm.) para desfazer a forçada.'), tela())
+  assert.ok(tela().includes('Para desvincular, peça a quem pode desfazer a forçada (sócio, ou aux. adm. se o grupo permitir) para desfazer.'), tela())
   assert.equal(botao('Desfazer a forçada e desvincular')?.textContent ?? null, null)
   assert.deepEqual(erros, [])
 })

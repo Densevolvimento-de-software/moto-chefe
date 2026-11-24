@@ -75,7 +75,7 @@ async function montarTabela(papel: string, lojasEditaveis: ReadonlySet<string> =
   document.body.appendChild(container)
   const root = createRoot(container)
   const desenhar = (vendas: VendaComDetalhes[]) => act(async () => {
-    root.render(React.createElement(VendasTable, { vendas, papel, lojasEditaveis, vendedores: [], origens: [] }))
+    root.render(React.createElement(VendasTable, { vendas, papel, podeForcar: false, lojasEditaveis, vendedores: [], origens: [] }))
   })
   // No desktop a NF fica no painel da venda: abre clicando na linha da tabela.
   const abrirVenda = () => act(async () => {

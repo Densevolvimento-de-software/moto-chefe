@@ -1,6 +1,7 @@
 import { centavos } from './centavos'
 import type { PgtoOS } from './conciliacao-status'
 import type { PagamentoEntrada } from './pagamentos-entrada'
+import { podeForcarConciliacao, podeGerirConciliacao } from './conciliacao-papeis'
 
 // O que se grava em cada pagamento vindo da tela. A marca de conciliação forçada fica de fora:
 // só o servidor a grava (comForcado), e na edição ela vem do registro já gravado (#891).
@@ -38,4 +39,27 @@ export function pagamentosParaGravar(daTela: readonly PgtoOS[], campos: readonly
       usados: new Set([...acc.usados, i]),
     }
   }, { saida: [], usados: new Set() }).saida as PgtoOS[]
+}
+
+// #220 (D1): a frase de quem não pode desfazer a forçada, para a gravação que tiraria ou mudaria a marca.
+export const FRASE_PAGAMENTO_FORCADO = 'Esse pagamento está marcado como recebido. Peça a quem gere a conciliação para desfazer a forçada.'
+
+/** Quantos pagamentos marcados existem em `gravados` e continuariam marcados depois de gravar `daTela`. */
+function marcasMantidas(daTela: readonly PgtoOS[], campos: readonly CampoDaTela[], gravados: unknown): { gravadas: number; mantidas: number } {
+  const marcados = (lista: readonly PgtoOS[]) => lista.filter(p => Boolean(p?.conciliadoManual)).length
+  const antes = Array.isArray(gravados) ? (gravados as PgtoOS[]) : []
+  return { gravadas: marcados(antes), mantidas: marcados(pagamentosParaGravar(daTela, campos, gravados)) }
+}
+
+/**
+ * A frase de recusa quando quem grava não pode desfazer forçada (#220) e a gravação mudaria ou tiraria um
+ * pagamento marcado. Só quem gere a conciliação entra aqui: admin_geral e admin_socio sempre podem; os demais
+ * papéis seguem como antes.
+ */
+export function recusaDePagamentoForcado(
+  papel: string, auxAdmPodeForcar: boolean, daTela: readonly PgtoOS[], campos: readonly CampoDaTela[], gravados: unknown,
+): string | null {
+  if (!podeGerirConciliacao(papel) || podeForcarConciliacao(papel, auxAdmPodeForcar)) return null
+  const { gravadas, mantidas } = marcasMantidas(daTela, campos, gravados)
+  return mantidas < gravadas ? FRASE_PAGAMENTO_FORCADO : null
 }

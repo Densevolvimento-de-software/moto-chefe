@@ -22,7 +22,7 @@ type Correspondencia = {
   lancadoEm: string | null
 }
 
-// `podeDesfazerForcada`: quem gere a conciliação (podeGerirConciliacao); a action confere de novo.
+// `podeDesfazerForcada`: quem pode forçar (podeForcarConciliacao, com a opção do grupo, #220); a action confere de novo.
 type Props = { id: string; correspondencia: Correspondencia; podeDesfazerForcada: boolean }
 
 const labelPorTipo = {

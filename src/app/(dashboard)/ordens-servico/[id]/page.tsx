@@ -6,6 +6,7 @@ import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { listarUsuariosDoGrupo } from '@/lib/usuarios-do-grupo'
 import { getGrupoIdDaLoja } from '@/lib/grupo'
+import { podeForcarNoGrupo } from '@/lib/conciliacao-forcar-opcao'
 import { db } from '@/lib/db'
 import { maquininhasDaLoja } from '@/lib/maquininhas'
 import { servicosCatalogo, aprovacoesVenda } from '@/lib/db/schema'
@@ -49,7 +50,9 @@ export default async function OSDetalhePage({ params }: { params: Promise<{ id: 
   const isAdmin = ['admin_geral', 'admin_socio'].includes(usuario.papel)
   if (isAdmin ? !(await podeAbrirRegistroDaLoja(usuario, os.lojaId)) : os.lojaId !== usuario.lojaId) notFound()
 
-  const mecanicos = await listarUsuariosDoGrupo(await getGrupoIdDaLoja(os.lojaId), { papeis: ['mecanico'] })
+  const grupoDaOS = await getGrupoIdDaLoja(os.lojaId)
+  const podeForcarOS = await podeForcarNoGrupo(usuario.papel, grupoDaOS)
+  const mecanicos = await listarUsuariosDoGrupo(grupoDaOS, { papeis: ['mecanico'] })
   // Catálogo da Conta da loja da OS, mesmo para o admin com outro grupo ativo (#195).
   const pecas = await listarPecasDaLoja(db, os.lojaId)
   const maquininhas = await maquininhasDaLoja(db, os.lojaId)
@@ -252,6 +255,7 @@ export default async function OSDetalhePage({ params }: { params: Promise<{ id: 
               osId={id}
               pagamentos={pagamentosOS}
               papel={usuario.papel}
+              podeForcar={podeForcarOS}
             />
           )}
         </div>

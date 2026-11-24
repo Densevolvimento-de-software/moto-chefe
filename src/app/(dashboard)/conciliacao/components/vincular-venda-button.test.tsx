@@ -6,6 +6,7 @@ import { montarDom } from '@/test/montar-dom'
 import { botao, clicar, dialogoAberto, esperar, montarDialogo, DEPOIS_DA_ANIMACAO_MS } from '@/test/dialogo-em-tela'
 import type { AlvoConciliacao } from '@/lib/conciliacao-alvo'
 import type { ResultadoAction } from '@/lib/resultado-action'
+import { COMPLETA_FORCADA_PEDIR_A_GESTOR } from '@/lib/conciliacao-status'
 
 const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
@@ -91,4 +92,14 @@ test('guarda: desvincular envia a linha e avisa o sucesso', async () => {
   await tocar(document.querySelector('button[title="Desvincular"]') ?? undefined)
   assert.deepEqual(desvincular.mock.calls.map(c => c.arguments), [['conc-1']])
   assert.deepEqual(sucessos, ['Vínculo removido'])
+})
+
+// #220 (guarda da tela): quem não força recebe a frase de pedir ao gestor e a confirmação de desfazer não abre.
+// A frase vem do servidor; a tela só não abre o diálogo quando ela não é a de desfazer.
+test('guarda (#220): desvincular que completa forçada, sem poder forçar, mostra a frase de pedir ao gestor e não abre o diálogo', async () => {
+  const { tocar } = await montar(true)
+  desvincular.mock.mockImplementation(async () => ({ ok: false, erro: COMPLETA_FORCADA_PEDIR_A_GESTOR }))
+  await tocar(document.querySelector('button[title="Desvincular"]') ?? undefined)
+  assert.deepEqual(erros, [COMPLETA_FORCADA_PEDIR_A_GESTOR])
+  assert.equal(dialogoAberto(), false)
 })
