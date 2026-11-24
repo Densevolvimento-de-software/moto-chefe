@@ -170,11 +170,11 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
     setPrevia(p => p && { ...p, notas: p.notas.map(n => (n.id === nota.id ? nota : n)) })
   }
 
-  function salvarEReenviar(c: CorrecaoNf) {
+  function salvarEReenviar(c: CorrecaoNf, difalDaRecusa: EntradaDifal | null) {
     setErroCorrecao(null)
     setTransmitindo(true)
     startTransition(async () => {
-      const r = await corrigirEReenviarNfAction(motoId, c, renave, transporte, observacao, previa?.exigeDifal ? difal : null)
+      const r = await corrigirEReenviarNfAction(motoId, c, renave, transporte, observacao, difalDaRecusa)
       setTransmitindo(false)
       if (r.nota) setResultado({ nota: r.nota, erro: r.ok ? undefined : r.error })
       else if (!r.ok) setErroCorrecao(r.error)
@@ -235,11 +235,9 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
       {ehRecusada(resultado.nota.status) && exigeEntrega && (
         <TransporteForm dados={transporte} onChange={atualizar => setTransporte(prev => atualizar(prev))} />
       )}
-      {ehRecusada(resultado.nota.status) && previa.exigeDifal && (
-        <DifalForm dados={difal} onChange={atualizar => setDifal(prev => atualizar(prev))} />
-      )}
       <Resultado
-        r={resultado} teste={teste} previa={previa} erroCorrecao={erroCorrecao} pending={pending} faltaDifal={faltaDifal}
+        r={resultado} teste={teste} previa={previa} erroCorrecao={erroCorrecao} pending={pending}
+        difal={difal} onDifal={atualizar => setDifal(prev => atualizar(prev))}
         renave={renave} renaveOrigem={renaveOrigem} onRenave={atualizarRenave}
         onReconsultar={reconsultar} onAtualizada={nota => setResultado({ nota })} onTentarDeNovo={tentarDeNovo}
         onSalvarEReenviar={salvarEReenviar} onVoltar={onVoltar}
@@ -626,16 +624,17 @@ function Historico({ notas, onAtualizada }: { notas: NotaResumo[]; onAtualizada:
   )
 }
 
-function Resultado({ r, teste, previa, erroCorrecao, pending, faltaDifal, renave, renaveOrigem, onRenave, onReconsultar, onAtualizada, onTentarDeNovo, onSalvarEReenviar, onVoltar }: {
+function Resultado({ r, teste, previa, erroCorrecao, pending, difal, onDifal, renave, renaveOrigem, onRenave, onReconsultar, onAtualizada, onTentarDeNovo, onSalvarEReenviar, onVoltar }: {
   r: { nota: NotaResumo; erro?: string }
   teste: boolean
   previa: Previa | null
   erroCorrecao: string | null
-  faltaDifal: boolean
+  difal: EntradaDifal
+  onDifal: (atualizar: (prev: EntradaDifal) => EntradaDifal) => void
   renave: DadosRenave | null
   renaveOrigem: OrigemRenave
   onRenave: (atualizar: (prev: DadosRenave) => DadosRenave) => void
-  onSalvarEReenviar: (c: CorrecaoNf) => void
+  onSalvarEReenviar: (c: CorrecaoNf, difal: EntradaDifal | null) => void
   pending: boolean
   onReconsultar: (id: string) => void
   onAtualizada: (nota: NotaResumo) => void
@@ -694,7 +693,7 @@ function Resultado({ r, teste, previa, erroCorrecao, pending, faltaDifal, renave
       // Recusa nova depois do reenvio: os campos partem do cadastro de novo.
       key={`${nota.id}-${nota.motivoStatus}`}
       nota={nota} previa={previa!} pending={pending} erro={erroCorrecao}
-      renave={renave} renaveOrigem={renaveOrigem} onRenave={onRenave} faltaDifal={faltaDifal}
+      renave={renave} renaveOrigem={renaveOrigem} onRenave={onRenave} difal={difal} onDifal={onDifal}
       onSalvarEReenviar={onSalvarEReenviar} onEmitirDeNovo={onTentarDeNovo} onVoltar={onVoltar}
     />
   )

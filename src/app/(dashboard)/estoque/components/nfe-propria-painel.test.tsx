@@ -27,6 +27,7 @@ const preview: Extract<PreviaNfe, { ok: true }> = {
   sugestao: { xProd: 'Ciclomotor de teste', ncm: '87116000', cest: '', unidade: 'UN', origem: '0' },
   exigeRenave: true,
   exigeDifal: false,
+  ufEmitente: 'MG',
   renave: {
     ...RENAVE_COMPLETO_FATURAMENTO_DIRETO,
   },
@@ -330,6 +331,8 @@ test('reabrir a recusa traz a observação editada do envio anterior e o reenvio
 })
 
 // #247: venda para outro estado a não contribuinte pede a alíquota interna do destino e o FCP.
+const compradorEm = (uf: string) => ({ ...previaSemRenave.correcao, comprador: { ...previaSemRenave.correcao.comprador, clienteEstado: uf } })
+const recusa237: NotaResumo = { ...recusa478, motivoStatus: '237 - Rejeição: CPF do destinatário inválido' }
 const campoDifal = (container: Element, id: 'aliquotaInterna' | 'fcp') => container.querySelector<HTMLInputElement>(`input#difal-${id}`)
 
 test('venda que exige DIFAL: o botão de transmitir espera a alíquota interna e a action recebe o que foi digitado (#247)', async () => {
@@ -352,8 +355,8 @@ test('venda que não exige DIFAL: nenhum campo na tela e a action não recebe DI
   acoes = { ...acoes, previsualizarNfePropriaAction: async () => previaSemRenave,
     transmitirNfePropriaAction: async (...args: unknown[]) => { chamadas.push(args); return { ok: true } } }
   const { container, click } = await abrirPainel()
-  assert.equal(campoDifal(container, 'aliquotaInterna'), null)
-  assert.equal(campoDifal(container, 'fcp'), null)
+  assert.ok(!campoDifal(container, 'aliquotaInterna'), 'o campo aliquotaInterna do DIFAL não devia estar na tela')
+  assert.ok(!campoDifal(container, 'fcp'), 'o campo fcp do DIFAL não devia estar na tela')
   await marcarConferido(container)
   await click(/Transmitir teste/)
   assert.equal(chamadas[0][4], null)
@@ -362,7 +365,7 @@ test('venda que não exige DIFAL: nenhum campo na tela e a action não recebe DI
 test('recusa 697 de venda que exige DIFAL: os campos aparecem, o salvar e reenviar espera a alíquota e leva o digitado (#247)', async () => {
   const chamadas: unknown[][] = []
   const recusa697: NotaResumo = { ...recusa478, motivoStatus: '697 - Rejeição: alíquota interestadual inválida' }
-  acoes = { ...acoes, previsualizarNfePropriaAction: async () => ({ ...previaSemRenave, exigeDifal: true, notas: [recusa697] }),
+  acoes = { ...acoes, previsualizarNfePropriaAction: async () => ({ ...previaSemRenave, exigeDifal: true, notas: [recusa697], correcao: compradorEm('SP') }),
     corrigirEReenviarNfAction: async (...args: unknown[]) => { chamadas.push(args); return { ok: true } } }
   const { container, click } = await abrirPainel()
   assert.equal(botao(container, /^Salvar e reenviar/)?.disabled, true)
@@ -371,4 +374,32 @@ test('recusa 697 de venda que exige DIFAL: os campos aparecem, o salvar e reenvi
   await click(/^Salvar e reenviar/)
   assert.equal(chamadas.length, 1)
   assert.deepEqual(chamadas[0][5], { aliquotaInterna: '12,5', fcp: '' })
+})
+
+test('correção que leva o comprador para outro estado: os campos do DIFAL aparecem antes do reenvio (#247)', async () => {
+  const chamadas: unknown[][] = []
+  acoes = { ...acoes, previsualizarNfePropriaAction: async () => ({ ...previaSemRenave, exigeDifal: false, notas: [recusa237] }),
+    corrigirEReenviarNfAction: async (...args: unknown[]) => { chamadas.push(args); return { ok: true } } }
+  const { container, click } = await abrirPainel()
+  assert.ok(!campoDifal(container, 'aliquotaInterna'), 'o campo aliquotaInterna do DIFAL não devia estar na tela')
+  await digitar(container.querySelector<HTMLInputElement>('#corr-uf')!, 'SP')
+  assert.ok(campoDifal(container, 'aliquotaInterna'), 'a UF corrigida tornou a venda interestadual')
+  assert.equal(botao(container, /^Salvar e reenviar/)?.disabled, true)
+  await digitar(campoDifal(container, 'aliquotaInterna')!, '12')
+  await click(/^Salvar e reenviar/)
+  assert.deepEqual(chamadas[0][5], { aliquotaInterna: '12', fcp: '' })
+})
+
+test('correção que traz o comprador para dentro do estado: o DIFAL some e o reenvio não o leva (#247)', async () => {
+  const chamadas: unknown[][] = []
+  acoes = { ...acoes, previsualizarNfePropriaAction: async () => ({ ...previaSemRenave, exigeDifal: true, correcao: compradorEm('SP'), notas: [recusa237] }),
+    corrigirEReenviarNfAction: async (...args: unknown[]) => { chamadas.push(args); return { ok: true } } }
+  const { container, click } = await abrirPainel()
+  assert.ok(campoDifal(container, 'aliquotaInterna'))
+  assert.equal(botao(container, /^Salvar e reenviar/)?.disabled, true)
+  await digitar(container.querySelector<HTMLInputElement>('#corr-uf')!, 'MG')
+  assert.ok(!campoDifal(container, 'aliquotaInterna'), 'o campo aliquotaInterna do DIFAL não devia estar na tela')
+  assert.equal(botao(container, /^Salvar e reenviar/)?.disabled, false)
+  await click(/^Salvar e reenviar/)
+  assert.equal(chamadas[0][5], null)
 })
