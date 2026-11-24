@@ -6,9 +6,11 @@ export type LiberacaoPix = { chavePropria: boolean; ids: readonly string[] }
 /**
  * A conta entra no PIX? Do CNPJ do grupo, sempre; de outro CNPJ, só com id liberado E chave própria do
  * mcp.ai: na chave global da env (de outra empresa) o id liberado não vale, nem que esteja gravado.
+ * O id liberado pode ser o da conta ou o da credencial dela (`itemId`, a conexão com o banco; #253).
  */
-export function contaEntraNoPix(conta: { id: string; doCnpjDoGrupo: boolean }, liberacao: LiberacaoPix): boolean {
-  return conta.doCnpjDoGrupo || (liberacao.chavePropria && liberacao.ids.includes(conta.id))
+export function contaEntraNoPix(conta: { id: string; itemId?: string; doCnpjDoGrupo: boolean }, liberacao: LiberacaoPix): boolean {
+  const liberada = [conta.id, conta.itemId].some(id => id !== undefined && liberacao.ids.includes(id))
+  return conta.doCnpjDoGrupo || (liberacao.chavePropria && liberada)
 }
 
 const MAX_IDS = 20

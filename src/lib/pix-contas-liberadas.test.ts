@@ -22,6 +22,26 @@ test('id liberado sem chave própria (chave global) não vale', () => {
   assert.equal(contaEntraNoPix(DE_OUTRO, { chavePropria: false, ids: ['conta-outra'] }), false)
 })
 
+const DA_CREDENCIAL = { id: 'conta-outra', itemId: 'credencial-x', doCnpjDoGrupo: false }
+
+test('conta de outro CNPJ entra pelo id da credencial liberado, com chave própria', () => {
+  assert.equal(contaEntraNoPix(DA_CREDENCIAL, { chavePropria: true, ids: ['credencial-x'] }), true)
+})
+
+test('id da credencial liberado sem chave própria (chave global) não vale', () => {
+  assert.equal(contaEntraNoPix(DA_CREDENCIAL, { chavePropria: false, ids: ['credencial-x'] }), false)
+})
+
+test('conta de outra credencial, ou sem credencial informada, fica fora', () => {
+  assert.equal(contaEntraNoPix(DA_CREDENCIAL, { chavePropria: true, ids: ['credencial-y'] }), false)
+  assert.equal(contaEntraNoPix(DE_OUTRO, { chavePropria: true, ids: ['credencial-x'] }), false)
+})
+
+test('lerIdsContasPix aceita o id de credencial (UUID) junto com id de conta no mesmo campo', () => {
+  const credencial = '3f2b8c1e-9a4d-4e6b-8c7a-1d2e3f4a5b6c'
+  assert.deepEqual(lerIdsContasPix(`conta-1, ${credencial}`), { ok: true, ids: ['conta-1', credencial] })
+})
+
 test('lerIdsContasPix separa por vírgula, espaço e quebra de linha, sem vazios nem repetidos', () => {
   assert.deepEqual(lerIdsContasPix('a1, b2\nc3  a1,'), { ok: true, ids: ['a1', 'b2', 'c3'] })
   assert.deepEqual(lerIdsContasPix('  '), { ok: true, ids: [] })
