@@ -1,4 +1,4 @@
-// Teste de banco: a importação dos relatórios da Cielo, da Rede e da Rendimento pela Server Action de verdade, contra o
+// Teste de banco: a importação dos relatórios da Cielo, da Rede, da Rendimento e da InfinitePay pela Server Action de verdade, contra o
 // Postgres descartável. Só a fronteira de fora é simulada: sessão, cookie do grupo ativo e
 // revalidatePath. O usuário do admin_rede vem do `usuarioDaRede` real, como em produção.
 import { after, afterEach, before, mock, test } from 'node:test'
@@ -10,6 +10,7 @@ import { semearVendaPeca } from '@/test/semear-alvos-conciliacao'
 import { montarRelatorioCielo, vendaCielo, type LinhaCielo } from '@/test/relatorio-cielo-sintetico'
 import { montarRelatorioRede, parcelaRede, vendaParceladaRede, type LinhaRede } from '@/test/relatorio-rede-sintetico'
 import { montarRelatorioRendimento, operacaoRendimento, type LinhaRendimento } from '@/test/relatorio-rendimento-sintetico'
+import { cartaoInfinitePay, montarRelatorioInfinitePay, pixInfinitePay, type LinhaInfinitePay } from '@/test/relatorio-infinitepay-sintetico'
 import { sessaoDe, type Sessao } from '@/test/sessao'
 
 const url = process.env.TEST_DATABASE_URL
@@ -368,4 +369,67 @@ test('Rendimento: grupo sem maquininha da Rendimento não importa e nada grava',
   const r = await importarRendimento([operacaoRendimento({ 'Código': nsuUnico() })])
   assert.deepEqual(r, { ok: false, erro: 'Maquininha não encontrada' })
   assert.equal((await gravadasDoGrupo(b.grupoId)).length, 0)
+})
+
+// ── InfinitePay: o PIX vem em relatório separado (#237) ─────────────────────
+
+async function contaComInfinitePay() {
+  const suf = randomUUID()
+  const base = await semearContaBase(db, { prefixo: 'CI237', nome: suf, cnpj: suf })
+  await db.execute(sql`insert into maquininhas (grupo_id, nome, operadora) values (${base.grupoId}, 'InfinitePay', 'infinitypay')`)
+  return base
+}
+async function importarInfinitePay(linhasDoRelatorio: LinhaInfinitePay[]) {
+  const fd = new FormData()
+  fd.set('operadora', 'infinitypay')
+  fd.set('file', new File([montarRelatorioInfinitePay(linhasDoRelatorio)], 'infinitepay.csv'))
+  return actions.importarRelatorioAction(fd)
+}
+const resultadoInfinitePay = (importadas: number, duplicadas: number) =>
+  ({ ok: true, dados: { importadas, duplicadas, conciliadas: 0, semCodigo: 0, incompletas: 0 } })
+const gravadasInfinitePay = (grupoId: string) =>
+  linhas<{ tipo: string; nsu: string | null; valor_bruto: string; valor_liquido: string; parcelas: number; bandeira: string; portador: string }>(
+    sql`select tipo, nsu, valor_bruto, valor_liquido, parcelas, raw_data->>'bandeira' as bandeira, raw_data->>'portador' as portador
+        from conciliacoes_cartao where grupo_id = ${grupoId} and operadora = 'infinitypay' order by tipo`)
+
+test('InfinitePay: o relatório de PIX grava linhas pix com valor, líquido e NSU; a negada fica fora; reimportar não duplica', async () => {
+  const b = await contaComInfinitePay()
+  usuario = socio(b)
+  const [n1, n2] = [nsuUnico(), nsuUnico()]
+  const arquivo = [
+    pixInfinitePay({ 'NSU': n1, 'Valor (R$)': '250,50', 'Líquido (R$)': '250,50' }),
+    pixInfinitePay({ 'NSU': n2, 'Status': 'Negada' }),
+  ]
+  assert.deepEqual(await importarInfinitePay(arquivo), resultadoInfinitePay(1, 0))
+  assert.deepEqual((await gravadasInfinitePay(b.grupoId)).map(g => [g.tipo, g.nsu, Number(g.valor_bruto), Number(g.valor_liquido), g.parcelas, g.bandeira, g.portador]),
+    [['pix', n1, 250.5, 250.5, 1, 'Pix', 'PAGADOR FICTICIO DOIS']])
+
+  assert.deepEqual(await importarInfinitePay(arquivo), resultadoInfinitePay(0, 1))
+  assert.equal((await gravadasInfinitePay(b.grupoId)).length, 1)
+})
+
+test('InfinitePay: PIX e cartão do mesmo valor no mesmo dia entram os dois; reimportar o arquivo misto não duplica nenhum', async () => {
+  const b = await contaComInfinitePay()
+  usuario = socio(b)
+  const arquivo = [
+    cartaoInfinitePay({ 'NSU': `S${nsuUnico()}` }),
+    pixInfinitePay({ 'NSU': nsuUnico() }),
+  ]
+  assert.deepEqual(await importarInfinitePay(arquivo), resultadoInfinitePay(2, 0))
+  assert.deepEqual((await gravadasInfinitePay(b.grupoId)).map(g => [g.tipo, Number(g.valor_bruto)]), [['credito', 100], ['pix', 100]])
+
+  assert.deepEqual(await importarInfinitePay(arquivo), resultadoInfinitePay(0, 2))
+  assert.equal((await gravadasInfinitePay(b.grupoId)).length, 2)
+})
+
+test('InfinitePay, Conta A e Conta B: o mesmo NSU de PIX grava nas duas; uma não barra nem enxerga a outra', async () => {
+  const a = await contaComInfinitePay()
+  const b = await contaComInfinitePay()
+  const arquivo = [pixInfinitePay({ 'NSU': nsuUnico() })]
+  usuario = socio(a)
+  assert.deepEqual(await importarInfinitePay(arquivo), resultadoInfinitePay(1, 0))
+  usuario = socio(b)
+  assert.deepEqual(await importarInfinitePay(arquivo), resultadoInfinitePay(1, 0))
+  assert.equal((await gravadasInfinitePay(a.grupoId)).length, 1)
+  assert.equal((await gravadasInfinitePay(b.grupoId)).length, 1)
 })
