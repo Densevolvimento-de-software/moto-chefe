@@ -357,3 +357,32 @@ test('D1: aux_adm de grupo ligado muda o valor do pagamento marcado (comportamen
   ok(await vendas.editarVendaAction(venda, edicaoDeMoto([PIX_MUDADO, CARTAO_TROCADO])), 'aux_adm ligado edita')
   assert.deepEqual(await pagamentosDe('vendas', sql`id = ${venda}`), [[{ tipo: 'pix', valor: 900 }, CARTAO_TROCADO]])
 })
+
+// #220 (D1) pela aprovação: a edição guardada é aplicada com o papel de quem aprova. O app só deixa aprovar
+// admin_geral e admin_socio (aprovacao-permissao.ts), e para eles a D1 nunca recusa; por isso o caso de aux_adm
+// é testado na função que aplica, e pela action a barreira de permissão recusa antes de gravar.
+test('aprovação de edição de peça com aux_adm de grupo desligado: a função que aplica recusa e nada grava', async () => {
+  const c = await novaConta()
+  await semOpcaoDeForcar(c)
+  const venda = await semearVendaPeca(db, balcao(c), [PIX_FORCADO, CARTAO])
+  const { aplicarEdicaoAprovadaTx } = await import('@/lib/editar-venda-peca')
+  const edicao = { vendaId: venda, numero: 0, itens: [{ pecaId: c.pecaId, quantidade: 1 }], pagamentos: [PIX_MUDADO, { tipo: 'financiamento', valor: 500 }] }
+  await assert.rejects(db.transaction(tx => aplicarEdicaoAprovadaTx(tx, edicao as never, c.vendedorId, 'aux_adm')), { message: FRASE_PAGAMENTO_FORCADO })
+  assert.deepEqual(await pagamentosDe('vendas_pecas', sql`id = ${venda}`), [[PIX_FORCADO, CARTAO]])
+})
+
+test('aprovação de edição de peça pela action: aux_adm não aprova (barreira de permissão) e a aprovação fica pendente', async () => {
+  const c = await novaConta()
+  await semOpcaoDeForcar(c)
+  const venda = await semearVendaPeca(db, balcao(c), [PIX_FORCADO, CARTAO])
+  const aprovacao = await guardarAprovacao(c, {
+    origem: 'peca_edicao',
+    dadosVenda: { vendaId: venda, numero: 0, itens: [{ pecaId: c.pecaId, quantidade: 1 }], pagamentos: [PIX_MUDADO, { tipo: 'financiamento', valor: 500 }] },
+  })
+  usuario = { ...sessao(c, 'aux_adm'), aprovaPagamentoSensivel: true }
+  grupoAtivoNoCookie = c.grupoId
+  assert.deepEqual(await vendas.aprovarVendaAction(aprovacao), { ok: false, erro: 'Sem permissão para aprovar esta venda' })
+  const [status] = await execRows(sql`select status from aprovacoes_venda where id = ${aprovacao}`) as { status: string }[]
+  assert.equal(status.status, 'pendente')
+  assert.deepEqual(await pagamentosDe('vendas_pecas', sql`id = ${venda}`), [[PIX_FORCADO, CARTAO]])
+})
