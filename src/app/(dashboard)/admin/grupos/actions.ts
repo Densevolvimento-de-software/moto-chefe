@@ -8,8 +8,10 @@ import { origemDaRequisicaoAtual } from '@/lib/log-acoes'
 import { getUsuarioLogado } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { cifrar, decifrar } from '@/lib/cripto'
-import { resumirEndpoint } from '@/lib/mcpai-credencial'
+import { credencialMcpDoGrupoPorId, resumirEndpoint } from '@/lib/mcpai-credencial'
+import { FALHA_AO_ROTULAR, rotulosDasContasDaChave } from '@/lib/mcpai'
 import { idsContasPixDoPedido } from '@/lib/pix-contas-liberadas'
+import type { RotuloConta } from '@/lib/rotulos-contas-mcp'
 import { alterarTransferenciaEntreGrupos } from '@/lib/transferencia-grupos'
 import { count } from 'drizzle-orm'
 import { acao, RecusaUsuario, type ResultadoAction } from '@/lib/resultado-action'
@@ -236,4 +238,24 @@ export async function moverGrupoAction(grupoId: string, contaDestinoId: string) 
     revalidatePath('/', 'layout')
   }
   return r
+}
+
+/**
+ * O que a chave PRÓPRIA do grupo enxerga no mcp.ai, em rótulos para a tela mostrar ao lado de cada ID (#253).
+ * Só `admin_geral`; o grupo é lido pelo id no servidor. Sem chave própria devolve vazio (a global é de outra
+ * empresa). Nunca devolve a chave, número, agência nem CNPJ, e erro do mcp.ai sobe só como frase genérica.
+ */
+export async function rotulosDosIdsAction(grupoId: string): Promise<ResultadoAction<RotuloConta[]>> {
+  return acao(() => rotulosDosIds(grupoId))
+}
+async function rotulosDosIds(grupoId: string): Promise<RotuloConta[]> {
+  await assertAdmin()
+  const chave = ehUuid(grupoId)
+    ? await credencialMcpDoGrupoPorId(grupoId).catch(() => { throw new RecusaUsuario(FALHA_AO_ROTULAR) })
+    : null
+  if (!chave) throw new RecusaUsuario('Grupo não encontrado')
+  if (!chave.url) return []
+  const lido = await rotulosDasContasDaChave(chave.url)
+  if (!lido.ok) throw new RecusaUsuario(lido.erro)
+  return lido.rotulos
 }

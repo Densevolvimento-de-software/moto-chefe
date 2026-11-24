@@ -731,7 +731,7 @@ export async function buscarFaturasCartao(cnpjGrupo: string): Promise<ResultadoC
 
 type ResultadoRotulos = { ok: true; rotulos: RotuloConta[] } | { ok: false; erro: string }
 
-const FALHA_AO_ROTULAR = 'Não foi possível consultar o mcp.ai agora.'
+export const FALHA_AO_ROTULAR = 'Não foi possível consultar o mcp.ai agora.'
 
 type ContaBruta = { id: string; item_id?: string; subtype?: string; bank?: string | null; marketingName?: string | null; name?: string | null }
 
