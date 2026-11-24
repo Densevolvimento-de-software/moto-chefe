@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { OPERADORAS, codigoOperadora, nomeOperadora, separarPorRelatorio, temRelatorio } from './operadoras'
+import { OPERADORAS, codigoOperadora, nomeOperadora, separarPorRelatorio, situacaoDaOperadora, temRelatorio } from './operadoras'
 
 test('lista do cadastro: as com relatório, as de mercado e Outra (#471, #870)', () => {
   assert.deepEqual(OPERADORAS.map(o => o.nome), [
@@ -36,4 +36,22 @@ test('Outra com nome de operadora da lista é recusada (#471)', () => {
   assert.throws(() => codigoOperadora('outra', ' rede '), naLista)
   assert.throws(() => codigoOperadora('outra', 'Mercado Pago'), naLista)
   assert.equal(codigoOperadora('outra', 'Rede Itaú'), 'rede-itau')
+})
+
+test('Mercado Pago vem da integração: "integracao" com token, "integracao_sem_token" sem; nunca com relatório (#205)', () => {
+  assert.equal(situacaoDaOperadora('mercadopago', true), 'integracao')
+  assert.equal(situacaoDaOperadora('mercadopago', false), 'integracao_sem_token')
+  assert.equal(temRelatorio('mercadopago'), false)
+})
+
+test('situação das demais operadoras não muda com a credencial do Mercado Pago (#205)', () => {
+  assert.deepEqual(
+    [situacaoDaOperadora('stone', false), situacaoDaOperadora('stone', true), situacaoDaOperadora('getnet', false), situacaoDaOperadora('getnet', true)],
+    ['relatorio', 'relatorio', 'manual', 'manual'],
+  )
+})
+
+test('conciliação: o Mercado Pago não aparece como manual, com ou sem token (#205)', () => {
+  const r = separarPorRelatorio([{ operadora: 'mercadopago', nome: 'Mercado Pago' }, { operadora: 'getnet', nome: 'GetNet' }])
+  assert.deepEqual(r, { comRelatorio: [], manuais: [{ operadora: 'getnet', nome: 'GetNet' }] })
 })

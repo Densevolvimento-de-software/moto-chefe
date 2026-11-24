@@ -30,3 +30,12 @@ test('quem gere a conciliação vê o envio com o Importar; quem não gere não 
   montados.push(semGestao.desmontar)
   assert.deepEqual([temImportar(), temArquivo()], [false, false])
 })
+
+test('Mercado Pago não aparece em "Conciliação manual": vem pela integração, não por relatório (#205)', async () => {
+  const { UploadRelatorio } = await import('./upload-relatorio')
+  const doGrupo = [{ operadora: 'stone', nome: 'Stone' }, { operadora: 'mercadopago', nome: 'Point loja' }, { operadora: 'getnet', nome: 'GetNet' }]
+  const tela = await montarDialogo(UploadRelatorio, { maquininhas: doGrupo, podeImportar: true })
+  montados.push(tela.desmontar)
+  const aviso = [...document.querySelectorAll('p')].find(p => (p.textContent ?? '').includes('Conciliação manual'))?.textContent ?? ''
+  assert.deepEqual([aviso.includes('GetNet'), aviso.includes('Mercado Pago')], [true, false])
+})

@@ -135,3 +135,10 @@ export async function aplicarCredencialMp(tx: Tx, grupoId: string, usuarioId: st
     throw e
   }
 }
+
+/** Só diz se o grupo tem credencial (para o cadastro de maquininhas, #205); o token não sai daqui. */
+export async function temCredencialMercadoPago(grupoId: string): Promise<boolean> {
+  const [linha] = await db.select({ grupoId: mercadopagoConfig.grupoId }).from(mercadopagoConfig)
+    .where(eq(mercadopagoConfig.grupoId, grupoId)).limit(1)
+  return linha !== undefined
+}
