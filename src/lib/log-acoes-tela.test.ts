@@ -122,3 +122,11 @@ test('moto removida (#692): rótulo próprio, sensível, com chassi, modelo e o 
   assert.equal(ehSensivel('moto_removida'), true)
   assert.equal(ROTULO_TIPO.moto_removida, 'Removeu moto')
 })
+
+test('troca de vendedor da venda: rótulo próprio, sensível, com o número e quem saiu e quem entrou', () => {
+  const resumo = resumoDoEvento(ev({ tipo: 'vendedor_venda_trocado', detalhe: { vendaId: 'v1', numeroVenda: 30035, vendedorAnteriorId: 'u1', vendedorAnterior: 'Ana', vendedorId: 'u2', vendedor: 'Bia' } }))
+  assert.equal(resumo, 'Venda #30035 · Ana → Bia')
+  assert.equal(resumoDoEvento(ev({ tipo: 'vendedor_venda_trocado', detalhe: {} })), 'Venda #? · ? → ?', 'linha sem os campos não mostra undefined')
+  assert.equal(ehSensivel('vendedor_venda_trocado'), true)
+  assert.equal(ROTULO_TIPO.vendedor_venda_trocado, 'Trocou o vendedor da venda')
+})

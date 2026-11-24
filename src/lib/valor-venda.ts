@@ -22,8 +22,12 @@ export function podeTrocarVendedorVenda(papel: string): boolean {
   return PAPEIS_SOCIOS.has(papel)
 }
 
+/** A tela manda sempre o vendedor atual: só é troca quando o enviado vem e é outro. */
+export const houveTrocaDeVendedor = (vendedorGravado: string, vendedorEnviado: string | undefined): vendedorEnviado is string =>
+  !!vendedorEnviado && vendedorEnviado !== vendedorGravado
+
 /** A recusa da edição por troca de vendedor, ou null se o papel pode ou o vendedor não mudou. */
 export function travaDoVendedorVenda(papel: string, vendedorGravado: string, vendedorEnviado: string | undefined): string | null {
-  if (podeTrocarVendedorVenda(papel) || !vendedorEnviado || vendedorEnviado === vendedorGravado) return null
+  if (podeTrocarVendedorVenda(papel) || !houveTrocaDeVendedor(vendedorGravado, vendedorEnviado)) return null
   return 'O vendedor da venda só pode ser trocado pelos sócios.'
 }
