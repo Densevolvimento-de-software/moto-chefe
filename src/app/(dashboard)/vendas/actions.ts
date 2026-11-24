@@ -25,6 +25,7 @@ import { parseDataInput, hojeBrt } from '@/lib/data-venda'
 import { disponibilidadeAposCancelarReserva, motivoBloqueioCancelarReserva, motivoBloqueioPedidoAprovacao, motivoParaNaoVender } from '@/lib/estado-moto'
 import { validarOrigemVenda, normalizarDetalhe } from '@/lib/origem-venda'
 import { buscarOrigemParaValidar } from '@/lib/queries/origens-venda'
+import { vendasComCertificadoBateria } from '@/lib/queries/certificado-bateria'
 import { situacaoNfDaVenda } from '@/lib/assinatura/consulta'
 import { motivoBloqueioNf } from '@/lib/assinatura/nf'
 import { lerContribuinteIcms, tipoPessoaDoDocumento } from '@/lib/documento'
@@ -554,7 +555,7 @@ export async function confirmarNFSaidaAction(...a: Parameters<typeof confirmarNF
   return acao(() => confirmarNFSaida(...a))
 }
 
-async function confirmarNFSaida(motoId: string, notaFiscal: string): Promise<{ vendaId: string }> {
+async function confirmarNFSaida(motoId: string, notaFiscal: string): Promise<{ vendaId: string; certificadoBateria: boolean }> {
   const usuario = await getUsuarioLogado()
   if (!['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)) {
     throw new RecusaUsuario('Sem permissão para confirmar NF de saída')
@@ -585,7 +586,7 @@ async function confirmarNFSaida(motoId: string, notaFiscal: string): Promise<{ v
 
   revalidatePath('/vendas')
   revalidatePath('/estoque')
-  return { vendaId: venda.id }
+  return { vendaId: venda.id, certificadoBateria: (await vendasComCertificadoBateria([venda.id])).has(venda.id) }
 }
 
 // ─── Criar rascunho NF-e no Bling (sem transmitir) ──────────────────────────

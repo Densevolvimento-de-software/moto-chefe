@@ -147,7 +147,7 @@ export function NfePropriaPainel({ motoId, onVoltar, outrasFormas, onOcupado }: 
           if (r.nota.linkDanfe) window.open(r.nota.linkDanfe, '_blank')
           if (previa) {
             window.open(`/vendas/${previa.vendaId}/checklist-entrega`, '_blank')
-            window.open(`/vendas/${previa.vendaId}/certificado-bateria`, '_blank')
+            if (previa.certificadoBateria) window.open(`/vendas/${previa.vendaId}/certificado-bateria`, '_blank')
           }
         }
         setResultado({ nota: r.nota, erro: r.ok ? undefined : r.error })

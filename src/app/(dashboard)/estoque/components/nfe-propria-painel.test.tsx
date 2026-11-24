@@ -34,6 +34,7 @@ const preview: Extract<PreviaNfe, { ok: true }> = {
   renaveOrigem: {},
   transporteAnterior: null,
   observacaoAnterior: null,
+  certificadoBateria: true,
   resumo: {
     cliente: { nome: 'Comprador de teste', documento: '35281765043', endereco: 'Rua de teste, 10', email: null },
     produto: { descricao: 'Ciclomotor de teste', ncm: '87116000', cest: '', cfop: '5102', cst: '102', origemEntrada: '0', origemSaida: '0' },
@@ -402,4 +403,35 @@ test('correção que traz o comprador para dentro do estado: o DIFAL some e o re
   assert.equal(botao(container, /^Salvar e reenviar/)?.disabled, false)
   await click(/^Salvar e reenviar/)
   assert.equal(chamadas[0][5], null)
+})
+
+// ─── Certificado da bateria abre sozinho só quando a venda tem direito a ele (#235) ──────────────
+const autorizadaEmProducao: NotaResumo = { ...recusa478, id: 'nota-autorizada', ambiente: 'Producao', status: 'Autorizada', motivoStatus: null, dataAutorizacao: '2026-11-24T12:00:00.000Z' }
+
+async function transmitirEmProducao(certificadoBateria: boolean) {
+  const abertas: string[] = []
+  const abrir = dom.window.open
+  dom.window.open = ((url?: string | URL) => { abertas.push(String(url)); return null }) as typeof dom.window.open
+  try {
+    acoes = { ...acoes, previsualizarNfePropriaAction: async () => ({ ...preview, certificadoBateria }),
+      transmitirNfePropriaAction: async () => ({ ok: true, nota: autorizadaEmProducao }) }
+    const { container, click, escolherFrete } = await abrirPainel()
+    await click(/^Avançar/); await click(/^Avançar/); await click(/^Avançar/)
+    await escolherFrete(modalidade4)
+    await click(/^Conferir nota$/)
+    const conferi = container.querySelector<HTMLInputElement>('input[type=checkbox]')!
+    await act(async () => conferi.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await click(/Transmitir/)
+  } finally {
+    dom.window.open = abrir
+  }
+  return abertas
+}
+
+test('NF autorizada em produção de venda com certificado: abre o checklist e o certificado da bateria', async () => {
+  assert.deepEqual(await transmitirEmProducao(true), ['/vendas/venda-teste/checklist-entrega', '/vendas/venda-teste/certificado-bateria'])
+})
+
+test('NF autorizada em produção de venda sem certificado: abre só o checklist', async () => {
+  assert.deepEqual(await transmitirEmProducao(false), ['/vendas/venda-teste/checklist-entrega'])
 })

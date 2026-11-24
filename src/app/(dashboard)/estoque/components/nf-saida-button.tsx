@@ -149,7 +149,7 @@ export function NfSaidaButton({ motoId, descricao, blingNfeId, gatilho, abrirAoM
         const r = await confirmarNFSaidaAction(motoId, nf.trim())
         if (!r.ok) { setErro(r.erro); return }
         window.open(`/vendas/${r.dados.vendaId}/checklist-entrega`, '_blank')
-        window.open(`/vendas/${r.dados.vendaId}/certificado-bateria`, '_blank')
+        if (r.dados.certificadoBateria) window.open(`/vendas/${r.dados.vendaId}/certificado-bateria`, '_blank')
         setAberto(false)
       } catch (e: any) {
         setErro(e.message ?? 'Erro ao confirmar NF')
