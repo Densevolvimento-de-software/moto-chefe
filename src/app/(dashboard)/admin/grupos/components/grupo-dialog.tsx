@@ -65,6 +65,13 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
   const [mcpaiRemover, setMcpaiRemover] = useState(false)
   const idsPixSalvos = (inicial?.mcpaiContasPixIds ?? []).join(', ')
   const [mcpaiContasPix, setMcpaiContasPix] = useState(idsPixSalvos)
+  // O diálogo segue montado quando a lista é recarregada depois do Salvar: sem acompanhar a prop, reabrir mostraria
+  // os ids antigos e o próximo Salvar desfaria a liberação (ajuste de estado durante o render, como a doc do React).
+  const [idsPixVistos, setIdsPixVistos] = useState(idsPixSalvos)
+  if (idsPixVistos !== idsPixSalvos) {
+    setIdsPixVistos(idsPixSalvos)
+    setMcpaiContasPix(idsPixSalvos)
+  }
   // Como o mcp.ai: começa vazio, vazio mantém, remover apaga ao salvar.
   const [mpToken, setMpToken] = useState('')
   const [mpRemover, setMpRemover] = useState(false)

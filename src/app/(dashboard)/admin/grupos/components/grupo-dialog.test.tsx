@@ -263,3 +263,14 @@ test('ao reabrir, o campo volta aos ids salvos e não ao que foi digitado e aban
   await t.redesenhar({ modo: 'editar', inicial: COM_CHAVE, open: true, onOpenChange: t.onOpenChange })
   assert.equal(campoPix()?.value, 'conta-1, conta-2')
 })
+
+// Achado do bot no PR #238: salvar fecha o diálogo (volta ao valor da prop antiga) e só depois o refresh traz a
+// prop nova; sem ressincronizar, reabrir mostrava os ids antigos e um novo Salvar desfazia a liberação.
+test('depois de salvar, quando a lista chega com os ids novos, reabrir mostra os ids novos', async () => {
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  await t.preencher('grupo-mcpai-contas-pix', 'conta-9')
+  await t.clique('Salvar')
+  await t.redesenhar({ modo: 'editar', inicial: { ...COM_CHAVE, mcpaiContasPixIds: ['conta-9'] }, open: false, onOpenChange: t.onOpenChange })
+  await t.redesenhar({ modo: 'editar', inicial: { ...COM_CHAVE, mcpaiContasPixIds: ['conta-9'] }, open: true, onOpenChange: t.onOpenChange })
+  assert.equal(campoPix()?.value, 'conta-9')
+})
