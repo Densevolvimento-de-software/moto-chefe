@@ -3,7 +3,8 @@ import { exigirPainelFabrica } from '../exigir-painel'
 import { carregarPainelFabrica } from '@/lib/queries/painel-fabrica'
 import {
   abaDaUrl, filtroDaUrl, filtrarEstoque, filtrarVendas, opcoesDoPainel, paraCsv, planilhaDoPainel, rotuloDaAba, urlDoFiltro,
-  ABAS_PAINEL, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, resumirRede, resumirVendas, type ParamsPainel,
+  ABAS_PAINEL, AVISO_TETO_PERIODO, MARCA_PAINEL_FABRICA, ROTA_PAINEL_FABRICA, blocosDaAba, lojaDaSelecao, resumirModelos, resumirRede, resumirVendas,
+  type ParamsPainel,
 } from '@/lib/painel-fabrica'
 import { hojeBrt } from '@/lib/data-venda'
 import { periodoBr } from '@/lib/notas-emitidas'
@@ -12,6 +13,8 @@ import { FiltrosPainel } from './components/filtros-painel'
 import { TabelaEstoque, TabelaVendas } from './components/tabelas-painel'
 import { AcoesPainel } from './components/acoes-painel'
 import { RedePainel } from './components/rede-painel'
+import { ModelosPainel } from './components/modelos-painel'
+import { LojaSelecionadaPainel } from './components/loja-selecionada-painel'
 
 export default async function PainelFabricaPage({ searchParams }: { searchParams: Promise<ParamsPainel> }) {
   // Antes de qualquer busca (#579): lê todas as Contas; só o login da fábrica e o admin_geral.
@@ -25,7 +28,12 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
   const estoqueFiltrado = filtrarEstoque(estoque, filtro)
   const vendasFiltradas = filtrarVendas(vendas, filtro)
   const planilha = planilhaDoPainel(aba, { lojas, estoque: estoqueFiltrado, vendas: vendasFiltradas, de, ate, hoje: hojeBrt() })
-  const rede = resumirRede(lojas, resumirVendas(vendasFiltradas))
+  const vendasResumo = resumirVendas(vendasFiltradas)
+  const rede = resumirRede(lojas, vendasResumo)
+  const linhasModelos = resumirModelos(vendasFiltradas, estoqueFiltrado)
+  const lojaSelecionada = lojaDaSelecao(filtro, lojas)
+  const blocos = blocosDaAba(aba, lojaSelecionada)
+  const periodo = periodoBr(de, ate)
 
   return (
     <div className="space-y-5">
@@ -44,7 +52,7 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
         />
       </div>
 
-      <RedePainel rede={rede} periodo={periodoBr(de, ate)} />
+      <RedePainel rede={rede} periodo={periodo} />
 
       <nav className="flex gap-1 border-b" aria-label="Abas do painel">
         {ABAS_PAINEL.map(a => (
@@ -65,9 +73,18 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
       <FiltrosPainel aba={aba} lojas={lojas} modelos={modelos} cores={cores} filtro={filtro} de={de} ate={ate} />
       {aba === 'vendas' && limitado && <p role="status" className="text-sm text-warning">{AVISO_TETO_PERIODO}</p>}
 
+      {blocos.lojaSelecionada && lojaSelecionada && (
+        <LojaSelecionadaPainel
+          loja={lojaSelecionada}
+          faturamento={vendasResumo.valor}
+          motos={vendasResumo.total}
+        />
+      )}
+      {blocos.modelos && <ModelosPainel modelos={linhasModelos} periodo={periodo} />}
+
       {aba === 'estoque'
         ? <TabelaEstoque lojas={lojas} estoque={estoqueFiltrado} />
-        : <TabelaVendas lojas={lojas} vendas={vendasFiltradas} periodo={periodoBr(de, ate)} filtro={filtro} de={de} ate={ate} />}
+        : <TabelaVendas lojas={lojas} vendas={vendasFiltradas} periodo={periodo} filtro={filtro} de={de} ate={ate} />}
     </div>
   )
 }

@@ -265,3 +265,39 @@ export function resumirRede(lojas: LojaPainel[], r: ResumoVendas): RedePainel {
   const mediaPorLoja = lojasComVenda > 0 ? centavos(r.valor / lojasComVenda) : 0
   return { lojasComVenda, motos: r.total, valor: r.valor, mediaPorLoja }
 }
+
+/** Um modelo na tabela "Vendas e estoque por modelo": vendidas, receita, preço médio e estoque. */
+export type ModeloPainel = { modelo: string; vendidas: number; receita: number; precoMedio: number; emEstoque: number }
+
+/**
+ * Vendas e estoque por modelo, no filtro: modelo com venda ou com estoque entra, em ordem de nome.
+ * Preço médio = receita ÷ motos vendidas (zero sem venda, sem divisão por zero).
+ */
+export function resumirModelos(vendas: VendaPainel[], estoque: LinhaEstoquePainel[]): ModeloPainel[] {
+  const porModeloVendas = contarPor(vendas, v => v.modelo)
+  const receitaPorModelo = resumirPor(vendas, v => v.modelo, somarValores)
+  const emEstoque = new Map(resumirEstoque(estoque).porModelo.map(p => [p.chave, p.quantidade]))
+  const modelos = [...new Set([...porModeloVendas.keys(), ...emEstoque.keys()])].sort(ordemPt)
+  return modelos.map(modelo => {
+    const vendidas = porModeloVendas.get(modelo) ?? 0
+    const receita = receitaPorModelo.get(modelo) ?? 0
+    return {
+      modelo,
+      vendidas,
+      receita,
+      precoMedio: vendidas > 0 ? centavos(receita / vendidas) : 0,
+      emEstoque: emEstoque.get(modelo) ?? 0,
+    }
+  })
+}
+
+/** A loja da tela "Loja selecionada": só quando o filtro tem exatamente uma loja da lista. */
+export function lojaDaSelecao(filtro: FiltroPainel, lojas: LojaPainel[]): LojaPainel | null {
+  if (filtro.lojas.length !== 1) return null
+  return lojas.find(l => l.lojaId === filtro.lojas[0]) ?? null
+}
+
+/** Quais blocos aparecem em cada aba: modelos nas duas; loja selecionada só em Vendas, com uma loja no filtro. */
+export function blocosDaAba(aba: Aba, lojaSelecionada: LojaPainel | null): { lojaSelecionada: boolean; modelos: boolean } {
+  return { lojaSelecionada: aba === 'vendas' && lojaSelecionada !== null, modelos: true }
+}
