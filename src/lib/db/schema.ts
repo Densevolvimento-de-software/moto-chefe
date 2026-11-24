@@ -78,6 +78,9 @@ export const grupos = pgTable('grupos', {
   // acesso dentro dela. Nulo = ainda usa a env MCPAI_ENDPOINT_URL global.
   // Ver src/lib/mcpai-credencial.ts.
   mcpaiEndpointUrl:   text('mcpai_endpoint_url'),
+  // Ids de contas do mcp.ai de OUTRO CNPJ do mesmo dono que entram na tela PIX (#236). Só valem com chave
+  // própria acima; o servidor recusa gravar sem ela e a leitura ignora. Despesas, saldos e cartões não usam.
+  mcpaiContasPixIds:  text('mcpai_contas_pix_ids').array().notNull().default([]),
   // OBSOLETO: avisos migraram para WhatsApp (env WHATSAPP_ALERTA_NUMERO).
   // Coluna mantida só pra evitar migração de drop; remover numa migração futura.
   telegramChatId:     text('telegram_chat_id'),

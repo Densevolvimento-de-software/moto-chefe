@@ -9,6 +9,7 @@ import { Plus, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { criarGrupoAction, editarGrupoAction } from '../actions'
 import { AVISO_OUTRO_CNPJ, ehRecusaDoMp } from '@/lib/mercadopago/frases'
+import { chavePropriaAposSalvar } from '@/lib/pix-contas-liberadas'
 
 type Grupo = {
   id: string
@@ -22,6 +23,8 @@ type Grupo = {
   // valor não trafega para o navegador.
   mcpaiConfigurado: boolean
   mcpaiResumo: string | null
+  // Ids de contas de outro CNPJ liberadas para a tela PIX (#236). Não é segredo: volta inteiro para a tela.
+  mcpaiContasPixIds: string[]
   // Do Mercado Pago, só se há credencial e os 3 últimos dígitos da conta: o token não sai do servidor.
   mpConectado: boolean
   mpFinal: string | null
@@ -60,6 +63,15 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
   // significa "mantém o que está lá".
   const [mcpaiEndpointUrl, setMcpaiEndpointUrl] = useState('')
   const [mcpaiRemover, setMcpaiRemover] = useState(false)
+  const idsPixSalvos = (inicial?.mcpaiContasPixIds ?? []).join(', ')
+  const [mcpaiContasPix, setMcpaiContasPix] = useState(idsPixSalvos)
+  // O diálogo segue montado quando a lista é recarregada depois do Salvar: sem acompanhar a prop, reabrir mostraria
+  // os ids antigos e o próximo Salvar desfaria a liberação (ajuste de estado durante o render, como a doc do React).
+  const [idsPixVistos, setIdsPixVistos] = useState(idsPixSalvos)
+  if (idsPixVistos !== idsPixSalvos) {
+    setIdsPixVistos(idsPixSalvos)
+    setMcpaiContasPix(idsPixSalvos)
+  }
   // Como o mcp.ai: começa vazio, vazio mantém, remover apaga ao salvar.
   const [mpToken, setMpToken] = useState('')
   const [mpRemover, setMpRemover] = useState(false)
@@ -77,7 +89,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
   // colada, remoção marcada, recusa) não pode valer na próxima.
   function mudarAberto(aberto: boolean) {
     if (!aberto) {
-      setMcpaiEndpointUrl(''); setMcpaiRemover(false)
+      setMcpaiEndpointUrl(''); setMcpaiRemover(false); setMcpaiContasPix(idsPixSalvos)
       setMpToken(''); setMpRemover(false)
       setErro(null)
     }
@@ -86,6 +98,9 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
 
   // Recusa do Mercado Pago fica embaixo do campo dele (protótipo V1); as outras, no rodapé.
   const erroDoMp = erro !== null && ehRecusaDoMp(erro)
+
+  // Mesma regra do servidor: id de conta só vale com chave própria depois de salvar (colar chave liga, remover desliga).
+  const chavePropria = chavePropriaAposSalvar({ jaTinha: !!inicial?.mcpaiConfigurado, chaveNova: mcpaiEndpointUrl.trim() !== '', remover: mcpaiRemover })
 
   const contratoIncompleto = !razaoSocial.trim() || !enderecoSede.trim() || !cidadeSede.trim() || !comarcaForo.trim()
 
@@ -105,7 +120,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
       // As actions devolvem a recusa como valor: lançada, ela some no build de produção (#404).
       const r = modo === 'criar'
         ? await criarGrupoAction({ ...dados, contaId: contaId || null })
-        : await editarGrupoAction(inicial!.id, { ...dados, mpToken, mpRemover })
+        : await editarGrupoAction(inicial!.id, { ...dados, mpToken, mpRemover, mcpaiContasPix: chavePropria ? mcpaiContasPix : '' })
       if (!r.ok) {
         setErro(r.erro)
         return
@@ -279,6 +294,24 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                     </p>
                   )}
                 </div>
+                {modo === 'editar' && (
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="grupo-mcpai-contas-pix" className="text-xs">IDs de outras contas do Open Finance</Label>
+                    <Input
+                      id="grupo-mcpai-contas-pix"
+                      value={mcpaiContasPix}
+                      onChange={e => setMcpaiContasPix(e.target.value)}
+                      placeholder="Separe por vírgula"
+                      className="h-9 text-sm"
+                      disabled={!chavePropria}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      {chavePropria
+                        ? 'Contas de outro CNPJ do mesmo dono. Entram só na tela PIX; Despesas e saldos não mudam.'
+                        : 'Precisa da chave própria do mcp.ai deste grupo. Sem ela não dá para liberar outras contas.'}
+                    </p>
+                  </div>
+                )}
                 {modo === 'editar' && (
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label htmlFor="grupo-mp-token" className="text-xs">Maquininha Mercado Pago: Access Token</Label>

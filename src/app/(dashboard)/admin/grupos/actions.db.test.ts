@@ -233,3 +233,101 @@ test('Mercado Pago sem o documento do titular: grava nulo e não avisa', async (
   assert.equal((await config(a.grupoId)).titular_documento, null)
   assert.equal((await acoes.listarGruposAction()).find(g => g.id === a.grupoId)!.mpOutroCnpj, false)
 })
+
+// #236: contas de outro CNPJ liberadas para a tela PIX. Só grupo com chave própria do mcp.ai.
+const CHAVE_PROPRIA = 'https://api.mcp.ai/ficticia/token-ficticio-0001'
+const idsPix = async (grupoId: string) => ((await execRows(sql`select mcpai_contas_pix_ids as ids from grupos where id = ${grupoId}`))[0] as { ids: string[] }).ids
+const comChavePropria = async (grupoId: string) => { assert.equal((await editar(grupoId, { mcpaiEndpointUrl: CHAVE_PROPRIA })).ok, true) }
+
+test('admin_geral libera ids em grupo com chave própria; a lista devolve os ids e nunca a chave', async () => {
+  const a = await conta('A')
+  comoAdmin(a)
+  await comChavePropria(a.grupoId)
+  assert.deepEqual(await editar(a.grupoId, { mcpaiContasPix: 'conta-1, conta-2' }), { ok: true, dados: { aviso: null } })
+  assert.deepEqual(await idsPix(a.grupoId), ['conta-1', 'conta-2'])
+  const linha = (await acoes.listarGruposAction()).find(g => g.id === a.grupoId)!
+  assert.deepEqual(linha.mcpaiContasPixIds, ['conta-1', 'conta-2'])
+  assert.equal(JSON.stringify(linha).includes('token-ficticio-0001'), false)
+})
+
+test('grupo sem chave própria (usa a global da env): recusa os ids e nada grava', async () => {
+  const a = await conta('A')
+  comoAdmin(a)
+  const antes = await dadosDoGrupo(a.grupoId)
+  const r = await acoes.editarGrupoAction(a.grupoId, { nome: 'Nome que não grava', cnpj: antes.cnpj, ativo: true, mcpaiContasPix: 'conta-1' })
+  assert.equal(r.ok, false)
+  assert.match(r.ok ? '' : r.erro, /chave própria/)
+  assert.deepEqual(await idsPix(a.grupoId), [])
+  assert.equal((await dadosDoGrupo(a.grupoId)).nome, antes.nome)
+})
+
+test('pedido forjado: usuário da Conta B não grava ids no grupo da Conta A', async () => {
+  const a = await conta('A')
+  const b = await conta('B')
+  comoAdmin(a)
+  await comChavePropria(a.grupoId)
+  for (const papel of ['aux_adm', 'admin_socio']) {
+    sessao = { id: b.auxId, papel }
+    assert.deepEqual(await editar(a.grupoId, { mcpaiContasPix: 'conta-de-a' }), { ok: false, erro: 'Acesso restrito ao Admin Geral' })
+  }
+  assert.deepEqual(await idsPix(a.grupoId), [])
+  assert.deepEqual(await idsPix(b.grupoId), [])
+})
+
+test('pedido forjado: campos a mais (grupo, conta e o nome da coluna) não mudam o grupo de outra Conta', async () => {
+  const a = await conta('A')
+  const b = await conta('B')
+  comoAdmin(a)
+  await comChavePropria(a.grupoId)
+  await comChavePropria(b.grupoId)
+  const r = await editar(a.grupoId, { mcpaiContasPix: 'so-da-a', mcpaiContasPixIds: ['forjado'], grupoId: b.grupoId, contaId: b.contaId })
+  assert.equal(r.ok, true)
+  assert.deepEqual(await idsPix(a.grupoId), ['so-da-a'])
+  assert.deepEqual(await idsPix(b.grupoId), [])
+  assert.equal((await execRows(sql`select conta_id from grupos where id = ${a.grupoId}`))[0].conta_id, a.contaId)
+})
+
+test('campo vazio apaga os ids; campo ausente não mexe', async () => {
+  const a = await conta('A')
+  comoAdmin(a)
+  await comChavePropria(a.grupoId)
+  await editar(a.grupoId, { mcpaiContasPix: 'conta-1' })
+  await editar(a.grupoId, { nome: 'Outro nome' })
+  assert.deepEqual(await idsPix(a.grupoId), ['conta-1'])
+  await editar(a.grupoId, { mcpaiContasPix: '' })
+  assert.deepEqual(await idsPix(a.grupoId), [])
+})
+
+test('remover a chave apaga os ids junto; remover e mandar ids no mesmo pedido é recusado', async () => {
+  const a = await conta('A')
+  comoAdmin(a)
+  await comChavePropria(a.grupoId)
+  await editar(a.grupoId, { mcpaiContasPix: 'conta-1' })
+  const recusa = await editar(a.grupoId, { mcpaiRemover: true, mcpaiContasPix: 'conta-1' })
+  assert.equal(recusa.ok, false)
+  assert.deepEqual(await idsPix(a.grupoId), ['conta-1'])
+  assert.equal((await editar(a.grupoId, { mcpaiRemover: true })).ok, true)
+  assert.deepEqual(await idsPix(a.grupoId), [])
+})
+
+test('id com caractere inválido é recusado e nada grava', async () => {
+  const a = await conta('A')
+  comoAdmin(a)
+  await comChavePropria(a.grupoId)
+  const r = await editar(a.grupoId, { mcpaiContasPix: 'conta-1, b!2' })
+  assert.equal(r.ok, false)
+  assert.deepEqual(await idsPix(a.grupoId), [])
+})
+
+test('pedido forjado: ids que não são texto (número, nulo, objeto, lista) voltam como recusa e nada grava', async () => {
+  const a = await conta('A')
+  comoAdmin(a)
+  await comChavePropria(a.grupoId)
+  await editar(a.grupoId, { mcpaiContasPix: 'conta-1' })
+  const valor = <T,>(p: Promise<T>) => p.catch((e: Error) => ({ lancou: e.message }))
+  for (const forjado of [42, null, { a: 1 }, ['conta-9']]) {
+    const r = await valor(editar(a.grupoId, { mcpaiContasPix: forjado }))
+    assert.equal((r as { ok?: boolean }).ok, false, `valor ${JSON.stringify(forjado)}: ${JSON.stringify(r)}`)
+  }
+  assert.deepEqual(await idsPix(a.grupoId), ['conta-1'])
+})
