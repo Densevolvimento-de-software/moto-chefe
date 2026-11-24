@@ -7,10 +7,13 @@ const th = 'px-3 py-2 text-xs font-medium text-muted-foreground'
 const td = 'px-3 py-2 tabular-nums'
 const n = (v: number) => v.toLocaleString('pt-BR')
 
-export function ModelosPainel({ modelos }: { modelos: ModeloPainel[] }) {
+export function ModelosPainel({ modelos, periodo }: { modelos: ModeloPainel[]; periodo: string }) {
   return (
     <section aria-label="Vendas e estoque por modelo" className="space-y-3">
-      <h2 className="text-lg font-semibold">Vendas e estoque por modelo</h2>
+      <div>
+        <h2 className="text-lg font-semibold">Vendas e estoque por modelo</h2>
+        <p className="text-sm text-muted-foreground">Vendas de {periodo}. Estoque de hoje.</p>
+      </div>
       {modelos.length === 0 ? (
         <p className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
           Nenhum modelo com venda ou estoque com estes filtros.

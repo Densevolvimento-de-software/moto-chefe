@@ -16,7 +16,7 @@ const modelos: ModeloPainel[] = [
   { modelo: 'X12', vendidas: 3, receita: 40380.3, precoMedio: 13460.1, emEstoque: 4 },
 ]
 const textoVisivel = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/ |&nbsp;/g, ' ').replace(/\s+/g, ' ')
-const html = (m: ModeloPainel[]) => renderToStaticMarkup(createElement(ModelosPainel, { modelos: m }))
+const html = (m: ModeloPainel[]) => renderToStaticMarkup(createElement(ModelosPainel, { modelos: m, periodo: '01/11/2026 a 24/11/2026' }))
 
 test('modelos: na tabela do computador, cada linha tem vendidas, receita, preço médio e estoque nessa ordem', () => {
   const tabela = html(modelos).match(/<table[\s\S]*?<\/table>/)?.[0] ?? ''
@@ -28,6 +28,10 @@ test('modelos: na tabela do computador, cada linha tem vendidas, receita, preço
 
 test('modelos: a seção tem o título "Vendas e estoque por modelo"', () => {
   assert.match(textoVisivel(html(modelos)), /Vendas e estoque por modelo/)
+})
+
+test('modelos: o subtítulo diz o período das vendas e que o estoque é de hoje', () => {
+  assert.match(textoVisivel(html(modelos)), /Vendas de 01\/11\/2026 a 24\/11\/2026\. Estoque de hoje\./)
 })
 
 test('modelos: sem linha nenhuma, mostra o aviso e não NaN nem traço', () => {

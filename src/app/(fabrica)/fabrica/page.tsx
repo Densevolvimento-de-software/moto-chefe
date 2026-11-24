@@ -33,6 +33,7 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
   const linhasModelos = resumirModelos(vendasFiltradas, estoqueFiltrado)
   const lojaSelecionada = lojaDaSelecao(filtro, lojas)
   const blocos = blocosDaAba(aba, lojaSelecionada)
+  const periodo = periodoBr(de, ate)
 
   return (
     <div className="space-y-5">
@@ -51,7 +52,7 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
         />
       </div>
 
-      <RedePainel rede={rede} periodo={periodoBr(de, ate)} />
+      <RedePainel rede={rede} periodo={periodo} />
 
       <nav className="flex gap-1 border-b" aria-label="Abas do painel">
         {ABAS_PAINEL.map(a => (
@@ -79,11 +80,11 @@ export default async function PainelFabricaPage({ searchParams }: { searchParams
           motos={vendasResumo.total}
         />
       )}
-      {blocos.modelos && <ModelosPainel modelos={linhasModelos} />}
+      {blocos.modelos && <ModelosPainel modelos={linhasModelos} periodo={periodo} />}
 
       {aba === 'estoque'
         ? <TabelaEstoque lojas={lojas} estoque={estoqueFiltrado} />
-        : <TabelaVendas lojas={lojas} vendas={vendasFiltradas} periodo={periodoBr(de, ate)} filtro={filtro} de={de} ate={ate} />}
+        : <TabelaVendas lojas={lojas} vendas={vendasFiltradas} periodo={periodo} filtro={filtro} de={de} ate={ate} />}
     </div>
   )
 }
