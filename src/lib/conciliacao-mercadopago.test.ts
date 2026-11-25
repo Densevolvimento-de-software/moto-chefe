@@ -105,11 +105,12 @@ describe('classificarPagamento', () => {
     assert.deepEqual(classificarPagamento(semSerial), { tipo: 'ignorar', motivo: 'não é da maquininha' })
   })
 
-  // Decisão do Luis (#51, opção b): pré-pago não vira linha, mas aparece no resumo da importação.
-  it('cartão pré-pago aprovado da maquininha vira "não tratado", não some', () => {
-    // Valor e dia de Brasília para a faixa da conciliação; meio fora não entra sozinho depois (a loja usa o Forçar).
-    assert.deepEqual(classificarPagamento(pg(debito, { payment_type_id: 'prepaid_card' })),
-      { tipo: 'nao_tratado', naoTratado: { motivo: 'pre_pago', valor: 150, data: '2026-11-10' }, paraOLog: 'cartão pré-pago' })
+  it('cartão pré-pago aprovado da maquininha vira crédito', () => {
+    const c = classificarPagamento(pg(debito, { payment_type_id: 'prepaid_card' }))
+    assert.equal(c.tipo, 'transacao')
+    if (c.tipo !== 'transacao') return
+    assert.equal(c.transacao.tipo, 'credito')
+    assert.equal(c.transacao.parcelas, 1)
   })
 
   it('cartão pré-pago ainda não aprovado é ignorado', () => {
@@ -128,9 +129,12 @@ describe('classificarPagamento', () => {
     }
   })
 
-  // Decisão do Luis (#51): todo meio aprovado da maquininha fora de crédito, débito e Pix aparece no resumo.
-  it('outro meio aprovado da maquininha vira "não tratado" com o nome do meio', () => {
+  it('saldo Mercado Pago aprovado da maquininha vira uma linha própria, separada do Pix', () => {
     assert.deepEqual(classificarPagamento(pg(debito, { payment_type_id: 'account_money', payment_method_id: 'account_money' })),
-      { tipo: 'nao_tratado', naoTratado: { motivo: 'outro_meio', valor: 150, data: '2026-11-10' }, paraOLog: 'meio account_money' })
+      { tipo: 'transacao', transacao: {
+        nsu: '1000000002', autorizacao: '123456', dataTransacao: '2026-11-10', valorBruto: 150,
+        valorLiquido: 147.75, parcelas: 1, tipo: 'saldo_mp', status: 'aprovado',
+        rawData: { id: 1000000002, bandeira: '', serial: 'FAKESERIAL01', ultimos4: '0000', estornado: 0 },
+      } })
   })
 })

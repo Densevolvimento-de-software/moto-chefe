@@ -193,7 +193,7 @@ test('casarPorValor: linha de débito não casa pagamento Pix', async () => {
   })
 })
 
-test('o banco recusa tipo de linha fora de crédito, débito e pix', async () => {
+test('o banco recusa tipo de linha fora de crédito, débito, pix e saldo Mercado Pago', async () => {
   await emTransacaoDesfeita(async tx => {
     const a = await semearConta(tx, 'A')
     await assert.rejects(
