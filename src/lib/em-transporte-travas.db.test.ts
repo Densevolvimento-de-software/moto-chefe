@@ -7,7 +7,7 @@
 import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearUsuario } from '@/test/semear-conta'
+import { semearContaBase, semearGrupo, semearUsuario } from '@/test/semear-conta'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -30,14 +30,17 @@ const mocks = [
 ]
 
 type Sessao = Record<string, unknown>
-const sessoes = { socioA: {} as Sessao, auxA: {} as Sessao, socioB: {} as Sessao, vendedorA: {} as Sessao, auxOutraLojaA: {} as Sessao, redeA: {} as Sessao }
-const semente = { contaA: '', grupoA: '', lojaA: '', destinoA: '', contaB: '', grupoB: '', modeloId: '', origemId: '' }
+const sessoes = { socioA: {} as Sessao, auxA: {} as Sessao, socioB: {} as Sessao, vendedorA: {} as Sessao, auxOutraLojaA: {} as Sessao, redeA: {} as Sessao,
+  redeNoLiberado: {} as Sessao, redeLiberadoSemPersona: {} as Sessao }
+const semente = { contaA: '', grupoA: '', lojaA: '', destinoA: '', contaB: '', grupoB: '', modeloId: '', origemId: '',
+  contaDona: '', grupoLiberado: '', lojaLiberada: '', grupoIrmao: '', lojaIrma: '', contaFora: '', grupoFora: '', lojaFora: '' }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const linhas = async (q: ReturnType<typeof sql>) => ((await db.execute(q)) as unknown as { rows: any[] }).rows
 
 before(async () => {
   ;({ db } = await import('@/lib/db'))
+  const { usuarioDaRede } = await import('@/lib/grupos-liberados')
   const a = await semearContaBase(db, { prefixo: P, nome: 'A', cnpj: '00000000000901' })
   const b = await semearContaBase(db, { prefixo: P, nome: 'B', cnpj: '00000000000902' })
   const socioA = await semearUsuario(db, a, { papel: 'admin_socio', rotulo: 'socio', semLoja: true, comGrupo: true })
@@ -56,8 +59,19 @@ before(async () => {
   sessoes.auxOutraLojaA = { id: auxOutraLojaA, papel: 'aux_adm', lojaId: destino.id, gruposAcesso: [], contaId: a.contaId, grupoLiberado: null }
   // A sessão do admin_rede sai da mesma função que o getUsuarioLogado usa: ele chega como admin_socio.
   const redeA = await semearUsuario(db, a, { papel: 'admin_rede', rotulo: 'rede', semLoja: true, comGrupo: true })
-  const { usuarioDaRede } = await import('@/lib/grupos-liberados')
   sessoes.redeA = { id: redeA, ...usuarioDaRede({ papel: 'admin_rede', lojaId: null, gruposAcesso: [a.grupoId], gruposAprovacao: [], contaId: a.contaId }, [], null) }
+  // Rede (#257): a Conta dona libera um grupo para o admin_rede; o grupo irmão da mesma Conta e a Conta de fora não são liberados.
+  const dona = await semearContaBase(db, { prefixo: P, nome: 'Dona', cnpj: '00000000000903' })
+  const irmao = await semearGrupo(db, dona.contaId, { prefixo: P, nome: 'Irmao', cnpj: '00000000000904' })
+  const fora = await semearContaBase(db, { prefixo: P, nome: 'Fora', cnpj: '00000000000905' })
+  const geral = await semearUsuario(db, a, { papel: 'admin_geral', rotulo: 'geral', semLoja: true })
+  await db.execute(sql`insert into grupos_liberados (usuario_id, grupo_id, liberado_por) values (${redeA}, ${dona.grupoId}, ${geral})`)
+  Object.assign(semente, { contaDona: dona.contaId, grupoLiberado: dona.grupoId, lojaLiberada: dona.lojaId, grupoIrmao: irmao.grupoId,
+    lojaIrma: irmao.lojaId, contaFora: fora.contaId, grupoFora: fora.grupoId, lojaFora: fora.lojaId })
+  const liberados = [{ grupoId: dona.grupoId, contaId: dona.contaId }]
+  const cadastroRede = { papel: 'admin_rede', lojaId: null, gruposAcesso: [a.grupoId], gruposAprovacao: [], contaId: a.contaId }
+  sessoes.redeNoLiberado = { id: redeA, ...usuarioDaRede(cadastroRede, liberados, dona.grupoId) }
+  sessoes.redeLiberadoSemPersona = { id: redeA, ...usuarioDaRede(cadastroRede, liberados, null) }
   usuarioDaSessao = sessoes.socioA
 })
 
@@ -67,23 +81,24 @@ after(async () => {
     await db.execute(sql`delete from ${sql.raw(t)} where moto_id in ${daSemente}`)
   }
   await db.execute(sql`delete from log_acoes where usuario_id in (select id from usuarios where email like ${'%-' + P.toLowerCase() + '-%'})`)
+  await db.execute(sql`delete from grupos_liberados where usuario_id in (select id from usuarios where email like ${'%-' + P.toLowerCase() + '-%'})`)
   await db.execute(sql`delete from motos where chassi like ${P + '%'}`)
   for (const conta of [semente.contaA, semente.contaB]) await db.execute(sql`delete from clientes where conta_id = ${conta}`)
   await db.execute(sql`delete from origens_venda where grupo_id = ${semente.grupoA}`)
   await db.execute(sql`delete from modelos where modelo = ${P}`)
   await db.execute(sql`delete from usuarios where email like ${'%-' + P.toLowerCase() + '-%'}`)
-  for (const grupo of [semente.grupoA, semente.grupoB]) {
+  for (const grupo of [semente.grupoA, semente.grupoB, semente.grupoLiberado, semente.grupoIrmao, semente.grupoFora]) {
     await db.execute(sql`delete from lojas where grupo_id = ${grupo}`)
     await db.execute(sql`delete from grupos where id = ${grupo}`)
   }
-  for (const conta of [semente.contaA, semente.contaB]) await db.execute(sql`delete from contas where id = ${conta}`)
+  for (const conta of [semente.contaA, semente.contaB, semente.contaDona, semente.contaFora]) await db.execute(sql`delete from contas where id = ${conta}`)
   for (const m of mocks) m.restore()
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
 })
 
-async function novaMoto(rotulo: string, status: string, disponibilidade: string | null = null) {
+async function novaMoto(rotulo: string, status: string, disponibilidade: string | null = null, lojaId = semente.lojaA) {
   const [m] = await linhas(sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
-    values (${P + rotulo}, ${semente.modeloId}, ${semente.lojaA}, 'CINZA', '1', ${status}, ${disponibilidade}) returning id`)
+    values (${P + rotulo}, ${semente.modeloId}, ${lojaId}, 'CINZA', '1', ${status}, ${disponibilidade}) returning id`)
   return m.id as string
 }
 
@@ -367,13 +382,37 @@ test('vendedor da loja não marca a chegada: recusa sem permissão; nada muda', 
   assert.deepEqual(await historicoDa(moto), [])
 })
 
-// D2 do #11: admin_rede sem o botão, embora opere como sócio no resto do app (Montar inclusive).
-test('admin_rede não marca a chegada: recusa sem permissão; nada muda', async () => {
-  usuarioDaSessao = sessoes.redeA
-  const moto = await novaMoto('CHGRED', 'em_transporte')
-  assert.deepEqual(await (await estoque()).marcarChegadaAction(moto), { ok: false, erro: SEM_PERMISSAO_CHEGADA })
-  assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null))
-  assert.deepEqual(await historicoDa(moto), [])
+// #257 (decisão do Luis, 24/11/2026, revisa a D2 do #11): o admin_rede marca a chegada como o sócio, só onde já alcança a moto.
+// Sessões pela mesma função do getUsuarioLogado (usuarioDaRede): a persona do grupo liberado e a própria Conta.
+test('admin_rede marca a chegada na própria Conta e no grupo liberado: Caixa, e o histórico guarda ele como autor', async () => {
+  const { marcarChegadaAction } = await estoque()
+  const casos = [['CHGREDCASA', sessoes.redeA, semente.lojaA], ['CHGREDLIB', sessoes.redeNoLiberado, semente.lojaLiberada]] as const
+  for (const [rotulo, sessao, lojaId] of casos) {
+    usuarioDaSessao = sessao
+    const moto = await novaMoto(rotulo, 'em_transporte', null, lojaId)
+    assert.deepEqual(await marcarChegadaAction(moto), { ok: true, dados: undefined }, rotulo)
+    assert.deepEqual(await estadoDa(moto), intacta('caixa', null), rotulo)
+    assert.deepEqual(await historicoDa(moto), chegada(sessao), rotulo)
+  }
+})
+
+// Não amplia o acesso: o que o admin_rede não alcançava continua "Moto não encontrada", igual a id inexistente.
+test('admin_rede não marca a chegada fora do que alcança (grupo não liberado, irmão do liberado, liberado sem o grupo ativo): a mesma frase do id inexistente; nada muda', async () => {
+  const { marcarChegadaAction } = await estoque()
+  const casos = [
+    ['CHGREDFORA', sessoes.redeA, semente.lojaFora],
+    ['CHGREDFORAL', sessoes.redeNoLiberado, semente.lojaFora],
+    ['CHGREDIRMA', sessoes.redeNoLiberado, semente.lojaIrma],
+    ['CHGREDSEMP', sessoes.redeLiberadoSemPersona, semente.lojaLiberada],
+    ['CHGREDCASAP', sessoes.redeNoLiberado, semente.lojaA],
+  ] as const
+  for (const [rotulo, sessao, lojaId] of casos) {
+    usuarioDaSessao = sessao
+    const moto = await novaMoto(rotulo, 'em_transporte', null, lojaId)
+    assert.deepEqual(await marcarChegadaAction(moto), { ok: false, erro: 'Moto não encontrada' }, rotulo)
+    assert.deepEqual(await estadoDa(moto), intacta('em_transporte', null), rotulo)
+    assert.deepEqual(await historicoDa(moto), [], rotulo)
+  }
 })
 
 test('aux_adm de outra loja da mesma Conta não marca a chegada; nada muda', async () => {

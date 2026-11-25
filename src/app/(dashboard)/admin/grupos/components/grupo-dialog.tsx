@@ -1,15 +1,16 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { Plus, Pencil } from 'lucide-react'
+import { Plus, Pencil, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { criarGrupoAction, editarGrupoAction } from '../actions'
+import { criarGrupoAction, editarGrupoAction, rotulosDosIdsAction } from '../actions'
 import { AVISO_OUTRO_CNPJ, ehRecusaDoMp } from '@/lib/mercadopago/frases'
 import { chavePropriaAposSalvar } from '@/lib/pix-contas-liberadas'
+import { FALHA_AO_ROTULAR, NAO_ENCONTRADO } from '@/lib/rotulos-contas-mcp'
 
 type Grupo = {
   id: string
@@ -47,6 +48,9 @@ type Props = {
   onOpenChange?: (v: boolean) => void
 }
 
+/** Linhas dos campos de ID em texto para a action: sem espaço nas pontas e sem linha vazia (o servidor valida cada ID). */
+const textoDosIdsPix = (linhas: readonly string[]) => linhas.map(l => l.trim()).filter(Boolean).join(', ')
+
 export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -63,15 +67,34 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
   // significa "mantém o que está lá".
   const [mcpaiEndpointUrl, setMcpaiEndpointUrl] = useState('')
   const [mcpaiRemover, setMcpaiRemover] = useState(false)
-  const idsPixSalvos = (inicial?.mcpaiContasPixIds ?? []).join(', ')
-  const [mcpaiContasPix, setMcpaiContasPix] = useState(idsPixSalvos)
+  const idsPixSalvos = inicial?.mcpaiContasPixIds ?? []
+  const [linhasPix, setLinhasPix] = useState(idsPixSalvos)
   // O diálogo segue montado quando a lista é recarregada depois do Salvar: sem acompanhar a prop, reabrir mostraria
   // os ids antigos e o próximo Salvar desfaria a liberação (ajuste de estado durante o render, como a doc do React).
-  const [idsPixVistos, setIdsPixVistos] = useState(idsPixSalvos)
-  if (idsPixVistos !== idsPixSalvos) {
-    setIdsPixVistos(idsPixSalvos)
-    setMcpaiContasPix(idsPixSalvos)
+  // Compara pelo texto porque a prop chega como array novo a cada render; id não tem vírgula (lerIdsContasPix).
+  const [idsPixVistos, setIdsPixVistos] = useState(idsPixSalvos.join(','))
+  if (idsPixVistos !== idsPixSalvos.join(',')) {
+    setIdsPixVistos(idsPixSalvos.join(','))
+    setLinhasPix(idsPixSalvos)
   }
+  // O que a chave PRÓPRIA já salva enxerga no mcp.ai (id -> rótulo), lido ao abrir o Editar (#253). Vale também
+  // para o ID digitado e ainda não salvo. Falha ou chave ainda não salva: sem rótulo, os campos seguem como estão.
+  const consultaRotulos = open && modo === 'editar' && !!inicial?.mcpaiConfigurado
+  const idDoGrupo = inicial?.id
+  const [rotulos, setRotulos] = useState<ReadonlyMap<string, string> | null>(null)
+  const [erroRotulos, setErroRotulos] = useState<string | null>(null)
+  useEffect(() => {
+    if (!consultaRotulos || !idDoGrupo) return
+    let descartado = false
+    rotulosDosIdsAction(idDoGrupo).then(r => {
+      if (descartado) return
+      setRotulos(r.ok ? new Map(r.dados.map(x => [x.id, x.texto])) : null)
+      setErroRotulos(r.ok ? null : r.erro)
+    }).catch(() => {
+      if (!descartado) setErroRotulos(FALHA_AO_ROTULAR)
+    })
+    return () => { descartado = true }
+  }, [consultaRotulos, idDoGrupo])
   // Como o mcp.ai: começa vazio, vazio mantém, remover apaga ao salvar.
   const [mpToken, setMpToken] = useState('')
   const [mpRemover, setMpRemover] = useState(false)
@@ -89,7 +112,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
   // colada, remoção marcada, recusa) não pode valer na próxima.
   function mudarAberto(aberto: boolean) {
     if (!aberto) {
-      setMcpaiEndpointUrl(''); setMcpaiRemover(false); setMcpaiContasPix(idsPixSalvos)
+      setMcpaiEndpointUrl(''); setMcpaiRemover(false); setLinhasPix(idsPixSalvos); setRotulos(null); setErroRotulos(null)
       setMpToken(''); setMpRemover(false)
       setErro(null)
     }
@@ -120,7 +143,7 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
       // As actions devolvem a recusa como valor: lançada, ela some no build de produção (#404).
       const r = modo === 'criar'
         ? await criarGrupoAction({ ...dados, contaId: contaId || null })
-        : await editarGrupoAction(inicial!.id, { ...dados, mpToken, mpRemover, mcpaiContasPix: chavePropria ? mcpaiContasPix : '' })
+        : await editarGrupoAction(inicial!.id, { ...dados, mpToken, mpRemover, mcpaiContasPix: chavePropria ? textoDosIdsPix(linhasPix) : '' })
       if (!r.ok) {
         setErro(r.erro)
         return
@@ -296,18 +319,52 @@ export function GrupoDialog({ modo, inicial, contas = [], open, onOpenChange }: 
                 </div>
                 {modo === 'editar' && (
                   <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="grupo-mcpai-contas-pix" className="text-xs">IDs de outras contas do Open Finance</Label>
-                    <Input
-                      id="grupo-mcpai-contas-pix"
-                      value={mcpaiContasPix}
-                      onChange={e => setMcpaiContasPix(e.target.value)}
-                      placeholder="Separe por vírgula"
-                      className="h-9 text-sm"
-                      disabled={!chavePropria}
-                    />
+                    <Label id="grupo-mcpai-contas-pix-rotulo" className="text-xs">IDs de outras contas do Open Finance</Label>
+                    <div role="group" aria-labelledby="grupo-mcpai-contas-pix-rotulo" className="space-y-2">
+                      {linhasPix.map((id, i) => {
+                        const rotulo = rotulos && id.trim() ? (rotulos.get(id.trim()) ?? NAO_ENCONTRADO) : null
+                        const idRotulo = `grupo-mcpai-contas-pix-${i}-rotulo`
+                        return (
+                          <div key={i} className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Input
+                                id={`grupo-mcpai-contas-pix-${i}`}
+                                aria-label={`ID da conta ou da credencial ${i + 1}`}
+                                aria-describedby={rotulo ? idRotulo : undefined}
+                                value={id}
+                                onChange={e => setLinhasPix(linhas => linhas.map((l, j) => (j === i ? e.target.value : l)))}
+                                placeholder="ID da conta ou da credencial"
+                                className="h-9 min-w-0 flex-1 text-sm"
+                                disabled={!chavePropria}
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                aria-label={`Remover ID ${i + 1}`}
+                                onClick={() => setLinhasPix(linhas => linhas.filter((_, j) => j !== i))}
+                                disabled={!chavePropria}
+                              >
+                                <X />
+                              </Button>
+                            </div>
+                            {rotulo && (
+                              <p id={idRotulo} className={`text-[11px] ${rotulo === NAO_ENCONTRADO ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                {rotulo}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })}
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setLinhasPix(linhas => [...linhas, ''])} disabled={!chavePropria}>
+                        <Plus />
+                        Adicionar conta ou credencial
+                      </Button>
+                    </div>
+                    {erroRotulos && <p className="text-[11px] text-muted-foreground">{erroRotulos}</p>}
                     <p className="text-[11px] text-muted-foreground">
                       {chavePropria
-                        ? 'Contas de outro CNPJ do mesmo dono. Entram só na tela PIX; Despesas e saldos não mudam.'
+                        ? 'Aceita o ID da conta ou da credencial (a conexão com o banco; só as contas correntes dela entram). Contas de outro CNPJ do mesmo dono. Entram só na tela PIX; Despesas, saldos e cartões não mudam.'
                         : 'Precisa da chave própria do mcp.ai deste grupo. Sem ela não dá para liberar outras contas.'}
                     </p>
                   </div>
