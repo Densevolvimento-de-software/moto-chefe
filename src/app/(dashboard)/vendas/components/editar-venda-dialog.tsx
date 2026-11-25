@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { CurrencyInput } from '@/components/ui/currency-input'
-import { podeAlterarValorVenda } from '@/lib/valor-venda'
+import { podeAlterarValorVenda, podeTrocarVendedorVenda } from '@/lib/valor-venda'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
@@ -256,6 +256,12 @@ export function EditarVendaDialog({ venda: v, papel, vendedores, origens, gatilh
               </div>
               <div className="space-y-1.5">
                 <Label>Vendedor</Label>
+                {!podeTrocarVendedorVenda(papel) ? (
+                  // Sem campo: só os sócios trocam o vendedor de uma venda já feita.
+                  <p className="flex h-9 items-center rounded-md border bg-muted px-3 text-muted-foreground">
+                    {v.vendedorNome ?? '—'}
+                  </p>
+                ) : (
                 <Select value={vendedorId} onValueChange={v => { if (v) setVendedorId(v) }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o vendedor">
@@ -274,6 +280,7 @@ export function EditarVendaDialog({ venda: v, papel, vendedores, origens, gatilh
                     ))}
                   </SelectContent>
                 </Select>
+                )}
               </div>
               {/* Origem — corrigível aqui; venda antiga entra sem nenhuma. */}
               <OrigemVendaSelect
