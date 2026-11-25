@@ -15,6 +15,22 @@ process.env.CERT_MASTER_KEY ??= 'c'.repeat(64)
 // A conta da mensalidade vem do shell se estiver exportada; os cenários aqui não dependem dela.
 delete process.env.MP_ACCESS_TOKEN
 
+// mcp.ai falso (fronteira de fora): responde por chave (a URL carrega o segredo) e anota quais chaves foram usadas.
+const MCP_FALSO = 'https://api.mcp.ai/'
+const chavesUsadas: string[] = []
+let mcpFalha = false
+const contasDaChave = new Map<string, { bank: unknown[]; credit: unknown[] }>()
+const sse = (corpo: unknown, sessao?: string) => new Response(`event: message\ndata: ${JSON.stringify(corpo)}\n\n`, { headers: sessao ? { 'mcp-session-id': sessao } : {} })
+function mcpFalso(chave: string, init?: RequestInit): Response {
+  chavesUsadas.push(chave)
+  const corpo = JSON.parse(String(init?.body ?? '{}')) as { id: number; method: string; params?: { arguments?: { type?: string } } }
+  if (mcpFalha) return sse({ jsonrpc: '2.0', id: corpo.id, error: { message: `recusou ${chave}` } })
+  if (corpo.method === 'initialize') return sse({ jsonrpc: '2.0', id: corpo.id, result: {} }, 's1')
+  const contas = contasDaChave.get(chave) ?? { bank: [], credit: [] }
+  const results = corpo.params?.arguments?.type === 'CREDIT' ? contas.credit : contas.bank
+  return sse({ jsonrpc: '2.0', id: corpo.id, result: { content: [{ text: JSON.stringify({ results }) }] } })
+}
+
 let sessao: Record<string, unknown> = {}
 const mocks = [
   mock.module('@/lib/auth', { namedExports: { getUsuarioLogado: async () => sessao } }),
@@ -27,6 +43,7 @@ let chamadasMp = 0
 const fetchOriginal = globalThis.fetch
 before(() => {
   globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+    if (String(_url).startsWith(MCP_FALSO)) return mcpFalso(String(_url), init)
     chamadasMp++
     const token = String((init?.headers as Record<string, string>).Authorization).replace('Bearer ', '')
     const conta = contasNoMp.get(token)
@@ -48,7 +65,7 @@ after(async () => {
   for (const m of mocks) m.restore()
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
 })
-beforeEach(() => { chamadasMp = 0 })
+beforeEach(() => { chamadasMp = 0; chavesUsadas.length = 0; mcpFalha = false })
 
 /** Token novo no MP, de uma conta nova (id único: os arquivos do test:db rodam em paralelo). */
 function tokenDeConta(o: { tags?: string[]; documento?: string } = {}) {
@@ -330,4 +347,83 @@ test('pedido forjado: ids que não são texto (número, nulo, objeto, lista) vol
     assert.equal((r as { ok?: boolean }).ok, false, `valor ${JSON.stringify(forjado)}: ${JSON.stringify(r)}`)
   }
   assert.deepEqual(await idsPix(a.grupoId), ['conta-1'])
+})
+
+// #253: rótulo ao lado de cada ID. Só admin_geral, grupo lido pelo id no servidor, só com chave própria.
+const chaveDe = (nome: string) => `https://api.mcp.ai/ficticia/${nome}-${randomUUID()}`
+const NUMERO_DA_CONTA = '12345-6'
+const BANK = (nome: string, itemId: string) => [
+  { id: `${nome}-c1`, item_id: itemId, bank: `Banco ${nome}`, subtype: 'CHECKING_ACCOUNT', number: NUMERO_DA_CONTA, taxNumber: '99999999000199' },
+  { id: `${nome}-c2`, item_id: itemId, bank: `Banco ${nome}`, subtype: 'CHECKING_ACCOUNT', number: '77777-7', taxNumber: '99999999000199' },
+]
+async function grupoComChave(nome: string) {
+  const g = await conta(nome)
+  comoAdmin(g)
+  const chave = chaveDe(nome)
+  assert.equal((await editar(g.grupoId, { mcpaiEndpointUrl: chave })).ok, true)
+  contasDaChave.set(chave, { bank: BANK(nome, `cred-${nome}`), credit: [] })
+  return { ...g, chave }
+}
+
+test('admin_geral recebe os rótulos do grupo com chave própria, sem a chave, o número da conta nem o CNPJ', async () => {
+  const a = await grupoComChave('A')
+  comoAdmin(a)
+  const r = await acoes.rotulosDosIdsAction(a.grupoId)
+  assert.deepEqual(r, { ok: true, dados: [
+    { id: 'A-c1', texto: 'Banco A, conta' },
+    { id: 'A-c2', texto: 'Banco A, conta' },
+    { id: 'cred-A', texto: 'Banco A, credencial, 2 contas correntes' },
+  ] })
+  const saida = JSON.stringify(r)
+  for (const proibido of [a.chave, 'ficticia', NUMERO_DA_CONTA, '99999999000199']) assert.equal(saida.includes(proibido), false, `vazou: ${proibido}`)
+  assert.deepEqual([...new Set(chavesUsadas)], [a.chave])
+})
+
+test('pelo id do grupo: cada grupo fala com a sua chave, mesmo com dois grupos de mesmo CNPJ', async () => {
+  const a = await grupoComChave('A')
+  const b = await grupoComChave('B')
+  await execRows(sql`update grupos set cnpj = (select cnpj from grupos where id = ${a.grupoId}) where id = ${b.grupoId}`)
+  comoAdmin(a)
+  chavesUsadas.length = 0
+  await acoes.rotulosDosIdsAction(b.grupoId)
+  assert.deepEqual([...new Set(chavesUsadas)], [b.chave])
+})
+
+test('pedido forjado: usuário de outra Conta recebe a mesma recusa para grupo existente e inexistente, sem falar com o mcp.ai', async () => {
+  const a = await grupoComChave('A')
+  const b = await conta('B')
+  for (const papel of ['aux_adm', 'admin_socio']) {
+    sessao = { id: b.auxId, papel }
+    const recusaDoExistente = await acoes.rotulosDosIdsAction(a.grupoId)
+    const recusaDoInexistente = await acoes.rotulosDosIdsAction(randomUUID())
+    assert.deepEqual(recusaDoExistente, { ok: false, erro: 'Acesso restrito ao Admin Geral' })
+    assert.deepEqual(recusaDoInexistente, recusaDoExistente)
+  }
+  assert.deepEqual(chavesUsadas, [])
+})
+
+test('grupo inexistente e id que não é uuid recebem a mesma frase', async () => {
+  const a = await conta('A')
+  comoAdmin(a)
+  const esperado = { ok: false, erro: 'Grupo não encontrado' }
+  assert.deepEqual(await acoes.rotulosDosIdsAction(randomUUID()), esperado)
+  assert.deepEqual(await acoes.rotulosDosIdsAction("x' or '1'='1"), esperado)
+  assert.deepEqual(chavesUsadas, [])
+})
+
+test('grupo sem chave própria devolve vazio e não fala com o mcp.ai, mesmo com ids gravados por fora', async () => {
+  const a = await conta('A')
+  comoAdmin(a)
+  await execRows(sql`update grupos set mcpai_contas_pix_ids = ${sql.param(['conta-gravada'])}::text[] where id = ${a.grupoId}`)
+  assert.deepEqual(await acoes.rotulosDosIdsAction(a.grupoId), { ok: true, dados: [] })
+  assert.deepEqual(chavesUsadas, [])
+})
+
+test('erro do mcp.ai vira a frase genérica, sem a chave nem o corpo do erro', async () => {
+  const a = await grupoComChave('A')
+  comoAdmin(a)
+  mcpFalha = true
+  const r = await acoes.rotulosDosIdsAction(a.grupoId)
+  assert.deepEqual(r, { ok: false, erro: 'Não foi possível consultar o mcp.ai agora.' })
+  assert.equal(JSON.stringify(r).includes('recusou'), false)
 })

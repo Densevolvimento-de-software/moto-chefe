@@ -4,6 +4,8 @@ import { pedidosVenda, vendas, motos, lojas, grupos, usuarios, modelos, origensV
 import { eq, and, ilike, inArray, desc, sql, gte, lte } from 'drizzle-orm'
 import { inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
 import { pixCobertoSql } from '@/lib/queries/pix-coberto'
+import { podeAgirNaLoja } from '@/lib/acesso-registro'
+import { vendasComCertificadoBateria } from '@/lib/queries/certificado-bateria'
 
 export type PedidoComDetalhes = Awaited<ReturnType<typeof listarPedidosPorLoja>>[0]
 export type VendaComDetalhes  = Awaited<ReturnType<typeof listarVendas>>[0]
@@ -17,7 +19,7 @@ export async function listarVendas(filtros?: {
   dataInicio?: string
   dataFim?: string
 }) {
-  return db
+  const linhas = await db
     .select({
       id:               vendas.id,
       numero:           vendas.numero,
@@ -101,6 +103,9 @@ export async function listarVendas(filtros?: {
       )
     )
     .orderBy(desc(vendas.dataVenda))
+  // O e-mail da fábrica fica na consulta: a linha leva só o sim ou não (a lista vai para o navegador).
+  const comCertificado = await vendasComCertificadoBateria(linhas.map(l => l.id))
+  return linhas.map(l => ({ ...l, certificadoBateria: comCertificado.has(l.id) }))
 }
 
 export async function listarPedidosPorLoja(lojaId: string) {
@@ -224,4 +229,13 @@ export async function buscarVenda(id: string) {
     .where(eq(vendas.id, id))
     .limit(1)
   return venda ?? null
+}
+
+type UsuarioDoCertificado = Parameters<typeof podeAgirNaLoja>[0]
+
+/** A venda do certificado de bateria, ou null: de outra Conta, de outra loja, fora da regra e inexistente dão o mesmo null. */
+export async function buscarVendaDoCertificado(id: string, usuario: UsuarioDoCertificado) {
+  const venda = await buscarVenda(id)
+  if (!venda || !(await podeAgirNaLoja(usuario, venda.lojaId))) return null
+  return (await vendasComCertificadoBateria([id])).has(id) ? venda : null
 }

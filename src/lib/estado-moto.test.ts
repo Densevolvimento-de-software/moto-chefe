@@ -132,9 +132,9 @@ test('moto em transporte não tem transição na troca de status genérica, para
 const JA_CHEGOU = 'Esta moto não está mais em transporte.'
 const SEM_PERMISSAO_CHEGADA = 'Sem permissão para marcar a chegada desta moto.'
 const EM_TRANSPORTE = { status: 'em_transporte', arquivada: false }
-// Como a sessão entrega cada um (usuarioDaRede): o admin_rede chega com papel admin_socio e papelReal admin_rede.
-const pessoa = (papel: Papel) => ({ papel, papelReal: papel })
-const ADMIN_REDE = { papel: 'admin_socio', papelReal: 'admin_rede' } as const
+const pessoa = (papel: Papel) => ({ papel })
+// Como a sessão entrega o admin_rede (usuarioDaRede): com o papel do sócio.
+const ADMIN_REDE = pessoa('admin_socio')
 
 test('marcar chegada: só moto em transporte, por aux_adm da loja da moto ou admin_geral/admin_socio', () => {
   assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, pessoa('aux_adm'), true), null)
@@ -146,10 +146,17 @@ test('marcar chegada: só moto em transporte, por aux_adm da loja da moto ou adm
   }
 })
 
-// D2 do #11: o admin_rede opera como sócio no resto do app (Montar inclusive), mas não marca a chegada.
-test('marcar chegada: admin_rede recusa sem permissão, mesmo chegando como admin_socio', () => {
+// #257 (decisão do Luis, 24/11/2026, revisa a D2 do #11): o admin_rede marca a chegada como o sócio, em qualquer loja que alcança.
+test('marcar chegada: admin_rede, que chega como admin_socio, marca como o sócio, na loja própria ou noutra', () => {
   for (const isMinhaLoja of [true, false]) {
-    assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, ADMIN_REDE, isMinhaLoja), SEM_PERMISSAO_CHEGADA, String(isMinhaLoja))
+    assert.equal(motivoParaNaoMarcarChegada(EM_TRANSPORTE, ADMIN_REDE, isMinhaLoja), null, String(isMinhaLoja))
+  }
+})
+
+test('marcar chegada: admin_rede segue as mesmas recusas do sócio (arquivada, fora de transporte)', () => {
+  assert.equal(motivoParaNaoMarcarChegada({ status: 'em_transporte', arquivada: true }, ADMIN_REDE, true), MOTO_ARQUIVADA)
+  for (const status of ['caixa', 'montada', 'em_garantia', 'vendida']) {
+    assert.equal(motivoParaNaoMarcarChegada({ status, arquivada: false }, ADMIN_REDE, true), JA_CHEGOU, status)
   }
 })
 

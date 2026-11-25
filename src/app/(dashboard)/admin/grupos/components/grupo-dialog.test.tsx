@@ -5,7 +5,7 @@ import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import type { ResultadoAction } from '@/lib/resultado-action'
 import { montarDom } from '@/test/montar-dom'
-import { apertarEscape, montarDialogo, textoDaTela } from '@/test/dialogo-em-tela'
+import { apertarEscape, botao, clicar, montarDialogo, textoDaTela } from '@/test/dialogo-em-tela'
 import { AVISO_OUTRO_CNPJ, FRASES_MP } from '@/lib/mercadopago/frases'
 import type { GrupoDialog as Dialogo } from './grupo-dialog'
 
@@ -18,12 +18,14 @@ type Dados = Record<string, unknown>
 const api = {
   criar: mock.fn(async (_d: Dados): Promise<ResultadoAction> => ({ ok: true, dados: undefined })),
   editar: mock.fn(async (_id: string, _d: Dados): Promise<ResultadoAction<{ aviso: string | null }>> => ({ ok: true, dados: { aviso: null } })),
+  rotulos: mock.fn(async (_id: string): Promise<ResultadoAction<{ id: string; texto: string }[]>> => ({ ok: true, dados: [] })),
 }
 const toast = { success: mock.fn(), error: mock.fn(), warning: mock.fn() }
 const mocks = [
   mock.module('../actions', { namedExports: {
     criarGrupoAction: (d: Dados) => api.criar(d),
     editarGrupoAction: (id: string, d: Dados) => api.editar(id, d),
+    rotulosDosIdsAction: (id: string) => api.rotulos(id),
   } }),
   mock.module('next/navigation', { namedExports: { useRouter: () => ({ refresh: () => {} }) } }),
   mock.module('sonner', { namedExports: { toast } }),
@@ -35,6 +37,7 @@ afterEach(async () => {
   for (const m of [...Object.values(api), ...Object.values(toast)]) m.mock.resetCalls()
   api.criar.mock.mockImplementation(async () => ({ ok: true, dados: undefined }))
   api.editar.mock.mockImplementation(async () => ({ ok: true, dados: { aviso: null } }))
+  api.rotulos.mock.mockImplementation(async () => ({ ok: true, dados: [] }))
   for (const desmontar of montados.splice(0)) await desmontar()
 })
 
@@ -204,42 +207,44 @@ test('titular do mesmo CNPJ ou sem credencial: sem aviso', async () => {
   assert.equal(document.getElementById('grupo-mp-outro-cnpj')?.textContent ?? null, null)
 })
 
-// #236: contas de outro CNPJ liberadas para a tela PIX, logo abaixo da URL do mcp.ai.
+// #236/#253: contas de outro CNPJ liberadas para a tela PIX, logo abaixo da URL do mcp.ai, um campo por ID.
 const COM_CHAVE = { ...GRUPO, mcpaiConfigurado: true, mcpaiResumo: 'api.mcp.ai/…abcd', mcpaiContasPixIds: ['conta-1', 'conta-2'] }
-const campoPix = () => document.getElementById('grupo-mcpai-contas-pix') as HTMLInputElement | null
+const COM_CHAVE_SEM_IDS = { ...COM_CHAVE, mcpaiContasPixIds: [] as string[] }
+const camposPix = () => [...document.querySelectorAll<HTMLInputElement>('input[id^="grupo-mcpai-contas-pix-"]')]
+const valoresPix = () => camposPix().map(c => c.value)
+const enviado = () => api.editar.mock.calls[0].arguments[1].mcpaiContasPix
 
-test('Editar mostra os ids atuais logo abaixo da URL do mcp.ai e envia o texto editado', async () => {
+test('Editar mostra um campo por ID logo abaixo da URL do mcp.ai e envia a lista editada', async () => {
   const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
   const url = document.getElementById('grupo-mcpai')!
   const mp = document.getElementById('grupo-mp-token')!
-  assert.equal(campoPix()?.value, 'conta-1, conta-2')
-  assert.ok(url.compareDocumentPosition(campoPix()!) & 4, 'o campo vem depois da URL do mcp.ai')
-  assert.ok(campoPix()!.compareDocumentPosition(mp) & 4, 'e antes do token do Mercado Pago')
-  await t.preencher('grupo-mcpai-contas-pix', 'conta-1, conta-2, conta-3')
+  assert.deepEqual(valoresPix(), ['conta-1', 'conta-2'])
+  assert.ok(url.compareDocumentPosition(camposPix()[0]) & 4, 'os campos vêm depois da URL do mcp.ai')
+  assert.ok(camposPix()[1].compareDocumentPosition(mp) & 4, 'e antes do token do Mercado Pago')
+  await t.preencher('grupo-mcpai-contas-pix-1', 'conta-3')
   await t.clique('Salvar')
-  assert.equal(api.editar.mock.calls[0].arguments[1].mcpaiContasPix, 'conta-1, conta-2, conta-3')
+  assert.equal(enviado(), 'conta-1, conta-3')
 })
 
-test('grupo sem chave própria: o campo fica desligado e explica; colar a chave liga', async () => {
-  const t = await montar({ modo: 'editar', inicial: GRUPO })
-  assert.equal(campoPix()?.disabled, true)
-  assert.match(textoDaTela(), /chave própria do mcp\.ai/)
-  await t.preencher('grupo-mcpai', 'https://api.mcp.ai/nova-chave')
-  assert.equal(campoPix()?.disabled, false)
+// #253: o campo aceita o id da conta ou o da credencial (a conexão com o banco).
+test('com chave própria, a ajuda do campo diz que aceita o id da conta ou da credencial', async () => {
+  await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.match(textoDaTela(), /ID da conta ou da credencial/)
 })
 
-test('Remover chave desliga o campo e o Salvar manda os ids vazios (o servidor apaga junto)', async () => {
+test('Remover chave desliga os campos e o Salvar manda os ids vazios (o servidor apaga junto)', async () => {
   const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.deepEqual(camposPix().map(c => c.disabled), [false, false])
   await t.clique('Remover chave')
-  assert.equal(campoPix()?.disabled, true)
+  assert.deepEqual(camposPix().map(c => c.disabled), [true, true])
   await t.clique('Salvar')
   const [, dados] = api.editar.mock.calls[0].arguments
   assert.deepEqual([dados.mcpaiRemover, dados.mcpaiContasPix], [true, ''])
 })
 
-test('Novo Grupo não tem o campo nem manda os ids', async () => {
+test('Novo Grupo não tem os campos nem manda os ids', async () => {
   const t = await montar({ modo: 'criar', contas: [] })
-  assert.equal(campoPix()?.outerHTML ?? null, null)
+  assert.equal(camposPix().length, 0)
   await t.preencher('grupo-nome', 'Novo')
   await t.preencher('grupo-cnpj', '00.000.000/0001-91')
   await t.clique('Criar')
@@ -249,28 +254,139 @@ test('Novo Grupo não tem o campo nem manda os ids', async () => {
 test('recusa do servidor sobre os ids aparece no rodapé e o diálogo continua aberto', async () => {
   api.editar.mock.mockImplementation(async () => ({ ok: false, erro: 'ID de conta inválido: use só letras, números, ponto, - e _ (até 100 caracteres).' }))
   const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
-  await t.preencher('grupo-mcpai-contas-pix', 'conta!')
+  await t.preencher('grupo-mcpai-contas-pix-0', 'conta!')
   await t.clique('Salvar')
   assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /ID de conta inválido/)
   assert.equal(fechou(t.onOpenChange), false)
 })
 
-test('ao reabrir, o campo volta aos ids salvos e não ao que foi digitado e abandonado', async () => {
+test('ao reabrir, os campos voltam aos ids salvos e não ao que foi digitado e abandonado', async () => {
   const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
-  await t.preencher('grupo-mcpai-contas-pix', 'abandonado')
+  await t.preencher('grupo-mcpai-contas-pix-0', 'abandonado')
   await t.clique('Cancelar')
   await t.redesenhar({ modo: 'editar', inicial: COM_CHAVE, open: false, onOpenChange: t.onOpenChange })
   await t.redesenhar({ modo: 'editar', inicial: COM_CHAVE, open: true, onOpenChange: t.onOpenChange })
-  assert.equal(campoPix()?.value, 'conta-1, conta-2')
+  assert.deepEqual(valoresPix(), ['conta-1', 'conta-2'])
 })
 
 // Achado do bot no PR #238: salvar fecha o diálogo (volta ao valor da prop antiga) e só depois o refresh traz a
 // prop nova; sem ressincronizar, reabrir mostrava os ids antigos e um novo Salvar desfazia a liberação.
 test('depois de salvar, quando a lista chega com os ids novos, reabrir mostra os ids novos', async () => {
   const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
-  await t.preencher('grupo-mcpai-contas-pix', 'conta-9')
+  await t.preencher('grupo-mcpai-contas-pix-0', 'conta-9')
   await t.clique('Salvar')
   await t.redesenhar({ modo: 'editar', inicial: { ...COM_CHAVE, mcpaiContasPixIds: ['conta-9'] }, open: false, onOpenChange: t.onOpenChange })
   await t.redesenhar({ modo: 'editar', inicial: { ...COM_CHAVE, mcpaiContasPixIds: ['conta-9'] }, open: true, onOpenChange: t.onOpenChange })
-  assert.equal(campoPix()?.value, 'conta-9')
+  assert.deepEqual(valoresPix(), ['conta-9'])
+})
+
+// #253, variante (a) do protótipo: cada ID num campo próprio, com × para remover e "Adicionar conta ou credencial".
+const ADICIONAR = 'Adicionar conta ou credencial'
+const removerLinha = (n: number) => document.querySelector<HTMLButtonElement>(`button[aria-label="Remover ID ${n}"]`)
+
+test('Adicionar abre um campo vazio no fim; o ID digitado nele é enviado junto', async () => {
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  await t.clique(ADICIONAR)
+  assert.deepEqual(valoresPix(), ['conta-1', 'conta-2', ''])
+  await t.preencher('grupo-mcpai-contas-pix-2', 'cred-9')
+  await t.clique('Salvar')
+  assert.equal(enviado(), 'conta-1, conta-2, cred-9')
+})
+
+test('× remove só a linha dele e o Salvar não envia o ID removido', async () => {
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  await t.act(async () => { clicar(removerLinha(1)) })
+  assert.deepEqual(valoresPix(), ['conta-2'])
+  await t.clique('Salvar')
+  assert.equal(enviado(), 'conta-2')
+})
+
+test('remover todas as linhas envia vazio (o servidor apaga a lista)', async () => {
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  await t.act(async () => { clicar(removerLinha(2)); clicar(removerLinha(1)) })
+  assert.deepEqual(valoresPix(), [])
+  await t.clique('Salvar')
+  assert.equal(enviado(), '')
+})
+
+test('linha vazia ou só com espaços é ignorada, e o ID leva trim', async () => {
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  await t.clique(ADICIONAR)
+  await t.clique(ADICIONAR)
+  await t.preencher('grupo-mcpai-contas-pix-2', '   ')
+  await t.preencher('grupo-mcpai-contas-pix-0', '  conta-1  ')
+  await t.clique('Salvar')
+  assert.equal(enviado(), 'conta-1, conta-2')
+})
+
+test('grupo sem ID começa só com o botão Adicionar', async () => {
+  await montar({ modo: 'editar', inicial: COM_CHAVE_SEM_IDS })
+  assert.deepEqual(valoresPix(), [])
+  assert.ok(botao(ADICIONAR), 'o botão Adicionar aparece')
+})
+
+test('grupo sem chave própria: Adicionar e × ficam desligados e a tela explica; colar a chave liga', async () => {
+  const t = await montar({ modo: 'editar', inicial: { ...GRUPO, mcpaiContasPixIds: ['conta-1'] } })
+  assert.equal(botao(ADICIONAR)?.disabled, true)
+  assert.equal(removerLinha(1)?.disabled, true)
+  assert.match(textoDaTela(), /chave própria do mcp\.ai/)
+  await t.preencher('grupo-mcpai', 'https://api.mcp.ai/nova-chave')
+  assert.equal(botao(ADICIONAR)?.disabled, false)
+  assert.equal(removerLinha(1)?.disabled, false)
+})
+
+test('Novo Grupo não mostra o botão Adicionar', async () => {
+  await montar({ modo: 'criar', contas: [] })
+  assert.equal(botao(ADICIONAR) === undefined, true)
+})
+
+// #253: ao lado de cada ID, o que o mcp.ai devolve para ele na chave própria do grupo.
+const rotuloDa = (n: number) => document.getElementById(`grupo-mcpai-contas-pix-${n}-rotulo`)?.textContent ?? null
+const respondeCom = (dados: { id: string; texto: string }[]) => api.rotulos.mock.mockImplementation(async () => ({ ok: true, dados }))
+
+test('cada linha mostra o rótulo do seu ID, ou "Não encontrado nesta chave", e a action recebe só o id do grupo', async () => {
+  respondeCom([{ id: 'conta-1', texto: 'Banco B, conta' }])
+  await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.deepEqual([rotuloDa(0), rotuloDa(1)], ['Banco B, conta', 'Não encontrado nesta chave'])
+  assert.deepEqual(api.rotulos.mock.calls.map(c => c.arguments), [['g-1']])
+})
+
+test('o rótulo acompanha o que está digitado (com trim) e linha vazia não tem rótulo', async () => {
+  respondeCom([{ id: 'conta-1', texto: 'Banco B, conta' }, { id: 'cred-7', texto: 'Banco C, credencial, 2 contas correntes' }])
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  await t.preencher('grupo-mcpai-contas-pix-1', '  cred-7 ')
+  assert.equal(rotuloDa(1), 'Banco C, credencial, 2 contas correntes')
+  await t.clique('Adicionar conta ou credencial')
+  assert.equal(rotuloDa(2), null)
+})
+
+test('enquanto o mcp.ai não responde, nenhuma linha diz "Não encontrado"', async () => {
+  api.rotulos.mock.mockImplementation(() => new Promise(() => {}))
+  await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.equal(rotuloDa(0), null)
+  assert.doesNotMatch(textoDaTela(), /Não encontrado nesta chave/)
+})
+
+test('falha da consulta: uma frase só, sem rótulo nas linhas, e os campos seguem editáveis e salvando', async () => {
+  api.rotulos.mock.mockImplementation(async () => ({ ok: false, erro: 'Não foi possível consultar o mcp.ai agora.' }))
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.equal(textoDaTela().split('Não foi possível consultar o mcp.ai agora.').length - 1, 1)
+  assert.equal(rotuloDa(0), null)
+  assert.deepEqual(camposPix().map(c => c.disabled), [false, false])
+  await t.preencher('grupo-mcpai-contas-pix-0', 'conta-9')
+  await t.clique('Salvar')
+  assert.equal(enviado(), 'conta-9, conta-2')
+})
+
+test('sem chave própria salva, e no Novo Grupo, a tela não consulta o mcp.ai', async () => {
+  await montar({ modo: 'editar', inicial: { ...GRUPO, mcpaiContasPixIds: ['conta-1'] } })
+  await montar({ modo: 'criar', contas: [] })
+  assert.equal(api.rotulos.mock.callCount(), 0)
+})
+
+test('se a action lança em vez de devolver a recusa, a tela mostra uma frase e segue editável', async () => {
+  api.rotulos.mock.mockImplementation(async () => { throw new Error('rede caiu') })
+  await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.match(textoDaTela(), /Não foi possível consultar o mcp\.ai agora\./)
+  assert.deepEqual(camposPix().map(c => c.disabled), [false, false])
 })

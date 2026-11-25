@@ -163,7 +163,7 @@ export function DetalhesVendaDialog({ venda: v, papel, podeForcar, desconto, gat
                         {v.notaFiscalSaida}
                         <DanfeButton motoId={v.motoId} />
                         <a href={`/vendas/${v.id}/checklist-entrega`} target="_blank" rel="noopener noreferrer" className={link}>Checklist de entrega</a>
-                        <a href={`/vendas/${v.id}/certificado-bateria`} target="_blank" rel="noopener noreferrer" className={link}>Certificado da bateria</a>
+                        {v.certificadoBateria && <a href={`/vendas/${v.id}/certificado-bateria`} target="_blank" rel="noopener noreferrer" className={link}>Certificado da bateria</a>}
                       </span>
                     ) : 'Ainda não emitida'}
                   </Par>

@@ -9,12 +9,13 @@ import { getGrupoIdDaLoja, podeUsuarioVerGrupo } from '@/lib/grupo'
 import { faltasParaEmitir, grupoEmissorDaVenda } from '@/lib/notagateway/grupo-emissor'
 import { configDaNotaExistente } from '@/lib/notagateway/emissor-da-nota'
 import { lojaNoEscopo } from '@/lib/conta'
+import { vendasComCertificadoBateria } from '@/lib/queries/certificado-bateria'
 import { situacaoNfDaVenda } from '@/lib/assinatura/consulta'
 import { motivoBloqueioNf } from '@/lib/assinatura/nf'
 import { normalizarCest } from '@/lib/nfe-fiscal'
 import { observacaoDaNota, observacaoDoPayload, observacaoEditada, observacoesVendaMoto } from '@/lib/nfe-observacoes'
 import { difalDaVenda, montarNfeVendaMoto, type DadosVendaMoto, type RegraSaida } from '@/lib/notagateway/payload'
-import { vendaExigeDifal, type EntradaDifal } from '@/lib/notagateway/difal'
+import { compradorParaDifal, vendaExigeDifal, type EntradaDifal } from '@/lib/notagateway/difal'
 import { formaPagamentoNfe, idExternoNfe, pendenciasDaVenda, tipoPessoa, type PagamentoMova } from '@/lib/notagateway/venda'
 import { escolherTentativa, gravarEnvio, registrarEnvio } from '@/lib/notagateway/tentativa'
 import { cancelarNfe, configNotaGateway, consultarNfe, enviarNfe, ufDaEmpresa, CancelamentoRecusado, NfeRecusada, type ConfigNotaGateway, type NfeConsultada } from '@/lib/notagateway/client'
@@ -76,6 +77,8 @@ export type PreviaNfe =
       vendaNumero: number
       ambiente: 'Homologacao' | 'Producao'
       jaFaturada: string | null
+      /** A venda tem direito ao certificado de bateria (#235): a tela só abre a folha quando é true. */
+      certificadoBateria: boolean
       pendencias: string[]
       /** Nulo = moto sem ficha fiscal; `sugestao` pré-preenche o formulário. */
       ficha: FichaMoto | null
@@ -90,6 +93,8 @@ export type PreviaNfe =
       renaveOrigem: OrigemRenave
       /** Venda interestadual a não contribuinte: a tela pede a alíquota interna do destino e o FCP (#247). */
       exigeDifal: boolean
+      /** UF do emitente na NG: a tela da recusa recalcula `exigeDifal` com o comprador corrigido (#247). Nulo sem prévia. */
+      ufEmitente: string | null
       /** Frete e entrega da recusa em aberto, para corrigir sem digitar de novo. */
       transporteAnterior: DadosTransporte | null
       /** Observação editada que foi na recusa em aberto; nula quando foi o texto padrão. */
@@ -221,16 +226,10 @@ type Emissao = Awaited<ReturnType<typeof montarEmissao>>
 
 const cfgDaNota = (grupoId: string, e: Pick<Emissao, 'grupoId' | 'cfg'>) => configDaNotaExistente(grupoId, e, configNotaGateway)
 
-/** UF e indicador do comprador como a nota os lê; o DIFAL depende dos dois (#247). */
-const compradorDaNota = (v: { clienteEstado: string | null; clienteIndicadorIe: string | null }) => ({
-  indicadorIe: v.clienteIndicadorIe && isIndicadorIe(v.clienteIndicadorIe) ? v.clienteIndicadorIe : null,
-  uf: (v.clienteEstado ?? '').trim().toUpperCase(),
-})
-
 function dadosDaVenda(e: Emissao, ufEmitente: string, idExterno: string, transporte?: DadosTransporte): DadosVendaMoto {
   const v = e.venda
   const f = e.ficha!
-  const { indicadorIe, uf: ufCliente } = compradorDaNota(v)
+  const { indicadorIe, uf: ufCliente } = compradorParaDifal(v)
   return {
     idExterno,
     ambiente: e.cfg.ambiente,
@@ -305,8 +304,10 @@ export async function previsualizarNfePropriaAction(motoId: string): Promise<Pre
 
     let resumo: Extract<PreviaNfe, { ok: true }>['resumo'] = null
     let exigeDifal = false
+    let ufEmitente: string | null = null
     if (e.ficha && e.regra && !e.pendencias.length) {
       const uf = await ufDaEmpresa(e.cfg)
+      ufEmitente = uf
       // O veículo ainda vai ser preenchido na tela: a prévia é o resto da nota.
       const dados = dadosDaVenda({ ...e, renave: null }, uf, 'previa')
       exigeDifal = vendaExigeDifal(dados)
@@ -353,6 +354,7 @@ export async function previsualizarNfePropriaAction(motoId: string): Promise<Pre
       vendaNumero: e.venda.numero,
       ambiente: e.cfg.ambiente,
       jaFaturada: e.venda.notaFiscalSaida,
+      certificadoBateria: (await vendasComCertificadoBateria([e.venda.id])).has(e.venda.id),
       pendencias: e.pendencias,
       ficha: e.ficha
         ? { xProd: e.ficha.xProd ?? '', ncm: e.ficha.ncm, cest: e.ficha.cest ?? '', unidade: e.ficha.unidade ?? 'UN', origem: e.ficha.origem ?? '0' }
@@ -360,6 +362,7 @@ export async function previsualizarNfePropriaAction(motoId: string): Promise<Pre
       sugestao: e.sugestao,
       exigeRenave: e.renaveExigido,
       exigeDifal,
+      ufEmitente,
       renave: e.renave,
       renaveOrigem: e.renaveOrigem,
       transporteAnterior: e.renaveExigido ? transporteDoPayload(recusa) : null,
@@ -456,7 +459,7 @@ export async function corrigirEReenviarNfAction(
       if (!e.regra) return
       const [depois] = await tx.select({ clienteEstado: vendas.clienteEstado, clienteIndicadorIe: vendas.clienteIndicadorIe })
         .from(vendas).where(eq(vendas.id, e.venda.id)).limit(1)
-      const { indicadorIe, uf } = compradorDaNota(depois)
+      const { indicadorIe, uf } = compradorParaDifal(depois)
       const d = difalDaVenda({ ufEmitente, cliente: { indicadorIe, endereco: { uf } } }, e.regra, difal)
       if (!d.ok) throw new Error(d.erro)
     })

@@ -65,6 +65,22 @@ export type CredencialMcp = {
   contasPixIds: string[]
 }
 
+/** A chave gravada (cifrada) do grupo, aberta; null se ele não tem. Lança, sem expor a chave, se não abrir. */
+function chaveDecifradaDoGrupo(grupo: { nome: string; url: string | null }): string | null {
+  if (!grupo.url) return null
+  try {
+    return decifrar(grupo.url).toString('utf8')
+  } catch {
+    // Chave mestra trocada, ou valor gravado corrompido. Cair no fallback
+    // global em silêncio seria pior: leria a conta da empresa ERRADA. Melhor
+    // falhar dizendo o que aconteceu.
+    throw new Error(
+      `A chave do mcp.ai do grupo ${grupo.nome} está gravada mas não pôde ser aberta ` +
+      '(CERT_MASTER_KEY diferente da que cifrou). Cadastre a chave de novo em /admin/grupos.',
+    )
+  }
+}
+
 /** Credencial do mcp.ai do grupo dono deste CNPJ. Lança se não houver nenhuma. */
 export async function credencialMcpDoGrupo(cnpjGrupo: string): Promise<CredencialMcp> {
   const digitos = somenteDigitos(cnpjGrupo)
@@ -81,20 +97,7 @@ export async function credencialMcpDoGrupo(cnpjGrupo: string): Promise<Credencia
     throw new Error(`Nenhum grupo ativo cadastrado com o CNPJ ${cnpjGrupo} — não sei com qual conta do mcp.ai falar.`)
   }
 
-  let doGrupo: string | null = null
-  if (grupo.url) {
-    try {
-      doGrupo = decifrar(grupo.url).toString('utf8')
-    } catch {
-      // Chave mestra trocada, ou valor gravado corrompido. Cair no fallback
-      // global em silêncio seria pior: leria a conta da empresa ERRADA. Melhor
-      // falhar dizendo o que aconteceu.
-      throw new Error(
-        `A chave do mcp.ai do grupo ${grupo.nome} está gravada mas não pôde ser aberta ` +
-        '(CERT_MASTER_KEY diferente da que cifrou). Cadastre a chave de novo em /admin/grupos.',
-      )
-    }
-  }
+  const doGrupo = chaveDecifradaDoGrupo(grupo)
 
   const url = escolherEndpointMcp({
     grupoNome: grupo.nome,
@@ -108,4 +111,19 @@ export async function credencialMcpDoGrupo(cnpjGrupo: string): Promise<Credencia
 /** Endpoint do mcp.ai do grupo dono deste CNPJ. Lança se não houver nenhum. */
 export async function endpointMcpDoGrupo(cnpjGrupo: string): Promise<string> {
   return (await credencialMcpDoGrupo(cnpjGrupo)).url
+}
+
+/**
+ * Chave PRÓPRIA do grupo com este id: `{ url }`, com `url` nulo quando ele não tem (a env global é de outra
+ * empresa e não vale aqui), ou `null` quando o grupo não existe. Pelo id, não pelo CNPJ: o CNPJ não é único em
+ * `grupos`, e por ele a chave de outro grupo de mesmo CNPJ poderia ser a usada.
+ */
+export async function credencialMcpDoGrupoPorId(grupoId: string): Promise<{ url: string | null } | null> {
+  const [grupo] = await db
+    .select({ nome: grupos.nome, url: grupos.mcpaiEndpointUrl })
+    .from(grupos)
+    .where(eq(grupos.id, grupoId))
+    .limit(1)
+  if (!grupo) return null
+  return { url: chaveDecifradaDoGrupo(grupo)?.trim() || null }
 }
