@@ -9,6 +9,7 @@ import { getGrupoIdDaLoja, podeUsuarioVerGrupo } from '@/lib/grupo'
 import { faltasParaEmitir, grupoEmissorDaVenda } from '@/lib/notagateway/grupo-emissor'
 import { configDaNotaExistente } from '@/lib/notagateway/emissor-da-nota'
 import { lojaNoEscopo } from '@/lib/conta'
+import { vendasComCertificadoBateria } from '@/lib/queries/certificado-bateria'
 import { situacaoNfDaVenda } from '@/lib/assinatura/consulta'
 import { motivoBloqueioNf } from '@/lib/assinatura/nf'
 import { normalizarCest } from '@/lib/nfe-fiscal'
@@ -76,6 +77,8 @@ export type PreviaNfe =
       vendaNumero: number
       ambiente: 'Homologacao' | 'Producao'
       jaFaturada: string | null
+      /** A venda tem direito ao certificado de bateria (#235): a tela só abre a folha quando é true. */
+      certificadoBateria: boolean
       pendencias: string[]
       /** Nulo = moto sem ficha fiscal; `sugestao` pré-preenche o formulário. */
       ficha: FichaMoto | null
@@ -351,6 +354,7 @@ export async function previsualizarNfePropriaAction(motoId: string): Promise<Pre
       vendaNumero: e.venda.numero,
       ambiente: e.cfg.ambiente,
       jaFaturada: e.venda.notaFiscalSaida,
+      certificadoBateria: (await vendasComCertificadoBateria([e.venda.id])).has(e.venda.id),
       pendencias: e.pendencias,
       ficha: e.ficha
         ? { xProd: e.ficha.xProd ?? '', ncm: e.ficha.ncm, cest: e.ficha.cest ?? '', unidade: e.ficha.unidade ?? 'UN', origem: e.ficha.origem ?? '0' }

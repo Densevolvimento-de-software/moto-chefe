@@ -5,6 +5,7 @@ import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { DanfeButton } from './danfe-button'
 import { rotuloDocumento } from '@/lib/documento'
+import { vendasComCertificadoBateria } from '@/lib/queries/certificado-bateria'
 
 const formatCurrency = (v: string | number) =>
   Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -59,6 +60,7 @@ export async function VendaTab({ motoId, papel }: { motoId: string; papel: strin
     return <p className="text-sm text-muted-foreground">Nenhum pedido ou venda registrado.</p>
   }
 
+  const certificadoBateria = venda ? (await vendasComCertificadoBateria([venda.id])).has(venda.id) : false
   const pagamentos = (venda?.pagamentos as { tipo: string; valor: number; operadora?: string; parcelas?: number }[]) ?? []
 
   return (
@@ -97,14 +99,16 @@ export async function VendaTab({ motoId, papel }: { motoId: string; papel: strin
                     >
                       Checklist de Entrega
                     </a>
-                    <a
-                      href={`/vendas/${venda.id}/certificado-bateria`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-info hover:underline"
-                    >
-                      Certificado Bateria
-                    </a>
+                    {certificadoBateria && (
+                      <a
+                        href={`/vendas/${venda.id}/certificado-bateria`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-info hover:underline"
+                      >
+                        Certificado Bateria
+                      </a>
+                    )}
                   </>
                 )}
               </p>
