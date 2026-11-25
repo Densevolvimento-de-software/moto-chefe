@@ -217,7 +217,7 @@ test('Chegou na lista: moto em outro status ou arquivada não mostra o botão', 
     linhaDe('c1', 'caixa'),
     linhaDe('m1', 'montada', { disponibilidade: 'disponivel' }),
     linhaDe('g1', 'em_garantia'),
-    linhaDe('v1', 'vendida'),
+    linhaDe('v1', 'vendida', { disponibilidade: 'vendida' }),
   ])
   assert.deepEqual(linhasComChegou(), ['LXYTCK00000000t1'])
   await t.desmontar()
