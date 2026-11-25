@@ -128,6 +128,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
             <TableCell>
               <div className="flex items-center gap-1 justify-end">
                 {(() => {
+                  const descricao = `${moto.modelo} · ${moto.cor} (${moto.lojaNome})`
                   const podeAlterar = isAdmin || moto.lojaId === lojaUsuarioId
                   // isVendedor cobre quem vende sem ter 'vendedor' como papel principal.
                   const podeVenderAqui = podeAlterar || ((isVendedor ?? papel === 'vendedor') && podeVendedorReservarForaDaLoja(moto.lojaId))
@@ -140,11 +141,11 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                             <>
                               <GarantiaButton
                                 motoId={moto.id}
-                                descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
+                                descricao={descricao}
                               />
                               <NfSaidaGatilhoLinha
                                 motoId={moto.id}
-                                descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
+                                descricao={descricao}
                                 blingNfeId={moto.blingNfeId}
                               />
                             </>
@@ -154,12 +155,12 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                           <>
                             {/* A mesma função da página da moto e da action decide quem vê o botão. */}
                             {motivoParaNaoMarcarChegada({ status: moto.status, arquivada: moto.arquivadaEm !== null }, { papel }, moto.lojaId === lojaUsuarioId) === null && (
-                              <ChegouButton motoId={moto.id} descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`} />
+                              <ChegouButton motoId={moto.id} descricao={descricao} />
                             )}
                             {podeAlterar && podeGarantia.has(papel) && (
                               <GarantiaButton
                                 motoId={moto.id}
-                                descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
+                                descricao={descricao}
                                 motivoBloqueio={motivoParaNaoAbrirGarantia(moto.status)}
                               />
                             )}
@@ -171,7 +172,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                                   <VenderButton
                                     key={`vender-acao-${moto.id}`}
                                     motoId={moto.id}
-                                    descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
+                                    descricao={descricao}
                                     vendedorId={vendedorId}
                                     vendedorNome={vendedorNome}
                                     papel={papel}
@@ -186,7 +187,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                                   <VenderButton
                                     key={`vender-acao-${moto.id}`}
                                     motoId={moto.id}
-                                    descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
+                                    descricao={descricao}
                                     vendedorId={vendedorId}
                                     vendedorNome={vendedorNome}
                                     papel={papel}
@@ -229,7 +230,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                                 {moto.disponibilidade === 'reservada' && moto.reservaId && podeAlterar && podeCancelarReserva.has(papel) && (
                                   <CancelarReservaButton
                                     reservaId={moto.reservaId}
-                                    descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
+                                    descricao={descricao}
                                     clienteNome={moto.reservaClienteNome}
                                     valorEntrada={moto.reservaValorEntrada}
                                   />
@@ -239,7 +240,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                                   <VenderButton
                                     key={`vender-acao-${moto.id}`}
                                     motoId={moto.id}
-                                    descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
+                                    descricao={descricao}
                                     vendedorId={vendedorId}
                                     vendedorNome={vendedorNome}
                                     papel={papel}
@@ -256,7 +257,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                             {podeAlterar && podeMontar.has(papel) && moto.status === 'caixa' && (
                               <MontarButton
                                 motoId={moto.id}
-                                descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
+                                descricao={descricao}
                                 mecanicos={mecanicos}
                               />
                             )}
@@ -274,7 +275,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                                 : motivoParaNaoTransferir(moto.status) === null && (
                                   <LogisticaButton
                                     motoId={moto.id}
-                                    descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`}
+                                    descricao={descricao}
                                     lojaAtualId={moto.lojaId}
                                     lojas={lojas}
                                   />
