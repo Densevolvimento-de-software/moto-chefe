@@ -12,7 +12,7 @@ export type ServicoLinha = {
   ativo: boolean
 }
 
-// podeGerir vem do servidor (isAdmin, a mesma regra das actions): sem ele, a tela só mostra.
+// A tela usa a mesma regra de gestão das actions.
 export function ServicosCatalogo({ servicos, podeGerir }: { servicos: ServicoLinha[]; podeGerir: boolean }) {
   return (
     <div className="space-y-6">
