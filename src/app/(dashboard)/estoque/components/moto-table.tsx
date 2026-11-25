@@ -152,7 +152,7 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                         )
                         : (
                           <>
-                            {/* Mesma função que a página da moto e a action: quem pode, a tela mostra; quem não pode, o servidor recusa. */}
+                            {/* A mesma função da página da moto e da action decide quem vê o botão. */}
                             {motivoParaNaoMarcarChegada({ status: moto.status, arquivada: moto.arquivadaEm !== null }, { papel }, moto.lojaId === lojaUsuarioId) === null && (
                               <ChegouButton motoId={moto.id} descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`} />
                             )}

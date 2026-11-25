@@ -41,7 +41,7 @@ export function ChegouButton({ motoId, descricao }: Props) {
       disabled={enviando}
       aria-busy={enviando}
       aria-label={`${rotulo}: ${descricao}`}
-      className="h-8 bg-info text-card hover:bg-info/90 disabled:opacity-75 max-md:h-10"
+      className="h-8 font-semibold bg-info text-card hover:bg-info/90 disabled:opacity-75 max-md:h-10"
     >
       {enviando ? <Loader2 className="animate-spin" aria-hidden /> : <PackageCheck aria-hidden />}
       {rotulo}
