@@ -197,7 +197,7 @@ test('Chegou na lista: só na linha em transporte e só para quem a regra deixa 
   const emTransporte = [linhaDe('t1', 'em_transporte')]
   const casos: [string, { papel: PapelDoBanco; lojaUsuarioId: string | null }, string[]][] = [
     ['aux_adm da loja da moto', { papel: 'aux_adm', lojaUsuarioId: 'loja-1' }, ['LXYTCK00000000t1']],
-    ['admin_socio de outra loja (inclui o admin_rede, que chega como sócio)', { papel: 'admin_socio', lojaUsuarioId: 'loja-2' }, ['LXYTCK00000000t1']],
+    ['admin_socio de outra loja', { papel: 'admin_socio', lojaUsuarioId: 'loja-2' }, ['LXYTCK00000000t1']],
     ['admin_geral de outra loja', { papel: 'admin_geral', lojaUsuarioId: 'loja-2' }, ['LXYTCK00000000t1']],
     ['aux_adm de outra loja da Conta', { papel: 'aux_adm', lojaUsuarioId: 'loja-2' }, []],
     ['vendedor da loja da moto', { papel: 'vendedor', lojaUsuarioId: 'loja-1' }, []],
