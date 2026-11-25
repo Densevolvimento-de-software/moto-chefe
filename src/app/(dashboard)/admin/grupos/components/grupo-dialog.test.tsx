@@ -18,12 +18,14 @@ type Dados = Record<string, unknown>
 const api = {
   criar: mock.fn(async (_d: Dados): Promise<ResultadoAction> => ({ ok: true, dados: undefined })),
   editar: mock.fn(async (_id: string, _d: Dados): Promise<ResultadoAction<{ aviso: string | null }>> => ({ ok: true, dados: { aviso: null } })),
+  rotulos: mock.fn(async (_id: string): Promise<ResultadoAction<{ id: string; texto: string }[]>> => ({ ok: true, dados: [] })),
 }
 const toast = { success: mock.fn(), error: mock.fn(), warning: mock.fn() }
 const mocks = [
   mock.module('../actions', { namedExports: {
     criarGrupoAction: (d: Dados) => api.criar(d),
     editarGrupoAction: (id: string, d: Dados) => api.editar(id, d),
+    rotulosDosIdsAction: (id: string) => api.rotulos(id),
   } }),
   mock.module('next/navigation', { namedExports: { useRouter: () => ({ refresh: () => {} }) } }),
   mock.module('sonner', { namedExports: { toast } }),
@@ -35,6 +37,7 @@ afterEach(async () => {
   for (const m of [...Object.values(api), ...Object.values(toast)]) m.mock.resetCalls()
   api.criar.mock.mockImplementation(async () => ({ ok: true, dados: undefined }))
   api.editar.mock.mockImplementation(async () => ({ ok: true, dados: { aviso: null } }))
+  api.rotulos.mock.mockImplementation(async () => ({ ok: true, dados: [] }))
   for (const desmontar of montados.splice(0)) await desmontar()
 })
 
@@ -335,4 +338,55 @@ test('grupo sem chave própria: Adicionar e × ficam desligados e a tela explica
 test('Novo Grupo não mostra o botão Adicionar', async () => {
   await montar({ modo: 'criar', contas: [] })
   assert.equal(botao(ADICIONAR) === undefined, true)
+})
+
+// #253: ao lado de cada ID, o que o mcp.ai devolve para ele na chave própria do grupo.
+const rotuloDa = (n: number) => document.getElementById(`grupo-mcpai-contas-pix-${n}-rotulo`)?.textContent ?? null
+const respondeCom = (dados: { id: string; texto: string }[]) => api.rotulos.mock.mockImplementation(async () => ({ ok: true, dados }))
+
+test('cada linha mostra o rótulo do seu ID, ou "Não encontrado nesta chave", e a action recebe só o id do grupo', async () => {
+  respondeCom([{ id: 'conta-1', texto: 'Banco B, conta' }])
+  await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.deepEqual([rotuloDa(0), rotuloDa(1)], ['Banco B, conta', 'Não encontrado nesta chave'])
+  assert.deepEqual(api.rotulos.mock.calls.map(c => c.arguments), [['g-1']])
+})
+
+test('o rótulo acompanha o que está digitado (com trim) e linha vazia não tem rótulo', async () => {
+  respondeCom([{ id: 'conta-1', texto: 'Banco B, conta' }, { id: 'cred-7', texto: 'Banco C, credencial, 2 contas correntes' }])
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  await t.preencher('grupo-mcpai-contas-pix-1', '  cred-7 ')
+  assert.equal(rotuloDa(1), 'Banco C, credencial, 2 contas correntes')
+  await t.clique('Adicionar conta ou credencial')
+  assert.equal(rotuloDa(2), null)
+})
+
+test('enquanto o mcp.ai não responde, nenhuma linha diz "Não encontrado"', async () => {
+  api.rotulos.mock.mockImplementation(() => new Promise(() => {}))
+  await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.equal(rotuloDa(0), null)
+  assert.doesNotMatch(textoDaTela(), /Não encontrado nesta chave/)
+})
+
+test('falha da consulta: uma frase só, sem rótulo nas linhas, e os campos seguem editáveis e salvando', async () => {
+  api.rotulos.mock.mockImplementation(async () => ({ ok: false, erro: 'Não foi possível consultar o mcp.ai agora.' }))
+  const t = await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.equal(textoDaTela().split('Não foi possível consultar o mcp.ai agora.').length - 1, 1)
+  assert.equal(rotuloDa(0), null)
+  assert.deepEqual(camposPix().map(c => c.disabled), [false, false])
+  await t.preencher('grupo-mcpai-contas-pix-0', 'conta-9')
+  await t.clique('Salvar')
+  assert.equal(enviado(), 'conta-9, conta-2')
+})
+
+test('sem chave própria salva, e no Novo Grupo, a tela não consulta o mcp.ai', async () => {
+  await montar({ modo: 'editar', inicial: { ...GRUPO, mcpaiContasPixIds: ['conta-1'] } })
+  await montar({ modo: 'criar', contas: [] })
+  assert.equal(api.rotulos.mock.callCount(), 0)
+})
+
+test('se a action lança em vez de devolver a recusa, a tela mostra uma frase e segue editável', async () => {
+  api.rotulos.mock.mockImplementation(async () => { throw new Error('rede caiu') })
+  await montar({ modo: 'editar', inicial: COM_CHAVE })
+  assert.match(textoDaTela(), /Não foi possível consultar o mcp\.ai agora\./)
+  assert.deepEqual(camposPix().map(c => c.disabled), [false, false])
 })
