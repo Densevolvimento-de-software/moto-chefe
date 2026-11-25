@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { nomeDoModeloNaLoja } from '@/lib/modelos-da-conta'
-import { ordensServico, osItens, motos, lojas, grupos, usuarios, modelos, clientes, servicosCatalogo } from '@/lib/db/schema'
+import { ordensServico, osItens, motos, lojas, grupos, usuarios, modelos, clientes } from '@/lib/db/schema'
 import { eq, desc, and, or, ilike, inArray, sql, gte, lte } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
@@ -22,9 +22,8 @@ function buildSelect(mecanico: ReturnType<typeof alias<typeof usuarios, 'mecanic
     valorServicos:       ordensServico.valorServicos,
     valorPecas:          ordensServico.valorPecas,
     servicosResumo:      sql<string | null>`(
-      SELECT string_agg(DISTINCT COALESCE(${servicosCatalogo.nome}, ${osItens.descricao}), ', ')
+      SELECT string_agg(DISTINCT ${osItens.descricao}, ', ')
       FROM ${osItens}
-      LEFT JOIN ${servicosCatalogo} ON ${servicosCatalogo.id} = ${osItens.servicoId}
       WHERE ${osItens.osId} = ${ordensServico.id} AND ${osItens.tipo} = 'servico'
     )`,
     formaPagamento:      ordensServico.formaPagamento,
