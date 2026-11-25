@@ -832,6 +832,7 @@ export const veiculosHistorico = pgTable('veiculos_historico', {
 // ─── servicos_catalogo ─────────────────────────────────────────────────────────
 export const servicosCatalogo = pgTable('servicos_catalogo', {
   id: uuid('id').primaryKey().defaultRandom(),
+  contaId: uuid('conta_id').notNull().references(() => contas.id),
   nome: text('nome').notNull(),
   tempoPrevistoMinutos: integer('tempo_previsto_minutos'),
   valor: numeric('valor', { precision: 10, scale: 2 }).notNull().default('0'),
