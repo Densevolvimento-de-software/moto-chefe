@@ -44,3 +44,17 @@ test('um clique marca a chegada, sem janela de confirmação, e o aviso diz qual
   assert.deepEqual(sucesso.mock.calls.map(c => c.arguments), [['Chegada marcada', { description: `${DESCRICAO} foi para Caixa.` }]])
   assert.equal(erro.mock.callCount(), 0)
 })
+
+test('enquanto envia: "Marcando" e desabilitado; outro clique não chama a action de novo', async () => {
+  let responder: (r: ResultadoAction) => void = () => {}
+  marcar.mock.mockImplementation(() => new Promise(r => { responder = r }))
+  const t = await montar()
+  await t.clique('Chegou')
+  assert.equal(botao('Chegou'), undefined)
+  assert.ok(botao('Marcando')?.disabled)
+  assert.equal(botao('Marcando')?.getAttribute('aria-label'), `Marcando: ${DESCRICAO}`)
+  await t.clique('Marcando')
+  assert.equal(marcar.mock.callCount(), 1)
+  await t.act(async () => { responder(OK) })
+  assert.equal(botao('Chegou')?.disabled, false)
+})
