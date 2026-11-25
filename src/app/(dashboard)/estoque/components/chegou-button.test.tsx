@@ -59,7 +59,7 @@ test('enquanto envia: "Marcando" e desabilitado; outro clique não chama a actio
   assert.equal(botao('Chegou')?.disabled, false)
 })
 
-test('a linha sai da lista antes da resposta (revalidatePath): o aviso de sucesso sai igual', async () => {
+test('o aviso de sucesso sai mesmo com o botão já desmontado', async () => {
   let responder: (r: ResultadoAction) => void = () => {}
   marcar.mock.mockImplementation(() => new Promise(r => { responder = r }))
   const t = await montar()
@@ -80,7 +80,7 @@ test('recusa do servidor: aviso com a frase dele, sem aviso de sucesso, a lista 
   assert.equal(botao('Chegou')?.disabled, false)
 })
 
-test('sucesso não pede refresh: a action já revalida a lista', async () => {
+test('sucesso não chama router.refresh', async () => {
   const t = await montar()
   await t.clique('Chegou')
   assert.equal(sucesso.mock.callCount(), 1)
