@@ -5,6 +5,7 @@ import { recusaDePagamentoForcado } from '@/lib/pagamentos-gravacao'
 import { clienteSupabaseAdmin } from '@/lib/supabase/admin'
 import { getUsuarioLogado } from '@/lib/auth'
 import { registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
+import { registrarTrocaDeVendedor } from '@/lib/troca-vendedor-venda'
 import { db } from '@/lib/db'
 import { conferirMaquininhas, operadorasGravadas } from '@/lib/maquininhas'
 import { motos, modelos, modeloBlingCodigos, pedidosVenda, vendas, reservas, historicoEstoque, lancamentosCaixa, precificacao, configuracaoTaxas, usuarios, clientes, aprovacoesVenda, demandas, notasFiscaisSaida, nfeBlingArquivo } from '@/lib/db/schema'
@@ -36,7 +37,7 @@ import { podeCriarPedido } from '@/lib/pedido-venda-regras'
 import { PAPEIS_QUE_CANCELAM_VENDA, travaDoPapel } from '@/lib/cancelar-venda'
 import { efetivarPedidoTx } from '@/lib/efetivar-pedido'
 import { cancelarPedidoTx, criarPedidoTx } from '@/lib/pedido-venda'
-import { travaDoValorVenda } from '@/lib/valor-venda'
+import { travaDoValorVenda, travaDoVendedorVenda } from '@/lib/valor-venda'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { pedidoDoUsuario } from '@/lib/pedido-do-usuario'
 import { motoDoUsuario, travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
@@ -1337,6 +1338,10 @@ async function editarVenda(vendaId: string, dados: {
     ? await garantirOrigemValida(vendaAtual.lojaId, dados.origemId, dados.origemDetalhe)
     : null
 
+  // Antes de procurar o vendedor: a recusa não depende de o id existir nem de qual Conta ele é.
+  const travaVendedor = travaDoVendedorVenda(usuario.papel, vendaAtual.vendedorId, dados.vendedorId)
+  if (travaVendedor) throw new RecusaUsuario(travaVendedor)
+
   if (dados.vendedorId && !(await vendedorDaConta(dados.vendedorId, vendaAtual.lojaId, usuario.grupoLiberado))) {
     throw new RecusaUsuario('Vendedor não encontrado')
   }
@@ -1364,10 +1369,13 @@ async function editarVenda(vendaId: string, dados: {
     ? (dados.notaFiscalSaida?.trim() || vendaAtual.notaFiscalSaida)
     : vendaAtual.notaFiscalSaida
 
-  await db.transaction(async tx => {
+  const vendedorAnterior = await db.transaction(async tx => {
     const daVenda = and(eq(vendas.id, vendaId), eq(vendas.lojaId, vendaAtual.lojaId))
-    const [gravada] = await tx.select({ pagamentos: vendas.pagamentos }).from(vendas).where(daVenda).for('update')
+    const [gravada] = await tx.select({ pagamentos: vendas.pagamentos, vendedorId: vendas.vendedorId }).from(vendas).where(daVenda).for('update')
     if (!gravada) throw new RecusaUsuario('Venda não encontrada')
+    // O vendedor pode ter mudado depois que o diálogo carregou; revalide o dado protegido pelo lock.
+    const travaVendedorGravado = travaDoVendedorVenda(usuario.papel, gravada.vendedorId, dados.vendedorId)
+    if (travaVendedorGravado) throw new RecusaUsuario(travaVendedorGravado)
     const recusaForcado = recusaDePagamentoForcado(usuario.papel, await auxAdmPodeForcarDaLoja(vendaAtual.lojaId, tx), dados.pagamentos, CAMPOS_PAGAMENTO_VENDA, gravada.pagamentos)
     if (recusaForcado) throw new RecusaUsuario(recusaForcado)
     const pagamentos = pagamentosParaGravar(dados.pagamentos, CAMPOS_PAGAMENTO_VENDA, gravada.pagamentos)
@@ -1424,6 +1432,14 @@ async function editarVenda(vendaId: string, dados: {
         vendaId,
       })
     }
+    // O vendedor de antes, lido com a venda travada: é o que a troca substituiu.
+    return gravada.vendedorId
+  })
+
+  // Depois do commit: a troca já está gravada, e erro no log não desfaz a resposta.
+  await registrarTrocaDeVendedor({
+    usuarioId: usuario.id, venda: { id: vendaId, numero: vendaAtual.numero, lojaId: vendaAtual.lojaId },
+    anterior: vendedorAnterior, novo: dados.vendedorId, grupoLiberado: usuario.grupoLiberado,
   })
 
   revalidatePath('/vendas')

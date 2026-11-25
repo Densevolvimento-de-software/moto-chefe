@@ -3,6 +3,7 @@
 // sem arrastar next/server e a conexão de banco junto.
 
 export const LINHA_PIX = 'pix'
+export const MP_BALANCE_LINE_TYPE = 'saldo_mp'
 
 export type TransacaoCartao = {
   nsu?: string
@@ -11,8 +12,8 @@ export type TransacaoCartao = {
   valorBruto: number
   valorLiquido?: number
   parcelas: number
-  // 'pix' (LINHA_PIX) vem da maquininha Mercado Pago (#51) e do relatório de PIX da InfinitePay (#237): o Pix delas é conciliado aqui, não em /pix-mcp.
-  tipo: 'credito' | 'debito' | typeof LINHA_PIX
+  // 'pix' (LINHA_PIX) é separado de cartões e do saldo Mercado Pago; a própria linha continua em conciliacoes_cartao.
+  tipo: 'credito' | 'debito' | typeof LINHA_PIX | typeof MP_BALANCE_LINE_TYPE
   status: string
   rawData?: Record<string, unknown>
 }
@@ -72,15 +73,17 @@ export function chaveDedup(t: TransacaoCartao): { campo: 'nsu' | 'id'; valor: st
   return null
 }
 
-// Rótulos da linha da conciliação de cartão: a lista (curto) e a sugestão do painel de pagamentos.
-// O tipo 'pix' é o Pix da maquininha Mercado Pago (#51) ou da InfinitePay (#237).
+// Rótulos da linha da conciliação: a lista (curto) e a sugestão do painel de pagamentos.
+// O Pix e o saldo Mercado Pago têm rótulos próprios, sem aparecer como débito ou crédito.
 export function rotuloCurtoDaLinha(tipo: string, parcelas: number): string {
   if (tipo === 'credito') return `Cré ${parcelas}x`
+  if (tipo === MP_BALANCE_LINE_TYPE) return 'Saldo MP'
   return tipo === LINHA_PIX ? 'PIX' : 'Déb'
 }
 
 export function rotuloDaLinha(tipo: string): string {
   if (tipo === 'debito') return 'Débito'
+  if (tipo === MP_BALANCE_LINE_TYPE) return 'Saldo Mercado Pago'
   return tipo === LINHA_PIX ? 'PIX' : 'Crédito'
 }
 

@@ -230,15 +230,21 @@ test('credencial recusada (401) não grava nada', async () => {
   assert.deepEqual(await linhasDoGrupo(a.grupoId), [])
 })
 
-test('pré-pago e pagamento sem valor líquido contam como não tratados e não gravam; link de pagamento é ignorado', async () => {
+test('pré-pago vira crédito e saldo Mercado Pago mantém tipo próprio; sem líquido não grava e link é ignorado', async () => {
   const a = await semearConta('A')
+  const idPrePago = novoId()
+  const idSaldo = novoId()
   const r = await importar(a, [
-    pg(debito, { id: novoId(), payment_type_id: 'prepaid_card' }),
+    pg(debito, { id: idPrePago, payment_type_id: 'prepaid_card' }),
+    pg(debito, { id: idSaldo, payment_type_id: 'account_money', payment_method_id: 'account_money' }),
     pg(pixFixture, { id: novoId(), transaction_details: {} }),
     pg(credito3x, { id: novoId(), point_of_interaction: { type: 'CHECKOUT' } }),
   ])
-  assert.deepEqual(r, { ...NADA, naoTratados: 2, ignorados: 1 })
-  assert.deepEqual(await linhasDoGrupo(a.grupoId), [])
+  assert.deepEqual(r, { ...NADA, pendentes: 2, naoTratados: 1, ignorados: 1 })
+  assert.deepEqual((await linhasDoGrupo(a.grupoId)).sort((x, y) => x.nsu.localeCompare(y.nsu)), [
+    { nsu: String(idPrePago), tipo: 'credito', status: 'aprovado', conciliado: false, venda_id: null, bruto: 150, liquido: 147.75 },
+    { nsu: String(idSaldo), tipo: 'saldo_mp', status: 'aprovado', conciliado: false, venda_id: null, bruto: 150, liquido: 147.75 },
+  ].sort((x, y) => x.nsu.localeCompare(y.nsu)))
 })
 
 test('grupos da rodada: só os que têm credencial e estão ativos', async () => {
@@ -261,7 +267,7 @@ test('importação boa guarda hora, contagens e não tratados com motivo, valor 
   await db.execute(sql`update mercadopago_config set ultima_falha_em = '2026-11-11T12:00:00Z', ultima_falha_erro = 'falhou antes' where grupo_id in (${a.grupoId}, ${b.grupoId})`)
   const log = t.mock.method(console, 'info', () => {})
   const r = await importar(a, [
-    pg(debito, { id: novoId(), payment_type_id: 'prepaid_card', transaction_amount: 89.9 }),
+    pg(debito, { id: novoId(), payment_type_id: 'prepaid_card', transaction_amount: 89.9, transaction_details: { net_received_amount: 88.9 } }),
     pg(pixFixture, { id: novoId(), transaction_details: {} }),
   ])
   const [c] = await execRows(sql`select ultima_importacao_em as em, ultimo_resumo as resumo, ultima_falha_em, ultima_falha_erro
@@ -269,10 +275,7 @@ test('importação boa guarda hora, contagens e não tratados com motivo, valor 
   assert.equal(new Date(String(c.em)).toISOString(), AGORA.toISOString())
   assert.deepEqual(c.resumo, {
     contagens: r,
-    naoTratados: [
-      { motivo: 'pre_pago', valor: 89.9, data: '2026-11-10' },
-      { motivo: 'sem_liquido', valor: 80, data: '2026-11-10' },
-    ],
+    naoTratados: [{ motivo: 'sem_liquido', valor: 80, data: '2026-11-10' }],
   })
   assert.deepEqual([c.ultima_falha_em, c.ultima_falha_erro], [null, null])
   // A outra Conta não muda.
@@ -321,7 +324,8 @@ test('isolamento: a Conta B lê o próprio estado da faixa, sem o resumo nem a f
   assert.deepEqual(await mod.estadoDaFaixaMp(b.grupoId), { ultimaImportacaoEm: null, resumo: null, falha: null })
   const deA = await mod.estadoDaFaixaMp(a.grupoId)
   assert.equal(deA!.falha?.erro, 'falha da A')
-  assert.equal(deA!.resumo?.contagens.naoTratados, 1)
+  assert.equal(deA!.resumo?.contagens.pendentes, 1)
+  assert.equal(deA!.resumo?.contagens.naoTratados, 0)
 })
 
 // Cron lento começa, o botão importa bem e termina antes, o cron falha depois: a falha do cron é mais velha que a

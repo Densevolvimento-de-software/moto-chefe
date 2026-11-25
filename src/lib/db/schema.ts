@@ -1184,7 +1184,7 @@ export const conciliacoesCartao = pgTable('conciliacoes_cartao', {
   valorBruto: numeric('valor_bruto', { precision: 12, scale: 2 }).notNull(),
   valorLiquido: numeric('valor_liquido', { precision: 12, scale: 2 }),
   parcelas: integer('parcelas').notNull().default(1),
-  tipo: text('tipo').notNull().default('credito'), // credito, debito ou pix (Pix da maquininha Mercado Pago, 0195)
+  tipo: text('tipo').notNull().default('credito'), // credito, debito, pix ou saldo_mp (saldo da conta Mercado Pago, 0206)
   status: text('status').notNull().default('aprovado'),
   vendaId: uuid('venda_id').references(() => vendas.id),
   pecaVendaId: uuid('peca_venda_id').references(() => vendasPecas.id),

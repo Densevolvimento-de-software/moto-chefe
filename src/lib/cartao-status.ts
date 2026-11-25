@@ -13,8 +13,8 @@ export const cartaoNaoEstornado = ne(conciliacoesCartao.status, CARTAO_ESTORNADO
 export const cartaoPendente = and(eq(conciliacoesCartao.conciliado, false), cartaoNaoEstornado)!
 
 /**
- * Condição Drizzle: linha de cartão (crédito ou débito), sem a linha Pix da maquininha Mercado Pago
- * (#51), que cobre pagamento Pix. As buscas do painel da venda para pagamento de cartão usam esta.
+ * Condição Drizzle: linha de pagamento da conciliação, sem a linha Pix da maquininha Mercado Pago (#51).
+ * Inclui cartão e saldo MP; as buscas do painel usam esta para os pagamentos que não são Pix.
  */
 export const linhaDeCartao = ne(conciliacoesCartao.tipo, LINHA_PIX)
 
