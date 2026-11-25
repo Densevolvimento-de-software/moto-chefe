@@ -9,9 +9,11 @@ import { GarantiaButton } from './garantia-button'
 import { LogisticaButton } from './logistica-button'
 import { NfSaidaProvider, NfSaidaGatilhoLinha } from './nf-saida-contexto'
 import { MontarButton } from './montar-button'
+import { ChegouButton } from './chegou-button'
 import { CancelarReservaButton } from './cancelar-reserva-button'
 import { podeVendedorReservarForaDaLoja } from '@/lib/loja-galpao'
-import { motivoParaNaoAbrirGarantia, motivoParaNaoTransferir, motivoParaNaoVender, soPodeReservar } from '@/lib/estado-moto'
+import { motivoParaNaoAbrirGarantia, motivoParaNaoMarcarChegada, motivoParaNaoTransferir, motivoParaNaoVender, soPodeReservar } from '@/lib/estado-moto'
+import type { PapelDoBanco } from '@/lib/rotulo-do-papel'
 import type { MotoComDetalhes } from '@/lib/queries/motos'
 import type { DemandaCompativel } from '@/lib/queries/demandas'
 import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
@@ -41,7 +43,7 @@ type Mecanico = { id: string; nome: string }
 type Props = {
   motos: MotoComDetalhes[]
   demandasComSinal: DemandaCompativel[]
-  papel: string
+  papel: PapelDoBanco
   isVendedor?: boolean
   vendedorId: string
   vendedorNome: string
@@ -150,6 +152,10 @@ export function MotoTable({ motos, demandasComSinal, papel, isVendedor, vendedor
                         )
                         : (
                           <>
+                            {/* Mesma função que a página da moto e a action: quem pode, a tela mostra; quem não pode, o servidor recusa. */}
+                            {motivoParaNaoMarcarChegada({ status: moto.status, arquivada: moto.arquivadaEm !== null }, { papel }, moto.lojaId === lojaUsuarioId) === null && (
+                              <ChegouButton motoId={moto.id} descricao={`${moto.modelo} · ${moto.cor} (${moto.lojaNome})`} />
+                            )}
                             {podeAlterar && podeGarantia.has(papel) && (
                               <GarantiaButton
                                 motoId={moto.id}

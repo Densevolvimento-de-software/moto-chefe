@@ -5,6 +5,7 @@ import { createElement, useState } from 'react'
 import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert'
 import type { MotoComDetalhes } from '@/lib/queries/motos'
+import type { PapelDoBanco } from '@/lib/rotulo-do-papel'
 import { montarDom } from '@/test/montar-dom'
 
 const { dom, desmontar } = montarDom()
@@ -26,6 +27,9 @@ mock.module('./garantia-button', {
       createElement('button', { 'data-garantia': motoId, 'data-motivo': motivoBloqueio ?? '' }, 'Garantia'),
   },
 })
+// O Chegou é o componente de verdade; fica de fora só a action (banco) e o roteador do Next.
+mock.module('../[id]/actions', { namedExports: { marcarChegadaAction: async () => ({ ok: true, dados: undefined }) } })
+mock.module('next/navigation', { namedExports: { useRouter: () => ({ refresh: () => {} }) } })
 for (const [caminho, nome] of [
   ['./montar-button', 'MontarButton'], ['./cancelar-reserva-button', 'CancelarReservaButton'],
 ]) mock.module(caminho, { namedExports: { [nome]: () => null } })
@@ -60,10 +64,10 @@ async function montar() {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
-  const desenhar = (motos: MotoComDetalhes[]) => act(async () => {
+  const desenhar = (motos: MotoComDetalhes[], quem: { papel: PapelDoBanco; lojaUsuarioId: string | null } = { papel: 'admin_socio', lojaUsuarioId: null }) => act(async () => {
     root.render(React.createElement(MotoTable, {
-      motos, demandasComSinal: [], papel: 'admin_socio', vendedorId: 'u1', vendedorNome: 'Sócio', usuarios: [], mecanicos: [],
-      lojas: [], lojaUsuarioId: null, podeAprovarPagamentoSensivel: false, ord: 'modelo', dir: 'asc', baseParams: '', origens: [],
+      motos, demandasComSinal: [], papel: quem.papel, vendedorId: 'u1', vendedorNome: 'Sócio', usuarios: [], mecanicos: [],
+      lojas: [], lojaUsuarioId: quem.lojaUsuarioId, podeAprovarPagamentoSensivel: false, ord: 'modelo', dir: 'asc', baseParams: '', origens: [],
     }))
   })
   const clicar = (sel: string) => act(async () => { document.querySelector(sel)!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
@@ -177,4 +181,44 @@ test('a tabela é Server Component: as demandas (com dados de cliente) não vão
   const contexto = readFileSync(join(dir, 'nf-saida-contexto.tsx'), 'utf8')
   assert.match(contexto, /export function NfSaidaProvider\(\{ children \}: \{ children: React\.ReactNode \}\)/)
   assert.match(contexto, /type MotoDaNf = \{ motoId: string; descricao: string; blingNfeId: string \| null \}/)
+})
+
+// Quem vê o Chegou na lista (#277): a mesma regra do servidor e da página da moto (motivoParaNaoMarcarChegada), de verdade.
+const linhaDe = (id: string, status: string, extra: object = {}) =>
+  ({ ...MOTO, id, chassi: `LXYTCK00000000${id}`, status, disponibilidade: null, arquivadaEm: null, ...extra }) as unknown as MotoComDetalhes
+/** Chassis das linhas que têm o botão Chegou. */
+const linhasComChegou = () =>
+  [...document.querySelectorAll('tbody tr')]
+    .filter(tr => tr.querySelector('button[aria-label^="Chegou: "]'))
+    .map(tr => (tr.textContent ?? '').match(/LXYTCK00000000[a-z]\d/)?.[0])
+
+test('Chegou na lista: só na linha em transporte e só para quem a regra deixa marcar', async () => {
+  const t = await montar()
+  const emTransporte = [linhaDe('t1', 'em_transporte')]
+  const casos: [string, { papel: PapelDoBanco; lojaUsuarioId: string | null }, string[]][] = [
+    ['aux_adm da loja da moto', { papel: 'aux_adm', lojaUsuarioId: 'loja-1' }, ['LXYTCK00000000t1']],
+    ['admin_socio de outra loja (inclui o admin_rede, que chega como sócio)', { papel: 'admin_socio', lojaUsuarioId: 'loja-2' }, ['LXYTCK00000000t1']],
+    ['admin_geral de outra loja', { papel: 'admin_geral', lojaUsuarioId: 'loja-2' }, ['LXYTCK00000000t1']],
+    ['aux_adm de outra loja da Conta', { papel: 'aux_adm', lojaUsuarioId: 'loja-2' }, []],
+    ['vendedor da loja da moto', { papel: 'vendedor', lojaUsuarioId: 'loja-1' }, []],
+  ]
+  for (const [rotulo, quem, esperado] of casos) {
+    await t.desenhar(emTransporte, quem)
+    assert.deepEqual(linhasComChegou(), esperado, rotulo)
+  }
+  await t.desmontar()
+})
+
+test('Chegou na lista: moto em outro status ou arquivada não mostra o botão', async () => {
+  const t = await montar()
+  await t.desenhar([
+    linhaDe('t1', 'em_transporte'),
+    linhaDe('t2', 'em_transporte', { arquivadaEm: new Date('2026-11-01') }),
+    linhaDe('c1', 'caixa'),
+    linhaDe('m1', 'montada', { disponibilidade: 'disponivel' }),
+    linhaDe('g1', 'em_garantia'),
+    linhaDe('v1', 'vendida'),
+  ])
+  assert.deepEqual(linhasComChegou(), ['LXYTCK00000000t1'])
+  await t.desmontar()
 })
