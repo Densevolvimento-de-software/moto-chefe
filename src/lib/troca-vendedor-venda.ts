@@ -2,11 +2,11 @@ import { and, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { usuarios } from '@/lib/db/schema'
 import { contaDaLoja } from '@/lib/conta'
-import { registrarAcaoSensivel } from '@/lib/log-acoes'
+import { registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
 import { usuarioDoEscopo } from '@/lib/usuarios-do-grupo'
 import { houveTrocaDeVendedor } from '@/lib/valor-venda'
 
-type Executor = NonNullable<Parameters<typeof registrarAcaoSensivel>[1]>
+type Executor = NonNullable<Parameters<typeof registrarAcaoSensivelSemFalhar>[1]>
 
 export type TrocaDeVendedor = {
   /** Quem trocou: o usuário da sessão. */
@@ -26,21 +26,22 @@ export type TrocaDeVendedor = {
  */
 export async function registrarTrocaDeVendedor(t: TrocaDeVendedor, exec: Executor = db): Promise<void> {
   if (!houveTrocaDeVendedor(t.anterior, t.novo)) return
+  // Nome só dos usuários da Conta da venda, como na conferência do vendedor (vendedorDaConta).
+  let nomes = new Map<string, string>()
   try {
-    // Nome só dos usuários da Conta da venda, como na conferência do vendedor (vendedorDaConta).
     const contaId = await contaDaLoja(t.venda.lojaId, exec)
-    const nomes = new Map((await exec.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios)
+    nomes = new Map((await exec.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios)
       .where(and(inArray(usuarios.id, [t.anterior, t.novo]), usuarioDoEscopo({ contaId, grupoLiberado: t.grupoLiberado }))))
       .map(u => [u.id, u.nome]))
-    await registrarAcaoSensivel({
-      tipo: 'vendedor_venda_trocado', usuarioId: t.usuarioId, lojaId: t.venda.lojaId,
-      detalhe: {
-        vendaId: t.venda.id, numeroVenda: t.venda.numero,
-        vendedorAnteriorId: t.anterior, vendedorAnterior: nomes.get(t.anterior) ?? null,
-        vendedorId: t.novo, vendedor: nomes.get(t.novo) ?? null,
-      },
-    }, exec)
   } catch (e) {
-    console.error('[log-acoes] falha ao registrar vendedor_venda_trocado:', e instanceof Error ? e.message : e)
+    console.error('[log-acoes] falha ao buscar vendedores para vendedor_venda_trocado:', e instanceof Error ? e.message : e)
   }
+  await registrarAcaoSensivelSemFalhar({
+    tipo: 'vendedor_venda_trocado', usuarioId: t.usuarioId, lojaId: t.venda.lojaId,
+    detalhe: {
+      vendaId: t.venda.id, numeroVenda: t.venda.numero,
+      vendedorAnteriorId: t.anterior, vendedorAnterior: nomes.get(t.anterior) ?? null,
+      vendedorId: t.novo, vendedor: nomes.get(t.novo) ?? null,
+    },
+  }, exec)
 }
