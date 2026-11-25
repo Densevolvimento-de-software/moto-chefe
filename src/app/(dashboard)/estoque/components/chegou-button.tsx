@@ -24,6 +24,9 @@ export function ChegouButton({ motoId, descricao }: Props) {
         // A recusa não revalida a lista (a action lança antes): sem isto a linha velha fica com o botão.
         router.refresh()
       }
+    } catch {
+      // Em produção o React troca a mensagem do erro lançado por Server Action (#404): frase fixa, nunca a do erro.
+      toast.error('Não foi possível marcar a chegada. Tente de novo.')
     } finally {
       setEnviando(false)
     }

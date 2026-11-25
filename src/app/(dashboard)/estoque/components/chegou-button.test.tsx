@@ -86,3 +86,13 @@ test('sucesso não pede refresh: a action já revalida a lista', async () => {
   assert.equal(sucesso.mock.callCount(), 1)
   assert.equal(atualizar.mock.callCount(), 0)
 })
+
+test('falha inesperada (a action lança): frase fixa, nunca o texto do erro; sem refresh; o botão volta', async () => {
+  marcar.mock.mockImplementation(async () => { throw new Error('Minified React error #441') })
+  const t = await montar()
+  await t.clique('Chegou')
+  assert.deepEqual(erro.mock.calls.map(c => c.arguments), [['Não foi possível marcar a chegada. Tente de novo.']])
+  assert.equal(sucesso.mock.callCount(), 0)
+  assert.equal(atualizar.mock.callCount(), 0)
+  assert.equal(botao('Chegou')?.disabled, false)
+})
