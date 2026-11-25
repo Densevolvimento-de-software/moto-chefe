@@ -7,6 +7,7 @@ import { after, afterEach, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
+import { ate, sessaoQueSegura } from '@/test/corrida'
 import { semearContaBase, semearModelo, semearUsuario, type Base } from '@/test/semear-conta'
 import { semearOs, semearVendaMoto, semearVendaPeca } from '@/test/semear-alvos-conciliacao'
 
@@ -409,6 +410,30 @@ test('aux_adm edita a venda mandando o mesmo vendedor (como a tela manda)', asyn
   entrarComo(c, 'aux_adm')
   ok(await vendas.editarVendaAction(venda, { ...edicaoDeMoto([PIX, CARTAO]), vendedorId: c.vendedorId }), 'aux_adm edita')
   assert.deepEqual(await vendedorDe(venda), { venda: c.vendedorId, pedido: c.vendedorId })
+})
+
+test('aux_adm não restaura o vendedor anterior se a venda mudar enquanto o diálogo está aberto', async () => {
+  const c = await novaConta()
+  const novoVendedor = await semearUsuario(db, c, { papel: 'vendedor', rotulo: 'vendedora2', comGrupo: true })
+  const venda = await semearVendaMoto(db, balcao(c), [PIX, CARTAO])
+  const segura = await sessaoQueSegura(url!)
+  let edicao: ReturnType<typeof vendas.editarVendaAction> | undefined
+  try {
+    await segura.travar('select id from vendas where id = $1 for update', [venda])
+    entrarComo(c, 'aux_adm')
+    edicao = vendas.editarVendaAction(venda, { ...edicaoDeMoto([PIX, CARTAO]), vendedorId: c.vendedorId })
+
+    await ate(async () => (await segura.esperandoPor([segura.pid])).length > 0, 'a edição esperar a trava da venda')
+    await segura.travar('update vendas set vendedor_id = $1 where id = $2', [novoVendedor, venda])
+    await segura.travar('update pedidos_venda set vendedor_id = $1 where id = (select pedido_venda_id from vendas where id = $2)', [novoVendedor, venda])
+    await segura.soltar()
+
+    assert.deepEqual(await edicao, { ok: false, erro: FRASE_TROCA_VENDEDOR })
+    assert.deepEqual(await vendedorDe(venda), { venda: novoVendedor, pedido: novoVendedor })
+  } finally {
+    await segura.fim().catch(() => {})
+    await edicao?.catch(() => {})
+  }
 })
 
 test('admin_socio troca o vendedor da venda, na venda e no pedido', async () => {

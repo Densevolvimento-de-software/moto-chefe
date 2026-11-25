@@ -1370,8 +1370,11 @@ async function editarVenda(vendaId: string, dados: {
 
   await db.transaction(async tx => {
     const daVenda = and(eq(vendas.id, vendaId), eq(vendas.lojaId, vendaAtual.lojaId))
-    const [gravada] = await tx.select({ pagamentos: vendas.pagamentos }).from(vendas).where(daVenda).for('update')
+    const [gravada] = await tx.select({ pagamentos: vendas.pagamentos, vendedorId: vendas.vendedorId }).from(vendas).where(daVenda).for('update')
     if (!gravada) throw new RecusaUsuario('Venda não encontrada')
+    // O vendedor pode ter mudado depois que o diálogo carregou; revalide o dado protegido pelo lock.
+    const travaVendedorGravado = travaDoVendedorVenda(usuario.papel, gravada.vendedorId, dados.vendedorId)
+    if (travaVendedorGravado) throw new RecusaUsuario(travaVendedorGravado)
     const recusaForcado = recusaDePagamentoForcado(usuario.papel, await auxAdmPodeForcarDaLoja(vendaAtual.lojaId, tx), dados.pagamentos, CAMPOS_PAGAMENTO_VENDA, gravada.pagamentos)
     if (recusaForcado) throw new RecusaUsuario(recusaForcado)
     const pagamentos = pagamentosParaGravar(dados.pagamentos, CAMPOS_PAGAMENTO_VENDA, gravada.pagamentos)
