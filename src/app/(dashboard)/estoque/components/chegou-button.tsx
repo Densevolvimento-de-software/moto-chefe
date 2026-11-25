@@ -36,12 +36,11 @@ export function ChegouButton({ motoId, descricao }: Props) {
   return (
     // Par info/card já medido na tabela de contraste (identidade-visual.md): sem cor nova.
     <Button
-      size="sm"
       onClick={marcar}
       disabled={enviando}
       aria-busy={enviando}
       aria-label={`${rotulo}: ${descricao}`}
-      className="h-8 font-semibold bg-info text-card hover:bg-info/90 disabled:opacity-75 max-md:h-10"
+      className="px-3 text-[13px] font-semibold bg-info text-card hover:bg-info/90 disabled:opacity-75 max-md:h-10"
     >
       {enviando ? <Loader2 className="animate-spin" aria-hidden /> : <PackageCheck aria-hidden />}
       {rotulo}

@@ -4,7 +4,7 @@ import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import type { ResultadoAction } from '@/lib/resultado-action'
 import { montarDom } from '@/test/montar-dom'
-import { botao, DEPOIS_DA_ANIMACAO_MS, dialogoAberto, montarDialogo } from '@/test/dialogo-em-tela'
+import { botao, dialogoAberto, montarDialogo } from '@/test/dialogo-em-tela'
 
 const { desmontar: desmontarDom } = montarDom()
 

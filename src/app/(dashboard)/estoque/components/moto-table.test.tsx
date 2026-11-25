@@ -184,27 +184,25 @@ test('a tabela é Server Component: as demandas (com dados de cliente) não vão
 })
 
 // Quem vê o Chegou na lista (#277): a mesma regra do servidor e da página da moto (motivoParaNaoMarcarChegada), de verdade.
+// Cada linha tem modelo próprio, e o botão carrega a moto no nome acessível: é por ele que se sabe de qual linha é.
 const linhaDe = (id: string, status: string, extra: object = {}) =>
-  ({ ...MOTO, id, chassi: `LXYTCK00000000${id}`, status, disponibilidade: null, arquivadaEm: null, ...extra }) as unknown as MotoComDetalhes
-/** Chassis das linhas que têm o botão Chegou. */
-const linhasComChegou = () =>
-  [...document.querySelectorAll('tbody tr')]
-    .filter(tr => tr.querySelector('button[aria-label^="Chegou: "]'))
-    .map(tr => (tr.textContent ?? '').match(/LXYTCK00000000[a-z]\d/)?.[0])
+  ({ ...MOTO, id, modelo: `Modelo ${id}`, chassi: `LXYTCK00000000${id}`, status, disponibilidade: null, arquivadaEm: null, ...extra }) as unknown as MotoComDetalhes
+const chegouDe = (id: string) => `Chegou: Modelo ${id} · BEGE (Centro)`
+const botoesChegou = () => [...document.querySelectorAll('button[aria-label^="Chegou: "]')].map(b => b.getAttribute('aria-label'))
 
 test('Chegou na lista: só na linha em transporte e só para quem a regra deixa marcar', async () => {
   const t = await montar()
   const emTransporte = [linhaDe('t1', 'em_transporte')]
   const casos: [string, { papel: PapelDoBanco; lojaUsuarioId: string | null }, string[]][] = [
-    ['aux_adm da loja da moto', { papel: 'aux_adm', lojaUsuarioId: 'loja-1' }, ['LXYTCK00000000t1']],
-    ['admin_socio de outra loja', { papel: 'admin_socio', lojaUsuarioId: 'loja-2' }, ['LXYTCK00000000t1']],
-    ['admin_geral de outra loja', { papel: 'admin_geral', lojaUsuarioId: 'loja-2' }, ['LXYTCK00000000t1']],
+    ['aux_adm da loja da moto', { papel: 'aux_adm', lojaUsuarioId: 'loja-1' }, [chegouDe('t1')]],
+    ['admin_socio de outra loja', { papel: 'admin_socio', lojaUsuarioId: 'loja-2' }, [chegouDe('t1')]],
+    ['admin_geral de outra loja', { papel: 'admin_geral', lojaUsuarioId: 'loja-2' }, [chegouDe('t1')]],
     ['aux_adm de outra loja da Conta', { papel: 'aux_adm', lojaUsuarioId: 'loja-2' }, []],
     ['vendedor da loja da moto', { papel: 'vendedor', lojaUsuarioId: 'loja-1' }, []],
   ]
   for (const [rotulo, quem, esperado] of casos) {
     await t.desenhar(emTransporte, quem)
-    assert.deepEqual(linhasComChegou(), esperado, rotulo)
+    assert.deepEqual(botoesChegou(), esperado, rotulo)
   }
   await t.desmontar()
 })
@@ -219,6 +217,6 @@ test('Chegou na lista: moto em outro status ou arquivada não mostra o botão', 
     linhaDe('g1', 'em_garantia'),
     linhaDe('v1', 'vendida', { disponibilidade: 'vendida' }),
   ])
-  assert.deepEqual(linhasComChegou(), ['LXYTCK00000000t1'])
+  assert.deepEqual(botoesChegou(), [chegouDe('t1')])
   await t.desmontar()
 })
