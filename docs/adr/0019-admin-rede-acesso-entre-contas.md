@@ -24,6 +24,13 @@ No lugar da autorização concedida pela Conta dona:
 - Grupo bloqueado por falta de pagamento derruba também o acesso de fora. O acesso não é cobrado.
 - O `admin_socio` comum continua preso à própria Conta.
 
+## Adendo: catálogo de Serviços (#231)
+
+O catálogo de Serviços pertence à Conta e é compartilhado pelos seus grupos e lojas. O
+`admin_rede` pode gerenciar somente o catálogo da Conta de origem; na persona de grupo liberado
+de outra Conta, não cria, edita, inativa nem reativa serviços. A OS usa serviços ativos da Conta
+da loja onde foi aberta. A descrição e o valor gravados nos itens da OS preservam o histórico.
+
 Fica substituída a concessão pelo `admin_socio` da Conta dona com aceite. A regra de mover grupo entre Contas é tratada à parte.
 
 ## Clientes no grupo liberado (decisões do Luis, 29/10 e 31/10/2026)
