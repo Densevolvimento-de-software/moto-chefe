@@ -58,3 +58,31 @@ test('enquanto envia: "Marcando" e desabilitado; outro clique não chama a actio
   await t.act(async () => { responder(OK) })
   assert.equal(botao('Chegou')?.disabled, false)
 })
+
+test('a linha sai da lista antes da resposta (revalidatePath): o aviso de sucesso sai igual', async () => {
+  let responder: (r: ResultadoAction) => void = () => {}
+  marcar.mock.mockImplementation(() => new Promise(r => { responder = r }))
+  const t = await montar()
+  await t.clique('Chegou')
+  await t.desmontar()
+  assert.equal(document.querySelector('button'), null)
+  await t.act(async () => { responder(OK) })
+  assert.deepEqual(sucesso.mock.calls.map(c => c.arguments), [['Chegada marcada', { description: `${DESCRICAO} foi para Caixa.` }]])
+})
+
+test('recusa do servidor: aviso com a frase dele, sem aviso de sucesso, a lista relê o estado e o botão volta', async () => {
+  marcar.mock.mockImplementation(async () => ({ ok: false, erro: 'Esta moto não está mais em transporte.' }))
+  const t = await montar()
+  await t.clique('Chegou')
+  assert.deepEqual(erro.mock.calls.map(c => c.arguments), [['Esta moto não está mais em transporte.']])
+  assert.equal(sucesso.mock.callCount(), 0)
+  assert.equal(atualizar.mock.callCount(), 1)
+  assert.equal(botao('Chegou')?.disabled, false)
+})
+
+test('sucesso não pede refresh: a action já revalida a lista', async () => {
+  const t = await montar()
+  await t.clique('Chegou')
+  assert.equal(sucesso.mock.callCount(), 1)
+  assert.equal(atualizar.mock.callCount(), 0)
+})

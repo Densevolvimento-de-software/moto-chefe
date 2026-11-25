@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Loader2, PackageCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,13 +10,20 @@ type Props = { motoId: string; descricao: string }
 
 /** Chegou na linha do Showroom (#277): um clique marca, sem confirmação (a faixa da página da moto é que confirma). */
 export function ChegouButton({ motoId, descricao }: Props) {
+  const router = useRouter()
   const [enviando, setEnviando] = useState(false)
 
   async function marcar() {
     setEnviando(true)
     try {
-      await marcarChegadaAction(motoId)
-      toast.success('Chegada marcada', { description: `${descricao} foi para Caixa.` })
+      const r = await marcarChegadaAction(motoId)
+      if (r.ok) {
+        toast.success('Chegada marcada', { description: `${descricao} foi para Caixa.` })
+      } else {
+        toast.error(r.erro)
+        // A recusa não revalida a lista (a action lança antes): sem isto a linha velha fica com o botão.
+        router.refresh()
+      }
     } finally {
       setEnviando(false)
     }
