@@ -1,14 +1,14 @@
 import type { PagamentoMp } from './mercadopago/point'
 import type { MotivoNaoTratado, NaoTratadoMp } from './mercadopago/contagens'
-import { dataBrt, LINHA_PIX, type TransacaoCartao } from './conciliacao-cartao'
+import { dataBrt, LINHA_PIX, MP_BALANCE_LINE_TYPE, type TransacaoCartao } from './conciliacao-cartao'
 import { ehEstornoMp } from './mercadopago/status'
 
-// Uma linha de conciliacoes_cartao: cartão (crédito/débito) ou Pix da maquininha (decisão do Luis, #51).
+// Uma linha de conciliacoes_cartao: cartão, Pix ou saldo Mercado Pago da maquininha (decisão do Cesar, #51).
 export type Classificacao =
   | { tipo: 'transacao'; transacao: TransacaoCartao }
   | { tipo: 'estorno'; chave: string }
   // Na resposta do cron e no log entram só as contagens; o detalhe vai para a faixa da conciliação.
-  // `paraOLog`: o meio cru (account_money) só no log; a tela usa o motivo fechado.
+  // `paraOLog`: o meio cru desconhecido só no log; a tela usa o motivo fechado.
   | { tipo: 'nao_tratado'; naoTratado: NaoTratadoMp; paraOLog: string }
   | { tipo: 'ignorar'; motivo: string }
 
@@ -22,7 +22,12 @@ export function ehDaMaquininha(p: PagamentoMp): boolean {
   return poi?.type === 'POINT' || Boolean(poi?.device?.serial_number)
 }
 
-const MEIO_DA_LINHA: Record<string, TransacaoCartao['tipo']> = { credit_card: 'credito', debit_card: 'debito' }
+const MEIO_DA_LINHA: Record<string, TransacaoCartao['tipo']> = {
+  credit_card: 'credito',
+  debit_card: 'debito',
+  prepaid_card: 'credito',
+  account_money: MP_BALANCE_LINE_TYPE,
+}
 
 const tipoDaLinha = (p: PagamentoMp): TransacaoCartao['tipo'] | null =>
   p.payment_method_id === 'pix' ? LINHA_PIX : MEIO_DA_LINHA[p.payment_type_id] ?? null
@@ -37,9 +42,9 @@ export function classificarPagamento(p: PagamentoMp): Classificacao {
   const naoTratado = (motivo: MotivoNaoTratado, paraOLog: string): Classificacao =>
     ({ tipo: 'nao_tratado', naoTratado: { motivo, valor: p.transaction_amount, data: dataBrt(p.date_approved!) }, paraOLog })
   const tipo = tipoDaLinha(p)
-  // Venda aprovada que não vira linha conta no resumo da importação: nada some calado (decisão do Luis, #51).
+  // Pagamento aprovado que não vira linha conta no resumo da importação: nada some calado (decisão do Luis, #51).
   if (!tipo) {
-    return p.payment_type_id === 'prepaid_card' ? naoTratado('pre_pago', 'cartão pré-pago') : naoTratado('outro_meio', `meio ${p.payment_type_id}`)
+    return naoTratado('outro_meio', `meio ${p.payment_type_id}`)
   }
   // Linha conciliada sem líquido conta o bruto inteiro como taxa (src/lib/queries/valor-liquido.ts; condição do
   // PR4 na #51), e líquido 0 dá o mesmo (decisão do Luis). O pagamento não vira linha e entra só na contagem de
@@ -61,7 +66,7 @@ export function classificarPagamento(p: PagamentoMp): Classificacao {
       status: 'aprovado',
       rawData: {
         id: p.id,
-        bandeira: p.payment_method_id,
+        bandeira: p.payment_type_id === 'account_money' ? '' : p.payment_method_id,
         serial: p.point_of_interaction?.device?.serial_number ?? null,
         ultimos4: p.card?.last_four_digits ?? null,
         estornado: p.transaction_amount_refunded ?? 0,

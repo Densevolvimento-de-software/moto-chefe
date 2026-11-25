@@ -6,12 +6,14 @@ test('rótulo curto da linha na lista da conciliação', () => {
   assert.equal(rotuloCurtoDaLinha('credito', 3), 'Cré 3x')
   assert.equal(rotuloCurtoDaLinha('debito', 1), 'Déb')
   assert.equal(rotuloCurtoDaLinha('pix', 1), 'PIX')
+  assert.equal(rotuloCurtoDaLinha('saldo_mp', 1), 'Saldo MP')
 })
 
 test('rótulo da linha na sugestão do painel de pagamentos', () => {
   assert.equal(rotuloDaLinha('credito'), 'Crédito')
   assert.equal(rotuloDaLinha('debito'), 'Débito')
   assert.equal(rotuloDaLinha('pix'), 'PIX')
+  assert.equal(rotuloDaLinha('saldo_mp'), 'Saldo Mercado Pago')
 })
 
 // #51 (PR6b): a tela esconde Vincular/Desvincular pela mesma regra com que o servidor recusa (cartao-status.ts).
