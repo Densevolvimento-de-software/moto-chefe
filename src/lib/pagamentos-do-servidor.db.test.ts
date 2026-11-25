@@ -453,3 +453,61 @@ test('aux_adm com vendedor de outra Conta recebe a mesma recusa e nada muda', as
     { ok: false, erro: FRASE_TROCA_VENDEDOR })
   assert.deepEqual(await vendedorDe(venda), { venda: c.vendedorId, pedido: c.vendedorId })
 })
+
+// Toda troca de vendedor vai para o log de ações com quem trocou, a venda e o vendedor anterior e o novo,
+// na Conta e no grupo da venda. Mandar o mesmo vendedor (a tela sempre manda) não é troca e não grava.
+const logsDaTroca = (venda: string) => execRows(sql`
+  select usuario_id, conta_id, grupo_id, detalhe from log_acoes where tipo = 'vendedor_venda_trocado' and detalhe->>'vendaId' = ${venda}`)
+const numeroDa = async (venda: string) => (await execRows(sql`select numero from vendas where id = ${venda}`))[0].numero
+
+test('admin_socio troca o vendedor: o log grava quem trocou, a venda e o vendedor anterior e o novo, na Conta da venda', async () => {
+  const c = await novaConta()
+  const outra = await semearUsuario(db, c, { papel: 'vendedor', rotulo: 'vendedora2', nomeDoUsuario: 'Vendedora Nova', comGrupo: true })
+  await db.execute(sql`update usuarios set nome = 'Vendedor Antigo' where id = ${c.vendedorId}`)
+  const venda = await semearVendaMoto(db, balcao(c), [PIX, CARTAO])
+  entrarComo(c, 'admin_socio')
+  ok(await vendas.editarVendaAction(venda, { ...edicaoDeMoto([PIX, CARTAO]), vendedorId: outra }), 'sócio troca o vendedor')
+  assert.deepEqual(await logsDaTroca(venda), [{
+    usuario_id: c.socioId, conta_id: c.contaId, grupo_id: c.grupoId,
+    detalhe: {
+      vendaId: venda, numeroVenda: await numeroDa(venda),
+      vendedorAnteriorId: c.vendedorId, vendedorAnterior: 'Vendedor Antigo',
+      vendedorId: outra, vendedor: 'Vendedora Nova',
+    },
+  }])
+})
+
+test('editar mandando o mesmo vendedor, ou sem vendedor, não grava troca no log', async () => {
+  const c = await novaConta()
+  const venda = await semearVendaMoto(db, balcao(c), [PIX, CARTAO])
+  for (const papel of ['aux_adm', 'admin_socio'] as const) {
+    entrarComo(c, papel)
+    ok(await vendas.editarVendaAction(venda, { ...edicaoDeMoto([PIX, CARTAO]), vendedorId: c.vendedorId }), `${papel} com o mesmo vendedor`)
+    ok(await vendas.editarVendaAction(venda, edicaoDeMoto([PIX, CARTAO])), `${papel} sem vendedor`)
+  }
+  assert.deepEqual(await logsDaTroca(venda), [])
+})
+
+test('troca recusada (aux_adm) não grava no log', async () => {
+  const c = await novaConta()
+  const outra = await semearUsuario(db, c, { papel: 'vendedor', rotulo: 'vendedora2', comGrupo: true })
+  const venda = await semearVendaMoto(db, balcao(c), [PIX, CARTAO])
+  entrarComo(c, 'aux_adm')
+  assert.deepEqual(await vendas.editarVendaAction(venda, { ...edicaoDeMoto([PIX, CARTAO]), vendedorId: outra }),
+    { ok: false, erro: FRASE_TROCA_VENDEDOR })
+  assert.deepEqual(await logsDaTroca(venda), [])
+})
+
+test('Conta B: sócio não troca o vendedor da venda da Conta A nem põe vendedor de outra Conta, e nada vai ao log', async () => {
+  const [a, b] = [await novaConta(), await novaConta()]
+  const vendaDeA = await semearVendaMoto(db, balcao(a), [PIX, CARTAO])
+  const vendaDeB = await semearVendaMoto(db, balcao(b), [PIX, CARTAO])
+  entrarComo(b, 'admin_socio')
+  assert.deepEqual(await vendas.editarVendaAction(vendaDeA, { ...edicaoDeMoto([PIX, CARTAO]), vendedorId: b.vendedorId }),
+    { ok: false, erro: 'Venda não encontrada' })
+  assert.deepEqual(await vendas.editarVendaAction(vendaDeB, { ...edicaoDeMoto([PIX, CARTAO]), vendedorId: a.vendedorId }),
+    { ok: false, erro: 'Vendedor não encontrado' })
+  assert.deepEqual(await vendedorDe(vendaDeA), { venda: a.vendedorId, pedido: a.vendedorId })
+  assert.deepEqual(await vendedorDe(vendaDeB), { venda: b.vendedorId, pedido: b.vendedorId })
+  assert.deepEqual([...await logsDaTroca(vendaDeA), ...await logsDaTroca(vendaDeB)], [])
+})
