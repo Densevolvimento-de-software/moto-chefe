@@ -126,11 +126,14 @@ test('modelo sem precificação continua sem conferência da entrada', async () 
   assert.equal((await reservar(await novaMoto(c, c.base.lojaId, c.modeloSemPrecoId), 1)).ok, true)
 })
 
-test('mudar a porcentagem depois não mexe na reserva já registrada', async () => {
-  const c = await novaConta([20])
-  entrarComoSocio(c)
-  const moto = await novaMoto(c, c.lojas[20])
-  assert.equal((await reservar(moto, 3000)).ok, true)
-  await db.execute(sql`update lojas set entrada_minima_reserva_pct = 100 where id = ${c.lojas[20]}`)
-  assert.deepEqual(await reservasDaMoto(moto), [{ valor: 3000, status: 'ativa' }])
+test('buscarPrecoMinimoAction devolve a porcentagem da loja da moto; usuário de outra Conta e id inexistente recebem null', async () => {
+  const a = await novaConta([20])
+  const b = await novaConta([])
+  const moto = await novaMoto(a, a.lojas[20])
+  entrarComoSocio(a) // o sócio trabalha na loja da base (30%); a moto está na loja de 20%
+  const daConta = await vendas.buscarPrecoMinimoAction(moto)
+  assert.deepEqual(daConta && { pix: daConta.valorMinimoPix, pct: daConta.entradaMinimaPct }, { pix: PIX, pct: 20 })
+  entrarComoSocio(b)
+  assert.equal(await vendas.buscarPrecoMinimoAction(moto), null)
+  assert.equal(await vendas.buscarPrecoMinimoAction(randomUUID()), null)
 })
