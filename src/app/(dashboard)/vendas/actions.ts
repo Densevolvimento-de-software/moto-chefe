@@ -8,10 +8,11 @@ import { registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
 import { registrarTrocaDeVendedor } from '@/lib/troca-vendedor-venda'
 import { db } from '@/lib/db'
 import { conferirMaquininhas, operadorasGravadas } from '@/lib/maquininhas'
-import { motos, modelos, modeloBlingCodigos, pedidosVenda, vendas, reservas, historicoEstoque, lancamentosCaixa, precificacao, configuracaoTaxas, usuarios, clientes, aprovacoesVenda, demandas, notasFiscaisSaida, nfeBlingArquivo } from '@/lib/db/schema'
+import { motos, modelos, lojas, modeloBlingCodigos, pedidosVenda, vendas, reservas, historicoEstoque, lancamentosCaixa, precificacao, configuracaoTaxas, usuarios, clientes, aprovacoesVenda, demandas, notasFiscaisSaida, nfeBlingArquivo } from '@/lib/db/schema'
 import { eq, and, isNull, isNotNull, notInArray, inArray, desc, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-import { calcLiquidoRecebido, validarReserva } from '@/lib/preco-minimo'
+import { calcLiquidoRecebido } from '@/lib/preco-minimo'
+import { fraseEntradaMinimaServidor, validarReserva } from '@/lib/entrada-minima-reserva'
 import { pagamentosFecham, somaPagamentos, descreverPagamentos, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
 import { podeAbrirRegistroDaLoja, podeEditarVendaDaLoja, podeVenderMotoDaLoja } from '@/lib/acesso-registro'
 import { clientesDoEscopo, contaDaLoja, lojasDoEscopo } from '@/lib/conta'
@@ -100,6 +101,8 @@ function comCompradorConferido(data: DadosVendaCompleta): DadosVendaCompleta {
 
 export type PrecoMinimoInfo = {
   valorMinimoPix: number
+  /** Entrada mínima da reserva da loja da moto, em % do preço PIX (#283). */
+  entradaMinimaPct: number
   taxas: {
     taxasCartao: Record<string, number>
     taxasDebito: Record<string, number>
@@ -116,10 +119,12 @@ export async function buscarPrecoMinimoAction(motoId: string): Promise<PrecoMini
 }
 
 async function buscarPrecificacao(modeloId: string, lojaId: string) {
-  const [modeloRow, grupoId] = await Promise.all([
+  const [modeloRow, loja] = await Promise.all([
     db.select({ modelo: modelos.modelo }).from(modelos).where(eq(modelos.id, modeloId)).limit(1).then(r => r[0]),
-    getGrupoIdDaLoja(lojaId),
+    db.select({ grupoId: lojas.grupoId, entradaMinimaPct: lojas.entradaMinimaReservaPct }).from(lojas).where(eq(lojas.id, lojaId)).limit(1).then(r => r[0]),
   ])
+  if (!loja) throw new Error('Loja não encontrada')
+  const grupoId = loja.grupoId
   if (!modeloRow) return null
 
   const [[precRow], [taxasRow]] = await Promise.all([
@@ -133,6 +138,7 @@ async function buscarPrecificacao(modeloId: string, lojaId: string) {
   if (!precRow || !taxasRow) return null
   return {
     valorMinimoPix: parseFloat(precRow.valorMinimo),
+    entradaMinimaPct: loja.entradaMinimaPct,
     taxas: {
       taxasCartao: taxasRow.taxasCartao as Record<string, number>,
       taxasDebito: (taxasRow.taxasDebito ?? {}) as Record<string, number>,
@@ -1103,14 +1109,13 @@ async function registrarReserva(data: DadosReserva) {
 
   const prec = await buscarPrecificacao(moto.modeloId, moto.lojaId)
   if (prec) {
-    const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
     const valorTotalNum = parseFloat(data.valorTotalVenda)
-    const check = validarReserva(valorNum, isNaN(valorTotalNum) ? 0 : valorTotalNum, prec.valorMinimoPix)
+    const check = validarReserva(valorNum, isNaN(valorTotalNum) ? 0 : valorTotalNum, prec.valorMinimoPix, prec.entradaMinimaPct)
     if (!check.entradaOk) {
-      throw new RecusaUsuario(`Entrada mínima de ${fmt(check.minimoEntrada)} (30% do preço PIX ${fmt(prec.valorMinimoPix)})`)
+      throw new RecusaUsuario(fraseEntradaMinimaServidor(check.minimoEntrada, prec.entradaMinimaPct, prec.valorMinimoPix))
     }
     // Total negociado é livre — depende da forma de pagamento (PIX, cartão, etc.)
-    // Apenas a entrada mínima de 30% é obrigatória para reservas
+    // Apenas a entrada mínima da loja da moto é obrigatória para reservas
   }
 
   const podeEscolherVendedorReserva = ['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)
