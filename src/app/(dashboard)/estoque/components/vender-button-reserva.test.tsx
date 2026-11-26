@@ -9,19 +9,21 @@ import { esperar, montarDialogo, textoDaTela } from '@/test/dialogo-em-tela'
 import { espacoComum } from '@/test/espaco-comum'
 
 const { desmontar: desmontarDom } = montarDom()
-after(desmontarDom)
 
 const TAXAS = { taxasCartao: {}, taxasDebito: {}, taxasLink: {}, taxasFinanciamento: {} }
 const buscarPreco = mock.fn(async (_motoId: string) => ({ valorMinimoPix: 15000, entradaMinimaPct: 20, taxas: TAXAS }) as unknown)
-mock.module('../../vendas/actions', { namedExports: {
-  registrarVendaCompletaAction: async () => ({ ok: true, dados: undefined }),
-  registrarReservaAction: async () => ({ ok: true, dados: undefined }),
-  buscarPrecoMinimoAction: (id: string) => buscarPreco(id),
-  buscarClientePorCpfAction: async () => null,
-  solicitarAprovacaoVendaAction: async () => ({ ok: true, dados: undefined }),
-} })
-mock.module('@/components/use-maquininhas', { namedExports: { useMaquininhas: () => [] } })
-mock.module('sonner', { namedExports: { toast: { success: () => {}, error: () => {} } } })
+const mocks = [
+  mock.module('../../vendas/actions', { namedExports: {
+    registrarVendaCompletaAction: async () => ({ ok: true, dados: undefined }),
+    registrarReservaAction: async () => ({ ok: true, dados: undefined }),
+    buscarPrecoMinimoAction: (id: string) => buscarPreco(id),
+    buscarClientePorCpfAction: async () => null,
+    solicitarAprovacaoVendaAction: async () => ({ ok: true, dados: undefined }),
+  } }),
+  mock.module('@/components/use-maquininhas', { namedExports: { useMaquininhas: () => [] } }),
+  mock.module('sonner', { namedExports: { toast: { success: () => {}, error: () => {} } } }),
+]
+after(() => { for (const m of mocks) m.restore(); desmontarDom() })
 
 const montados: (() => Promise<void>)[] = []
 afterEach(async () => {

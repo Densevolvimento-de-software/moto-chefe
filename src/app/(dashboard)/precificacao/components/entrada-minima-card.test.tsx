@@ -10,12 +10,14 @@ import { esperar } from '@/test/dialogo-em-tela'
 import { espacoComum } from '@/test/espaco-comum'
 
 const { desmontar: desmontarDom } = montarDom()
-after(desmontarDom)
 
 type Resposta = { ok: true; dados: undefined } | { ok: false; erro: string }
 const salvar = mock.fn(async (_entradas: unknown): Promise<Resposta> => ({ ok: true, dados: undefined }))
-mock.module('../actions', { namedExports: { salvarEntradaMinimaReservaAction: (e: unknown) => salvar(e) } })
-mock.module('sonner', { namedExports: { toast: { success: () => {}, error: () => {} } } })
+const mocks = [
+  mock.module('../actions', { namedExports: { salvarEntradaMinimaReservaAction: (e: unknown) => salvar(e) } }),
+  mock.module('sonner', { namedExports: { toast: { success: () => {}, error: () => {} } } }),
+]
+after(() => { for (const m of mocks) m.restore(); desmontarDom() })
 
 const montados: (() => Promise<void>)[] = []
 afterEach(async () => {
