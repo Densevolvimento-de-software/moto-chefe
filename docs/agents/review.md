@@ -108,6 +108,12 @@ aqui fica a lista curta de conferência.
 - **Tela que abre janela ao entrar: o mesmo PR fecha a janela em todo script Playwright com login**
   (#885: a janela de Novidades cobria a tela e a navegação ficou vermelha na 1ª rodada). Conferir:
   `git grep -l "fecharNovidadesSeAbrir" scripts/` contra os scripts que fazem login; janela nova ganha o seu `fechar...SeAbrir`.
+- **No teste no navegador, use usuário que já entrou e feche as janelas depois de cada `page.goto`**, não só no login
+  (#277: usuário sem `usuarios_dados` caía em `/completar-cadastro`, e Novidades e o comunicado do admin voltavam a
+  cobrir a lista a cada navegação; custou 3 rodadas). Conferir: todo `goto` do script é seguido do `fechar...SeAbrir`.
+- **Para ver o "enviando" no navegador, atrase só a chamada que você quer observar** (#277: o atraso em todas as POSTs
+  prendeu o clique, porque o Showroom dispara uma Server Action por linha ao carregar e o Next as despacha em fila;
+  deu vermelho falso). Conferir: o `page.route` filtra a action alvo e deixa as outras passarem.
 - **Teste de tela monta o DOM com `montarDom()` de `src/test/montar-dom.ts`** (`const { dom, desmontar } = montarDom()` e
   `after(desmontar)`), nunca com `new JSDOM` e globais copiados à mão. A cópia foi parar em 8 arquivos e voltou
   em cada PR da folha (#628, #629) porque não havia helper para reusar. Cópia nova do boilerplate é achado "deveria" na revisão.
