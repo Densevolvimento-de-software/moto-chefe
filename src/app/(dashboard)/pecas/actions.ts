@@ -8,8 +8,10 @@ import { inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
 import { validarDocumento, isTipoPessoa } from '@/lib/documento'
 import { revalidatePath } from 'next/cache'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
-import { contaDoGrupoAtivo, listarLojaIdsDoGrupoAtivo, podeAprovarPagamentoSensivelNaLoja } from '@/lib/grupo'
-import { lojaDoEstoque, podeGerirPecas, podeVenderPeca, recusaDaQuantidadeVendida, recusaDoEstoque } from './papeis'
+import { contaDoGrupoAtivo, getGrupoIdDaLoja, listarLojaIdsDoGrupoAtivo, podeAprovarPagamentoSensivelNaLoja } from '@/lib/grupo'
+import { listarUsuariosDoGrupo } from '@/lib/usuarios-do-grupo'
+import { vendedorDaVenda } from '@/lib/vendedor-escolhido'
+import { lojaDoEstoque, PAPEIS_VENDA_PECA, podeGerirPecas, podeVenderPeca, recusaDaQuantidadeVendida, recusaDoEstoque } from './papeis'
 import { avisosDaEdicao } from '@/lib/edicao-venda-peca'
 import { vendaPecaEditavel } from '@/lib/venda-peca-editavel'
 import { editarClienteVendaPecaTx } from '@/lib/editar-cliente-venda-peca'
@@ -173,10 +175,26 @@ function sanearPagamentos(entrada: PagamentoVendaPecaInput[]) {
   return { pagamentos, valorTotal }
 }
 
+/**
+ * Em nome de quem a venda sai (#308). Quem registra sempre pode ficar com a venda; outra pessoa só se for do
+ * grupo (CNPJ) da loja e de papel que vende peça, pela mesma lista que a tela mostra (a folha é por grupo).
+ * Id de outro grupo, de outra Conta e inexistente recebem a mesma frase.
+ */
+async function responsavelDaVendaPeca(usuario: Awaited<ReturnType<typeof getUsuarioLogado>>, lojaId: string, escolhido?: string | null) {
+  const responsavelId = vendedorDaVenda(usuario, escolhido)
+  if (responsavelId === usuario.id) return responsavelId
+  const doGrupo = await listarUsuariosDoGrupo(await getGrupoIdDaLoja(lojaId), { papeis: PAPEIS_VENDA_PECA })
+  if (!doGrupo.some(u => u.id === responsavelId)) throw new RecusaUsuario('Vendedor não encontrado')
+  return responsavelId
+}
+
+// `vendedorId` é o responsável escolhido na tela; fica fora de DadosVendaPeca porque a aprovação o guarda na coluna própria.
+type PedidoVendaPeca = DadosVendaPeca & { vendedorId?: string }
+
 export async function registrarVendaPecaAction(...a: Parameters<typeof registrarVendaPeca>) {
   return acao(() => registrarVendaPeca(...a))
 }
-async function registrarVendaPeca(input: DadosVendaPeca) {
+async function registrarVendaPeca(input: PedidoVendaPeca) {
   const usuario = await verificarAcessoVenda()
   if (input.itens.length === 0) throw new RecusaUsuario('Adicione ao menos um item')
   if (input.pagamentos.length === 0) throw new RecusaUsuario('Informe ao menos uma forma de pagamento')
@@ -187,6 +205,7 @@ async function registrarVendaPeca(input: DadosVendaPeca) {
   if (!lojaIdsGrupo.includes(input.lojaId)) throw new RecusaUsuario('Sem permissão para esta loja')
   // Como na tela: quem não é admin vende peça só pela própria loja.
   if (!(await podeAgirNaLoja(usuario, input.lojaId))) throw new RecusaUsuario('Sem permissão para esta loja')
+  const responsavelId = await responsavelDaVendaPeca(usuario, input.lojaId, input.vendedorId)
 
   // Venda para empresa: sem CNPJ o recibo não identifica o tomador, e é justamente
   // o recibo que a empresa leva pra lançar a compra.
@@ -205,16 +224,22 @@ async function registrarVendaPeca(input: DadosVendaPeca) {
   // faz a venda que vai pra aprovação já ficar gravada com o preço certo — senão o
   // ajuste sumiria só quando alguém aprovasse, dias depois.
   const podeDefinirPreco = podeGerirPecas(usuario.papel)
-  const comCliente = { ...input, pagamentos, clienteTipoPessoa: tipoPessoa, clienteDocumento: doc.documento }
-  const saneado: DadosVendaPeca = podeDefinirPreco
-    ? comCliente
-    : { ...comCliente, itens: input.itens.map(({ pecaId, quantidade }) => ({ pecaId, quantidade })) }
+  // Campo a campo (#891): o que o navegador mandar a mais não chega ao `dados_venda` guardado.
+  const saneado: DadosVendaPeca = {
+    lojaId: input.lojaId,
+    clienteNome: input.clienteNome,
+    clienteTipoPessoa: tipoPessoa,
+    clienteDocumento: doc.documento,
+    itens: input.itens.map(({ pecaId, quantidade, valorUnitario }) =>
+      podeDefinirPreco && valorUnitario !== undefined ? { pecaId, quantidade, valorUnitario } : { pecaId, quantidade }),
+    pagamentos,
+  }
 
   if (temPagamentoSensivelPeca(saneado.pagamentos) && !(await podeAprovarPagamentoSensivelNaLoja(usuario, saneado.lojaId))) {
     await db.insert(aprovacoesVenda).values({
       origem: 'peca',
       lojaId: saneado.lojaId,
-      vendedorId: usuario.id,
+      vendedorId: responsavelId,
       valor: valorTotal.toFixed(2),
       dadosVenda: saneado,
       motivo: 'Pagamento via Financiamento — venda de peças',
@@ -225,7 +250,7 @@ async function registrarVendaPeca(input: DadosVendaPeca) {
     return { aguardandoAprovacao: true as const }
   }
 
-  const resultado = await db.transaction(tx => aplicarVendaPeca(tx, usuario.id, saneado))
+  const resultado = await db.transaction(tx => aplicarVendaPeca(tx, responsavelId, saneado))
   revalidatePath('/pecas')
   return { aguardandoAprovacao: false as const, id: resultado.id }
 }
