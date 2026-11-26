@@ -74,6 +74,19 @@ export function lojaNoEscopo(usuario: EscopoDoUsuario & { papel: string }, colun
   return usuario.contaId ? inArray(coluna, lojasDoEscopo(usuario)) : null
 }
 
+// Grupo e entrada mínima da reserva (#283) da loja de um registro lido pelo id, com a Conta no where
+// (lojaNoEscopo). Loja de outra Conta, sem Conta ou inexistente: null, a mesma resposta nos três.
+export async function lojaDoEscopo(usuario: EscopoDoUsuario & { papel: string }, lojaId: string, exec: Executor = db) {
+  const doEscopo = lojaNoEscopo(usuario, lojas.id)
+  if (doEscopo === null) return null
+  const [loja] = await exec
+    .select({ grupoId: lojas.grupoId, entradaMinimaPct: lojas.entradaMinimaReservaPct })
+    .from(lojas)
+    .where(and(eq(lojas.id, lojaId), doEscopo))
+    .limit(1)
+  return loja ?? null
+}
+
 // O grupo está no escopo de quem consulta: o da persona, ou qualquer um da Conta.
 export async function grupoNoEscopo(grupoId: string, usuario: EscopoDoUsuario, exec: Executor = db): Promise<boolean> {
   if (usuario.grupoLiberado) return grupoId === usuario.grupoLiberado

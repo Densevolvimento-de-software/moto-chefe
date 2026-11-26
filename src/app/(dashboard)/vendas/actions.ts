@@ -8,14 +8,14 @@ import { registrarAcaoSensivelSemFalhar } from '@/lib/log-acoes'
 import { registrarTrocaDeVendedor } from '@/lib/troca-vendedor-venda'
 import { db } from '@/lib/db'
 import { conferirMaquininhas, operadorasGravadas } from '@/lib/maquininhas'
-import { motos, modelos, lojas, modeloBlingCodigos, pedidosVenda, vendas, reservas, historicoEstoque, lancamentosCaixa, precificacao, configuracaoTaxas, usuarios, clientes, aprovacoesVenda, demandas, notasFiscaisSaida, nfeBlingArquivo } from '@/lib/db/schema'
+import { motos, modelos, modeloBlingCodigos, pedidosVenda, vendas, reservas, historicoEstoque, lancamentosCaixa, precificacao, configuracaoTaxas, usuarios, clientes, aprovacoesVenda, demandas, notasFiscaisSaida, nfeBlingArquivo } from '@/lib/db/schema'
 import { eq, and, isNull, isNotNull, notInArray, inArray, desc, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { calcLiquidoRecebido } from '@/lib/preco-minimo'
 import { fraseEntradaMinimaServidor, validarReserva } from '@/lib/entrada-minima-reserva'
 import { pagamentosFecham, somaPagamentos, descreverPagamentos, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
 import { podeAbrirRegistroDaLoja, podeEditarVendaDaLoja, podeVenderMotoDaLoja } from '@/lib/acesso-registro'
-import { clientesDoEscopo, contaDaLoja, lojasDoEscopo } from '@/lib/conta'
+import { clientesDoEscopo, contaDaLoja, lojaDoEscopo, lojasDoEscopo } from '@/lib/conta'
 import { conferirComprador, conferirCompradorDaVenda, gravarCompradorDaVenda } from '@/lib/venda-comprador'
 import { contaDoGrupoAtivo, getGrupoIdDaLoja, podeAprovarVendaBaixoValor, podeAprovarPagamentoSensivelNaLoja, podeUsuarioVerGrupo } from '@/lib/grupo'
 import { aplicarPagamentoOS, type DadosPagamentoOS } from '@/lib/pagamento-os'
@@ -41,7 +41,7 @@ import { cancelarPedidoTx, criarPedidoTx } from '@/lib/pedido-venda'
 import { travaDoValorVenda, travaDoVendedorVenda } from '@/lib/valor-venda'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { pedidoDoUsuario } from '@/lib/pedido-do-usuario'
-import { motoDoUsuario, travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
+import { daContaDo, motoDoUsuario, travarMotoNaoArquivada } from '@/lib/moto-do-usuario'
 import { aprovacaoDoUsuario } from '@/lib/aprovacao-do-usuario'
 import { voltarMotoAoEstoque } from '@/lib/motos-vendidas-sem-venda'
 import { vendedorDaConta } from '@/lib/vendedor-da-conta'
@@ -113,17 +113,20 @@ export type PrecoMinimoInfo = {
 
 export async function buscarPrecoMinimoAction(motoId: string): Promise<PrecoMinimoInfo | null> {
   const usuario = await getUsuarioLogado()
-  const [moto] = await db.select({ modeloId: motos.modeloId, lojaId: motos.lojaId }).from(motos).where(eq(motos.id, motoId)).limit(1)
+  const daConta = daContaDo(usuario)
+  if (daConta === null) return null
+  const [moto] = await db.select({ modeloId: motos.modeloId, lojaId: motos.lojaId }).from(motos).where(and(eq(motos.id, motoId), daConta)).limit(1)
   if (!moto || !(await podeVenderMotoDaLoja(usuario, moto.lojaId))) return null
-  return buscarPrecificacao(moto.modeloId, moto.lojaId)
+  return buscarPrecificacao(usuario, moto.modeloId, moto.lojaId)
 }
 
-async function buscarPrecificacao(modeloId: string, lojaId: string) {
+async function buscarPrecificacao(usuario: Parameters<typeof lojaDoEscopo>[0], modeloId: string, lojaId: string) {
   const [modeloRow, loja] = await Promise.all([
     db.select({ modelo: modelos.modelo }).from(modelos).where(eq(modelos.id, modeloId)).limit(1).then(r => r[0]),
-    db.select({ grupoId: lojas.grupoId, entradaMinimaPct: lojas.entradaMinimaReservaPct }).from(lojas).where(eq(lojas.id, lojaId)).limit(1).then(r => r[0]),
+    lojaDoEscopo(usuario, lojaId),
   ])
-  if (!loja) throw new Error('Loja não encontrada')
+  // Sem a loja no escopo não há como conferir a entrada mínima: recusa, nunca "sem precificação".
+  if (!loja) throw new RecusaUsuario('Moto não encontrada')
   const grupoId = loja.grupoId
   if (!modeloRow) return null
 
@@ -501,7 +504,7 @@ async function registrarVendaCompleta(data: DadosVendaCompleta) {
   // admin_geral/admin_socio podem vender abaixo do mínimo direto (auto-aprovação);
   // os demais papéis devem usar solicitarAprovacaoVendaAction nesse caso.
   const podeVenderAbaixoDoMinimo = ['admin_geral', 'admin_socio'].includes(usuario.papel)
-  const prec = await buscarPrecificacao(moto.modeloId, moto.lojaId)
+  const prec = await buscarPrecificacao(usuario, moto.modeloId, moto.lojaId)
   if (prec && !podeVenderAbaixoDoMinimo) {
     const liquido = calcLiquidoRecebido(data.pagamentos, prec.taxas)
     if (liquido < prec.valorMinimoPix - 0.01) {
@@ -1107,7 +1110,7 @@ async function registrarReserva(data: DadosReserva) {
   // comprovante, o histórico e queries/motos.ts leem. O detalhe vai no jsonb.
   const principal = pagamentos[0]
 
-  const prec = await buscarPrecificacao(moto.modeloId, moto.lojaId)
+  const prec = await buscarPrecificacao(usuario, moto.modeloId, moto.lojaId)
   if (prec) {
     const valorTotalNum = parseFloat(data.valorTotalVenda)
     const check = validarReserva(valorNum, isNaN(valorTotalNum) ? 0 : valorTotalNum, prec.valorMinimoPix, prec.entradaMinimaPct)
@@ -1678,7 +1681,7 @@ async function solicitarAprovacaoVenda(
     motivoFinal = motivo.trim() || `Pagamento via ${[...new Set(tiposUsados)].join(' + ')}`
   } else {
     if (!motivo.trim()) throw new RecusaUsuario('Informe o motivo do pedido de aprovação')
-    const prec = await buscarPrecificacao(moto.modeloId, moto.lojaId)
+    const prec = await buscarPrecificacao(usuario, moto.modeloId, moto.lojaId)
     if (!prec) throw new RecusaUsuario('Sem preço mínimo configurado para este modelo. Use o fluxo normal de venda')
     const liquido = calcLiquidoRecebido(data.pagamentos, prec.taxas)
     if (liquido >= prec.valorMinimoPix - 0.01) {
