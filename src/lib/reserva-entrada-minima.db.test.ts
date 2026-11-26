@@ -137,3 +137,29 @@ test('buscarPrecoMinimoAction devolve a porcentagem da loja da moto; usuário de
   assert.equal(await vendas.buscarPrecoMinimoAction(moto), null)
   assert.equal(await vendas.buscarPrecoMinimoAction(randomUUID()), null)
 })
+
+test('pedido forjado: porcentagem, loja e campos a mais no pedido não mudam o mínimo; a recusa continua e nada é gravado', async () => {
+  const c = await novaConta([20, 0])
+  entrarComoSocio(c)
+  const moto = await novaMoto(c, c.lojas[20])
+  const forjado = {
+    motoId: moto, ...cliente, valorReserva: '1000.00', valorTotalVenda: '20000.00',
+    pagamentos: [{ tipo: 'pix', valor: 1000 }], dataPrevistaFinalizacao: '2026-12-01',
+    entradaMinimaPct: 0, lojaId: c.lojas[0], precoMinimoPix: 100, valorMinimoPix: 100,
+  }
+  const r = await vendas.registrarReservaAction(forjado as never)
+  assert.deepEqual(r.ok ? r : { ok: false, erro: espacoComum(r.erro) }, { ok: false, erro: 'Entrada mínima de R$ 3.000,00 (20% do preço PIX R$ 15.000,00)' })
+  assert.deepEqual(await reservasDaMoto(moto), [])
+})
+
+test('moto de outra Conta: a mesma frase de moto inexistente, e nada é gravado', async () => {
+  const a = await novaConta([20])
+  const b = await novaConta([])
+  const moto = await novaMoto(a, a.lojas[20])
+  entrarComoSocio(b)
+  const deOutraConta = await reservar(moto, 3000)
+  const inexistente = await reservar(randomUUID(), 3000)
+  assert.deepEqual(deOutraConta, { ok: false, erro: 'Moto não encontrada' })
+  assert.deepEqual(inexistente, deOutraConta)
+  assert.deepEqual(await reservasDaMoto(moto), [])
+})
