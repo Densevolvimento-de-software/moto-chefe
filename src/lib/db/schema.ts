@@ -171,6 +171,9 @@ export const lojas = pgTable('lojas', {
   // cadastro distinto lá — o que uma conta enxerga a outra não enxerga.
   fabricaEmail: text('fabrica_email'),
   fabricaSenha: text('fabrica_senha'),
+  // Entrada mínima da reserva (#283): % do preço mínimo PIX, de 0 a 100 (trava no banco).
+  // O padrão repete ENTRADA_MINIMA_PADRAO_PCT de @/lib/entrada-minima-reserva.
+  entradaMinimaReservaPct: integer('entrada_minima_reserva_pct').notNull().default(30),
 })
 
 // ─── maquininhas ─────────────────────────────────────────────────────────────

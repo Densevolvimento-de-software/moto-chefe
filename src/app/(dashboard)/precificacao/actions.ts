@@ -1,9 +1,9 @@
 'use server'
 import { db } from '@/lib/db'
-import { precificacao, configuracaoTaxas } from '@/lib/db/schema'
+import { precificacao, configuracaoTaxas, lojas } from '@/lib/db/schema'
 import { getUsuarioLogado } from '@/lib/auth'
 import { getGrupoAtivo } from '@/lib/grupo'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, inArray, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { salvarPadraoSimulador, salvarPrecoDoModelo } from '@/lib/precificacao-modelos'
 import { ehPadraoSimulador } from '@/lib/simulador-padrao'
@@ -11,6 +11,8 @@ import { ehMatrizDePlanilha } from '@/lib/planilha-precos'
 import { acao, RecusaUsuario } from '@/lib/resultado-action'
 import { gravarImportacao, previaDaImportacao } from '@/lib/importar-precos'
 import { CUSTO_PIX_FORA_DA_FAIXA, lerCustoPixTaxa } from '@/lib/custo-pix'
+import { lerEntradasMinimas } from '@/lib/entrada-minima-reserva'
+import { lojasDaConta } from '@/lib/conta'
 
 const ADMINS = ['admin_geral', 'admin_socio']
 
@@ -61,6 +63,29 @@ export async function salvarTaxasAction(data: TaxasPayload) {
     revalidatePath('/precificacao')
     revalidatePath('/simulador')
     revalidatePath('/financeiro')
+  })
+}
+
+/**
+ * Entrada mínima da reserva (#283): grava a porcentagem de cada loja do pedido, tudo ou nada. A loja
+ * precisa ser ativa, do grupo ativo e da Conta dele (a tela só lista as ativas); loja de outra Conta, desativada
+ * e id que não existe recebem a mesma frase.
+ */
+export async function salvarEntradaMinimaReservaAction(entradas: unknown) {
+  return acao(async () => {
+    const grupo = await checarAdmin()
+    const lidas = lerEntradasMinimas(entradas)
+    if (!lidas) throw new RecusaUsuario('Informe a entrada mínima de cada loja como número inteiro de 0 a 100')
+    await db.transaction(async tx => {
+      for (const { lojaId, pct } of lidas) {
+        const campos = { entradaMinimaReservaPct: pct } satisfies Pick<typeof lojas.$inferInsert, 'entradaMinimaReservaPct'>
+        const gravadas = await tx.update(lojas).set(campos)
+          .where(and(eq(lojas.id, lojaId), eq(lojas.grupoId, grupo.id), eq(lojas.ativa, true), inArray(lojas.id, lojasDaConta(grupo.contaId))))
+          .returning({ id: lojas.id })
+        if (gravadas.length === 0) throw new RecusaUsuario('Loja não encontrada')
+      }
+    })
+    revalidatePath('/precificacao')
   })
 }
 

@@ -7,10 +7,12 @@ import { TaxasForm } from './taxas-form'
 import { ModeloDialog } from './modelo-dialog'
 import { ImportarPrecos } from './importar-precos'
 import { PadraoSimuladorCard } from './padrao-simulador-card'
+import { EntradaMinimaCard } from './entrada-minima-card'
 import { toggleAtivoAction, excluirModeloAction, type TaxasPayload } from '../actions'
 import { parcelaDe12x, usaValor12x, type PadraoSimulador } from '@/lib/simulador-padrao'
 import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, TrendingUp, AlertTriangle, Tag } from 'lucide-react'
 import { fmtBRL } from '@/lib/preco-minimo'
+import type { LojaComEntradaMinima } from '@/lib/entrada-minima-reserva'
 
 type Modelo = {
   id: string
@@ -31,6 +33,8 @@ type Props = {
   modelos: Modelo[]
   grupoNome: string
   padraoSimulador: PadraoSimulador
+  /** Lojas ativas do grupo com a entrada mínima da reserva de cada uma (#283). */
+  lojasEntradaMinima: LojaComEntradaMinima[]
 }
 
 
@@ -55,7 +59,7 @@ function corMargem(pct: number) {
   return { badge: 'text-destructive bg-destructive/10 border-destructive/30', text: 'text-destructive' }
 }
 
-export function PrecificacaoClient({ taxas, modelos, grupoNome, padraoSimulador }: Props) {
+export function PrecificacaoClient({ taxas, modelos, grupoNome, padraoSimulador, lojasEntradaMinima }: Props) {
   const [dialogAberto, setDialogAberto] = useState(false)
   const [modeloEdicao, setModeloEdicao] = useState<Modelo | null>(null)
 
@@ -103,6 +107,8 @@ export function PrecificacaoClient({ taxas, modelos, grupoNome, padraoSimulador 
 
       {/* Taxas globais no topo */}
       <TaxasForm taxas={taxas} recolhida={com12x} />
+
+      <EntradaMinimaCard lojas={lojasEntradaMinima} />
 
       {/* Lista de modelos */}
       <div className="bg-card rounded-xl border shadow-sm">

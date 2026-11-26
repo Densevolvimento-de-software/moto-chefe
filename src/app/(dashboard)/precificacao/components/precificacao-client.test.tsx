@@ -11,7 +11,7 @@ after(desmontarDom)
 const nada = async () => ({ ok: true, dados: undefined })
 mock.module('../actions', { namedExports: {
   salvarTaxasAction: nada, salvarPrecoAction: nada, salvarPadraoSimuladorAction: nada, toggleAtivoAction: nada,
-  excluirModeloAction: nada, previaImportacaoAction: nada, importarPrecosAction: nada,
+  excluirModeloAction: nada, previaImportacaoAction: nada, importarPrecosAction: nada, salvarEntradaMinimaReservaAction: nada,
 } })
 
 const montados: (() => Promise<void>)[] = []
@@ -40,7 +40,7 @@ async function montar(padraoSimulador: 'taxas' | 'avista_12x') {
   document.body.appendChild(container)
   const root = createRoot(container)
   await act(async () => {
-    root.render(createElement(PrecificacaoClient, { taxas: TAXAS, modelos: MODELOS, grupoNome: 'Grupo A', padraoSimulador }))
+    root.render(createElement(PrecificacaoClient, { taxas: TAXAS, modelos: MODELOS, grupoNome: 'Grupo A', padraoSimulador, lojasEntradaMinima: [] }))
   })
   let montado = true
   montados.push(() => act(async () => { if (!montado) return; montado = false; root.unmount(); container.remove() }))

@@ -144,6 +144,10 @@ O dinheiro que o cliente paga para reservar uma moto, com um valor mínimo. A te
 _Evitar_: valor da reserva; "entrada" sozinha, que também é entrada de motos, entrada de caixa e
 entrada do financiamento
 
+**Entrada mínima da reserva**:
+Menor entrada da reserva aceita: uma porcentagem do preço mínimo PIX do modelo, definida por loja
+pelos sócios na Precificação. Abaixo dela a reserva é recusada.
+
 **Venda**:
 O registro definitivo da venda de uma moto: cliente, valor, formas de pagamento, origem da venda
 e NF de saída. A tela chama o ato de "finalizar" ou "registrar" venda.
