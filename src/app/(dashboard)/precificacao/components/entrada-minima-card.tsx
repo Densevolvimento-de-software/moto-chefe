@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Lock, Save, Wallet } from 'lucide-react'
+import { Lock, Save, Store, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -63,7 +63,10 @@ export function EntradaMinimaCard({ lojas }: { lojas: LojaComEntradaMinima[] }) 
             const pct = pctDe(loja)
             return (
               <div key={loja.id} className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_8rem_14rem] items-center gap-x-4 gap-y-1.5 border-t px-4 sm:px-6 py-3">
-                <span className="font-semibold text-foreground">{loja.nome}</span>
+                <span className="flex items-center gap-2 font-semibold text-foreground">
+                  <Store size={16} aria-hidden className="shrink-0 text-muted-foreground" />
+                  {loja.nome}
+                </span>
                 <div>
                   <div className="relative w-28 sm:w-full">
                     <Input
