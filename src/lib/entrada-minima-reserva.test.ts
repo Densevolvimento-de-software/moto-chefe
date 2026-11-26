@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fraseEntradaMinimaServidor, fraseEntradaMinimaTela, minimoDaEntrada, validarReserva } from './entrada-minima-reserva'
+import {
+  entradaMinimaPctDoCampo, fraseEntradaMinimaServidor, fraseEntradaMinimaTela, lerEntradaMinimaPct, lerEntradasMinimas,
+  minimoDaEntrada, validarReserva,
+} from './entrada-minima-reserva'
 
 const PIX = 15000
 // O Intl separa "R$" do valor com espaço sem quebra; a frase da tela é a mesma com espaço comum.
@@ -41,4 +44,36 @@ test('o aviso do valor total não depende da porcentagem: total abaixo do PIX se
 test('as duas frases levam a porcentagem da loja', () => {
   assert.equal(espacoComum(fraseEntradaMinimaServidor(3000, 20, PIX)), 'Entrada mínima de R$ 3.000,00 (20% do preço PIX R$ 15.000,00)')
   assert.equal(espacoComum(fraseEntradaMinimaTela(3000, 20)), 'Mínimo de R$ 3.000,00 (20% do preço PIX)')
+})
+
+test('a porcentagem é um número inteiro de 0 a 100; o resto é recusado', () => {
+  assert.deepEqual([0, 30, 100].map(lerEntradaMinimaPct), [0, 30, 100])
+  for (const ruim of [20.5, -1, 101, '20', null, undefined, NaN, Infinity, {}]) assert.equal(lerEntradaMinimaPct(ruim), null, String(ruim))
+})
+
+test('o campo da tela aceita só dígitos inteiros de 0 a 100, com espaço nas pontas', () => {
+  assert.equal(entradaMinimaPctDoCampo('20'), 20)
+  assert.equal(entradaMinimaPctDoCampo(' 20 '), 20)
+  assert.equal(entradaMinimaPctDoCampo('0'), 0)
+  for (const ruim of ['', '2,5', '2.5', '1e2', '101', '-1', 'abc', '020x']) assert.equal(entradaMinimaPctDoCampo(ruim), null, ruim)
+})
+
+const LOJA_1 = '11111111-1111-4111-8111-111111111111'
+const LOJA_2 = '22222222-2222-4222-8222-222222222222'
+
+test('o pedido vira só pares loja e porcentagem; campo a mais do navegador some', () => {
+  const lido = lerEntradasMinimas([{ lojaId: LOJA_1, pct: 20, grupoId: 'outro', ativa: false }, { lojaId: LOJA_2, pct: 0 }])
+  assert.deepEqual(lido, [{ lojaId: LOJA_1, pct: 20 }, { lojaId: LOJA_2, pct: 0 }])
+})
+
+test('pedido ilegível é recusado inteiro: vazio, sem lista, id que não é UUID, loja repetida, porcentagem ruim', () => {
+  const ruins: unknown[] = [
+    [], null, 'x', { lojaId: LOJA_1, pct: 20 },
+    [{ lojaId: 'nao-e-uuid', pct: 20 }],
+    [{ lojaId: LOJA_1, pct: 20 }, { lojaId: LOJA_1, pct: 10 }],
+    [{ lojaId: LOJA_1, pct: 20 }, { lojaId: LOJA_2, pct: 20.5 }],
+    [{ lojaId: LOJA_1, pct: '20' }],
+    [null],
+  ]
+  for (const ruim of ruins) assert.equal(lerEntradasMinimas(ruim), null, JSON.stringify(ruim))
 })
