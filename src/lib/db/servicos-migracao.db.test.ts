@@ -28,7 +28,7 @@ test('migração separa serviço usado por duas Contas e preserva os itens de OS
       insert into os_itens (os_id,servico_id,tipo,descricao,valor_unitario) values ('00000000-0000-0000-0000-000000000031','00000000-0000-0000-0000-000000000041','servico','Nome histórico A',80), ('00000000-0000-0000-0000-000000000031','00000000-0000-0000-0000-000000000041','servico','Outro item A',70), ('00000000-0000-0000-0000-000000000032','00000000-0000-0000-0000-000000000041','servico','Nome histórico B',90);
       insert into os_itens (os_id,servico_id,tipo,descricao,valor_unitario) values ('00000000-0000-0000-0000-000000000031','00000000-0000-0000-0000-000000000043','servico','Só A',30);
     `))
-    await tx.execute(sql.raw(readFileSync('src/lib/db/migrations/0208_servicos_copias_por_conta.sql', 'utf8')))
+    await tx.execute(sql.raw(readFileSync('src/lib/db/migrations/0209_servicos_copias_por_conta.sql', 'utf8')))
     const { rows } = await tx.execute(sql`select c.conta_id, c.nome, c.valor, c.ativo, c.tempo_previsto_minutos, i.descricao, i.valor_unitario
       from os_itens i join servicos_catalogo c on c.id = i.servico_id order by c.conta_id, i.descricao`) as unknown as { rows: Record<string, string>[] }
     assert.deepEqual(rows.map(r => [r.conta_id?.slice(-1), r.nome, r.valor, r.ativo, r.tempo_previsto_minutos, r.descricao, r.valor_unitario]), [
@@ -55,7 +55,7 @@ test('migração recusa OS sem Conta e preserva o serviço e seu vínculo', asyn
       insert into servicos_catalogo (id,nome,valor) values ('00000000-0000-0000-0000-000000000041','Revisão',100);
       insert into os_itens (os_id,servico_id,tipo,descricao,valor_unitario) values ('00000000-0000-0000-0000-000000000031','00000000-0000-0000-0000-000000000041','servico','Original',80);
     `))
-    await assert.rejects(tx.transaction(t => t.execute(sql.raw(readFileSync('src/lib/db/migrations/0208_servicos_copias_por_conta.sql', 'utf8')))), (erro: unknown) => {
+    await assert.rejects(tx.transaction(t => t.execute(sql.raw(readFileSync('src/lib/db/migrations/0209_servicos_copias_por_conta.sql', 'utf8')))), (erro: unknown) => {
       const causa = (erro as { cause?: { message?: string } }).cause
       assert.match(causa?.message ?? '', /OS com serviço sem Conta/)
       return true
