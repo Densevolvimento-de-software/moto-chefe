@@ -181,6 +181,18 @@ test('loja de OUTRO grupo da mesma Conta: "Loja não encontrada" e nada do pedid
   assert.equal(await pctDoGrupoA2(), 30)
 })
 
+test('loja desativada do grupo: "Loja não encontrada" e nada do pedido é gravado', async () => {
+  await partirDe({ lojaA: 30, lojaA2: 30, lojaB: 30 })
+  await db.execute(sql`update lojas set ativa = false where id = ${s.lojaA2}`)
+  sessao = sessaoDoSocioA()
+  try {
+    assert.deepEqual(await salvarEntradaMinimaReservaAction([{ lojaId: s.lojaA, pct: 20 }, { lojaId: s.lojaA2, pct: 0 }]), LOJA_NAO_ENCONTRADA)
+    assert.deepEqual(await pctsAgora(), { lojaA: 30, lojaA2: 30, lojaB: 30 })
+  } finally {
+    await db.execute(sql`update lojas set ativa = true where id = ${s.lojaA2}`)
+  }
+})
+
 test('aux_adm e vendedor são recusados e nada é gravado', async () => {
   await partirDe({ lojaA: 30, lojaA2: 30, lojaB: 30 })
   for (const papel of ['aux_adm', 'vendedor']) {

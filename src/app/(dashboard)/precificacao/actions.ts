@@ -68,7 +68,8 @@ export async function salvarTaxasAction(data: TaxasPayload) {
 
 /**
  * Entrada mínima da reserva (#283): grava a porcentagem de cada loja do pedido, tudo ou nada. A loja
- * precisa ser do grupo ativo e da Conta dele; loja de outra Conta e id que não existe recebem a mesma frase.
+ * precisa ser ativa, do grupo ativo e da Conta dele (a tela só lista as ativas); loja de outra Conta, desativada
+ * e id que não existe recebem a mesma frase.
  */
 export async function salvarEntradaMinimaReservaAction(entradas: unknown) {
   return acao(async () => {
@@ -79,7 +80,7 @@ export async function salvarEntradaMinimaReservaAction(entradas: unknown) {
       for (const { lojaId, pct } of lidas) {
         const campos = { entradaMinimaReservaPct: pct } satisfies Pick<typeof lojas.$inferInsert, 'entradaMinimaReservaPct'>
         const gravadas = await tx.update(lojas).set(campos)
-          .where(and(eq(lojas.id, lojaId), eq(lojas.grupoId, grupo.id), inArray(lojas.id, lojasDaConta(grupo.contaId))))
+          .where(and(eq(lojas.id, lojaId), eq(lojas.grupoId, grupo.id), eq(lojas.ativa, true), inArray(lojas.id, lojasDaConta(grupo.contaId))))
           .returning({ id: lojas.id })
         if (gravadas.length === 0) throw new RecusaUsuario('Loja não encontrada')
       }
