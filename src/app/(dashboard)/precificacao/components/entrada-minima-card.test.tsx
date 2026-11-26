@@ -74,6 +74,14 @@ test('porcentagem inválida mostra a frase no campo e o Salvar não chama o serv
   assert.equal(salvar.mock.calls.length, 0)
 })
 
+test('com porcentagem inválida a linha do exemplo some, sem deixar a frase pela metade (celular)', async () => {
+  await montar()
+  const linha = () => espacoComum(campo('Loja Norte').closest('div.grid')?.textContent ?? '')
+  assert.match(linha(), /Num modelo de R\$ 15\.000,00: entrada de R\$ 3\.000,00/)
+  await digitar(campo('Loja Norte'), '101')
+  assert.doesNotMatch(linha(), /entrada de/)
+})
+
 test('Salvar manda os pares loja e porcentagem de todas as lojas', async () => {
   const t = await montar()
   await digitar(campo('Loja Norte'), '0')

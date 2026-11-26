@@ -80,8 +80,12 @@ export function EntradaMinimaCard({ lojas }: { lojas: LojaComEntradaMinima[] }) 
                   {pct === null && <p className="mt-1 text-xs text-destructive">{FRASE_CAMPO}</p>}
                 </div>
                 <p className="col-span-2 sm:col-span-1 text-xs sm:text-sm text-muted-foreground sm:text-right tabular-nums">
-                  <span className="sm:hidden">Num modelo de {EXEMPLO}: entrada de </span>
-                  {pct !== null && <b className="font-semibold text-foreground">{fmtBRL(minimoDaEntrada(PRECO_PIX_EXEMPLO, pct))}</b>}
+                  {pct !== null && (
+                    <>
+                      <span className="sm:hidden">Num modelo de {EXEMPLO}: entrada de </span>
+                      <b className="font-semibold text-foreground">{fmtBRL(minimoDaEntrada(PRECO_PIX_EXEMPLO, pct))}</b>
+                    </>
+                  )}
                 </p>
               </div>
             )
