@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Loader2, PackageCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { SESSAO_ENCERRADA, ehSessaoEncerrada } from '@/lib/sessao-encerrada'
 import { marcarChegadaAction } from '../[id]/actions'
 
 type Props = { motoId: string; descricao: string }
@@ -24,9 +25,14 @@ export function ChegouButton({ motoId, descricao }: Props) {
         // A recusa não revalida a lista (a action lança antes): sem isto a linha velha fica com o botão.
         router.refresh()
       }
-    } catch {
-      // Em produção o React troca a mensagem do erro lançado por Server Action (#404): frase fixa, nunca a do erro.
-      toast.error('Não foi possível marcar a chegada. Tente de novo.')
+    } catch (e) {
+      if (ehSessaoEncerrada(e)) {
+        // O proxy recusou o clique (#281). Sem redirecionar sozinho: a pessoa decide quando sair da tela.
+        toast.error(SESSAO_ENCERRADA, { duration: Infinity, action: { label: 'Entrar de novo', onClick: () => router.push('/login') } })
+      } else {
+        // Em produção o React troca a mensagem do erro lançado por Server Action (#404): frase fixa, nunca a do erro.
+        toast.error('Não foi possível marcar a chegada. Tente de novo.')
+      }
     } finally {
       setEnviando(false)
     }
