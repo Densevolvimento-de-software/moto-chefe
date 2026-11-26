@@ -95,7 +95,7 @@ export async function middleware(request: NextRequest) {
     // erro 4xx como mensagem só se o content-type for exatamente "text/plain" (sem charset).
     // A action não roda: continua barrada aqui, só muda a forma da recusa (#281).
     if (ehCliqueDeAcao(request.method, request.headers)) {
-      return new NextResponse(SESSAO_ENCERRADA, { status: 401, headers: { 'content-type': 'text/plain' } })
+      return new NextResponse(SESSAO_ENCERRADA, { status: 401, headers: { 'content-type': 'text/plain', 'cache-control': 'no-store' } })
     }
     return NextResponse.redirect(new URL('/login', request.url))
   }

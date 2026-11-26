@@ -124,6 +124,13 @@ test('sem sessão: clique de action (next-action) recebe 401 em texto com a fras
   assert.equal(destino(r), null)
 })
 
+test('o 401 de sessão encerrada não é guardado em cache e segue com o content-type exato', async () => {
+  claims = null
+  const r = await pedir('POST', '/estoque', { 'next-action': 'qualquer' })
+  assert.equal(r.headers.get('cache-control'), 'no-store')
+  assert.equal(r.headers.get('content-type'), 'text/plain')
+})
+
 test('sem sessão: só o POST com next-action preenchido recebe o 401; GET, HEAD e cabeçalho vazio vão ao login', async () => {
   claims = null
   // O Next só executa action em POST, e o cliente sempre manda o id dela.
