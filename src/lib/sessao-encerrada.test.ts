@@ -23,10 +23,10 @@ test('outro erro, texto solto, nada ou objeto que só imita a mensagem não são
 // de seguir. Sem o ramo, o Chegou volta à frase fixa e os outros botões ao texto em inglês de antes.
 const REDUCER = join(process.cwd(), 'node_modules/next/dist/client/components/router-reducer/reducers/server-action-reducer.js')
 const LE_CORPO_DO_ERRO = /res\.status\s*>=\s*400\s*&&\s*contentType\s*===\s*'text\/plain'\s*\?\s*await res\.text\(\)/
-const REJEITA_A_ACTION = /reject\(e\)/
+const LANCA_O_CORPO = /throw new Error\(message\)/
 
 test('o cliente do Next instalado ainda usa o corpo text/plain de um 4xx como mensagem do erro da action', () => {
   const fonte = readFileSync(REDUCER, 'utf8')
   assert.match(fonte, LE_CORPO_DO_ERRO)
-  assert.match(fonte, REJEITA_A_ACTION)
+  assert.match(fonte, LANCA_O_CORPO)
 })

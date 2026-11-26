@@ -139,7 +139,7 @@ test('sem sessão: só o POST com next-action preenchido recebe o 401; GET, HEAD
   assert.equal(destino(await pedir('POST', '/estoque', { 'next-action': '' })), '/login')
 })
 
-/** O Next compila `matcher` para uma regex ancorada; o lookahead negativo vale igual como RegExp. */
+/** Aproxima o matcher do Next por uma RegExp ancorada (`^...$`): o teste confere o padrão escrito em `config`, não o compilador do Next. */
 async function foraDoMatcher(caminho: string) {
   const { config } = await import('./middleware')
   return config.matcher.every(m => !new RegExp(`^${m}$`).test(caminho))
