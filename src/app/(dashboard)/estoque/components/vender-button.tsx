@@ -850,8 +850,8 @@ export function VenderButton({ motoId, descricao, vendedorId, vendedorNome, pape
                     <div className="space-y-1">
                       <Label>
                         Valor da Entrada (R$) <span className="text-destructive">*</span>
-                        {reservaValidacao && <span className="block text-xs text-muted-foreground">mín. {fmtBRL(reservaValidacao.minimoEntrada)} ({reservaValidacao.entradaMinimaPct}% do preço PIX)</span>}
                       </Label>
+                      {reservaValidacao && <p className="text-xs text-muted-foreground">mín. {fmtBRL(reservaValidacao.minimoEntrada)} ({reservaValidacao.entradaMinimaPct}% do preço PIX)</p>}
                       <CurrencyInput
                         value={valorReserva}
                         onChange={setValorReserva}

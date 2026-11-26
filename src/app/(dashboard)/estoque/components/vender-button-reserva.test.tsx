@@ -126,3 +126,13 @@ test('com o diálogo aberto, preço e porcentagem novos vindos da página valem 
   await t.act(() => esperar(10))
   assert.match(tela(), /Entrada: R\$ 4\.000,00 \(20%\)/)
 })
+
+test('a dica do mínimo fica num bloco próprio entre o rótulo e o campo, não dentro do rótulo (protótipo)', async () => {
+  await abrirReserva({ precoMinimoPix: 15000, entradaMinimaPct: 20 })
+  const rotulo = [...document.querySelectorAll('label')].find(l => /Valor da Entrada/.test(l.textContent ?? ''))!
+  const dica = [...document.querySelectorAll('p')].find(p => /mín\. R\$ 3\.000,00 \(20% do preço PIX\)/.test(espacoComum(p.textContent ?? '')))
+  assert.ok(dica, 'dica em um parágrafo próprio')
+  assert.equal(dica.closest('label'), null)
+  assert.equal(rotulo.nextElementSibling, dica)
+  assert.equal(dica.nextElementSibling?.querySelector('input') ?? dica.nextElementSibling, campoDaEntrada())
+})
