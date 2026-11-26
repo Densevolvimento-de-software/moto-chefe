@@ -163,3 +163,16 @@ test('moto de outra Conta: a mesma frase de moto inexistente, e nada é gravado'
   assert.deepEqual(inexistente, deOutraConta)
   assert.deepEqual(await reservasDaMoto(moto), [])
 })
+
+test('mudar a porcentagem vale só para a reserva seguinte; a já registrada fica como está', async () => {
+  const c = await novaConta([20])
+  entrarComoSocio(c)
+  const primeira = await novaMoto(c, c.lojas[20])
+  assert.equal((await reservar(primeira, 3000)).ok, true)
+  await db.execute(sql`update lojas set entrada_minima_reserva_pct = 100 where id = ${c.lojas[20]}`)
+  const segunda = await novaMoto(c, c.lojas[20])
+  const r = await reservar(segunda, 3000)
+  assert.deepEqual(r.ok ? r : { ok: false, erro: espacoComum(r.erro) }, { ok: false, erro: 'Entrada mínima de R$ 15.000,00 (100% do preço PIX R$ 15.000,00)' })
+  assert.deepEqual(await reservasDaMoto(primeira), [{ valor: 3000, status: 'ativa' }])
+  assert.deepEqual(await reservasDaMoto(segunda), [])
+})
