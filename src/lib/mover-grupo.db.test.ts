@@ -14,10 +14,11 @@ process.env.DATABASE_URL = url
 let db: typeof import('@/lib/db')['db']
 let moverGrupo: typeof import('@/lib/mover-grupo')['moverGrupo']
 let previaMoverGrupo: typeof import('@/lib/mover-grupo')['previaMoverGrupo']
+let temConflito: typeof import('@/lib/mover-grupo')['temConflito']
 
 before(async () => {
   ;({ db } = await import('@/lib/db'))
-  ;({ moverGrupo, previaMoverGrupo } = await import('@/lib/mover-grupo'))
+  ;({ moverGrupo, previaMoverGrupo, temConflito } = await import('@/lib/mover-grupo'))
 })
 
 after(async () => {
@@ -59,17 +60,24 @@ async function cenario(tx: Tx) {
   await tx.execute(sql`insert into veiculos_historico (chassi, conta_id) values ('CH554', ${o.id})`)
   const peca = await linha(tx, sql`insert into pecas_catalogo (nome, conta_id) values ('Pneu', ${o.id}) returning id`)
   await tx.execute(sql`insert into pecas_vinculo_fornecedor (conta_id, fornecedor_cnpj, codigo, nome_xml, peca_id) values (${o.id}, '1', 'C1', 'PNEU', ${peca.id})`)
+  // Catálogo de serviços da origem: um usado numa OS do grupo movido, outro sem uso. O destino tem um de mesmo nome (não é conflito).
+  const servicoUsado = await linha(tx, sql`insert into servicos_catalogo (conta_id, nome, valor) values (${o.id}, 'Revisão', 100) returning id`)
+  await tx.execute(sql`insert into servicos_catalogo (conta_id, nome, valor, ativo) values (${o.id}, 'Alinhamento', 50, false)`)
+  await tx.execute(sql`insert into servicos_catalogo (conta_id, nome, valor) values (${d.id}, 'Revisão', 120), (${t.id}, 'Da terceira', 10)`)
+  const ordem = await linha(tx, sql`insert into ordens_servico (loja_id, aberta_por, descricao) values (${go.loja}, ${vendedor.id}, 'OS do grupo movido') returning id`)
+  const itemDeOS = await linha(tx, sql`insert into os_itens (os_id, servico_id, tipo, descricao, valor_unitario) values (${ordem.id}, ${servicoUsado.id}, 'servico', 'Revisão feita', 90) returning id`)
   const moto = await linha(tx, sql`insert into motos (chassi, modelo_id, loja_id, cor, nota_fiscal_entrada, status, disponibilidade)
     values ('M554', ${proprio.id}, ${go.loja}, 'CINZA', '1', 'vendida', 'vendida') returning id`)
   const pedido = await linha(tx, sql`insert into pedidos_venda (moto_id, loja_id, vendedor_id) values (${moto.id}, ${go.loja}, ${vendedor.id}) returning id`)
   const venda = await linha(tx, sql`insert into vendas (pedido_venda_id, moto_id, loja_id, vendedor_id, efetivado_por, cliente_id, cliente_nome, cliente_cpf, cliente_celular, cliente_cidade, valor, forma_pagamento)
     values (${pedido.id}, ${moto.id}, ${go.loja}, ${vendedor.id}, ${vendedor.id}, ${cliente.id}, 'Cliente', '529.982.247-25', '3599', 'C', 1000, 'pix') returning id`)
   return { o: o.id, d: d.id, t: t.id, go, gd, gt, geral: { id: geral.id, papel: 'admin_geral' }, vendedor: vendedor.id, rede: rede.id,
-    cliente: cliente.id, clienteT: clienteT.id, proprio: proprio.id, peca: peca.id, venda: venda.id, cargo: cargo.id }
+    cliente: cliente.id, clienteT: clienteT.id, proprio: proprio.id, peca: peca.id, venda: venda.id, cargo: cargo.id,
+    servicoUsado: servicoUsado.id, itemDeOS: itemDeOS.id }
 }
 
 // Tudo o que aponta para uma Conta, para comparar antes e depois.
-const TABELAS = ['usuarios', 'clientes', 'modelos', 'modelo_apelidos', 'modelo_ajustes', 'veiculos_historico', 'pecas_catalogo', 'pecas_vinculo_fornecedor', 'cargos', 'conta_marcas', 'grupos']
+const TABELAS = ['usuarios', 'clientes', 'modelos', 'modelo_apelidos', 'modelo_ajustes', 'veiculos_historico', 'pecas_catalogo', 'pecas_vinculo_fornecedor', 'servicos_catalogo', 'cargos', 'conta_marcas', 'grupos']
 async function fotografia(tx: Tx, contaId: string) {
   const r: Record<string, number> = {}
   for (const t of TABELAS) r[t] = Number((await linha(tx, sql`select count(*)::int n from ${sql.raw(t)} where conta_id = ${contaId}`)).n)
@@ -98,6 +106,17 @@ test('move: tudo da origem vai para a destino, a origem fica desativada e vazia,
     assert.equal((await linha(tx, sql`select conta_id from pecas_vinculo_fornecedor where peca_id = ${c.peca}`)).conta_id, c.d, 'catálogo e vínculo de peça juntos')
     assert.deepEqual((await rows(tx, sql`select marca from conta_marcas where conta_id = ${c.d} order by marca`)).map(x => x.marca), ['P', 'Própria'], 'destino vê as marcas das duas')
 
+    // Serviços: o catálogo da origem vai inteiro, as OS seguem nos mesmos serviços e nenhum item do grupo aponta para outra Conta.
+    assert.deepEqual((await rows(tx, sql`select nome from servicos_catalogo where conta_id = ${c.d} order by nome, valor`)).map(x => x.nome), ['Alinhamento', 'Revisão', 'Revisão'],
+      'destino ganha o catálogo da origem e mantém o dela, inclusive o de mesmo nome')
+    assert.equal((await linha(tx, sql`select conta_id from servicos_catalogo where id = ${c.servicoUsado}`)).conta_id, c.d)
+    assert.equal((await linha(tx, sql`select servico_id from os_itens where id = ${c.itemDeOS}`)).servico_id, c.servicoUsado, 'o item da OS segue no mesmo serviço')
+    assert.equal(Number((await linha(tx, sql`
+      select count(*)::int n from os_itens i join ordens_servico o on o.id = i.os_id join lojas l on l.id = o.loja_id
+        join grupos g on g.id = l.grupo_id join servicos_catalogo s on s.id = i.servico_id
+      where g.id = ${c.go.id} and s.conta_id <> g.conta_id`)).n), 0, 'nenhum item do grupo aponta para serviço de outra Conta')
+    assert.equal((await linha(tx, sql`select conta_id from servicos_catalogo where nome = 'Da terceira'`)).conta_id, c.t, 'serviço da terceira Conta fica onde estava')
+
     const venda = await linha(tx, sql`select v.cliente_id, v.loja_id from vendas v where v.id = ${c.venda}`)
     assert.equal(venda.cliente_id, c.cliente, 'venda continua com o mesmo cliente')
     assert.equal(venda.loja_id, c.go.loja, 'e na mesma loja')
@@ -109,6 +128,17 @@ test('move: tudo da origem vai para a destino, a origem fica desativada e vazia,
 
     const log = await linha(tx, sql`select conta_id, detalhe->>'origemNome' origem from log_acoes where tipo = 'grupo_movido_de_conta' and grupo_id = ${c.go.id}`)
     assert.equal(log.conta_id, c.d); assert.equal(log.origem, 'Origem')
+    throw new Desfazer()
+  }), Desfazer)
+})
+
+test('prévia conta os serviços que vão junto e serviço de mesmo nome na destino não é conflito', async () => {
+  await assert.rejects(db.transaction(async tx => {
+    const c = await cenario(tx)
+    const previa = await previaMoverGrupo(tx, c.go.id, c.d)
+    assert.equal(previa?.vaiJunto.servicos, 2)
+    assert.equal(previa?.recusa, null)
+    assert.equal(temConflito(previa!.conflitos), false)
     throw new Desfazer()
   }), Desfazer)
 })
