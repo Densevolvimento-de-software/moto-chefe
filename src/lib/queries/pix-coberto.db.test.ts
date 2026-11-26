@@ -80,7 +80,7 @@ test('PIX vinculado antes do custo (sem valor do PIX gravado) segue contando o c
 test('resumo da OS preserva descrição e valor do serviço após alteração do catálogo', async () => {
   const a = await semearContaComAlvos(db, 'SH272', [{ tipo: 'pix', valor: 100 }])
   const b = await semearContaComAlvos(db, 'SH272B', [{ tipo: 'pix', valor: 100 }])
-  const servico = await idDoInsert(db, sql`insert into servicos_catalogo (nome, valor) values ('Revisão original 272', 100) returning id`)
+  const servico = await idDoInsert(db, sql`insert into servicos_catalogo (conta_id, nome, valor) values (${a.contaId}, 'Revisão original 272', 100) returning id`)
   await db.execute(sql`insert into os_itens (os_id, tipo, descricao, quantidade, valor_unitario, servico_id)
     values (${a.alvos.os}, 'servico', 'Revisão original 272', 1, 100, ${servico})`)
   await db.execute(sql`select id from servicos_catalogo where id = ${servico}`)

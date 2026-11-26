@@ -1,6 +1,4 @@
-// Teste de banco: o catálogo de Serviços é do admin_geral. Chamada direta da action por admin_socio,
-// aux_adm, vendedor e mecânico é recusada e o catálogo fica igual; admin_geral grava. Catálogo sem
-// Conta: os estados são lidos pelo prefixo SRV228 que este teste cria, nunca pelo total da tabela.
+// Teste de banco: ações de gestão recusam papéis sem permissão e preservam o catálogo.
 import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { like, sql } from 'drizzle-orm'
@@ -15,12 +13,14 @@ process.env.DATABASE_URL = url
 
 const P = 'SRV228'
 let sessao: Record<string, unknown> = {}
+let contaAtiva = ''
 const mocks = [
   mock.module('@/lib/auth', { namedExports: {
     getUsuarioLogado: async () => sessao,
     isAdmin: (papel: string) => papel === 'admin_geral',
   } }),
   mock.module('next/cache', { namedExports: { revalidatePath: () => {} } }),
+  mock.module('@/lib/grupo', { namedExports: { contaDoGrupoAtivo: async () => contaAtiva } }),
 ]
 
 type Db = typeof import('@/lib/db')
@@ -46,8 +46,9 @@ before(async () => {
   acoes = await import('./actions')
   const a = await semearContaBase(db, { prefixo: P, nome: 'A', cnpj: '00000000022801' })
   semente = { contaId: a.contaId, grupoId: a.grupoId }
+  contaAtiva = a.contaId
   sessao = { id: await semearUsuario(db, a, { papel: 'admin_geral', rotulo: 'geral', semLoja: true }), papel: papeis.geral }
-  const [seed] = await db.insert(servicosCatalogo).values({ nome: `${P}-seed`, valor: '50.00' }).returning({ id: servicosCatalogo.id })
+  const [seed] = await db.insert(servicosCatalogo).values({ contaId: a.contaId, nome: `${P}-seed`, valor: '50.00' }).returning({ id: servicosCatalogo.id })
   seedId = seed.id
 })
 
@@ -74,7 +75,7 @@ test('admin_geral cria, edita, inativa e reativa: cada gravação aparece no cat
   assert.equal((await estado()).find(s => s.nome === `${P}-geral-novo`)?.ativo, true)
 })
 
-for (const papel of ['socio', 'aux'] as const) {
+for (const papel of ['aux'] as const) {
   test(`${papel}: criar, editar, inativar e reativar chamados direto são recusados e o catálogo não muda`, async () => {
     sessao = { papel: papeis[papel] }
     const antes = await estado()

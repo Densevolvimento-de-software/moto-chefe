@@ -1,9 +1,10 @@
 'use server'
 import { getUsuarioLogado } from '@/lib/auth'
-import { exigirAdminGeral } from '@/lib/admin-geral'
+import { contaDoGrupoAtivo } from '@/lib/grupo'
+import { listarServicosDaConta, podeGerirServicos } from '@/lib/servicos-da-conta'
 import { db } from '@/lib/db'
 import { servicosCatalogo } from '@/lib/db/schema'
-import { eq, asc } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 const GESTORES = ['admin_geral', 'admin_socio', 'aux_adm'] as const
@@ -16,6 +17,12 @@ async function verificarAcesso() {
   return usuario
 }
 
+async function verificarGestao() {
+  const usuario = await getUsuarioLogado()
+  if (!podeGerirServicos(usuario)) throw new Error('Sem permissão')
+  return contaDoGrupoAtivo(usuario)
+}
+
 export type ServicoInput = {
   nome: string
   tempoPrevistoMinutos?: number | null
@@ -23,18 +30,20 @@ export type ServicoInput = {
 }
 
 export async function listarServicosAction(params?: { apenasAtivos?: boolean }) {
-  await verificarAcesso()
-  const todos = await db.select().from(servicosCatalogo).orderBy(asc(servicosCatalogo.nome))
+  const usuario = await verificarAcesso()
+  const contaId = await contaDoGrupoAtivo(usuario)
+  const todos = await listarServicosDaConta(contaId)
   return params?.apenasAtivos ? todos.filter(s => s.ativo) : todos
 }
 
 export async function criarServicoAction(input: ServicoInput) {
-  await exigirAdminGeral()
+  const contaId = await verificarGestao()
   const nome = input.nome.trim()
   if (!nome) throw new Error('Nome é obrigatório')
   if (input.valor < 0) throw new Error('Valor não pode ser negativo')
 
   const [novo] = await db.insert(servicosCatalogo).values({
+    contaId,
     nome,
     tempoPrevistoMinutos: input.tempoPrevistoMinutos || null,
     valor: String(input.valor),
@@ -45,33 +54,36 @@ export async function criarServicoAction(input: ServicoInput) {
 }
 
 export async function atualizarServicoAction(id: string, input: ServicoInput) {
-  await exigirAdminGeral()
+  const contaId = await verificarGestao()
   const nome = input.nome.trim()
   if (!nome) throw new Error('Nome é obrigatório')
   if (input.valor < 0) throw new Error('Valor não pode ser negativo')
 
-  await db.update(servicosCatalogo).set({
+  const alterados = await db.update(servicosCatalogo).set({
     nome,
     tempoPrevistoMinutos: input.tempoPrevistoMinutos || null,
     valor: String(input.valor),
     atualizadoEm: new Date(),
-  }).where(eq(servicosCatalogo.id, id))
+  }).where(and(eq(servicosCatalogo.id, id), eq(servicosCatalogo.contaId, contaId))).returning({ id: servicosCatalogo.id })
+  if (!alterados.length) throw new Error('Serviço não encontrado')
 
   revalidatePath('/servicos')
 }
 
 export async function inativarServicoAction(id: string) {
-  await exigirAdminGeral()
-  await db.update(servicosCatalogo)
+  const contaId = await verificarGestao()
+  const alterados = await db.update(servicosCatalogo)
     .set({ ativo: false, atualizadoEm: new Date() })
-    .where(eq(servicosCatalogo.id, id))
+    .where(and(eq(servicosCatalogo.id, id), eq(servicosCatalogo.contaId, contaId))).returning({ id: servicosCatalogo.id })
+  if (!alterados.length) throw new Error('Serviço não encontrado')
   revalidatePath('/servicos')
 }
 
 export async function reativarServicoAction(id: string) {
-  await exigirAdminGeral()
-  await db.update(servicosCatalogo)
+  const contaId = await verificarGestao()
+  const alterados = await db.update(servicosCatalogo)
     .set({ ativo: true, atualizadoEm: new Date() })
-    .where(eq(servicosCatalogo.id, id))
+    .where(and(eq(servicosCatalogo.id, id), eq(servicosCatalogo.contaId, contaId))).returning({ id: servicosCatalogo.id })
+  if (!alterados.length) throw new Error('Serviço não encontrado')
   revalidatePath('/servicos')
 }
