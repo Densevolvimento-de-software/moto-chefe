@@ -14,7 +14,7 @@ type Conta = { id: string; nome: string; grupos: string[] }
 const ROTULOS: [keyof PreviaMover['vaiJunto'], string][] = [
   ['usuarios', 'Usuários'], ['clientes', 'Clientes'], ['modelos', 'Modelos próprios'], ['apelidos', 'Apelidos de modelo'],
   ['veiculos', 'Histórico de veículos'], ['pecas', 'Peças do catálogo'], ['vinculosPeca', 'Vínculos de peça com fornecedor'],
-  ['notasEntrada', 'Notas de entrada de peças'], ['cargos', 'Cargos'],
+  ['servicos', 'Serviços do catálogo'], ['notasEntrada', 'Notas de entrada de peças'], ['cargos', 'Cargos'],
 ]
 
 const CONFLITOS: [keyof PreviaMover['conflitos'], string][] = [
