@@ -28,7 +28,11 @@ export function ChegouButton({ motoId, descricao }: Props) {
     } catch (e) {
       if (ehSessaoEncerrada(e)) {
         // O proxy recusou o clique (#281). Sem redirecionar sozinho: a pessoa decide quando sair da tela.
-        toast.error(SESSAO_ENCERRADA, { duration: Infinity, action: { label: 'Entrar de novo', onClick: () => router.push('/login') } })
+        // O aviso não some sozinho; o id fixo faz o clique seguinte trocar o aviso em vez de empilhar outro.
+        toast.error(SESSAO_ENCERRADA, {
+          id: SESSAO_ENCERRADA, duration: Infinity, closeButton: true,
+          action: { label: 'Entrar de novo', onClick: () => router.push('/login') },
+        })
       } else {
         // Em produção o React troca a mensagem do erro lançado por Server Action (#404): frase fixa, nunca a do erro.
         toast.error('Não foi possível marcar a chegada. Tente de novo.')

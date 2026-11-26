@@ -12,7 +12,7 @@ const { desmontar: desmontarDom } = montarDom()
 const OK: ResultadoAction = { ok: true, dados: undefined }
 const marcar = mock.fn(async (_motoId: string): Promise<ResultadoAction> => OK)
 const sucesso = mock.fn((_titulo: string, _opcoes?: { description?: string }) => {})
-type OpcoesDoAviso = { duration?: number; action?: { label: string; onClick: () => void } }
+type OpcoesDoAviso = { id?: string; duration?: number; closeButton?: boolean; action?: { label: string; onClick: () => void } }
 const erro = mock.fn((_msg: string, _opcoes?: OpcoesDoAviso) => {})
 const atualizar = mock.fn(() => {})
 const ir = mock.fn((_destino: string) => {})
@@ -131,4 +131,16 @@ test('texto em inglês do cliente do Next (contrato mudou): frase fixa de hoje, 
   await t.clique('Chegou')
   assert.deepEqual(erro.mock.calls.map(c => c.arguments), [['Não foi possível marcar a chegada. Tente de novo.']])
   assert.equal(ir.mock.callCount(), 0)
+})
+
+test('sessão encerrada em dois cliques seguidos: o mesmo id nos dois avisos, e o aviso tem botão de fechar', async () => {
+  marcar.mock.mockImplementation(async () => { throw new Error(SESSAO_ENCERRADA) })
+  const t = await montar()
+  await t.clique('Chegou')
+  await t.clique('Chegou')
+  assert.equal(erro.mock.callCount(), 2)
+  const [primeiro, segundo] = erro.mock.calls.map(c => c.arguments[1])
+  assert.ok(primeiro?.id, 'o aviso tem id')
+  assert.equal(segundo?.id, primeiro?.id)
+  assert.equal(primeiro?.closeButton, true)
 })
