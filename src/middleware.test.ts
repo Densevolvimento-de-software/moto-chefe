@@ -124,6 +124,14 @@ test('sem sessão: clique de action (next-action) recebe 401 em texto com a fras
   assert.equal(destino(r), null)
 })
 
+test('sem sessão: só o POST com next-action preenchido recebe o 401; GET, HEAD e cabeçalho vazio vão ao login', async () => {
+  claims = null
+  // O Next só executa action em POST, e o cliente sempre manda o id dela.
+  assert.equal(destino(await pedir('GET', '/estoque', { 'next-action': 'qualquer' })), '/login')
+  assert.equal(destino(await pedir('HEAD', '/estoque', { 'next-action': 'qualquer' })), '/login')
+  assert.equal(destino(await pedir('POST', '/estoque', { 'next-action': '' })), '/login')
+})
+
 /** O Next compila `matcher` para uma regex ancorada; o lookahead negativo vale igual como RegExp. */
 async function foraDoMatcher(caminho: string) {
   const { config } = await import('./middleware')
