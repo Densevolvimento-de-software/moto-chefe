@@ -73,3 +73,37 @@ test('loja com 0%: qualquer entrada passa, sem mensagem de mínimo', async () =>
   assert.match(tela(), /mín\. R\$ 0,00 \(0% do preço PIX\)/)
   assert.doesNotMatch(tela(), /Mínimo de/)
 })
+
+// Preenche tudo o que o Confirmar exige além da entrada, para a entrada ser a única coisa que o trava.
+const porPlaceholder = (texto: string) => document.querySelector(`input[placeholder="${texto}"]`) as HTMLInputElement
+const confirmar = () => [...document.querySelectorAll('button')].find(b => (b.textContent ?? '').trim() === 'Confirmar Reserva') as HTMLButtonElement
+
+async function preencherTudoMenosAEntrada(t: Awaited<ReturnType<typeof abrirReserva>>) {
+  await digitar(porPlaceholder('CPF ou CNPJ'), '52998224725')
+  await digitar(porPlaceholder('(00) 00000-0000'), '35999990283')
+  await digitar(porPlaceholder('Nome completo do cliente'), 'Cliente sintético')
+  await digitar(porPlaceholder('email@exemplo.com'), 'c@teste.invalid')
+  const totalDaVenda = [...document.querySelectorAll('label')].find(l => /Valor Total da Venda/.test(l.textContent ?? ''))!.parentElement!.querySelector('input') as HTMLInputElement
+  await digitar(totalDaVenda, '2000000')
+  const dataPrevista = [...document.querySelectorAll('label')].find(l => /Data Prevista/.test(l.textContent ?? ''))!.parentElement!.querySelector('input') as HTMLInputElement
+  await digitar(dataPrevista, '2026-12-01')
+  await t.act(async () => { clicar([...document.querySelectorAll('button')].find(b => /Forma de pagamento/.test(b.textContent ?? ''))); await esperar(30) })
+  await t.act(async () => { clicar([...document.querySelectorAll('[role="option"]')].find(o => (o.textContent ?? '').trim() === 'PIX')); await esperar(30) })
+}
+
+const valorDoPagamento = () => document.querySelector('input[placeholder="0,00"].w-32') as HTMLInputElement
+
+test('Confirmar fica desabilitado com a entrada abaixo do mínimo da loja e habilita no mínimo', async () => {
+  const t = await abrirReserva({ precoMinimoPix: 15000, entradaMinimaPct: 20 })
+  await preencherTudoMenosAEntrada(t)
+
+  await digitar(campoDaEntrada(), '250000')
+  await digitar(valorDoPagamento(), '250000')
+  await t.act(() => esperar(10))
+  assert.ok(confirmar().disabled, 'abaixo do mínimo')
+
+  await digitar(campoDaEntrada(), '300000')
+  await digitar(valorDoPagamento(), '300000')
+  await t.act(() => esperar(10))
+  assert.ok(!confirmar().disabled, 'no mínimo')
+})
