@@ -65,7 +65,7 @@ export function lerEntradasMinimas(v: unknown): EntradaMinimaDaLoja[] | null {
     const pctLido = lerEntradaMinimaPct(pct)
     return typeof lojaId === 'string' && ehUuid(lojaId) && pctLido !== null ? { lojaId, pct: pctLido } : null
   })
-  const todasLegiveis = lidas.every(l => l !== null)
-  const semRepetida = new Set(lidas.map(l => l?.lojaId)).size === lidas.length
-  return todasLegiveis && semRepetida ? (lidas as EntradaMinimaDaLoja[]) : null
+  const legiveis = lidas.filter((l): l is EntradaMinimaDaLoja => l !== null)
+  const semRepetida = new Set(legiveis.map(l => l.lojaId)).size === legiveis.length
+  return legiveis.length === lidas.length && semRepetida ? legiveis : null
 }

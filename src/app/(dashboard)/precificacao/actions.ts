@@ -85,7 +85,6 @@ export async function salvarEntradaMinimaReservaAction(entradas: unknown) {
       }
     })
     revalidatePath('/precificacao')
-    revalidatePath('/estoque')
   })
 }
 
