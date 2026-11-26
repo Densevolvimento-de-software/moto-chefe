@@ -59,13 +59,14 @@ export function ServicoForm({ trigger, servicoInicial, onSaved }: Props) {
     }
     setLoading(true)
     try {
-      if (isEdit && servicoInicial) {
-        await atualizarServicoAction(servicoInicial.id, input)
-        toast.success('Serviço atualizado!')
-      } else {
-        await criarServicoAction(input)
-        toast.success('Serviço cadastrado!')
+      const resultado = isEdit && servicoInicial
+        ? await atualizarServicoAction(servicoInicial.id, input)
+        : await criarServicoAction(input)
+      if (!resultado.ok) {
+        toast.error(resultado.erro)
+        return
       }
+      toast.success(isEdit ? 'Serviço atualizado!' : 'Serviço cadastrado!')
       setOpen(false)
       onSaved?.()
     } catch (e: unknown) {
