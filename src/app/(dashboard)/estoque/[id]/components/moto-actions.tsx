@@ -70,6 +70,8 @@ type Props = {
   lojas: Loja[]
   lojaUsuarioId: string | null
   precoMinimoPix: number | null
+  /** Entrada mínima da reserva da loja da moto, em % do preço PIX (#283). */
+  entradaMinimaPct: number | null
   taxasVenda: TaxasVenda | null
   podeAprovarPagamentoSensivel: boolean
   demandasCompativeis?: DemandaCompativel[]
@@ -86,7 +88,7 @@ const podeMontar    = new Set(['admin_geral', 'admin_socio', 'aux_adm'])
 const podeCancelarReserva = new Set(['admin_geral', 'admin_socio', 'aux_adm'])
 const ADMINS        = new Set(['admin_geral', 'admin_socio'])
 
-export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome, usuarios, mecanicos, lojas, lojaUsuarioId, precoMinimoPix, taxasVenda, podeAprovarPagamentoSensivel, demandasCompativeis, origens }: Props) {
+export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome, usuarios, mecanicos, lojas, lojaUsuarioId, precoMinimoPix, entradaMinimaPct, taxasVenda, podeAprovarPagamentoSensivel, demandasCompativeis, origens }: Props) {
   const isAdmin = ADMINS.has(papel)
   const abrirVenda = useSearchParams().get('vender') === '1'
   // Guardado no primeiro render: o replace abaixo tira o ?vender=1 da URL logo em seguida.
@@ -143,6 +145,7 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
             origens={origens}
             showLabel
             precoMinimoPix={precoMinimoPix}
+            entradaMinimaPct={entradaMinimaPct}
             taxasVenda={taxasVenda}
             podeAprovarPagamentoSensivel={podeAprovarPagamentoSensivel}
             demandasCompativeis={demandasCompativeis}
@@ -164,6 +167,7 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
             origens={origens}
             showLabel
             precoMinimoPix={precoMinimoPix}
+            entradaMinimaPct={entradaMinimaPct}
             taxasVenda={taxasVenda}
             podeAprovarPagamentoSensivel={podeAprovarPagamentoSensivel}
             reservaAtiva={{
@@ -218,6 +222,7 @@ export function MotoActions({ moto, papel, isVendedor, vendedorId, vendedorNome,
             soReserva
             showLabel
             precoMinimoPix={precoMinimoPix}
+            entradaMinimaPct={entradaMinimaPct}
             taxasVenda={taxasVenda}
             podeAprovarPagamentoSensivel={podeAprovarPagamentoSensivel}
             demandasCompativeis={demandasCompativeis}

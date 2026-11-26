@@ -78,20 +78,6 @@ export function validarPrecoVenda(
   return { valido: deficit < 0.01, liquido, deficit }
 }
 
-// Valida a reserva: entrada mínima de 30% do preço PIX
-export function validarReserva(
-  valorEntrada: number,
-  valorTotalVenda: number,
-  precoMinimoPix: number
-): { entradaOk: boolean; totalOk: boolean; minimoEntrada: number } {
-  const minimoEntrada = precoMinimoPix * 0.3
-  return {
-    entradaOk: valorEntrada >= minimoEntrada - 0.01,
-    totalOk: valorTotalVenda >= precoMinimoPix - 0.01,
-    minimoEntrada,
-  }
-}
-
 export function fmtBRL(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }

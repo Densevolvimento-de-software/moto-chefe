@@ -15,7 +15,8 @@ import type { OrigemParaEscolher } from '@/lib/queries/origens-venda'
 import { Search, ShoppingCart, CalendarClock, AlertTriangle, CheckCircle2, UserCheck, UserX, Loader2 } from 'lucide-react'
 import { PagamentosFields, pgtoIncompleto, TIPOS_COM_PARCELAS, type Pgto } from './pagamentos-fields'
 import { registrarVendaCompletaAction, registrarReservaAction, buscarPrecoMinimoAction, buscarClientePorCpfAction, solicitarAprovacaoVendaAction } from '../../vendas/actions'
-import { calcLiquidoRecebido, validarReserva, fmtBRL, type TaxasVenda } from '@/lib/preco-minimo'
+import { calcLiquidoRecebido, fmtBRL, type TaxasVenda } from '@/lib/preco-minimo'
+import { fraseEntradaMinimaTela, validarReserva } from '@/lib/entrada-minima-reserva'
 import { normalizarPagamentos, type PagamentoEntrada } from '@/lib/pagamentos-entrada'
 import { lerDocumentoCliente, soDigitosDoc, tipoPessoaSeCompleto } from '@/lib/documento'
 import { ContribuinteIcmsCampos, DocumentoClienteInput, RepresentanteLegalCampos, TipoPessoaEtiqueta } from '@/components/documento-cliente'
@@ -88,6 +89,8 @@ type Props = {
   reservaAtiva?: DadosReservaAtiva
   showLabel?: boolean
   precoMinimoPix?: number | null
+  /** Entrada mínima da reserva da loja da moto, em % do preço PIX; vem junto com o preço (#283). */
+  entradaMinimaPct?: number | null
   taxasVenda?: TaxasVenda | null
   podeAprovarPagamentoSensivel?: boolean
   demandasCompativeis?: DemandaVinculavel[]
@@ -103,7 +106,7 @@ type Props = {
 // @/lib/conciliacao-status.
 const TIPOS_PAGAMENTO_SENSIVEL = new Set(['transferencia'])
 
-export function VenderButton({ motoId, descricao, vendedorId, vendedorNome, papel, usuarios, soReserva, reservaAtiva, showLabel, precoMinimoPix: precoMinimoPixProp, taxasVenda: taxasVendaProp, podeAprovarPagamentoSensivel = false, demandasCompativeis, origens, abrirAoMontar }: Props) {
+export function VenderButton({ motoId, descricao, vendedorId, vendedorNome, papel, usuarios, soReserva, reservaAtiva, showLabel, precoMinimoPix: precoMinimoPixProp, entradaMinimaPct: entradaMinimaPctProp, taxasVenda: taxasVendaProp, podeAprovarPagamentoSensivel = false, demandasCompativeis, origens, abrirAoMontar }: Props) {
   const maquininhas = useMaquininhas({ moto: motoId })
   const [open, setOpen] = useState(false)
   const [tipo, setTipo] = useState<'venda' | 'reserva'>(soReserva ? 'reserva' : 'venda')
@@ -116,6 +119,7 @@ export function VenderButton({ motoId, descricao, vendedorId, vendedorNome, pape
 
   // Dados de precificação — podem vir via props (detalhe) ou buscados ao abrir (lista)
   const [precoMinimoPix, setPrecoMinimoPix] = useState<number | null>(precoMinimoPixProp ?? null)
+  const [entradaMinimaPct, setEntradaMinimaPct] = useState<number | null>(entradaMinimaPctProp ?? null)
   const [taxasVenda, setTaxasVenda] = useState<TaxasVenda | null>(taxasVendaProp ?? null)
 
   // ── Dados do cliente ──
@@ -243,6 +247,7 @@ export function VenderButton({ motoId, descricao, vendedorId, vendedorNome, pape
       const info = await buscarPrecoMinimoAction(motoId)
       if (info) {
         setPrecoMinimoPix(info.valorMinimoPix)
+        setEntradaMinimaPct(info.entradaMinimaPct)
         setTaxasVenda(info.taxas)
       }
     }
@@ -382,8 +387,8 @@ export function VenderButton({ motoId, descricao, vendedorId, vendedorNome, pape
   const somaReserva = pgtosReserva.reduce((a, p) => a + (parseFloat(p.valor) || 0), 0)
   const somaReservaOk = valorReservaNum > 0 && Math.abs(somaReserva - valorReservaNum) < 0.01
   const pgtosReservaOk = pgtosReserva.every(p => p.tipo && p.valor && !pgtoIncompleto(p, taxasVenda, maquininhas))
-  const reservaValidacao = precoMinimoPix
-    ? validarReserva(valorReservaNum, valorTotalNum, precoMinimoPix)
+  const reservaValidacao = precoMinimoPix && entradaMinimaPct !== null
+    ? { ...validarReserva(valorReservaNum, valorTotalNum, precoMinimoPix, entradaMinimaPct), entradaMinimaPct }
     : null
 
   const vendaValida = clientePreenchido && (
@@ -543,8 +548,8 @@ export function VenderButton({ motoId, descricao, vendedorId, vendedorNome, pape
                   <div className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-md bg-muted border border-border text-muted-foreground">
                     <span className="font-medium">Mín. PIX:</span>
                     <span className="font-bold text-foreground">{fmtBRL(precoMinimoPix)}</span>
-                    {tipo === 'reserva' && (
-                      <span className="text-muted-foreground">· Entrada: <strong className="text-foreground">{fmtBRL(precoMinimoPix * 0.3)}</strong></span>
+                    {tipo === 'reserva' && reservaValidacao && (
+                      <span className="text-muted-foreground">· Entrada: <strong className="text-foreground">{fmtBRL(reservaValidacao.minimoEntrada)}</strong> ({reservaValidacao.entradaMinimaPct}%)</span>
                     )}
                   </div>
                 )}
@@ -842,7 +847,7 @@ export function VenderButton({ motoId, descricao, vendedorId, vendedorNome, pape
                     <div className="space-y-1">
                       <Label>
                         Valor da Entrada (R$) <span className="text-destructive">*</span>
-                        {precoMinimoPix && <span className="block text-xs text-muted-foreground">mín. {fmtBRL(precoMinimoPix * 0.3)}</span>}
+                        {reservaValidacao && <span className="block text-xs text-muted-foreground">mín. {fmtBRL(reservaValidacao.minimoEntrada)} ({reservaValidacao.entradaMinimaPct}% do preço PIX)</span>}
                       </Label>
                       <CurrencyInput
                         value={valorReserva}
@@ -853,7 +858,7 @@ export function VenderButton({ motoId, descricao, vendedorId, vendedorNome, pape
                       {valorReservaNum > 0 && reservaValidacao && !reservaValidacao.entradaOk && (
                         <p className="text-xs text-destructive flex items-center gap-1">
                           <AlertTriangle size={11} />
-                          Mínimo de {fmtBRL(reservaValidacao.minimoEntrada)} (30% PIX)
+                          {fraseEntradaMinimaTela(reservaValidacao.minimoEntrada, reservaValidacao.entradaMinimaPct)}
                         </p>
                       )}
                     </div>

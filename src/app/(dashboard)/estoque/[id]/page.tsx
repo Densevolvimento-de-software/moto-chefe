@@ -9,7 +9,7 @@ import { listarLojasAtivasDaConta } from '@/lib/conta'
 import { listarLojasDoGrupoAtivo, getGrupoIdDaLoja, podeAprovarVendaBaixoValor, podeAprovarPagamentoSensivelNaLoja, podeTransferirEntreGrupos, contaDoGrupoAtivo } from '@/lib/grupo'
 import { listarModelosDaConta } from '@/lib/modelos-da-conta'
 import { db } from '@/lib/db'
-import { precificacao, configuracaoTaxas } from '@/lib/db/schema'
+import { precificacao, configuracaoTaxas, lojas } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
 import { listarUsuariosDoGrupo } from '@/lib/usuarios-do-grupo'
@@ -55,7 +55,7 @@ export default async function MotoDetailPage({ params }: { params: Promise<{ id:
   const isAdmin = ['admin_geral', 'admin_socio'].includes(usuario.papel)
   const acessoMultiGrupo = isAdmin && await podeTransferirEntreGrupos(usuario)
 
-  const [mecanicos, lojasOpts, lojasTransferencia, usuariosOpts, modelosOpts, precRow, taxasRow] = await Promise.all([
+  const [mecanicos, lojasOpts, lojasTransferencia, usuariosOpts, modelosOpts, precRow, taxasRow, entradaMinimaRow] = await Promise.all([
     listarUsuariosDoGrupo(grupoIdDaMoto, { papeis: ['mecanico'] }),
     listarLojasDoGrupoAtivo(usuario),
     // Igual a /transferencias e /estoque: destino do botão "Transferir" inclui todos
@@ -70,6 +70,8 @@ export default async function MotoDetailPage({ params }: { params: Promise<{ id:
       .where(and(eq(precificacao.nome, moto.modelo), eq(precificacao.ativo, true), eq(precificacao.grupoId, grupoIdDaMoto)))
       .limit(1),
     db.select().from(configuracaoTaxas).where(eq(configuracaoTaxas.grupoId, grupoIdDaMoto)),
+    // Entrada mínima da reserva: a da loja onde a moto está, não a da loja de quem abre a tela (#283).
+    db.select({ pct: lojas.entradaMinimaReservaPct }).from(lojas).where(eq(lojas.id, moto.lojaId)).limit(1),
   ])
 
   // Origem da venda: catálogo do grupo da loja da MOTO, que é contra quem a
@@ -177,6 +179,7 @@ export default async function MotoDetailPage({ params }: { params: Promise<{ id:
         lojas={lojasTransferencia}
         lojaUsuarioId={usuario.lojaId ?? null}
         precoMinimoPix={precoMinimoPix}
+        entradaMinimaPct={entradaMinimaRow[0]?.pct ?? null}
         taxasVenda={taxasVenda}
         podeAprovarPagamentoSensivel={podeAprovarSensivel}
         demandasCompativeis={demandasCompativeis}
