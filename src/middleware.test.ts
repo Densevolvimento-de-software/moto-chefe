@@ -3,6 +3,7 @@
 import { test, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { NextRequest } from 'next/server'
+import { SESSAO_ENCERRADA } from '@/lib/sessao-encerrada'
 
 let claims: Record<string, unknown> | null = null
 mock.module('@supabase/ssr', { namedExports: {
@@ -111,6 +112,18 @@ test('com sessão: POST de action em página logada segue para a action', async 
   assert.ok(seguiu(await pedir('POST', '/estoque', { 'next-action': 'qualquer', 'content-type': 'text/plain;charset=UTF-8' })))
 })
 
+test('sem sessão: clique de action (next-action) recebe 401 em texto com a frase, e a action não roda', async () => {
+  claims = null
+  const r = await pedir('POST', '/estoque', { 'next-action': 'qualquer', 'content-type': 'text/plain;charset=UTF-8' })
+  assert.equal(r.status, 401)
+  // Exato: o cliente do Next só lê o corpo do erro quando o content-type é "text/plain", sem charset.
+  assert.equal(r.headers.get('content-type'), 'text/plain')
+  assert.equal(await r.text(), SESSAO_ENCERRADA)
+  // Não é "seguir para a página": nenhum cabeçalho de repasse ao app.
+  assert.equal(r.headers.get('x-middleware-next'), null)
+  assert.equal(destino(r), null)
+})
+
 /** O Next compila `matcher` para uma regex ancorada; o lookahead negativo vale igual como RegExp. */
 async function foraDoMatcher(caminho: string) {
   const { config } = await import('./middleware')
@@ -126,7 +139,7 @@ test('rotas públicas com Server Action ou rota própria estão fora do matcher:
 })
 
 // Registro do comportamento de hoje, sem afirmar como deveria ser: /agendar não está fora do matcher,
-// então sem sessão o pedido cai no login. A decisão sobre o portal está em issue própria.
+// então sem sessão o pedido cai no login. A decisão sobre o portal está na #285.
 test('registro de hoje: /agendar sem sessão é redirecionado ao login', async () => {
   claims = null
   assert.equal(await foraDoMatcher('/agendar/loja-1'), false)

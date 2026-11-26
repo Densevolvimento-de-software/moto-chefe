@@ -31,13 +31,18 @@ export function decisaoDoLoginFabrica({ caminho, metodo }: { caminho: string; me
 
 const CORPO_DE_FORMULARIO = /^(multipart\/form-data|application\/x-www-form-urlencoded)\b/i
 
+/** Chamada de Server Action feita pelo JS do Next: só ela traz o cabeçalho `next-action`. */
+export function ehChamadaDeAcaoPeloCliente(cabecalhos: Pick<Headers, 'get'>): boolean {
+  return cabecalhos.get('next-action') !== null
+}
+
 /**
- * Pedido que executa Server Action: o cabeçalho `next-action` (chamada pelo JS) ou um
- * formulário enviado sem JS (multipart ou urlencoded), que o Next também executa (r1 do #893).
+ * Pedido que executa Server Action: a chamada pelo JS (`next-action`) ou um formulário enviado
+ * sem JS (multipart ou urlencoded), que o Next também executa (r1 do #893).
  * Leitura de página não traz corpo de formulário.
  */
 export function ehPedidoDeAcao(cabecalhos: Pick<Headers, 'get'>): boolean {
-  return cabecalhos.get('next-action') !== null || CORPO_DE_FORMULARIO.test(cabecalhos.get('content-type') ?? '')
+  return ehChamadaDeAcaoPeloCliente(cabecalhos) || CORPO_DE_FORMULARIO.test(cabecalhos.get('content-type') ?? '')
 }
 
 /**
