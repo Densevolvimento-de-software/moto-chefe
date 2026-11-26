@@ -230,7 +230,8 @@ Período de cobertura de uma moto vendida, ativo ou encerrado. A peça trocada n
 ser solicitada à fábrica.
 
 **Serviço**:
-Mão de obra do catálogo, cobrada numa OS.
+Mão de obra do catálogo de uma Conta, cobrada numa OS. Grupos e lojas da mesma Conta compartilham
+o catálogo e o preço de cada serviço. O nome e o valor registrados numa OS preservam seu histórico.
 
 **Peça**:
 Item do catálogo de peças e acessórios, com quantidade em estoque.
