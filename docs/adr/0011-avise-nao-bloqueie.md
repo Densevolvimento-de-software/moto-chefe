@@ -22,6 +22,10 @@ Exceções:
   ([ADR-0015](0015-documento-invalido-do-comprador-bloqueia.md)).
 - Moto com venda (inclusive fora do MOVA), pedido ativo, qualquer reserva, OS com dinheiro ou garantia
   não se remove ([ADR-0020](0020-remover-moto-apaga-dependentes.md), adendo de 2026-11-07).
+- Entrada da reserva abaixo da entrada mínima da loja da moto bloqueia, na tela e no servidor
+  (adendo de 2026-11-25, #102 e #283). A loja que quer reservar com menos ajusta a porcentagem na
+  Precificação (só `admin_geral` e `admin_socio`); a trava não vira aviso. O aviso do valor total
+  abaixo do mínimo PIX continua só aviso. Decisão do Luis em 2026-11-19.
 
 ## Por quê
 

@@ -231,7 +231,9 @@ Conta nova. Decisões do Luis:
 - **Grupo novo (#199):** em `/admin/grupos`, o `admin_geral` escolhe "Conta nova" (padrão) ou uma
   Conta existente.
 - **Grupo existente (#554):** o `admin_geral` move o grupo para outra Conta. Vão junto usuários,
-  clientes, modelos próprios e apelidos, histórico de veículos; a Conta de destino passa a ver as
+  clientes, modelos próprios e apelidos, histórico de veículos, cargos, notas de entrada e os
+  catálogos de peças (com o vínculo de fornecedor) e de serviços (as OS do grupo seguem nos mesmos
+  serviços; nome repetido na destino não bloqueia, ficam os dois); a Conta de destino passa a ver as
   marcas das duas. Vendas, estoque, NF e a configuração da Nota Gateway são do grupo e não mudam.
   A Conta de origem precisa ter só esse grupo e é desativada, não apagada. CPF/CNPJ de cliente ou
   apelido de modelo repetido na Conta de destino: nada é gravado e os casos são listados.

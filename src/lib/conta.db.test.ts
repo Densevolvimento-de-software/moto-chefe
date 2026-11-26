@@ -18,10 +18,11 @@ let db: Db['db']
 let grupoEstaNaConta: Conta['grupoEstaNaConta']
 let listarLojasAtivasDaConta: Conta['listarLojasAtivasDaConta']
 let usuarioDaConta: Conta['usuarioDaConta']
+let lojaDoEscopo: Conta['lojaDoEscopo']
 
 before(async () => {
   ;({ db } = await import('@/lib/db'))
-  ;({ grupoEstaNaConta, listarLojasAtivasDaConta, usuarioDaConta } = await import('@/lib/conta'))
+  ;({ grupoEstaNaConta, listarLojasAtivasDaConta, usuarioDaConta, lojaDoEscopo } = await import('@/lib/conta'))
 })
 
 after(async () => {
@@ -79,6 +80,26 @@ test('usuarioDaConta: só quem tem o conta_id da Conta; grupos_acesso de outra C
     const ids = [daA, daB, marcadoNaA]
     const rows = await tx.select({ id: usuarios.id }).from(usuarios).where(sql`${usuarios.id} in (${sql.join(ids.map(i => sql`${i}::uuid`), sql`, `)}) and ${usuarioDaConta(a.contaId)}`)
     assert.deepEqual(rows.map(r => r.id), [daA])
+    throw new Desfazer()
+  }), Desfazer)
+})
+
+test('lojaDoEscopo (#283): devolve grupo e entrada mínima só da loja do escopo; outra Conta e inexistente dão null', async () => {
+  await assert.rejects(db.transaction(async tx => {
+    const linha = async (q: ReturnType<typeof sql>) => ((await tx.execute(q)) as unknown as { rows: { id: string }[] }).rows[0]
+    const a = await linha(sql`insert into contas (nome) values ('Conta A 283') returning id`)
+    const b = await linha(sql`insert into contas (nome) values ('Conta B 283') returning id`)
+    const grupoA = await linha(sql`insert into grupos (nome, cnpj, conta_id) values ('A283', '00000000028301', ${a.id}) returning id`)
+    const grupoB = await linha(sql`insert into grupos (nome, cnpj, conta_id) values ('B283', '00000000028302', ${b.id}) returning id`)
+    const lojaA = await linha(sql`insert into lojas (nome, endereco, cidade, grupo_id, entrada_minima_reserva_pct) values ('Loja A 283', 'r', 'c', ${grupoA.id}, 20) returning id`)
+    const lojaB = await linha(sql`insert into lojas (nome, endereco, cidade, grupo_id) values ('Loja B 283', 'r', 'c', ${grupoB.id}) returning id`)
+    const socioA = { papel: 'admin_socio', contaId: a.id }
+    assert.deepEqual(await lojaDoEscopo(socioA, lojaA.id, tx), { grupoId: grupoA.id, entradaMinimaPct: 20 }, 'a da própria Conta')
+    assert.equal(await lojaDoEscopo(socioA, lojaB.id, tx), null, 'loja de outra Conta')
+    assert.equal(await lojaDoEscopo(socioA, '00000000-0000-4000-8000-000000000283', tx), null, 'loja inexistente: a mesma resposta')
+    assert.equal(await lojaDoEscopo({ papel: 'admin_socio', contaId: null }, lojaA.id, tx), null, 'sem Conta, nenhuma loja')
+    assert.deepEqual(await lojaDoEscopo({ papel: 'admin_geral', contaId: null }, lojaB.id, tx), { grupoId: grupoB.id, entradaMinimaPct: 30 }, 'admin_geral lê qualquer Conta')
+    assert.equal(await lojaDoEscopo({ papel: 'admin_rede', contaId: b.id, grupoLiberado: grupoB.id }, lojaA.id, tx), null, 'persona presa ao grupo liberado')
     throw new Desfazer()
   }), Desfazer)
 })

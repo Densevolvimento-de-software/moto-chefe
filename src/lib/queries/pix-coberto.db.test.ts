@@ -5,7 +5,7 @@ import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearUsuario } from '@/test/semear-conta'
+import { idDoInsert, semearUsuario } from '@/test/semear-conta'
 import { semearContaComAlvos, semearPixRecebido } from '@/test/semear-alvos-conciliacao'
 import type { AlvoTipo } from '@/lib/conciliacao-alvo'
 
@@ -75,4 +75,21 @@ test('PIX vinculado antes do custo (sem valor do PIX gravado) segue contando o c
   const a = await contaComPixVinculado(10000, null)
   const r = await coberturaNasConsultas(a)
   assert.deepEqual([r.vendas, r.os, r.pecas, r.pendenciasConciliacao, r.dashboard.vendasPendentes], [10000, 10000, 10000, 0, 0])
+})
+
+test('resumo da OS preserva descrição e valor do serviço após alteração do catálogo', async () => {
+  const a = await semearContaComAlvos(db, 'SH272', [{ tipo: 'pix', valor: 100 }])
+  const b = await semearContaComAlvos(db, 'SH272B', [{ tipo: 'pix', valor: 100 }])
+  const servico = await idDoInsert(db, sql`insert into servicos_catalogo (conta_id, nome, valor) values (${a.contaId}, 'Revisão original 272', 100) returning id`)
+  await db.execute(sql`insert into os_itens (os_id, tipo, descricao, quantidade, valor_unitario, servico_id)
+    values (${a.alvos.os}, 'servico', 'Revisão original 272', 1, 100, ${servico})`)
+  await db.execute(sql`update servicos_catalogo set nome = 'Revisão alterada 272', valor = 200 where id = ${servico}`)
+  const { listarOSPorLoja, listarItensOS } = await import('./ordens-servico')
+  const resumo = async () => (await listarOSPorLoja(a.lojaId)).find(os => os.id === a.alvos.os)?.servicosResumo
+  assert.equal(await resumo(), 'Revisão original 272')
+  await db.execute(sql`update servicos_catalogo set ativo = false where id = ${servico}`)
+  assert.equal(await resumo(), 'Revisão original 272')
+  assert.equal(Number((await listarItensOS(a.alvos.os))[0].valorUnitario), 100)
+  const { osDoUsuario } = await import('@/lib/os-do-usuario')
+  assert.equal(await osDoUsuario({ papel: 'aux_adm', lojaId: b.lojaId, contaId: b.contaId, gruposAcesso: null }, a.alvos.os), null)
 })

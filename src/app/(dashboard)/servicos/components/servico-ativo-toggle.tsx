@@ -10,8 +10,8 @@ export function ServicoAtivoToggle({ id, ativo, podeGerir }: { id: string; ativo
   function toggle() {
     start(async () => {
       try {
-        if (ativo) await inativarServicoAction(id)
-        else await reativarServicoAction(id)
+        const resultado = ativo ? await inativarServicoAction(id) : await reativarServicoAction(id)
+        if (!resultado.ok) toast.error(resultado.erro)
       } catch (e: unknown) {
         toast.error(e instanceof Error ? e.message : 'Erro ao atualizar status')
       }

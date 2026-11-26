@@ -6,7 +6,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   cargos, clientes, contaMarcas, contas, grupos, gruposLiberados, modeloAjustes, modeloApelidos, modelos,
-  notasEntrada, pecasCatalogo, pecasVinculoFornecedor, usuarios, veiculosHistorico,
+  notasEntrada, pecasCatalogo, pecasVinculoFornecedor, servicosCatalogo, usuarios, veiculosHistorico,
 } from '@/lib/db/schema'
 import { registrarAcao, type Origem } from '@/lib/log-acoes'
 import { ehUuid } from '@/lib/uuid'
@@ -31,7 +31,7 @@ export type PreviaMover = {
   recusa: string | null
   vaiJunto: {
     usuarios: number; clientes: number; modelos: number; apelidos: number; veiculos: number
-    pecas: number; vinculosPeca: number; notasEntrada: number; cargos: number; marcasNovas: string[]
+    pecas: number; vinculosPeca: number; servicos: number; notasEntrada: number; cargos: number; marcasNovas: string[]
     /** Usuários da destino que tinham o grupo liberado (admin_rede): passam a vê-lo pela Conta. */
     liberacoesViramAcesso: number
   }
@@ -100,7 +100,7 @@ export async function previaMoverGrupo(exec: Leitor, grupoId: string, destinoId:
     vaiJunto: {
       usuarios: await n('usuarios'), clientes: await n('clientes'), modelos: await n('modelos'),
       apelidos: await n('modelo_apelidos'), veiculos: await n('veiculos_historico'), pecas: await n('pecas_catalogo'),
-      vinculosPeca: await n('pecas_vinculo_fornecedor'), notasEntrada: await n('notas_entrada'), cargos: await n('cargos'),
+      vinculosPeca: await n('pecas_vinculo_fornecedor'), servicos: await n('servicos_catalogo'), notasEntrada: await n('notas_entrada'), cargos: await n('cargos'),
       marcasNovas, liberacoesViramAcesso,
     },
     conflitos,
@@ -148,7 +148,11 @@ export async function moverGrupo(
   if (previa.vaiJunto.marcasNovas.length) {
     await tx.insert(contaMarcas).values(previa.vaiJunto.marcasNovas.map(marca => ({ contaId: d, marca }))).onConflictDoNothing()
   }
-  for (const t of [usuarios, clientes, modelos, modeloApelidos, modeloAjustes, veiculosHistorico, notasEntrada, cargos]) {
+  // O catálogo de serviços vai inteiro, como o de peças, porque a origem só tem este grupo (a prévia recusa o
+  // contrário): se essa regra for relaxada, o catálogo dos grupos que ficam não pode sair junto. As OS do grupo seguem
+  // ligadas aos mesmos serviços.
+  // Serviço de mesmo nome na destino não é conflito (a tabela não tem nome único): ficam os dois.
+  for (const t of [usuarios, clientes, modelos, modeloApelidos, modeloAjustes, veiculosHistorico, notasEntrada, cargos, servicosCatalogo]) {
     await tx.update(t).set({ contaId: d }).where(eq(t.contaId, o))
   }
   // Catálogo de peças e vínculo com o fornecedor numa instrução só: a chave composta

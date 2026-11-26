@@ -5,8 +5,8 @@ import { buscarMoto } from '@/lib/queries/motos'
 import { motoTemVenda } from '@/lib/motos-vendidas-sem-venda'
 import { getUsuarioLogado, temPapel } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
-import { listarLojasAtivasDaConta } from '@/lib/conta'
-import { listarLojasDoGrupoAtivo, getGrupoIdDaLoja, podeAprovarVendaBaixoValor, podeAprovarPagamentoSensivelNaLoja, podeTransferirEntreGrupos, contaDoGrupoAtivo } from '@/lib/grupo'
+import { listarLojasAtivasDaConta, lojaDoEscopo } from '@/lib/conta'
+import { listarLojasDoGrupoAtivo, podeAprovarVendaBaixoValor, podeAprovarPagamentoSensivelNaLoja, podeTransferirEntreGrupos, contaDoGrupoAtivo } from '@/lib/grupo'
 import { listarModelosDaConta } from '@/lib/modelos-da-conta'
 import { db } from '@/lib/db'
 import { precificacao, configuracaoTaxas } from '@/lib/db/schema'
@@ -43,11 +43,13 @@ export default async function MotoDetailPage({ params }: { params: Promise<{ id:
 
   // Moto de grupo que o usuário não vê: 404, como id inexistente (não revela que existe).
   if (!moto) notFound()
-  const [podeAbrir, grupoIdDaMoto] = await Promise.all([
+  // Grupo e entrada mínima da reserva da loja da moto (não a de quem abre a tela), com a Conta no where (#283).
+  const [podeAbrir, lojaDaMoto] = await Promise.all([
     podeAbrirRegistroDaLoja(usuario, moto.lojaId),
-    getGrupoIdDaLoja(moto.lojaId),
+    lojaDoEscopo(usuario, moto.lojaId),
   ])
-  if (!podeAbrir) notFound()
+  if (!podeAbrir || !lojaDaMoto) notFound()
+  const grupoIdDaMoto = lojaDaMoto.grupoId
   const podeAprovarValorMinimo = await podeAprovarVendaBaixoValor(usuario, moto.lojaId)
   const podeAprovarSensivel = await podeAprovarPagamentoSensivelNaLoja(usuario, moto.lojaId)
   const tipoAprovacaoPendente = (moto.aprovacaoPendenteTipo ?? 'valor_minimo') as 'valor_minimo' | 'pagamento_sensivel'
@@ -177,6 +179,7 @@ export default async function MotoDetailPage({ params }: { params: Promise<{ id:
         lojas={lojasTransferencia}
         lojaUsuarioId={usuario.lojaId ?? null}
         precoMinimoPix={precoMinimoPix}
+        entradaMinimaPct={lojaDaMoto.entradaMinimaPct}
         taxasVenda={taxasVenda}
         podeAprovarPagamentoSensivel={podeAprovarSensivel}
         demandasCompativeis={demandasCompativeis}

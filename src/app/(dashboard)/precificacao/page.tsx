@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { precificacao, configuracaoTaxas, motos, modelos as modelosTable } from '@/lib/db/schema'
+import { precificacao, configuracaoTaxas, motos, lojas, modelos as modelosTable } from '@/lib/db/schema'
 import { catalogoDePrecificacao, chaveNome } from '@/lib/precificacao-modelos'
 import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
@@ -16,7 +16,7 @@ export default async function PrecificacaoPage() {
   const grupo = await getGrupoAtivo(usuario)
   const lojaIdsGrupo = await listarLojaIdsDoGrupoAtivo(usuario)
 
-  const [taxasRow, precos, catalogo, estoqueDisponivel] = await Promise.all([
+  const [taxasRow, precos, catalogo, estoqueDisponivel, lojasEntrada] = await Promise.all([
     db.select().from(configuracaoTaxas).where(eq(configuracaoTaxas.grupoId, grupo.id)),
     db.select().from(precificacao).where(eq(precificacao.grupoId, grupo.id)).orderBy(asc(precificacao.nome)),
     catalogoDePrecificacao(grupo.contaId, lojaIdsGrupo),
@@ -26,6 +26,12 @@ export default async function PrecificacaoPage() {
       .innerJoin(modelosTable, eq(motos.modeloId, modelosTable.id))
       .where(and(eq(motos.disponibilidade, 'disponivel'), motoNaoArquivada(), inArray(motos.lojaId, lojaIdsGrupo)))
       .groupBy(modelosTable.modelo),
+    // Só as lojas que reservam (ativas); listarLojasDoGrupoAtivo não traz a porcentagem.
+    db
+      .select({ id: lojas.id, nome: lojas.nome, pct: lojas.entradaMinimaReservaPct })
+      .from(lojas)
+      .where(and(eq(lojas.grupoId, grupo.id), eq(lojas.ativa, true)))
+      .orderBy(asc(lojas.nome)),
   ])
 
   const estoquePorNome = Object.fromEntries(
@@ -109,6 +115,7 @@ export default async function PrecificacaoPage() {
         modelos={modelos}
         grupoNome={grupo.nome}
         padraoSimulador={taxasRow[0]?.padraoSimulador ?? 'taxas'}
+        lojasEntradaMinima={lojasEntrada}
       />
     </div>
   )

@@ -18,7 +18,8 @@ const mocks = [
   }),
   // Os botões importam server actions com banco; o teste só quer saber se o Vender aparece.
   mock.module('../../components/vender-button', {
-    namedExports: { VenderButton: ({ soReserva }: { soReserva?: boolean }) => createElement('button', { 'data-vender': soReserva ? 'reserva' : 'venda' }, 'Vender') },
+    namedExports: { VenderButton: ({ soReserva, entradaMinimaPct }: { soReserva?: boolean; entradaMinimaPct?: number | null }) =>
+      createElement('button', { 'data-vender': soReserva ? 'reserva' : 'venda', 'data-entrada-pct': String(entradaMinimaPct ?? '') }, 'Vender') },
   }),
   mock.module('../../components/garantia-button', {
     namedExports: { GarantiaButton: ({ motivoBloqueio }: { motivoBloqueio?: string | null }) => createElement('button', { 'data-garantia': motivoBloqueio ?? '' }, 'Garantia') },
@@ -44,7 +45,7 @@ const MOTO = {
   reservaPagamentos: null,
 }
 
-async function montar(status: string, disponibilidade: string | null, reserva: { reservaId?: string; reservaValorEntrada?: string } = {}) {
+async function montar(status: string, disponibilidade: string | null, reserva: { reservaId?: string; reservaValorEntrada?: string } = {}, entradaMinimaPct: number | null = null) {
   const { act } = await import('react')
   const { createRoot } = await import('react-dom/client')
   const { MotoActions } = await import('./moto-actions')
@@ -54,7 +55,7 @@ async function montar(status: string, disponibilidade: string | null, reserva: {
   await act(async () => {
     root.render(createElement(MotoActions, {
       moto: { ...MOTO, ...reserva, status, disponibilidade }, papel: 'aux_adm', vendedorId: 'u1', vendedorNome: 'Aux',
-      usuarios: [], mecanicos: [], lojas: [], lojaUsuarioId: 'loja-1', precoMinimoPix: null, taxasVenda: null,
+      usuarios: [], mecanicos: [], lojas: [], lojaUsuarioId: 'loja-1', precoMinimoPix: null, entradaMinimaPct, taxasVenda: null,
       podeAprovarPagamentoSensivel: false, origens: [],
     }))
   })
@@ -66,6 +67,7 @@ async function montar(status: string, disponibilidade: string | null, reserva: {
       return aviso ? [...aviso.querySelectorAll('p')].map(p => p.textContent) : null
     },
     vender: () => [...container.querySelectorAll('[data-vender]')].map(b => b.getAttribute('data-vender')),
+    entradaMinimaPct: () => [...container.querySelectorAll('[data-vender]')].map(b => b.getAttribute('data-entrada-pct')),
     logistica: () => container.querySelector('[data-logistica]') !== null,
     garantia: () => container.querySelector('[data-garantia]')?.getAttribute('data-garantia') ?? null,
     comprovante: () => container.querySelector('a[href="/reservas/r1/imprimir"]') !== null,
@@ -124,4 +126,11 @@ test('moto em transporte: o card Ações diz quando vender, montar e transferir 
   assert.deepEqual((await montar('em_transporte', 'reservada', { reservaId: 'r1', reservaValorEntrada: '300' })).textos(), [frase])
   assert.deepEqual((await montar('caixa', null)).textos(), [])
   assert.deepEqual((await montar('montada', 'disponivel')).textos(), [])
+})
+
+// #283: o diálogo de reserva usa a porcentagem da loja da moto; o detalhe entrega a que leu no servidor.
+test('o detalhe passa a entrada mínima da loja da moto a cada botão de vender ou reservar', async () => {
+  assert.deepEqual((await montar('montada', 'disponivel', {}, 20)).entradaMinimaPct(), ['20'])
+  assert.deepEqual((await montar('em_transporte', null, {}, 0)).entradaMinimaPct(), ['0'])
+  assert.deepEqual((await montar('montada', 'reservada', { reservaId: 'r1', reservaValorEntrada: '300' }, 20)).entradaMinimaPct(), ['20'])
 })

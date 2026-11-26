@@ -47,6 +47,12 @@ export function lojasDaConta(contaId: string) {
     .innerJoin(grupos, eq(grupos.id, lojas.grupoId)).where(eq(grupos.contaId, contaId))
 }
 
+// A coluna `contaId` do catálogo (peças, serviços) bate com a Conta da loja, dentro da consulta. A coluna
+// fica fora da subconsulta, então casa com a tabela de quem consulta e não com grupos.conta_id.
+export function contaDaLojaNaColuna(coluna: AnyPgColumn, lojaId: string): SQL {
+  return sql`${coluna} = (select g.conta_id from lojas l join grupos g on g.id = l.grupo_id where l.id = ${lojaId})`
+}
+
 // Usuário da Conta: o `conta_id` bate. Marcação em grupos_acesso de outra Conta não vale (ADR-0018).
 export function usuarioDaConta(contaId: string): SQL {
   return eq(usuarios.contaId, contaId)
@@ -72,6 +78,19 @@ export function lojasDoEscopo(usuario: EscopoDoUsuario) {
 export function lojaNoEscopo(usuario: EscopoDoUsuario & { papel: string }, coluna: AnyPgColumn): SQL | undefined | null {
   if (usuario.papel === 'admin_geral') return undefined
   return usuario.contaId ? inArray(coluna, lojasDoEscopo(usuario)) : null
+}
+
+// Grupo e entrada mínima da reserva (#283) da loja de um registro lido pelo id, com a Conta no where
+// (lojaNoEscopo). Loja de outra Conta, sem Conta ou inexistente: null, a mesma resposta nos três.
+export async function lojaDoEscopo(usuario: EscopoDoUsuario & { papel: string }, lojaId: string, exec: Executor = db) {
+  const doEscopo = lojaNoEscopo(usuario, lojas.id)
+  if (doEscopo === null) return null
+  const [loja] = await exec
+    .select({ grupoId: lojas.grupoId, entradaMinimaPct: lojas.entradaMinimaReservaPct })
+    .from(lojas)
+    .where(and(eq(lojas.id, lojaId), doEscopo))
+    .limit(1)
+  return loja ?? null
 }
 
 // O grupo está no escopo de quem consulta: o da persona, ou qualquer um da Conta.

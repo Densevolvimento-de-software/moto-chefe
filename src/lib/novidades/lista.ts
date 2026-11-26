@@ -15,5 +15,6 @@ import v1_42_1 from './versoes/1.42.1'
 import v1_42_2 from './versoes/1.42.2'
 import v1_43_0 from './versoes/1.43.0'
 import v1_44_0 from './versoes/1.44.0'
+import v1_45_0 from './versoes/1.45.0'
 
-export const NOVIDADES_DA_VERSAO: readonly NovidadeDaVersao[] = [v1_36_0, v1_37_0, v1_37_1, v1_38_0, v1_38_1, v1_39_0, v1_40_0, v1_41_0, v1_41_1, v1_42_0, v1_42_1, v1_42_2, v1_43_0, v1_44_0]
+export const NOVIDADES_DA_VERSAO: readonly NovidadeDaVersao[] = [v1_36_0, v1_37_0, v1_37_1, v1_38_0, v1_38_1, v1_39_0, v1_40_0, v1_41_0, v1_41_1, v1_42_0, v1_42_1, v1_42_2, v1_43_0, v1_44_0, v1_45_0]
