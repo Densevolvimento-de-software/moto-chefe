@@ -5,6 +5,7 @@
  */
 import { and, asc, eq, type SQL, sql } from 'drizzle-orm'
 import type { db } from '@/lib/db'
+import { contaDaLojaNaColuna } from '@/lib/conta'
 import { pecasCatalogo, pecasEstoqueLoja } from '@/lib/db/schema'
 
 type Executor = Pick<typeof db, 'select' | 'insert' | 'update'>
@@ -33,9 +34,8 @@ function daConta(quem: QuemVePecas): SQL | undefined {
   return quem.papel === 'admin_geral' ? undefined : eq(pecasCatalogo.contaId, quem.contaId)
 }
 
-// A coluna fica fora da subconsulta, então casa com pecas_catalogo e não com grupos.conta_id.
 export function daContaDaLoja(lojaId: string): SQL {
-  return sql`${pecasCatalogo.contaId} = (select g.conta_id from lojas l join grupos g on g.id = l.grupo_id where l.id = ${lojaId})`
+  return contaDaLojaNaColuna(pecasCatalogo.contaId, lojaId)
 }
 
 /** `lojaId` é a loja cujo saldo aparece; sem loja, o saldo sai zero. */

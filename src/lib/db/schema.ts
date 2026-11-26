@@ -835,14 +835,16 @@ export const veiculosHistorico = pgTable('veiculos_historico', {
 // ─── servicos_catalogo ─────────────────────────────────────────────────────────
 export const servicosCatalogo = pgTable('servicos_catalogo', {
   id: uuid('id').primaryKey().defaultRandom(),
-  contaId: uuid('conta_id').references(() => contas.id),
+  contaId: uuid('conta_id').notNull().references(() => contas.id),
   nome: text('nome').notNull(),
   tempoPrevistoMinutos: integer('tempo_previsto_minutos'),
   valor: numeric('valor', { precision: 10, scale: 2 }).notNull().default('0'),
   ativo: boolean('ativo').notNull().default(true),
   criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
   atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
-})
+}, t => [
+  index('servicos_catalogo_conta_id_idx').on(t.contaId),
+])
 
 // ─── pecas_catalogo ────────────────────────────────────────────────────────────
 export const pecasCatalogo = pgTable('pecas_catalogo', {

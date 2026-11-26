@@ -47,6 +47,12 @@ export function lojasDaConta(contaId: string) {
     .innerJoin(grupos, eq(grupos.id, lojas.grupoId)).where(eq(grupos.contaId, contaId))
 }
 
+// A coluna `contaId` do catálogo (peças, serviços) bate com a Conta da loja, dentro da consulta. A coluna
+// fica fora da subconsulta, então casa com a tabela de quem consulta e não com grupos.conta_id.
+export function contaDaLojaNaColuna(coluna: AnyPgColumn, lojaId: string): SQL {
+  return sql`${coluna} = (select g.conta_id from lojas l join grupos g on g.id = l.grupo_id where l.id = ${lojaId})`
+}
+
 // Usuário da Conta: o `conta_id` bate. Marcação em grupos_acesso de outra Conta não vale (ADR-0018).
 export function usuarioDaConta(contaId: string): SQL {
   return eq(usuarios.contaId, contaId)
