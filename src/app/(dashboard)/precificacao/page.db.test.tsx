@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
 import { paginaPorConta } from '@/test/pagina-por-conta'
 import { semearLoja, type Base } from '@/test/semear-conta'
+import { ENTRADA_MINIMA_PADRAO_PCT } from '@/lib/entrada-minima-reserva'
 
 const pagina = paginaPorConta('PP089')
 let Pagina: typeof import('./page')['default']
@@ -54,4 +55,10 @@ test('o bloco da entrada mínima lista só as lojas ativas do grupo, com a porce
   assert.equal(campoDaLoja(html, 'PP089 Loja Norte D'), '30')
   assert.equal(campoDaLoja(html, 'PP089 Loja Fechada D'), undefined)
   assert.equal(campoDaLoja(html, 'PP089 Loja Centro E'), undefined)
+})
+
+test('o padrão da loja no banco é o da constante que a tela usa no rodapé', async () => {
+  const [coluna] = ((await pagina.db().execute(sql`select column_default from information_schema.columns
+    where table_name = 'lojas' and column_name = 'entrada_minima_reserva_pct'`)) as unknown as { rows: { column_default: string }[] }).rows
+  assert.equal(Number(coluna.column_default), ENTRADA_MINIMA_PADRAO_PCT)
 })
