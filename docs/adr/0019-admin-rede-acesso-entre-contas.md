@@ -26,6 +26,14 @@ No lugar da autorização concedida pela Conta dona:
 
 Fica substituída a concessão pelo `admin_socio` da Conta dona com aceite. A regra de mover grupo entre Contas é tratada à parte.
 
+## Adendo: catálogo de Serviços (#231)
+
+O catálogo de Serviços pertence à Conta e é compartilhado pelos seus grupos e lojas. O
+`admin_rede` pode gerenciar somente o catálogo da Conta de origem; na persona de grupo liberado
+de outra Conta, não cria, edita, inativa nem reativa serviços: ele vê o catálogo da Conta dona
+daquele grupo e usa os serviços na OS, sem gerir (decisão do Luis, 25/11/2026). A OS usa serviços ativos da Conta
+da loja onde foi aberta. A descrição e o valor gravados nos itens da OS preservam o histórico.
+
 ## Clientes no grupo liberado (decisões do Luis, 29/10 e 31/10/2026)
 
 - Busca, lista e preenchimento de cliente: só os do grupo liberado (cliente com venda, venda de

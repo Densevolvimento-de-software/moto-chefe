@@ -28,10 +28,11 @@ type Db = typeof import('@/lib/db')
 let db: Db['db']
 let acoes: typeof import('./actions')
 let tabela: typeof import('@/lib/db/schema')['servicosCatalogo']
-let a: Base, b: Base
+let usuarioDaRede: typeof import('@/lib/grupos-liberados')['usuarioDaRede']
+let a: Base, b: Base, r: Base
 let grupoA2 = ''
 let servicoA = '', servicoB = ''
-const contasSemeadas = () => [a, b].filter(Boolean).map(c => c.contaId)
+const contasSemeadas = () => [a, b, r].filter(Boolean).map(c => c.contaId)
 
 const SEM_PERMISSAO = { ok: false, erro: 'Sem permissão' }
 const NAO_ENCONTRADO = { ok: false, erro: 'Serviço não encontrado' }
@@ -40,6 +41,11 @@ const ID_INEXISTENTE = '00000000-0000-0000-0000-000000000000'
 const socioDe = (c: Base, gruposAcesso: string[] = [c.grupoId]) => sessaoDe(c, 'admin_socio', `${P}-socio`, { lojaId: null, gruposAcesso })
 const doPapel = (c: Base, papel: string) => sessaoDe(c, papel, `${P}-${papel}`)
 const entrar = (usuario: Record<string, unknown>, grupo: string) => { sessao = usuario; grupoNoCookie = grupo }
+// O admin_rede vira a persona do grupo liberado só se o grupo está entre os liberados a ele (usuarioDaRede real).
+const entrarComoAdminRede = (liberados: { grupoId: string; contaId: string }[], grupoAtivo: string) => {
+  entrar(usuarioDaRede(sessaoDe(r, 'admin_rede', `${P}-rede`, { gruposAcesso: [r.grupoId] }), liberados, grupoAtivo), grupoAtivo)
+}
+
 const dados = <T>(resultado: ResultadoAction<T>): T => {
   assert.equal(resultado.ok, true, JSON.stringify(resultado))
   return (resultado as { ok: true; dados: T }).dados
@@ -53,10 +59,12 @@ const nomesListados = async () => dados(await acoes.listarServicosAction()).map(
 before(async () => {
   ;({ db } = await import('@/lib/db'))
   ;({ servicosCatalogo: tabela } = await import('@/lib/db/schema'))
+  ;({ usuarioDaRede } = await import('@/lib/grupos-liberados'))
   acoes = await import('./actions')
   a = await semearContaBase(db, { prefixo: P, nome: 'A', cnpj: '00000000273001' })
   grupoA2 = (await semearGrupo(db, a.contaId, { prefixo: P, nome: 'A2', cnpj: '00000000273002' })).grupoId
   b = await semearContaBase(db, { prefixo: P, nome: 'B', cnpj: '00000000273003' })
+  r = await semearContaBase(db, { prefixo: P, nome: 'R', cnpj: '00000000273004' })
   ;[{ id: servicoA }, { id: servicoB }] = await db.insert(tabela).values([
     { contaId: a.contaId, nome: `${P} serviço de A`, valor: '100' },
     { contaId: b.contaId, nome: `${P} serviço de B`, valor: '200' },
@@ -162,4 +170,35 @@ test('nome vazio e valor negativo são recusados com a frase', async () => {
   entrar(socioDe(b), b.grupoId)
   assert.deepEqual(await acoes.criarServicoAction({ nome: '  ', valor: 1 }), { ok: false, erro: 'Nome é obrigatório' })
   assert.deepEqual(await acoes.criarServicoAction({ nome: `${P} negativo`, valor: -1 }), { ok: false, erro: 'Valor não pode ser negativo' })
+})
+
+test('admin_rede na própria Conta gerencia: cria, edita, inativa e reativa', async () => {
+  entrarComoAdminRede([{ grupoId: b.grupoId, contaId: b.contaId }], r.grupoId)
+  const { id } = dados(await acoes.criarServicoAction({ nome: `${P} da rede`, valor: 10 }))
+  dados(await acoes.atualizarServicoAction(id, { nome: `${P} da rede editado`, valor: 20 }))
+  dados(await acoes.inativarServicoAction(id))
+  assert.equal((await linhaDe(id)).ativo, false)
+  dados(await acoes.reativarServicoAction(id))
+  assert.deepEqual(await linhaDe(id), { contaId: r.contaId, nome: `${P} da rede editado`, valor: '20.00', ativo: true })
+})
+
+test('admin_rede no grupo liberado de outra Conta vê o catálogo dela, mas não cria, edita, inativa nem reativa', async () => {
+  entrarComoAdminRede([{ grupoId: b.grupoId, contaId: b.contaId }], b.grupoId)
+  assert.equal((sessao as { grupoLiberado: string | null }).grupoLiberado, b.grupoId)
+  assert.ok((await nomesListados()).includes(`${P} serviço de B`))
+  const antes = [await nomesDaConta(b.contaId), await linhaDe(servicoB)]
+  assert.deepEqual(await acoes.criarServicoAction({ nome: `${P} da rede em B`, valor: 1 }), SEM_PERMISSAO)
+  assert.deepEqual(await acoes.atualizarServicoAction(servicoB, { nome: `${P} da rede em B`, valor: 1 }), SEM_PERMISSAO)
+  assert.deepEqual(await acoes.inativarServicoAction(servicoB), SEM_PERMISSAO)
+  assert.deepEqual(await acoes.reativarServicoAction(servicoB), SEM_PERMISSAO)
+  assert.deepEqual([await nomesDaConta(b.contaId), await linhaDe(servicoB)], antes)
+})
+
+test('admin_rede sem liberação, com o grupo de outra Conta no cookie: cai na própria Conta, não vê nem grava na outra', async () => {
+  entrarComoAdminRede([], b.grupoId)
+  assert.equal((sessao as { grupoLiberado: string | null }).grupoLiberado, null)
+  assert.ok(!(await nomesListados()).includes(`${P} serviço de B`))
+  assert.deepEqual(await acoes.atualizarServicoAction(servicoB, { nome: `${P} sem liberação`, valor: 1 }), NAO_ENCONTRADO)
+  const { id } = dados(await acoes.criarServicoAction({ nome: `${P} sem liberação`, valor: 1 }))
+  assert.equal((await linhaDe(id)).contaId, r.contaId)
 })
