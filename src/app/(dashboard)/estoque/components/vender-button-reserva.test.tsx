@@ -34,16 +34,18 @@ afterEach(async () => {
 const tela = () => espacoComum(textoDaTela())
 const campoDaEntrada = () => [...document.querySelectorAll('label')].find(l => /Valor da Entrada/.test(l.textContent ?? ''))!.parentElement!.querySelector('input') as HTMLInputElement
 
+const propsDoBotao = (props: { precoMinimoPix?: number; entradaMinimaPct?: number }) => ({
+  motoId: 'moto-1', descricao: 'X12 Azul', vendedorId: 'v-1', vendedorNome: 'Vendedor', papel: 'vendedor', usuarios: [],
+  soReserva: true, showLabel: true, origens: [], taxasVenda: props.precoMinimoPix ? TAXAS : undefined, ...props,
+})
+
 async function abrirReserva(props: { precoMinimoPix?: number; entradaMinimaPct?: number } = {}) {
   const { VenderButton } = await import('./vender-button')
-  const t = await montarDialogo(VenderButton, {
-    motoId: 'moto-1', descricao: 'X12 Azul', vendedorId: 'v-1', vendedorNome: 'Vendedor', papel: 'vendedor', usuarios: [],
-    soReserva: true, showLabel: true, origens: [], taxasVenda: props.precoMinimoPix ? TAXAS : undefined, ...props,
-  })
+  const t = await montarDialogo(VenderButton, propsDoBotao(props))
   montados.push(t.desmontar)
   const reservar = [...document.querySelectorAll('button')].find(b => /Reservar/.test(b.textContent ?? ''))
   await t.act(async () => { clicar(reservar); await esperar(30) })
-  return t
+  return { ...t, VenderButton }
 }
 
 test('com a porcentagem da loja vinda do detalhe da moto: chip, dica e erro usam os 20%', async () => {
@@ -108,4 +110,19 @@ test('Confirmar fica desabilitado com a entrada abaixo do mínimo da loja e habi
   await digitar(valorDoPagamento(), '300000')
   await t.act(() => esperar(10))
   assert.ok(!confirmar().disabled, 'no mínimo')
+})
+
+test('com o diálogo aberto, preço e porcentagem novos vindos da página valem na hora (Editar mudou a loja da moto)', async () => {
+  const t = await abrirReserva({ precoMinimoPix: 15000, entradaMinimaPct: 30 })
+  assert.match(tela(), /Entrada: R\$ 4\.500,00 \(30%\)/)
+  await t.redesenhar(propsDoBotao({ precoMinimoPix: 15000, entradaMinimaPct: 20 }) as never)
+  await t.act(() => esperar(10))
+  assert.match(tela(), /Entrada: R\$ 3\.000,00 \(20%\)/)
+  assert.doesNotMatch(tela(), /\(30%/)
+  await digitar(campoDaEntrada(), '250000')
+  await t.act(() => esperar(10))
+  assert.match(tela(), /Mínimo de R\$ 3\.000,00 \(20% do preço PIX\)/)
+  await t.redesenhar(propsDoBotao({ precoMinimoPix: 20000, entradaMinimaPct: 20 }) as never)
+  await t.act(() => esperar(10))
+  assert.match(tela(), /Entrada: R\$ 4\.000,00 \(20%\)/)
 })

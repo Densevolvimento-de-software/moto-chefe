@@ -117,9 +117,12 @@ export function VenderButton({ motoId, descricao, vendedorId, vendedorNome, pape
   const [origemId, setOrigemId] = useState('')
   const [origemDetalhe, setOrigemDetalhe] = useState('')
 
-  // Dados de precificação — podem vir via props (detalhe) ou buscados ao abrir (lista)
-  const [precoMinimoPix, setPrecoMinimoPix] = useState<number | null>(precoMinimoPixProp ?? null)
-  const [entradaMinimaPct, setEntradaMinimaPct] = useState<number | null>(entradaMinimaPctProp ?? null)
+  // Dados de precificação — podem vir via props (detalhe) ou buscados ao abrir (lista). A prop manda:
+  // o Editar da moto muda a loja, a página relê e o botão continua montado; só o buscado fica no estado.
+  const [precoBuscado, setPrecoBuscado] = useState<number | null>(null)
+  const [entradaBuscada, setEntradaBuscada] = useState<number | null>(null)
+  const precoMinimoPix = precoMinimoPixProp ?? precoBuscado
+  const entradaMinimaPct = entradaMinimaPctProp ?? entradaBuscada
   const [taxasVenda, setTaxasVenda] = useState<TaxasVenda | null>(taxasVendaProp ?? null)
 
   // ── Dados do cliente ──
@@ -246,8 +249,8 @@ export function VenderButton({ motoId, descricao, vendedorId, vendedorNome, pape
     if (!precoMinimoPixProp) {
       const info = await buscarPrecoMinimoAction(motoId)
       if (info) {
-        setPrecoMinimoPix(info.valorMinimoPix)
-        setEntradaMinimaPct(info.entradaMinimaPct)
+        setPrecoBuscado(info.valorMinimoPix)
+        setEntradaBuscada(info.entradaMinimaPct)
         setTaxasVenda(info.taxas)
       }
     }
