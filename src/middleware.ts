@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { fetchResiliente } from '@/lib/supabase/fetch-resiliente'
 import { PAPEL_FABRICA, ROTA_SAIR, decisaoDoLoginFabrica } from '@/lib/login-fabrica'
+import { SESSAO_ENCERRADA, ehCliqueDeAcao } from '@/lib/sessao-encerrada'
 
 // O middleware roda ANTES de toda página e valida a sessão. Usa getClaims(), que
 // confere a assinatura ES256 do JWT localmente (WebCrypto, JWKS cacheado) — sem
@@ -89,6 +90,13 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!user && !request.nextUrl.pathname.startsWith('/login')) {
+    // Clique de botão com a sessão vencida: o redirect devolveria a página de login no lugar do
+    // resultado da action e o botão mostraria erro técnico. O cliente do Next lê o corpo de um
+    // erro 4xx como mensagem só se o content-type for exatamente "text/plain" (sem charset).
+    // A action não roda: continua barrada aqui, só muda a forma da recusa (#281).
+    if (ehCliqueDeAcao(request.method, request.headers)) {
+      return new NextResponse(SESSAO_ENCERRADA, { status: 401, headers: { 'content-type': 'text/plain', 'cache-control': 'no-store' } })
+    }
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
