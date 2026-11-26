@@ -1,4 +1,7 @@
 -- Copiar antes de remover os originais permite que a migração seja revisada em etapas.
+alter table servicos_catalogo add column migracao_273_origem boolean not null default false;
+select id from servicos_catalogo where conta_id is null;
+update servicos_catalogo set migracao_273_origem = true where conta_id is null;
 create temporary table servicos_migracao_mapa (
   antigo_id uuid not null, conta_id uuid not null, novo_id uuid not null,
   primary key (antigo_id, conta_id)
