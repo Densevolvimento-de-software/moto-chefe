@@ -842,7 +842,9 @@ export const servicosCatalogo = pgTable('servicos_catalogo', {
   ativo: boolean('ativo').notNull().default(true),
   criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
   atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
-})
+}, t => [
+  index('servicos_catalogo_conta_id_idx').on(t.contaId),
+])
 
 // ─── pecas_catalogo ────────────────────────────────────────────────────────────
 export const pecasCatalogo = pgTable('pecas_catalogo', {
