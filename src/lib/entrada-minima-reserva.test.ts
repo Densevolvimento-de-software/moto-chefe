@@ -4,10 +4,9 @@ import {
   entradaMinimaPctDoCampo, fraseEntradaMinimaServidor, fraseEntradaMinimaTela, lerEntradaMinimaPct, lerEntradasMinimas,
   minimoDaEntrada, validarReserva,
 } from './entrada-minima-reserva'
+import { espacoComum } from '@/test/espaco-comum'
 
 const PIX = 15000
-// O Intl separa "R$" do valor com espaço sem quebra; a frase da tela é a mesma com espaço comum.
-const espacoComum = (t: string) => t.replace(/\u00a0/g, ' ')
 
 test('o mínimo é a porcentagem da loja sobre o preço PIX: 20% de R$ 15.000,00 dá R$ 3.000,00', () => {
   assert.equal(minimoDaEntrada(PIX, 20), 3000)

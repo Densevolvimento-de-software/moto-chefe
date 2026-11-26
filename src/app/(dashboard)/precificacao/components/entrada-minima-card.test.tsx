@@ -6,6 +6,8 @@ import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
 import { clicar, digitar } from '@/test/eventos-dom'
 import type { LojaComEntradaMinima } from '@/lib/entrada-minima-reserva'
+import { esperar } from '@/test/dialogo-em-tela'
+import { espacoComum } from '@/test/espaco-comum'
 
 const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
@@ -22,8 +24,6 @@ afterEach(async () => {
   for (const desmontar of montados.splice(0)) await desmontar()
 })
 
-const esperar = (ms: number) => new Promise(r => setTimeout(r, ms))
-const espacoComum = (t: string) => t.replace(/ /g, ' ')
 const texto = () => espacoComum(document.body.textContent ?? '')
 const campo = (loja: string) => document.querySelector(`input[aria-label="Entrada mínima da loja ${loja}"]`) as HTMLInputElement
 const botaoSalvar = () => [...document.querySelectorAll('button')].find(b => /Salvar entradas/.test(b.textContent ?? '')) as HTMLButtonElement

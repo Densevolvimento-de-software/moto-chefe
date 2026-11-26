@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
 import { clicar, digitar } from '@/test/eventos-dom'
 import { esperar, montarDialogo, textoDaTela } from '@/test/dialogo-em-tela'
+import { espacoComum } from '@/test/espaco-comum'
 
 const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
@@ -28,7 +29,6 @@ afterEach(async () => {
   for (const desmontar of montados.splice(0)) await desmontar()
 })
 
-const espacoComum = (t: string) => t.replace(/ /g, ' ')
 const tela = () => espacoComum(textoDaTela())
 const campoDaEntrada = () => [...document.querySelectorAll('label')].find(l => /Valor da Entrada/.test(l.textContent ?? ''))!.parentElement!.querySelector('input') as HTMLInputElement
 

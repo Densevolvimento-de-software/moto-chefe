@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { semearContaBase, semearLoja, semearModelo, semearUsuario, type Base } from '@/test/semear-conta'
+import { espacoComum } from '@/test/espaco-comum'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('Use somente Postgres descartável local')
@@ -82,7 +83,6 @@ const reservar = (motoId: string, entrada: number) => vendas.registrarReservaAct
 } as never)
 
 const reservasDaMoto = async (motoId: string) => (await execRows(sql`select valor_reserva::float8 as valor, status from reservas where moto_id = ${motoId}`))
-const espacoComum = (t: string) => t.replace(/ /g, ' ')
 
 test('loja com 20%: aceita R$ 3.000,00 e recusa R$ 2.999,00, e a recusa não grava nada', async () => {
   const c = await novaConta([20])
