@@ -45,6 +45,7 @@ import { daContaDo, motoDoUsuario, travarMotoNaoArquivada } from '@/lib/moto-do-
 import { aprovacaoDoUsuario } from '@/lib/aprovacao-do-usuario'
 import { voltarMotoAoEstoque } from '@/lib/motos-vendidas-sem-venda'
 import { vendedorDaConta } from '@/lib/vendedor-da-conta'
+import { vendedorDaVenda } from '@/lib/vendedor-escolhido'
 import { reservaDoUsuario } from '@/lib/reserva-do-usuario'
 import { vendaDoUsuario, vendasDoEscopo } from '@/lib/venda-do-usuario'
 import { ehUuid } from '@/lib/uuid'
@@ -515,8 +516,7 @@ async function registrarVendaCompleta(data: DadosVendaCompleta) {
     }
   }
 
-  const podeEscolherVendedor = ['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)
-  const vendedorId = (podeEscolherVendedor && data.vendedorId) ? data.vendedorId : usuario.id
+  const vendedorId = vendedorDaVenda(usuario, data.vendedorId)
   if (vendedorId !== usuario.id && !(await vendedorDaConta(vendedorId, moto.lojaId, usuario.grupoLiberado))) {
     throw new RecusaUsuario('Vendedor não encontrado')
   }
@@ -1121,8 +1121,7 @@ async function registrarReserva(data: DadosReserva) {
     // Apenas a entrada mínima da loja da moto é obrigatória para reservas
   }
 
-  const podeEscolherVendedorReserva = ['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)
-  const vendedorIdReserva = (podeEscolherVendedorReserva && data.vendedorId) ? data.vendedorId : usuario.id
+  const vendedorIdReserva = vendedorDaVenda(usuario, data.vendedorId)
   if (vendedorIdReserva !== usuario.id && !(await vendedorDaConta(vendedorIdReserva, moto.lojaId, usuario.grupoLiberado))) {
     throw new RecusaUsuario('Vendedor não encontrado')
   }
@@ -1693,8 +1692,7 @@ async function solicitarAprovacaoVenda(
     motivoFinal = motivo.trim()
   }
 
-  const podeEscolherVendedor = ['admin_geral', 'admin_socio', 'aux_adm'].includes(usuario.papel)
-  const vendedorId = (podeEscolherVendedor && data.vendedorId) ? data.vendedorId : usuario.id
+  const vendedorId = vendedorDaVenda(usuario, data.vendedorId)
   if (vendedorId !== usuario.id && !(await vendedorDaConta(vendedorId, moto.lojaId, usuario.grupoLiberado))) {
     throw new RecusaUsuario('Vendedor não encontrado')
   }
