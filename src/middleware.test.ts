@@ -89,3 +89,46 @@ test('HEAD também chega sem content-type; GET com cabeçalho de action chega se
   const { ehPedidoDeAcao } = await import('@/lib/login-fabrica')
   assert.equal(ehPedidoDeAcao(new Headers({ 'next-action': get.headers.get('x-middleware-request-next-action') ?? '' })), true)
 })
+
+// Sem sessão (#281). Guardas do que NÃO pode mudar quando o pedido de action sem sessão deixar de
+// ser redirecionado: leitura de página, formulário, login e rotas que o middleware nem enxerga.
+test('sem sessão: abrir página e POST sem next-action (formulário, sair) vão ao login', async () => {
+  claims = null
+  assert.equal(destino(await pedir('GET', '/estoque')), '/login')
+  assert.equal(destino(await pedir('POST', '/sair', { origin: 'http://localhost:3000' })), '/login')
+  assert.equal(destino(await pedir('POST', '/estoque', { 'content-type': 'application/x-www-form-urlencoded' })), '/login')
+})
+
+test('sem sessão: /login abre, e o POST do loginAction (com next-action) segue para a action', async () => {
+  claims = null
+  assert.ok(seguiu(await pedir('GET', '/login')))
+  const login = await pedir('POST', '/login', { 'next-action': 'qualquer', 'content-type': 'text/plain;charset=UTF-8' })
+  assert.ok(seguiu(login))
+})
+
+test('com sessão: POST de action em página logada segue para a action', async () => {
+  claims = { sub: 'u4', app_metadata: {} }
+  assert.ok(seguiu(await pedir('POST', '/estoque', { 'next-action': 'qualquer', 'content-type': 'text/plain;charset=UTF-8' })))
+})
+
+/** O Next compila `matcher` para uma regex ancorada; o lookahead negativo vale igual como RegExp. */
+async function foraDoMatcher(caminho: string) {
+  const { config } = await import('./middleware')
+  return config.matcher.every(m => !new RegExp(`^${m}$`).test(caminho))
+}
+
+test('rotas públicas com Server Action ou rota própria estão fora do matcher: o middleware nem as vê', async () => {
+  for (const caminho of ['/assinar/abc', '/assinar/adesao/abc', '/adesao', '/avaliar/abc', '/api/cron/qualquer']) {
+    assert.equal(await foraDoMatcher(caminho), true, caminho)
+  }
+  // Contra-prova: páginas logadas e o login entram no matcher.
+  for (const caminho of ['/estoque', '/login', '/dashboard']) assert.equal(await foraDoMatcher(caminho), false, caminho)
+})
+
+// Registro do comportamento de hoje, sem afirmar como deveria ser: /agendar não está fora do matcher,
+// então sem sessão o pedido cai no login. A decisão sobre o portal está em issue própria.
+test('registro de hoje: /agendar sem sessão é redirecionado ao login', async () => {
+  claims = null
+  assert.equal(await foraDoMatcher('/agendar/loja-1'), false)
+  assert.equal(destino(await pedir('GET', '/agendar/loja-1')), '/login')
+})
