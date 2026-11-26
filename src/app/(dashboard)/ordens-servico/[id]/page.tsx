@@ -3,15 +3,16 @@ import { buscarOS, listarItensOS } from '@/lib/queries/ordens-servico'
 import { pagamentosEfetivosOS } from '@/lib/conciliacao-status'
 import { getUsuarioLogado } from '@/lib/auth'
 import { usuarioPodeAcessar } from '@/lib/navegacao-servidor'
-import { podeAbrirRegistroDaLoja } from '@/lib/acesso-registro'
+import { osDoUsuario } from '@/lib/os-do-usuario'
+import { listarServicosDaLoja } from '@/lib/servicos-da-conta'
 import { listarUsuariosDoGrupo } from '@/lib/usuarios-do-grupo'
 import { getGrupoIdDaLoja } from '@/lib/grupo'
 import { podeForcarNoGrupo } from '@/lib/conciliacao-forcar-opcao'
 import { db } from '@/lib/db'
 import { maquininhasDaLoja } from '@/lib/maquininhas'
-import { servicosCatalogo, aprovacoesVenda } from '@/lib/db/schema'
+import { aprovacoesVenda } from '@/lib/db/schema'
 import { listarPecasDaLoja } from '@/lib/pecas-da-conta'
-import { eq, asc, and } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import Link from 'next/link'
@@ -34,21 +35,21 @@ const statusLabel: Record<string, string> = {
 
 export default async function OSDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const [os, itens, usuario, servicos, aprovacaoPendente] = await Promise.all([
+  const usuario = await getUsuarioLogado()
+  if (!usuarioPodeAcessar(usuario, '/ordens-servico')) redirect('/dashboard')
+  const osPermitida = await osDoUsuario(usuario, id)
+  if (!osPermitida) notFound()
+
+  const [os, itens, servicos, aprovacaoPendente] = await Promise.all([
     buscarOS(id),
     listarItensOS(id),
-    getUsuarioLogado(),
-    db.select().from(servicosCatalogo).where(eq(servicosCatalogo.ativo, true)).orderBy(asc(servicosCatalogo.nome)),
+    listarServicosDaLoja(osPermitida.lojaId),
     db.$count(aprovacoesVenda, and(eq(aprovacoesVenda.osId, id), eq(aprovacoesVenda.status, 'pendente'))).then(n => n > 0),
   ])
-
-  // Rota do PAI: a tabela não tem item por id.
-  if (!usuarioPodeAcessar(usuario, '/ordens-servico')) redirect('/dashboard')
 
   if (!os) notFound()
 
   const isAdmin = ['admin_geral', 'admin_socio'].includes(usuario.papel)
-  if (isAdmin ? !(await podeAbrirRegistroDaLoja(usuario, os.lojaId)) : os.lojaId !== usuario.lojaId) notFound()
 
   const grupoDaOS = await getGrupoIdDaLoja(os.lojaId)
   const podeForcarOS = await podeForcarNoGrupo(usuario.papel, grupoDaOS)
