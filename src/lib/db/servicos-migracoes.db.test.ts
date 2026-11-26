@@ -1,5 +1,5 @@
-// Migração 0209 (Serviços por Conta, #273; a 0210 entra com a fatia seguinte) sobre cópias das
-// tabelas REAIS. O banco do teste já a tem aplicada, e os arquivos do test:db rodam em paralelo nele:
+// Migrações 0209 e 0210 (Serviços por Conta, #273) uma depois da outra no mesmo banco, sobre cópias das
+// tabelas REAIS. O banco do teste já tem as duas aplicadas, e os arquivos do test:db rodam em paralelo nele:
 // mexer na `servicos_catalogo` ou na `os_itens` de verdade seguraria lock exclusivo que outro arquivo espera
 // (deadlock ou falha em arquivo alheio, como o teste instável da #287). Por isso o `before` cria um schema só
 // deste processo com cópias das tabelas (`create table ... like ... including all`: colunas, defaults, NOT NULL
@@ -203,4 +203,63 @@ test('schema real depois da 0209: chave e índice da Conta com o nome esperado',
   assert.deepEqual(chaves.map(x => x.conname), ['servicos_catalogo_conta_id_fkey'])
   const [indice] = await linhas<{ n: number }>(db, sql`select count(*)::int n from pg_indexes where schemaname = 'public' and tablename = 'servicos_catalogo' and indexname = 'servicos_catalogo_conta_id_idx'`)
   assert.equal(indice.n, 1)
+})
+
+// ─── 0210 (entra com a fatia da 0210) ─────────────────────────────────────────
+const M0210 = arquivo('0210_servicos_concluir_contas.sql')
+
+test('0210 depois da 0209: apaga os originais (inclusive o ativo sem uso), exige Conta e tira a marca; o resto fica', async () => {
+  await emTransacaoDesfeita(async tx => {
+    await noEspelho(tx)
+    const s = await semear(tx)
+    await tx.execute(sql.raw(M0209))
+    await tx.execute(sql.raw(M0210))
+
+    const marca = await linhas<{ n: number }>(tx, sql`select count(*)::int n from information_schema.columns where table_schema = ${espelho} and table_name = 'servicos_catalogo' and column_name = 'migracao_273_origem'`)
+    assert.equal(marca[0].n, 0, 'a coluna da marca saiu da tabela')
+    const sobraram = await linhas<{ id: string }>(tx, sql`select id from servicos_catalogo where id = any(${sql.param([s.revisao, s.soA, s.semUsoAtivo, s.semUsoInativo])}::uuid[])`)
+    assert.deepEqual(sobraram, [], 'os quatro originais saíram, inclusive o ativo que nunca foi usado')
+    assert.equal((await linhas<{ n: number }>(tx, sql`select count(*)::int n from servicos_catalogo where conta_id is null`))[0].n, 0)
+
+    const itens = await itensDaOS(tx, [s.itemRevisaoA, s.itemRevisaoA2, s.itemRevisaoA3, s.itemRevisaoB, s.itemSoA, s.itemAvulso, s.itemJaDaC])
+    assert.equal(itens.length, 7, 'nenhum item de OS se perdeu')
+    assert.equal(itens.filter(i => i.servico_id && !i.nome).length, 0, 'todo item com serviço aponta para um serviço que existe')
+    assert.deepEqual((await servicosDasContas(tx, [s.d.contaId])), [])
+    assert.deepEqual((await servicosDasContas(tx, [s.c.contaId])).map(x => x.id), [s.jaDaC])
+
+    const coluna = await linhas<{ is_nullable: string }>(tx, sql`select is_nullable from information_schema.columns where table_schema = ${espelho} and table_name = 'servicos_catalogo' and column_name = 'conta_id'`)
+    assert.equal(coluna[0].is_nullable, 'NO')
+    // Último comando do teste: o erro aborta a transação, que de qualquer jeito é desfeita.
+    await assert.rejects(tx.execute(sql`insert into servicos_catalogo (conta_id, nome) values (null, ${`${P} sem Conta`})`), /conta_id/)
+  })
+})
+
+test('0210 aborta se sobrou serviço global criado depois da cópia, item ligado a global ou item ligado a serviço de outra Conta', async () => {
+  await emTransacaoDesfeita(async tx => {
+    await noEspelho(tx)
+    const s = await semear(tx)
+    await tx.execute(sql.raw(M0209))
+    await tx.execute(sql`savepoint depois_da_0209`)
+    await tx.execute(sql`insert into servicos_catalogo (conta_id, nome) values (null, ${`${P} criado depois`})`)
+    await abortaCom(tx.execute(sql.raw(M0210)), 'Serviço global criado após a cópia: migração cancelada')
+    await tx.execute(sql`rollback to savepoint depois_da_0209`)
+
+    // Código antigo no ar entre as duas migrações pode ligar um item da Conta A à cópia da Conta B.
+    const copiaDaB = (await servicosDasContas(tx, [s.b.contaId]))[0].id
+    await tx.execute(sql`insert into os_itens (os_id, servico_id, tipo, descricao) values (${s.osA}, ${copiaDaB}, 'servico', ${`${P} cruzado depois`})`)
+    await abortaCom(tx.execute(sql.raw(M0210)), 'OS ligada a serviço de outra Conta: migração cancelada')
+    await tx.execute(sql`rollback to savepoint depois_da_0209`)
+
+    await tx.execute(sql`insert into os_itens (os_id, servico_id, tipo, descricao) values (${s.osA}, ${s.semUsoAtivo}, 'servico', ${`${P} ligado ao global`})`)
+    await abortaCom(tx.execute(sql.raw(M0210)), 'OS ainda aponta para serviço global: migração cancelada')
+  })
+})
+
+test('0210 desiste do lock exclusivo em vez de esperar um leitor com a transação aberta', () => desisteDoLock(M0210, 'os_itens'))
+
+test('schema real depois da 0210: Conta obrigatória e sem a coluna da marca', async () => {
+  const [coluna] = await linhas<{ is_nullable: string }>(db, sql`select is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'servicos_catalogo' and column_name = 'conta_id'`)
+  assert.equal(coluna.is_nullable, 'NO')
+  const [marca] = await linhas<{ n: number }>(db, sql`select count(*)::int n from information_schema.columns where table_schema = 'public' and table_name = 'servicos_catalogo' and column_name = 'migracao_273_origem'`)
+  assert.equal(marca.n, 0)
 })
