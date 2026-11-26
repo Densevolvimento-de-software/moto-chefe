@@ -95,3 +95,23 @@ export function semearAdesao(tx: Executor, base: Base, o: {
     )
     select id from a`)
 }
+
+/**
+ * Apaga as Contas semeadas e o que os testes de Serviços e OS penduram nelas (itens e ordens de serviço,
+ * serviços do catálogo, usuários do `prefixo`, taxas, lojas e grupos). Para teste que grava pelo `db`
+ * global, fora de transação desfeita: sem isto a semente fica no banco e o arquivo não roda duas vezes.
+ */
+export async function apagarContasSemeadas(tx: Executor, { contaIds, prefixo }: { contaIds: string[]; prefixo: string }) {
+  const contas = sql.param(contaIds)
+  const grupos = sql`(select id from grupos where conta_id = any(${contas}::uuid[]))`
+  const lojas = sql`(select id from lojas where grupo_id in ${grupos})`
+  const ordens = sql`(select id from ordens_servico where loja_id in ${lojas})`
+  await tx.execute(sql`delete from os_itens where os_id in ${ordens}`)
+  await tx.execute(sql`delete from ordens_servico where loja_id in ${lojas}`)
+  await tx.execute(sql`delete from servicos_catalogo where conta_id = any(${contas}::uuid[])`)
+  await tx.execute(sql`delete from usuarios where email like ${`%-${prefixo.toLowerCase()}-%`}`)
+  await tx.execute(sql`delete from configuracao_taxas where grupo_id in ${grupos}`)
+  await tx.execute(sql`delete from lojas where grupo_id in ${grupos}`)
+  await tx.execute(sql`delete from grupos where conta_id = any(${contas}::uuid[])`)
+  await tx.execute(sql`delete from contas where id = any(${contas}::uuid[])`)
+}
