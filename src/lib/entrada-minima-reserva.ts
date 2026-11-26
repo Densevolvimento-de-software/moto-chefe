@@ -5,6 +5,11 @@ import { ehUuid } from './uuid'
 // O padrão das lojas é o que já valia, fixo, antes de a porcentagem virar dado da loja (#283).
 export const ENTRADA_MINIMA_PADRAO_PCT = 30
 
+// Preço PIX de um modelo de exemplo, só para a Precificação mostrar a porcentagem em reais.
+export const PRECO_PIX_EXEMPLO = 15000
+
+export type LojaComEntradaMinima = { id: string; nome: string; pct: number }
+
 /** Menor entrada da reserva: a porcentagem da loja sobre o preço mínimo PIX do modelo. */
 export const minimoDaEntrada = (precoMinimoPix: number, pct: number) => centavos((precoMinimoPix * pct) / 100)
 
