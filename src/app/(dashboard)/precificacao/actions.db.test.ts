@@ -5,7 +5,7 @@ import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
-import { semearContaBase, semearLoja, semearUsuario } from '@/test/semear-conta'
+import { semearContaBase, semearGrupo, semearLoja, semearUsuario } from '@/test/semear-conta'
 import type { TaxasPayload } from './actions'
 
 const url = process.env.TEST_DATABASE_URL
@@ -30,7 +30,7 @@ let db: Db['db']
 let execRows: Db['execRows']
 let salvarTaxasAction: typeof import('./actions')['salvarTaxasAction']
 let salvarEntradaMinimaReservaAction: typeof import('./actions')['salvarEntradaMinimaReservaAction']
-const s = { contaA: '', grupoA: '', contaB: '', grupoB: '', lojaA: '', lojaA2: '', lojaB: '', socioB: '', redeId: '' }
+const s = { contaA: '', grupoA: '', contaB: '', grupoB: '', lojaA: '', lojaA2: '', lojaB: '', socioB: '', redeId: '', grupoA2: '', lojaDoGrupoA2: '' }
 
 const TAXAS_B: TaxasPayload = {
   taxasCartao: { '1': 3 }, taxasDebito: { '1': 1 }, taxasLink: {}, taxasFinanciamento: {},
@@ -53,11 +53,13 @@ before(async () => {
   const a = await semearContaBase(db, { prefixo: 'PT924', nome: 'A', cnpj: '00000000092401' })
   const b = await semearContaBase(db, { prefixo: 'PT924', nome: 'B', cnpj: '00000000092402' })
   const lojaA2 = await semearLoja(db, a.grupoId, 'PT924 A segunda loja')
+  // Outro grupo da MESMA Conta A: o sócio opera o grupo A e não pode gravar na loja deste.
+  const grupoDeA2 = await semearGrupo(db, a.contaId, { prefixo: 'PT924', nome: 'A2', cnpj: '00000000092403' })
   const socioA = await semearUsuario(db, a, { papel: 'admin_socio', rotulo: 'socio', semLoja: true, comGrupo: true })
   const socioB = await semearUsuario(db, b, { papel: 'admin_socio', rotulo: 'socio', semLoja: true, comGrupo: true })
   // admin_rede da Conta A: sem liberação nenhuma até o teste liberar o grupo da Conta B.
   const redeId = await semearUsuario(db, a, { papel: 'admin_rede', rotulo: 'rede', comGrupo: true, comConta: true })
-  Object.assign(s, { contaA: a.contaId, grupoA: a.grupoId, contaB: b.contaId, grupoB: b.grupoId, lojaA: a.lojaId, lojaA2, lojaB: b.lojaId, socioB, redeId })
+  Object.assign(s, { contaA: a.contaId, grupoA: a.grupoId, contaB: b.contaId, grupoB: b.grupoId, lojaA: a.lojaId, lojaA2, lojaB: b.lojaId, socioB, redeId, grupoA2: grupoDeA2.grupoId, lojaDoGrupoA2: grupoDeA2.lojaId })
   sessao = { id: socioA, papel: 'admin_socio', lojaId: null, gruposAcesso: [a.grupoId], contaId: a.contaId, grupoLiberado: null }
   await db.execute(sql`insert into configuracao_taxas (grupo_id, taxas_cartao, taxas_debito, frete_valor_km, frete_km_gratis, imposto, custo_pix_taxa)
     values (${b.grupoId}, ${JSON.stringify(TAXAS_B.taxasCartao)}::jsonb, ${JSON.stringify(TAXAS_B.taxasDebito)}::jsonb,
@@ -66,7 +68,7 @@ before(async () => {
 
 after(async () => {
   // Só o que a semente chegou a criar: um before que falhou no meio não esconde o erro dele.
-  const grupos = sql.param([s.grupoA, s.grupoB].filter(Boolean))
+  const grupos = sql.param([s.grupoA, s.grupoB, s.grupoA2].filter(Boolean))
   const contas = sql.param([s.contaA, s.contaB].filter(Boolean))
   try {
     await db.execute(sql`delete from configuracao_taxas where grupo_id = any(${grupos}::uuid[])`)
@@ -125,6 +127,7 @@ async function partirDe(pcts: { lojaA: number; lojaA2: number; lojaB: number }) 
   }
 }
 const pctsAgora = async () => ({ lojaA: await pctDe(s.lojaA), lojaA2: await pctDe(s.lojaA2), lojaB: await pctDe(s.lojaB) })
+const pctDoGrupoA2 = () => pctDe(s.lojaDoGrupoA2)
 const sessaoDoSocioA = () => ({ id: randomUUID(), papel: 'admin_socio', lojaId: null, gruposAcesso: [s.grupoA], contaId: s.contaA, grupoLiberado: null })
 
 test('o sócio grava a porcentagem de cada loja do grupo ativo, e só ela', async () => {
@@ -167,6 +170,15 @@ test('loja de outra Conta e loja inexistente recebem a mesma frase, e nada do pe
   assert.deepEqual(deOutraConta, LOJA_NAO_ENCONTRADA)
   assert.deepEqual(inexistente, LOJA_NAO_ENCONTRADA)
   assert.deepEqual(await pctsAgora(), { lojaA: 30, lojaA2: 30, lojaB: 30 })
+})
+
+test('loja de OUTRO grupo da mesma Conta: "Loja não encontrada" e nada do pedido é gravado', async () => {
+  await partirDe({ lojaA: 30, lojaA2: 30, lojaB: 30 })
+  sessao = sessaoDoSocioA()
+  const r = await salvarEntradaMinimaReservaAction([{ lojaId: s.lojaA, pct: 20 }, { lojaId: s.lojaDoGrupoA2, pct: 0 }])
+  assert.deepEqual(r, LOJA_NAO_ENCONTRADA)
+  assert.deepEqual(await pctsAgora(), { lojaA: 30, lojaA2: 30, lojaB: 30 })
+  assert.equal(await pctDoGrupoA2(), 30)
 })
 
 test('aux_adm e vendedor são recusados e nada é gravado', async () => {
