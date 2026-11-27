@@ -345,19 +345,22 @@ test('venda com uma nota de homologação viva e outra de produção: uma linha,
   assert.equal(linhas[0].numeroNf, '79')
 })
 
-test('nota negada, em envio ou em processamento não dá número, mesmo com número gravado; produção viva sem número também não', async () => {
+test('nota negada não dá número; nota viva (em envio, processando ou em cancelamento pedido) com número sai; produção sem número não dá', async () => {
   const negada = await semearVenda({ lojaId: A1, vendedorId: VENDEDORA_A, dataVenda: '2026-02-10T21:00:00.000Z' })
   await semearNf(negada.id, A.grupoId, negada.numero, 'Producao', 'Negada', '80')
   const enviando = await semearVenda({ lojaId: A1, vendedorId: VENDEDORA_A, dataVenda: '2026-02-10T21:00:00.000Z' })
   await semearNf(enviando.id, A.grupoId, enviando.numero, 'Producao', 'Enviando', '81')
   const processando = await semearVenda({ lojaId: A1, vendedorId: VENDEDORA_A, dataVenda: '2026-02-10T21:00:00.000Z' })
   await semearNf(processando.id, A.grupoId, processando.numero, 'Producao', 'Processando', '82')
+  const cancelando = await semearVenda({ lojaId: A1, vendedorId: VENDEDORA_A, dataVenda: '2026-02-10T21:00:00.000Z' })
+  await semearNf(cancelando.id, A.grupoId, cancelando.numero, 'Producao', 'CancelamentoSolicitado', '83')
   const semNumero = await semearVenda({ lojaId: A1, vendedorId: VENDEDORA_A, dataVenda: '2026-02-10T21:00:00.000Z' })
   await semearNf(semNumero.id, A.grupoId, semNumero.numero, 'Producao', 'Autorizada', null)
   const { corpo } = await chamar(periodo(DIA.fevereiro, DIA.fevereiro))
   assert.equal(deste(corpo.vendas).find(x => x.numero === negada.numero)?.numeroNf, null)
-  assert.equal(deste(corpo.vendas).find(x => x.numero === enviando.numero)?.numeroNf, null, 'nota em envio com número não pode aparecer')
-  assert.equal(deste(corpo.vendas).find(x => x.numero === processando.numero)?.numeroNf, null, 'nota em processamento com número não pode aparecer')
+  assert.equal(deste(corpo.vendas).find(x => x.numero === enviando.numero)?.numeroNf, '81', 'nota em envio com número é viva (nf-viva.ts): o número sai')
+  assert.equal(deste(corpo.vendas).find(x => x.numero === processando.numero)?.numeroNf, '82', 'nota em processamento com número é viva: o número sai')
+  assert.equal(deste(corpo.vendas).find(x => x.numero === cancelando.numero)?.numeroNf, '83', 'nota em cancelamento pedido é viva: o número sai')
   assert.equal(deste(corpo.vendas).find(x => x.numero === semNumero.numero)?.numeroNf, null)
 })
 

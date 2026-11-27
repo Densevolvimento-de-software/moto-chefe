@@ -1,12 +1,12 @@
 // Consulta da API de vendas de moto (#323, ADR-0021). Lê várias Contas de propósito, sem sessão: o filtro de loja
 // (lojasQueSaem, o mesmo de /lojas) e o de marca (o do Painel Fábrica) ficam dentro da consulta. As colunas saem só
 // pelo mapeamento puro em @/lib/api-leitura-vendas.
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, notInArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { contas, grupos, lojas, modelos, motos, notasFiscaisSaida, usuarios, vendas } from '@/lib/db/schema'
 import { inicioDoDiaBrt } from '@/lib/data-venda'
 import { addDias } from '@/lib/calendario'
-import { STATUS_FINAIS_VIVAS } from '@/lib/notagateway/status'
+import { STATUS_MORTOS } from '@/lib/notagateway/status'
 import { custoMotoExpr } from '@/lib/queries/custo-moto'
 import { corExibida, marcaDoPainel, modeloExibido, valorDaMoto } from '@/lib/queries/painel-fabrica'
 import { custoDaContaExpr, lojasQueSaem } from '@/lib/queries/api-leitura'
@@ -19,7 +19,7 @@ import {
 // microssegundo do banco faria a página seguinte repetir a última linha.
 const dataDaOrdem = sql<Date>`date_trunc('milliseconds', ${vendas.dataVenda})`
 
-// NF de saída de produção viva, com número (a lista de final e viva mora em status.ts). A subconsulta devolve no máximo
+// NF de saída de produção viva, com número (a regra é a de nf-viva.ts: fora de STATUS_MORTOS, em produção). A subconsulta devolve no máximo
 // uma linha, então a venda nunca se duplica mesmo que haja mais de uma nota viva (uma de homologação, por exemplo).
 const numeroDaNfViva = () => db
   .select({ numero: notasFiscaisSaida.numero })
@@ -27,7 +27,7 @@ const numeroDaNfViva = () => db
   .where(and(
     eq(notasFiscaisSaida.vendaId, sql.raw('"vendas"."id"')),
     eq(notasFiscaisSaida.ambiente, 'Producao'),
-    inArray(notasFiscaisSaida.status, STATUS_FINAIS_VIVAS),
+    notInArray(notasFiscaisSaida.status, STATUS_MORTOS),
     isNotNull(notasFiscaisSaida.numero),
   ))
   .orderBy(desc(notasFiscaisSaida.criadoEm), desc(notasFiscaisSaida.id))
