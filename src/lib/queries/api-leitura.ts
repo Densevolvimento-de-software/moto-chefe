@@ -23,10 +23,12 @@ const chavesNaoRevogadas = (executor: Executor) => executor
 // Sem token, compara com um valor fixo de mesmo tamanho que nunca é hash de chave: o caminho é o mesmo.
 const HASH_SEM_TOKEN = '0'.repeat(64)
 
-export async function chaveConfere(token: string | null, agora: Date, executor: Executor = db): Promise<boolean> {
+/** Id da chave que o token confere e ainda vale, ou nulo. O 320 usa o id para o limite e o registro. */
+export async function buscarChaveAceita(token: string | null, agora: Date, executor: Executor = db): Promise<{ id: string } | null> {
   const recebido = token === null ? HASH_SEM_TOKEN : sha256(token)
   const abertas = await chavesNaoRevogadas(executor)
-  return abertas.filter(c => iguaisEmTempoConstante(recebido, c.hash)).some(c => chaveAceita(c, agora))
+  const achada = abertas.filter(c => iguaisEmTempoConstante(recebido, c.hash)).find(c => chaveAceita(c, agora))
+  return achada ? { id: achada.id } : null
 }
 
 async function aplicarPlano(plano: PlanoDaTroca, agora: Date, tx: Tx) {

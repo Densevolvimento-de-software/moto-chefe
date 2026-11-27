@@ -2,7 +2,7 @@
 // middleware não cobre /api. Qualquer falha de chave recebe a mesma resposta, sem dado.
 import { NextRequest, NextResponse } from 'next/server'
 import { corpoDoErro, statusDoErro, tokenDoBearer, type CodigoErroApi } from '@/lib/api-leitura'
-import { chaveConfere, listarLojasDaApi } from '@/lib/queries/api-leitura'
+import { buscarChaveAceita, listarLojasDaApi } from '@/lib/queries/api-leitura'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +10,7 @@ const erro = (codigo: CodigoErroApi) => NextResponse.json(corpoDoErro(codigo), {
 
 export async function GET(req: NextRequest) {
   try {
-    if (!(await chaveConfere(tokenDoBearer(req.headers.get('authorization')), new Date()))) {
+    if ((await buscarChaveAceita(tokenDoBearer(req.headers.get('authorization')), new Date())) === null) {
       return erro('acesso_negado')
     }
     return NextResponse.json({ lojas: await listarLojasDaApi() })

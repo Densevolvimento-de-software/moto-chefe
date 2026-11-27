@@ -37,6 +37,8 @@ const desfazendo = (corpo: (tx: Tx) => Promise<void>) =>
 
 const sha = (texto: string) => createHash('sha256').update(texto).digest('hex')
 const HORA = 60 * 60 * 1000
+// Conferência por id: o teste compara só se a chave foi aceita, o id é conferido no teste de id.
+const confere = async (token: string, agora: Date, tx: Tx) => (await consulta.buscarChaveAceita(token, agora, tx)) !== null
 const T1 = new Date()
 const emHoras = (h: number, base: Date = T1) => new Date(base.getTime() + h * HORA)
 
@@ -52,7 +54,9 @@ test('troca grava só o hash da chave e devolve a chave em texto', async () => {
 test('primeira troca: a chave nova confere agora', async () => {
   await desfazendo(async tx => {
     const chave = await consulta.trocarChave({ geradaPor: randomUUID(), agora: T1 }, tx)
-    assert.equal(await consulta.chaveConfere(chave, T1, tx), true)
+    const [linha] = await tx.select().from(apiChaves).where(eq(apiChaves.hash, sha(chave)))
+    assert.deepEqual(await consulta.buscarChaveAceita(chave, T1, tx), { id: linha.id })
+    assert.equal(await confere(chave, T1, tx), true)
   })
 })
 
@@ -60,8 +64,8 @@ test('segunda troca: a anterior fica em carência e ainda confere dentro das 24 
   await desfazendo(async tx => {
     const primeira = await consulta.trocarChave({ geradaPor: randomUUID(), agora: T1 }, tx)
     const segunda = await consulta.trocarChave({ geradaPor: randomUUID(), agora: emHoras(1) }, tx)
-    assert.equal(await consulta.chaveConfere(primeira, emHoras(2), tx), true)
-    assert.equal(await consulta.chaveConfere(segunda, emHoras(2), tx), true)
+    assert.equal(await confere(primeira, emHoras(2), tx), true)
+    assert.equal(await confere(segunda, emHoras(2), tx), true)
   })
 })
 
@@ -69,8 +73,8 @@ test('segunda troca: a anterior deixa de conferir depois das 24 horas da carênc
   await desfazendo(async tx => {
     const primeira = await consulta.trocarChave({ geradaPor: randomUUID(), agora: T1 }, tx)
     await consulta.trocarChave({ geradaPor: randomUUID(), agora: emHoras(1) }, tx)
-    assert.equal(await consulta.chaveConfere(primeira, emHoras(2), tx), true, 'controle: ainda em carência')
-    assert.equal(await consulta.chaveConfere(primeira, emHoras(26), tx), false)
+    assert.equal(await confere(primeira, emHoras(2), tx), true, 'controle: ainda em carência')
+    assert.equal(await confere(primeira, emHoras(26), tx), false)
   })
 })
 
@@ -79,9 +83,9 @@ test('terceira troca dentro de 24 horas revoga a chave em carência na hora', as
     const primeira = await consulta.trocarChave({ geradaPor: randomUUID(), agora: T1 }, tx)
     const segunda = await consulta.trocarChave({ geradaPor: randomUUID(), agora: emHoras(1) }, tx)
     const terceira = await consulta.trocarChave({ geradaPor: randomUUID(), agora: emHoras(2) }, tx)
-    assert.equal(await consulta.chaveConfere(primeira, emHoras(2), tx), false, 'a 1ª sobreviveu à 3ª troca')
-    assert.equal(await consulta.chaveConfere(segunda, emHoras(2), tx), true, 'a 2ª (em carência) deveria valer')
-    assert.equal(await consulta.chaveConfere(terceira, emHoras(2), tx), true, 'a nova deveria valer')
+    assert.equal(await confere(primeira, emHoras(2), tx), false, 'a 1ª sobreviveu à 3ª troca')
+    assert.equal(await confere(segunda, emHoras(2), tx), true, 'a 2ª (em carência) deveria valer')
+    assert.equal(await confere(terceira, emHoras(2), tx), true, 'a nova deveria valer')
   })
 })
 
