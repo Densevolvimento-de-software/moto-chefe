@@ -250,6 +250,15 @@ test('financiamento: campo a mais dentro de um pagamento não fica guardado na a
   assert.deepEqual(aprovacao.dados_venda.pagamentos, [{ tipo: 'financiamento', valor: 500 }])
 })
 
+test('financiamento: pagamento legítimo completo (parcelas, operadora, autorização) fica guardado como veio', async () => {
+  const c = await novaConta()
+  entrarComo(c, 'aux_adm')
+  const pagamento = { tipo: 'financiamento', valor: 500, operadora: 'op-308', parcelas: 3, autorizacao: 'A1B2' }
+  assert.equal((await pecas.registrarVendaPecaAction(venda(c, {}, [pagamento]))).ok, true)
+  const [aprovacao] = await aprovacaoDaLoja(c)
+  assert.deepEqual(aprovacao.dados_venda.pagamentos, [pagamento])
+})
+
 test('financiamento: o preço ajustado só fica guardado quando quem registra é gestor', async () => {
   const c = await novaConta()
   const itens = [{ pecaId: c.pecaId, quantidade: 1, valorUnitario: 40 }]
