@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 import { apiChaves, contas, grupos, lojas } from '@/lib/db/schema'
 import { sha256 } from '@/lib/assinatura/hash'
 import { iguaisEmTempoConstante, tokenDoBearer } from '@/lib/tempo-constante'
-import { chaveAceita, corpoDoErro, linhaDaLoja, planoDaTroca, statusDoErro, type CodigoErroApi, type LojaDaApi, type PlanoDaTroca } from '@/lib/api-leitura'
+import { chaveAceita, linhaDaLoja, planoDaTroca, respostaDeErro, type LojaDaApi, type PlanoDaTroca, type RespostaDaApi } from '@/lib/api-leitura'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 type Executor = Pick<typeof db, 'select' | 'insert' | 'update'> | Tx
@@ -78,12 +78,8 @@ export async function listarLojasDaApi(): Promise<LojaDaApi[]> {
   return linhas.map(linhaDaLoja)
 }
 
-export type RespostaDaApi = { status: number; corpo: unknown }
-
 // Só a frase: a mensagem do erro pode trazer a consulta com o hash da chave nos parâmetros.
 const FRASE_DE_LOG_DE_ERRO = 'api de leitura: erro interno'
-
-const respostaDeErro = (codigo: CodigoErroApi): RespostaDaApi => ({ status: statusDoErro(codigo), corpo: corpoDoErro(codigo) })
 
 /**
  * Casca de toda rota da API: confere a chave e chama o miolo. Sem chave, chave errada, revogada ou vencida,

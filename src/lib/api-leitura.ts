@@ -45,3 +45,10 @@ export function corpoDoErro(codigo: CodigoErroApi): { codigo: CodigoErroApi; fra
 export function statusDoErro(codigo: CodigoErroApi): number {
   return ERROS[codigo].status
 }
+
+/** Forma da resposta HTTP da API: o status e o corpo que a rota devolve. */
+export type RespostaDaApi = { status: number; corpo: unknown }
+
+export function respostaDeErro(codigo: CodigoErroApi): RespostaDaApi {
+  return { status: statusDoErro(codigo), corpo: corpoDoErro(codigo) }
+}
