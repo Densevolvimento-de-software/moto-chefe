@@ -56,7 +56,7 @@ const autorizadaDaConta = async (tx: Tx, id: string) =>
 test('marcar loja grava só nela: a outra loja da mesma Conta e a loja da Conta B não mudam', async () => {
   await emTransacaoDesfeita(async tx => {
     const { a, b, lojaA2 } = await semear(tx)
-    assert.deepEqual(await mod.marcarLojaMotochefe(randomUUID(), { lojaId: a.lojaId, marcada: true }, tx), { ok: true })
+    assert.deepEqual(await mod.marcarLojaMotochefe(randomUUID(), { lojaId: a.lojaId, marcada: true }, tx), { ok: true, dados: undefined })
     assert.equal(await marcadaDaLoja(tx, a.lojaId), true)
     assert.equal(await marcadaDaLoja(tx, lojaA2), false)
     assert.equal(await marcadaDaLoja(tx, b.lojaId), false)
@@ -89,7 +89,7 @@ test('marcar de novo o que já está marcado: nenhuma linha nova no log', async 
     const { a } = await semear(tx)
     const admin = randomUUID()
     await mod.marcarLojaMotochefe(admin, { lojaId: a.lojaId, marcada: true }, tx)
-    assert.deepEqual(await mod.marcarLojaMotochefe(admin, { lojaId: a.lojaId, marcada: true }, tx), { ok: true })
+    assert.deepEqual(await mod.marcarLojaMotochefe(admin, { lojaId: a.lojaId, marcada: true }, tx), { ok: true, dados: undefined })
     assert.equal((await linhas(tx, sql`select 1 from log_acoes where usuario_id = ${admin}`)).length, 1)
   })
 })
@@ -98,7 +98,7 @@ test('autorizar Conta grava só nela; desautorizar volta a false', async () => {
   await emTransacaoDesfeita(async tx => {
     const { a, b } = await semear(tx)
     const admin = randomUUID()
-    assert.deepEqual(await mod.autorizarCustoDespesaMeta(admin, { contaId: a.contaId, autorizada: true }, tx), { ok: true })
+    assert.deepEqual(await mod.autorizarCustoDespesaMeta(admin, { contaId: a.contaId, autorizada: true }, tx), { ok: true, dados: undefined })
     assert.equal(await autorizadaDaConta(tx, a.contaId), true)
     assert.equal(await autorizadaDaConta(tx, b.contaId), false)
     await mod.autorizarCustoDespesaMeta(admin, { contaId: a.contaId, autorizada: false }, tx)
