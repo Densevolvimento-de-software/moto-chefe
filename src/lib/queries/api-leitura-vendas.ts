@@ -1,11 +1,11 @@
 // Consulta da API de vendas de moto (#323, ADR-0021). Lê várias Contas de propósito, sem sessão: o filtro de loja
 // (lojasQueSaem, o mesmo de /lojas) e o de marca (o do Painel Fábrica) ficam dentro da consulta. As colunas saem só
 // pelo mapeamento puro em @/lib/api-leitura-vendas.
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, notInArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { contas, grupos, lojas, modelos, motos, notasFiscaisSaida, usuarios, vendas } from '@/lib/db/schema'
 import { fimDoDiaBrt, inicioDoDiaBrt } from '@/lib/data-venda'
-import { STATUS_MORTOS } from '@/lib/notagateway/status'
+import { STATUS_FINAIS_VIVAS } from '@/lib/notagateway/status'
 import { custoMotoExpr } from '@/lib/queries/custo-moto'
 import { corExibida, marcaDoPainel, modeloExibido, valorDaMoto } from '@/lib/queries/painel-fabrica'
 import { custoDaContaExpr, lojasQueSaem } from '@/lib/queries/api-leitura'
@@ -26,7 +26,7 @@ const numeroDaNfViva = () => db
   .where(and(
     eq(notasFiscaisSaida.vendaId, sql.raw('"vendas"."id"')),
     eq(notasFiscaisSaida.ambiente, 'Producao'),
-    notInArray(notasFiscaisSaida.status, STATUS_MORTOS),
+    inArray(notasFiscaisSaida.status, STATUS_FINAIS_VIVAS),
     isNotNull(notasFiscaisSaida.numero),
   ))
   .orderBy(desc(notasFiscaisSaida.criadoEm), desc(notasFiscaisSaida.id))

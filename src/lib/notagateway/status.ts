@@ -16,6 +16,9 @@ export const STATUS_MORTOS = ['Negada', 'Denegada', 'Cancelada', 'Descartada']
 
 const STATUS_FINAIS = [...STATUS_MORTOS, 'Autorizada', 'CancelamentoNegado']
 
+/** Final e viva: a nota vale e o número já é dela. Quem mostra número de NF usa esta lista, não a de mortas. */
+export const STATUS_FINAIS_VIVAS = STATUS_FINAIS.filter(s => !STATUS_MORTOS.includes(s))
+
 /** Final: a nota não muda mais sozinha. Nos demais a tela oferece "Consultar". */
 export function ehFinal(status: string): boolean {
   return STATUS_FINAIS.includes(status)
