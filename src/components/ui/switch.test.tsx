@@ -55,8 +55,13 @@ test('pode receber foco e fica na ordem de Tab (a troca por Espaço não é cobe
   assert.equal(document.activeElement, el)
 })
 
-test('no celular, a área de toque passa de 44 px (a classe da área ampliada está no interruptor)', async () => {
+// A área de toque é o pseudo-elemento ancorado na área interna (dentro da borda de 1 px dos dois lados).
+// Caixa de 32 x 18,4 px: área interna de 30 x 16,4 px. Para 44 px: 7 px de cada lado na largura, 14 na altura.
+test('no celular, a área de toque chega a 44 px contando a borda de 1 px', async () => {
   const el = await montar({ checked: false, onCheckedChange: () => {}, 'aria-label': 'Loja' })
-  assert.match(el.className, /max-md:before:-inset-x-1\.5/)
-  assert.match(el.className, /max-md:before:-inset-y-\[13px\]/)
+  const x = Number(el.className.match(/max-md:before:-inset-x-\[(\d+)px\]/)?.[1])
+  const y = Number(el.className.match(/max-md:before:-inset-y-\[(\d+)px\]/)?.[1])
+  assert.ok(el.className.includes(' border '), 'a borda de 1 px está no botão')
+  assert.ok(30 + 2 * x >= 44, `largura: ${30 + 2 * x} px`)
+  assert.ok(16.4 + 2 * y >= 44, `altura: ${16.4 + 2 * y} px`)
 })
