@@ -152,6 +152,8 @@ export function resumoDoEvento(e: EventoLog): string {
     case 'moto_arquivada':
     case 'moto_desarquivada':
     case 'moto_removida': return `${v('chassi')} · ${v('modelo')} · “${v('motivo')}”`
+    case 'loja_motochefe_alterada': return `${v('lojaNome')} · ${d.para ? 'marcada' : 'desmarcada'}`
+    case 'autorizacao_conta_alterada': return `${v('contaNome')} · ${d.para ? 'autorizada' : 'sem autorização'}`
     case 'vendedor_venda_trocado': return `Venda #${v('numeroVenda')} · ${v('vendedorAnterior')} → ${v('vendedor')}`
     default: return `${dispositivoLegivel(e.userAgent)} · IP ${e.ip ?? '?'}`
   }
