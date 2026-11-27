@@ -8,7 +8,7 @@ import {
   HandCoins, Headset, Home, IdCard, Landmark, Layers, Megaphone, Package,
   Package2, PackageCheck, PackagePlus, QrCode, Radar, Settings2, Shield,
   ShoppingBag, ShoppingCart, Tag, Tags, Target, Ticket, TrendingDown, Users, Wallet, FolderOpen,
-  Wrench, ListChecks, Calculator, Trophy, ReceiptText, FileSignature, BadgeDollarSign, History, Star, Network, BadgeCheck} from 'lucide-react'
+  Wrench, ListChecks, Calculator, Trophy, ReceiptText, FileSignature, BadgeDollarSign, History, Star, Network, BadgeCheck, Store} from 'lucide-react'
 
 // 'cargo' é o papel interno de quem tem cargo da Conta (#449): sozinho não dá poder nenhum. Com
 // cargo achado, a sessão troca 'cargo' pelo papel base (usuarioComCargo, #616).
@@ -186,6 +186,8 @@ export const ITENS: ItemNav[] = [
   { id: 'mensalidades',   href: '/admin/mensalidades', label: 'Mensalidades',  icon: BadgeDollarSign, categoria: 'plataforma', papeis: SUPER },
   // Tabela de preço sugerido da MotoChefe (#522): da plataforma, só admin_geral carrega.
   { id: 'precos-padrao',  href: '/admin/precos-padrao', label: 'Preços MotoChefe', icon: BadgeDollarSign, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
+  // Lojas que a API de leitura da MotoChefe Brasil devolve, e as Contas autorizadas (#321): só o admin_geral.
+  { id: 'lojas-motochefe', href: '/admin/motochefe', label: 'Lojas MotoChefe', icon: Store, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
   // Estoque e vendas MotoChefe de todas as Contas para a fábrica: lê fora da Conta, por isso
   // no menu só o admin_geral, sem liberação individual; o login da fábrica abre por visivel().
   { id: 'painel-fabrica', href: ROTA_PAINEL_FABRICA, label: 'Painel Fábrica MotoChefe', icon: FileBarChart, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
