@@ -8,6 +8,7 @@ import { podeForcarNoGrupo } from '@/lib/conciliacao-forcar-opcao'
 import { contaDoGrupoAtivo, getGrupoAtivo, listarLojasDoGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { listarUsuariosDoGrupo } from '@/lib/usuarios-do-grupo'
 import { hojeBrt, primeiroDiaDoMesBrt } from '@/lib/data-venda'
+import { opcoesDeResponsavel, podeEscolherVendedor } from '@/lib/vendedor-escolhido'
 import { calcStatusMultiPagamento } from '@/lib/conciliacao-status'
 import { listarVendasPecasAction } from './actions'
 import { lojaDoEstoque, PAPEIS_VENDA_PECA, podeGerirPecas, podeVenderPeca } from './papeis'
@@ -125,6 +126,9 @@ export default async function PecasPage({
                 lojaUsuarioId={usuario.lojaId}
                 isAdmin={isAdmin}
                 podeDefinirPreco={isGestor}
+                escolhaDoResponsavel={podeEscolherVendedor(usuario.papel)
+                  ? { opcoes: opcoesDeResponsavel(vendedoresOpts, lojasOpts, usuario), usuarioId: usuario.id }
+                  : undefined}
               />
             </div>
 
