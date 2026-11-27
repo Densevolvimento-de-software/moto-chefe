@@ -8,7 +8,7 @@ import { ArrowLeft, Store } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { contarMarcadas, resumoDaTela, type ContaDaTela, type LojaDaTela } from '@/lib/motochefe-marcacao'
+import { contaDaTela, contarMarcadas, erroAindaVale, lojaDaTela, resumoDaTela, type ContaDaTela, type LojaDaTela } from '@/lib/motochefe-marcacao'
 import { corDoGrupo } from '@/lib/grupo-cores'
 import { autorizarContaAction, marcarLojaMotochefeAction } from '../actions'
 import { ConfirmarDialogo } from './confirmar-dialogo'
@@ -82,25 +82,21 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
     setConfirmacao(null)
   }
 
-  // Valor atual da linha do erro (undefined se a linha sumiu).
-  const valorAtual = (e: Erro): boolean | undefined => e.tipo === 'loja'
-    ? contas.flatMap(c => c.lojas).find(l => l.id === e.id)?.marcada
-    : contas.find(c => c.id === e.id)?.autorizada
-  // O erro vale só enquanto a linha segue como estava antes do pedido que falhou: se mudou, o pedido ficou velho.
-  const erroAtivo = erro && valorAtual(erro) === !erro.valor ? erro : null
+  // O erro vale só enquanto a linha segue como estava antes do pedido que falhou (regra em motochefe-marcacao.ts).
+  const erroAtivo = erro && erroAindaVale(erro, contas) ? erro : null
 
   // Tentar de novo: a ação sem volta volta pela confirmação; a que dá para desfazer repete o pedido. Pedido velho não
   // é reenviado.
   function tentarDeNovo(e: Erro) {
     setErro(null)
-    if (valorAtual(e) !== !e.valor) return
+    if (!erroAindaVale(e, contas)) return
     if (e.tipo === 'loja') {
-      const loja = contas.flatMap(c => c.lojas).find(l => l.id === e.id)
+      const loja = lojaDaTela(contas, e.id)
       if (!loja) return
       if (e.valor) enviarLoja(loja, true)
       else setConfirmacao({ tipo: 'loja', loja })
     } else {
-      const conta = contas.find(c => c.id === e.id)
+      const conta = contaDaTela(contas, e.id)
       if (!conta) return
       if (e.valor) enviarAutorizacao(conta, true)
       else setConfirmacao({ tipo: 'conta', conta })
