@@ -139,3 +139,10 @@ test('tipos da API MotoChefe e da entrega: rótulo próprio e sensíveis, para a
   }
   assert.equal(ROTULO_TIPO.entrega_alterada, 'Alterou a entrega')
 })
+
+test('loja marcada e Conta autorizada: o resumo diz o que mudou, sem o id', () => {
+  assert.equal(resumoDoEvento(ev({ tipo: 'loja_motochefe_alterada', detalhe: { lojaNome: 'Loja Centro', de: false, para: true } })), 'Loja Centro · marcada')
+  assert.equal(resumoDoEvento(ev({ tipo: 'loja_motochefe_alterada', detalhe: { lojaNome: 'Loja Centro', de: true, para: false } })), 'Loja Centro · desmarcada')
+  assert.equal(resumoDoEvento(ev({ tipo: 'autorizacao_conta_alterada', detalhe: { contaNome: 'Conta A', de: false, para: true } })), 'Conta A · autorizada')
+  assert.equal(resumoDoEvento(ev({ tipo: 'autorizacao_conta_alterada', detalhe: { contaNome: 'Conta A', de: true, para: false } })), 'Conta A · sem autorização')
+})
