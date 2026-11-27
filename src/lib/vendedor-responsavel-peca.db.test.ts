@@ -97,7 +97,14 @@ const DINHEIRO = [{ tipo: 'dinheiro', valor: 100 }]
 const venda = (c: Conta, extra: Record<string, unknown> = {}, pagamentos: object[] = DINHEIRO) =>
   ({ lojaId: c.lojaId, clienteNome: 'Cliente sintético', clienteDocumento: CPF, itens: [{ pecaId: c.pecaId, quantidade: 1 }], pagamentos, ...extra }) as Pedido
 
-const saldoDaPeca = async (c: Conta) => (await execRows(sql`select quantidade from pecas_estoque_loja where peca_id = ${c.pecaId} and loja_id = ${c.lojaId}`))[0].quantidade
+const aprovacaoDaLoja = (c: Conta) =>
+  execRows(sql`select id, vendedor_id, dados_venda from aprovacoes_venda where loja_id = ${c.lojaId} and origem = 'peca'`)
+const saldoDaPeca = async (c: Conta) => Number((await execRows(sql`select quantidade from pecas_estoque_loja where peca_id = ${c.pecaId} and loja_id = ${c.lojaId}`))[0].quantidade)
+// O que uma recusa não pode mexer: venda, saldo, caixa e aprovação da loja.
+const estadoDaLoja = async (c: Conta) => ({
+  vendas: await vendasDaLoja(c), saldo: await saldoDaPeca(c), caixa: await caixaDaLoja(c), aprovacoes: await aprovacaoDaLoja(c),
+})
+const SEM_MEXER = (saldo: number) => ({ vendas: [], saldo, caixa: [], aprovacoes: [] })
 const vendasDaLoja = (c: Conta) => execRows(sql`select id, vendedor_id from vendas_pecas where loja_id = ${c.lojaId}`)
 const caixaDaLoja = (c: Conta) => execRows(sql`select usuario_id from lancamentos_caixa where loja_id = ${c.lojaId} and venda_peca_id is not null`)
 
@@ -139,7 +146,7 @@ test('pessoa de outro grupo da MESMA Conta é recusada e nada grava', async () =
   entrarComo(c, 'aux_adm')
   const r = await pecas.registrarVendaPecaAction(venda(c, { vendedorId: c.deOutroGrupoId }))
   assert.deepEqual(r, { ok: false, erro: NAO_ENCONTRADO })
-  assert.deepEqual(await vendasDaLoja(c), [])
+  assert.deepEqual(await estadoDaLoja(c), SEM_MEXER(10))
 })
 
 test('pessoa de outra Conta e id inexistente recebem a mesma frase, e nada grava', async () => {
@@ -152,14 +159,14 @@ test('pessoa de outra Conta e id inexistente recebem a mesma frase, e nada grava
   assert.deepEqual(deOutraConta, { ok: false, erro: NAO_ENCONTRADO })
   assert.deepEqual(inexistente, deOutraConta)
   assert.deepEqual(doOutroGrupo, deOutraConta)
-  assert.deepEqual(await vendasDaLoja(a), [])
+  assert.deepEqual(await estadoDaLoja(a), SEM_MEXER(10))
 })
 
 test('papel que não vende peça (mecânico do grupo) não pode ser o responsável', async () => {
   const c = await novaConta()
   entrarComo(c, 'aux_adm')
   assert.deepEqual(await pecas.registrarVendaPecaAction(venda(c, { vendedorId: c.mecanicoId })), { ok: false, erro: NAO_ENCONTRADO })
-  assert.deepEqual(await vendasDaLoja(c), [])
+  assert.deepEqual(await estadoDaLoja(c), SEM_MEXER(10))
 })
 
 test('quem não é admin e forja o vendedorId: o id é ignorado e a venda sai no nome dele', async () => {
@@ -202,12 +209,10 @@ test('admin_rede sem o grupo liberado: não vende peça na loja de outra Conta, 
   const escolhendo = await pecas.registrarVendaPecaAction(venda(a, { vendedorId: a.colegaId }))
   assert.equal(semEscolher.ok, false)
   assert.deepEqual(escolhendo, semEscolher)
-  assert.deepEqual(await vendasDaLoja(a), [])
+  assert.deepEqual(await estadoDaLoja(a), SEM_MEXER(10))
 })
 
 const FINANCIAMENTO = [{ tipo: 'financiamento', valor: 500 }]
-const aprovacaoDaLoja = (c: Conta) =>
-  execRows(sql`select id, vendedor_id, dados_venda from aprovacoes_venda where loja_id = ${c.lojaId} and origem = 'peca'`)
 
 test('financiamento: a aprovação guarda o responsável, nada de campo a mais no pedido, e ao aprovar a venda sai no nome dele', async () => {
   const c = await novaConta()
@@ -255,7 +260,7 @@ test('financiamento com responsável de outro grupo: recusa e nenhuma aprovaçã
   entrarComo(c, 'aux_adm')
   const r = await pecas.registrarVendaPecaAction(venda(c, { vendedorId: c.deOutroGrupoId }, FINANCIAMENTO))
   assert.deepEqual(r, { ok: false, erro: NAO_ENCONTRADO })
-  assert.deepEqual(await aprovacaoDaLoja(c), [])
+  assert.deepEqual(await estadoDaLoja(c), SEM_MEXER(10))
 })
 
 test('a lista do campo é exatamente quem o servidor aceita, e nada da outra Conta aparece', async () => {
