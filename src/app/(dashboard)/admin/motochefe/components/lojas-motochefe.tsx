@@ -77,11 +77,11 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
+      <Card data-resumo className="grid gap-0 p-0 md:grid-cols-3 md:divide-x">
         <Resumo titulo="Lojas marcadas" valor={`${resumo.lojasMarcadas} de ${resumo.lojasTotal}`} />
         <Resumo titulo="Contas com loja marcada" valor={`${resumo.contasComMarcada} de ${resumo.contasTotal}`} />
         <Resumo titulo="Contas autorizadas para custo, despesas e meta" valor={`${resumo.contasAutorizadas} de ${resumo.contasTotal}`} />
-      </div>
+      </Card>
 
       {resumo.lojasMarcadas === 0 && (
         <Card className="items-center p-6 text-center">
@@ -212,12 +212,13 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
   )
 }
 
+// Uma coluna do resumo: no celular ocupa a largura toda, uma embaixo da outra.
 function Resumo({ titulo, valor }: { titulo: string; valor: string }) {
   return (
-    <Card className="gap-1 px-4">
+    <div className="flex flex-col gap-1 border-t px-4 py-3 first:border-t-0 md:border-t-0">
       <span className="text-muted-foreground text-sm">{titulo}</span>
       <strong className="text-xl">{valor}</strong>
-    </Card>
+    </div>
   )
 }
 

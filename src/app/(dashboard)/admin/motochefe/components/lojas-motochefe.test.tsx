@@ -283,3 +283,13 @@ test('o erro fica acima da linha da loja, não abaixo', async () => {
   assert.ok(linha.contains(alerta), 'o alerta fica dentro do item da loja')
   assert.ok(linha.firstElementChild === alerta || linha.firstElementChild?.contains(alerta), 'e vem antes do conteúdo da linha')
 })
+
+// O resumo é um cartão só, com as três colunas (no celular, uma embaixo da outra).
+test('resumo: um cartão com três colunas, com os três números do protótipo', async () => {
+  await montar()
+  const resumo = document.querySelector<HTMLElement>('[data-resumo]')!
+  assert.ok(resumo, 'o resumo tem a marca data-resumo')
+  const colunas = [...resumo.children] as HTMLElement[]
+  assert.equal(colunas.length, 3)
+  assert.deepEqual(colunas.map(c => c.textContent), ['Lojas marcadas3 de 4', 'Contas com loja marcada2 de 3', 'Contas autorizadas para custo, despesas e meta1 de 3'])
+})
