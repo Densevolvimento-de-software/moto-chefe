@@ -5,7 +5,7 @@ import { diffDias } from '@/lib/calendario'
 
 /** O histórico da API começa em 01/2026 (spec #315). */
 export const INICIO_DO_HISTORICO = '2026-01-01'
-/** Teto do período por consulta, contando os dois extremos (spec #315, como o Painel Fábrica). */
+// Mesmo número que TETO_PERIODO_DIAS do Painel (#901), mas regra separada: este teto é o contrato da API (spec #315).
 export const TETO_DIAS_DO_PERIODO = 92
 export const TAMANHO_DA_PAGINA = 500
 
