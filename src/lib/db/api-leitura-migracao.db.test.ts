@@ -2,6 +2,7 @@
 // não grava linha nenhuma, então roda em paralelo com os outros arquivos do test:db sem disputa.
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 
 const url = process.env.TEST_DATABASE_URL
@@ -9,8 +10,9 @@ if (!url || !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw n
 process.env.DATABASE_URL = url
 
 // Import dinâmico: o módulo de banco lê DATABASE_URL ao carregar, então tem de vir depois do ajuste acima.
+let db: typeof import('@/lib/db')['db']
 let execRows: typeof import('@/lib/db')['execRows']
-before(async () => { ({ execRows } = await import('@/lib/db')) })
+before(async () => { ({ db, execRows } = await import('@/lib/db')) })
 after(async () => { await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end() })
 
 const TABELAS = ['api_chaves', 'api_acessos', 'api_limite'] as const
@@ -68,11 +70,27 @@ test('api_chaves guarda só o hash: nenhuma coluna com a chave em claro ou cifra
   assert.match(await definicaoDoIndice('api_chaves_hash_key') ?? '', /UNIQUE INDEX api_chaves_hash_key .*\(hash\)/)
 })
 
-test('o índice da chave atual é único e só cobre chave não trocada nem revogada', async () => {
-  const def = await definicaoDoIndice('api_chaves_atual_key')
-  assert.ok(def, 'índice api_chaves_atual_key não existe')
-  assert.match(def, /CREATE UNIQUE INDEX api_chaves_atual_key /)
-  assert.match(def, /WHERE .*valida_ate IS NULL.*revogada_em IS NULL/)
+// Transação que sempre se desfaz: o teste não deixa linha no banco compartilhado do test:db.
+class Desfazer extends Error {}
+const emTransacaoDesfeita = (corpo: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<void>) =>
+  assert.rejects(db.transaction(async tx => { await corpo(tx); throw new Desfazer() }), Desfazer)
+
+const inserirChave = (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], extra: ReturnType<typeof sql>) =>
+  tx.execute(sql`insert into api_chaves (hash, gerada_por, valida_ate, revogada_em) values (${randomUUID()}, ${randomUUID()}, ${extra}, null)`)
+
+test('duas chaves atuais ao mesmo tempo dão erro de unicidade (23505)', async () => {
+  const erro = await db.transaction(async tx => {
+    await inserirChave(tx, sql`null`)
+    await inserirChave(tx, sql`null`)
+  }).then(() => null, (e: unknown) => e)
+  assert.equal((erro as { cause?: { code?: string } } | null)?.cause?.code, '23505')
+})
+
+test('chave trocada (com validade) não conta como atual: a nova entra junto', async () => {
+  await emTransacaoDesfeita(async tx => {
+    await inserirChave(tx, sql`now() + interval '24 hours'`)
+    await inserirChave(tx, sql`null`)
+  })
 })
 
 test('api_acessos registra cada chamada, inclusive a sem chave (chave_id nulo)', async () => {
