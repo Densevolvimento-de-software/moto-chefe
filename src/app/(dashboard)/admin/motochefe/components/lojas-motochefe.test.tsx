@@ -38,6 +38,7 @@ const CONTAS: ContaDaTela[] = [
     { id: 'l1', nome: 'Centro', cidade: 'Alfa', ativa: true, marcada: true },
     { id: 'l2', nome: 'Norte', cidade: 'Beta', ativa: true, marcada: true },
     { id: 'l3', nome: 'Leste', cidade: 'Gama', ativa: true, marcada: false },
+    { id: 'l5', nome: 'Antiga', cidade: 'Delta', ativa: false, marcada: false },
   ] },
   { id: 'b', nome: 'Conta B', autorizada: false, lojas: [{ id: 'l4', nome: 'Oeste', cidade: 'Ômega', ativa: true, marcada: true }] },
   { id: 'c', nome: 'Conta C', autorizada: false, lojas: [] },
@@ -306,7 +307,7 @@ test('resumo: um cartão com três colunas, com os três números do protótipo'
   assert.ok(resumo, 'o resumo tem a marca data-resumo')
   const colunas = [...resumo.children] as HTMLElement[]
   assert.equal(colunas.length, 3)
-  assert.deepEqual(colunas.map(c => c.textContent), ['Lojas marcadas3 de 4', 'Contas com loja marcada2 de 3', 'Contas autorizadas para custo, despesas e meta1 de 3'])
+  assert.deepEqual(colunas.map(c => c.textContent), ['Lojas marcadas3 de 5', 'Contas com loja marcada2 de 3', 'Contas autorizadas para custo, despesas e meta1 de 3'])
 })
 
 // A barra da Conta na lista usa uma cor da paleta de grupo (classe bg-grupo-*), sem cor fixa no código.
@@ -334,16 +335,19 @@ test('a mesma Conta mantém a sua barra ao mudar de posição na lista e ao muda
 })
 
 // Layout da linha como no protótipo: nome, coluna Ativa/Inativa e o interruptor; seta no Todas as Contas.
-test('linha da loja: nome, coluna Ativa ou Inativa e o interruptor, nessa ordem', async () => {
+// Loja ativa e loja inativa de verdade (Antiga, na fixture): cada uma com o seu selo na coluna do meio.
+test('linha da loja: nome, selo Ativa ou Inativa e o interruptor, nessa ordem', async () => {
   const { clique } = await montar()
   await clique(contaNaLista('Conta A'))
-  const linha = interruptor('Loja MotoChefe: Norte')!.closest('li')!
-  const colunas = [...linha.children] as HTMLElement[]
-  assert.equal(colunas.length, 3)
-  assert.equal(colunas[1].textContent, 'Ativa')
-  assert.ok(colunas[2].querySelector('[role="switch"]'))
-  const inativa = interruptor('Loja MotoChefe: Leste')!.closest('li')!
-  assert.equal([...inativa.children][1].textContent, 'Ativa')
+  const ativa = [...interruptor('Loja MotoChefe: Norte')!.closest('li')!.children] as HTMLElement[]
+  assert.equal(ativa.length, 3)
+  assert.equal(ativa[1].textContent, 'Ativa')
+  assert.ok(ativa[2].querySelector('[role="switch"]'))
+  const inativa = [...interruptor('Loja MotoChefe: Antiga')!.closest('li')!.children] as HTMLElement[]
+  assert.equal(inativa[1].textContent, 'Inativa')
+  assert.equal(inativa[1].className.includes('text-muted-foreground'), true, 'o selo Inativa usa a cor de texto secundário da tabela de contraste')
+  assert.ok(inativa[0].querySelector('strong')!.className.includes('text-muted-foreground'), 'o nome da loja inativa aparece apagado')
+  assert.equal(ativa[0].querySelector('strong')!.className.includes('text-muted-foreground'), false)
 })
 
 test('Todas as Contas tem a seta de volta, como no protótipo', async () => {
