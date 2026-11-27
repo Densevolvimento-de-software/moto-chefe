@@ -4,21 +4,20 @@
 // a lista e o painel se alternam. Cada gravação mostra o valor pedido enquanto envia; se a action recusa,
 // volta ao valor de antes e diz que nada mudou. Desmarcar e tirar a autorização pedem confirmação.
 import { useState } from 'react'
-import { ArrowLeft, Loader2, Store, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, Store } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Switch } from '@/components/ui/switch'
 import { contarMarcadas, resumoDaTela, type ContaDaTela, type LojaDaTela } from '@/lib/motochefe-marcacao'
 import { corDoGrupo } from '@/lib/grupo-cores'
 import { autorizarContaAction, marcarLojaMotochefeAction } from '../actions'
 import { ConfirmarDialogo } from './confirmar-dialogo'
+import { chaveDaConta, chaveDaLoja, Interruptor, MensagemDeErro } from './interruptor'
+import { LinhaDaLoja } from './linha-da-loja'
 
 type Erro = { chave: string; texto: string; tentar: () => void }
 type Confirmacao = { tipo: 'loja'; loja: LojaDaTela } | { tipo: 'conta'; conta: ContaDaTela } | null
 
-const chaveDaLoja = (id: string) => `loja:${id}`
-const chaveDaConta = (id: string) => `conta:${id}`
 
 export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null)
@@ -172,25 +171,13 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                 {selecionada.lojas.length === 0 && <p className="text-muted-foreground px-4 text-sm">Esta Conta ainda não tem lojas.</p>}
                 <ul className="divide-y border-t">
                   {selecionada.lojas.map(loja => (
-                    <li key={loja.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3">
-                      {erro?.chave === chaveDaLoja(loja.id) && <MensagemDeErro className="col-span-3" texto={erro.texto} onTentar={erro.tentar} />}
-                      <div className="min-w-0">
-                        <strong className={`block ${loja.ativa ? '' : 'text-muted-foreground'}`}>{loja.nome}</strong>
-                        <span className="text-muted-foreground block text-sm">{loja.cidade}</span>
-                      </div>
-                      {loja.ativa
-                        ? <Badge className="bg-success/15 text-success">Ativa</Badge>
-                        : <Badge variant="outline" className="text-muted-foreground">Inativa</Badge>}
-                      <Interruptor
-                        chave={chaveDaLoja(loja.id)}
-                        checado={loja.marcada}
-                        enviando={enviando}
-                        rotuloAcessivel={`Loja MotoChefe: ${loja.nome}`}
-                        rotulos={{ ligado: 'Marcada', desligado: 'Desmarcada' }}
-                        onMudar={v => mudarLoja(loja, v)}
-                      />
-                      
-                    </li>
+                    <LinhaDaLoja
+                      key={loja.id}
+                      loja={loja}
+                      enviando={enviando}
+                      erro={erro?.chave === chaveDaLoja(loja.id) ? erro : null}
+                      onMudar={v => mudarLoja(loja, v)}
+                    />
                   ))}
                 </ul>
               </Card>
@@ -221,42 +208,6 @@ function Resumo({ titulo, valor }: { titulo: string; valor: string }) {
     <div className="flex flex-col gap-1 border-t px-4 py-3 first:border-t-0 md:border-t-0">
       <span className="text-muted-foreground text-sm">{titulo}</span>
       <strong className="text-xl">{valor}</strong>
-    </div>
-  )
-}
-
-function Interruptor({ chave, checado, enviando, rotuloAcessivel, rotulos, onMudar }: {
-  chave: string
-  checado: boolean
-  enviando: Record<string, boolean>
-  rotuloAcessivel: string
-  rotulos: { ligado: string; desligado: string }
-  onMudar: (v: boolean) => void
-}) {
-  const salvando = enviando[chave] === true
-  // Enquanto envia, mostra o valor pedido: é o que o usuário acabou de escolher.
-  const mostrado = salvando ? !checado : checado
-  return (
-    <div className="flex items-center gap-2">
-      <Switch checked={mostrado} disabled={salvando} onCheckedChange={onMudar} aria-label={rotuloAcessivel} />
-      <span className="text-sm">
-        {salvando
-          ? <span className="inline-flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" aria-hidden />Salvando</span>
-          : (mostrado ? rotulos.ligado : rotulos.desligado)}
-      </span>
-    </div>
-  )
-}
-
-// Erro da gravação: o texto do protótipo, acima da linha, com Tentar de novo (repete a mesma ação).
-function MensagemDeErro({ texto, onTentar, className = '' }: { texto: string; onTentar: () => void; className?: string }) {
-  return (
-    <div role="alert" className={`bg-destructive/10 text-destructive flex w-full items-start gap-2 rounded-lg px-3 py-2 text-sm ${className}`}>
-      <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <div className="space-y-2">
-        <p>{texto}</p>
-        <Button type="button" variant="outline" size="sm" onClick={onTentar}>Tentar de novo</Button>
-      </div>
     </div>
   )
 }
