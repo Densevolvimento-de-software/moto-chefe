@@ -269,23 +269,27 @@ test('financiamento com responsável de outro grupo: recusa e nenhuma aprovaçã
   assert.deepEqual(await estadoDaLoja(c), SEM_MEXER(10))
 })
 
-test('a lista do campo é exatamente quem o servidor aceita, e nada da outra Conta aparece', async () => {
+test('as opções do campo Responsável são exatamente quem o servidor aceita, e nada da outra Conta aparece', async () => {
   const a = await novaConta()
   const b = await novaConta()
   const { listarUsuariosDoGrupo } = await import('@/lib/usuarios-do-grupo')
+  const { opcoesDeResponsavel } = await import('@/lib/vendedor-escolhido')
   const { PAPEIS_VENDA_PECA } = await import('@/app/(dashboard)/pecas/papeis')
-  const lista = (await listarUsuariosDoGrupo(a.grupoId, { papeis: PAPEIS_VENDA_PECA })).map(u => u.id)
+  // Como a página monta o campo: a lista do grupo da loja, pela mesma função do servidor, e as opções da tela.
+  const lojasDoGrupo = await execRows(sql`select id, nome from lojas where grupo_id = ${a.grupoId}`) as { id: string; nome: string }[]
+  const doGrupo = await listarUsuariosDoGrupo(a.grupoId, { papeis: PAPEIS_VENDA_PECA })
+  const opcoes = opcoesDeResponsavel(doGrupo, lojasDoGrupo, { id: a.auxId, nome: 'aux', lojaId: a.lojaId }).map(o => o.id)
   const deA = [a.auxId, a.socioId, a.vendedorId, a.colegaId, a.mecanicoId, a.deOutroGrupoId]
   const deB = [b.auxId, b.socioId, b.vendedorId, b.colegaId, b.mecanicoId, b.deOutroGrupoId]
-  assert.equal(deB.some(id => lista.includes(id)), false)
-  // O servidor aceita a pessoa escolhida se ela está na lista; o aux_adm que registra fica sempre aceito (é ele).
+  assert.equal(deB.some(id => opcoes.includes(id)), false)
+  // O servidor aceita quem está nas opções; quem registra (o aux_adm) fica sempre aceito, é ele.
   entrarComo(a, 'aux_adm')
   const aceitos: string[] = []
   for (const id of [...deA, ...deB]) {
     if (id === a.auxId) continue
     if ((await pecas.registrarVendaPecaAction(venda(a, { vendedorId: id }))).ok) aceitos.push(id)
   }
-  assert.deepEqual(aceitos.sort(), lista.filter(id => id !== a.auxId).sort())
+  assert.deepEqual(aceitos.sort(), opcoes.filter(id => id !== a.auxId).sort())
 })
 
 test('loja de outra Conta e loja inexistente: mesma recusa, com ou sem responsável, e nada muda nas duas Contas', async () => {
