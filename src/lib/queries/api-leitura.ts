@@ -20,9 +20,11 @@ const chavesNaoRevogadas = (executor: Executor) => executor
  * O token confere com alguma chave não revogada e vigente. Compara o hash com todas, em tempo constante,
  * antes de decidir (sem parar na primeira que bate).
  */
+// Sem token, compara com um valor fixo de mesmo tamanho que nunca é hash de chave: o caminho é o mesmo.
+const HASH_SEM_TOKEN = '0'.repeat(64)
+
 export async function chaveConfere(token: string | null, agora: Date, executor: Executor = db): Promise<boolean> {
-  if (token === null) return false
-  const recebido = sha256(token)
+  const recebido = token === null ? HASH_SEM_TOKEN : sha256(token)
   const abertas = await chavesNaoRevogadas(executor)
   return abertas.filter(c => iguaisEmTempoConstante(recebido, c.hash)).some(c => chaveAceita(c, agora))
 }
