@@ -2208,7 +2208,8 @@ export const gruposLiberados = pgTable('grupos_liberados', {
 export const apiChaves = pgTable('api_chaves', {
   id:         uuid('id').primaryKey().defaultRandom(),
   hash:       text('hash').notNull().unique(),
-  geradaPor:  uuid('gerada_por').notNull().references(() => usuarios.id),
+  // Sem FK de propósito: histórico, como em log_acoes (0136). Excluir o usuário não pode falhar.
+  geradaPor:  uuid('gerada_por').notNull(),
   geradaEm:   timestamp('gerada_em', { withTimezone: true }).notNull().defaultNow(),
   validaAte:  timestamp('valida_ate', { withTimezone: true }),
   revogadaEm: timestamp('revogada_em', { withTimezone: true }),

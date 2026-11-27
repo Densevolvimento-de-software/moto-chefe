@@ -11,7 +11,8 @@ alter table contas add column autoriza_custo_despesa_meta boolean not null defau
 create table api_chaves (
   id          uuid primary key default gen_random_uuid(),
   hash        text not null unique,
-  gerada_por  uuid not null references usuarios(id),
+  -- Sem FK: quem gerou fica como histórico (a 0136 fez o mesmo no log_acoes), e excluir o usuário não pode falhar.
+  gerada_por  uuid not null,
   gerada_em   timestamptz not null default now(),
   valida_ate  timestamptz,
   revogada_em timestamptz
