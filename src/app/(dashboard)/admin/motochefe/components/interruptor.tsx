@@ -17,7 +17,13 @@ export function Interruptor({ checado, salvando, rotuloAcessivel, rotulos, onMud
 }) {
   return (
     <div className="flex items-center gap-2">
-      <Switch checked={checado} disabled={salvando} onCheckedChange={onMudar} aria-label={rotuloAcessivel} />
+      {/* aria-disabled e não disabled: o disabled tira o foco de quem acabou de acionar o interruptor. */}
+      <Switch
+        checked={checado}
+        aria-disabled={salvando || undefined}
+        onCheckedChange={v => { if (!salvando) onMudar(v) }}
+        aria-label={rotuloAcessivel}
+      />
       <span className="text-sm">
         {salvando
           ? <span className="inline-flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" aria-hidden />Salvando</span>

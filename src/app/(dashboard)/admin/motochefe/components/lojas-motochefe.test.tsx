@@ -110,7 +110,7 @@ test('enquanto envia, o interruptor e os botões do diálogo ficam travados', as
   await clique(botao('Desmarcar loja'))
   assert.equal(botao('Cancelar')?.disabled, true)
   assert.equal(botao('Desmarcar loja')?.disabled, true)
-  assert.equal(interruptor('Loja MotoChefe: Centro')?.disabled, true)
+  assert.equal(interruptor('Loja MotoChefe: Centro')?.getAttribute('aria-disabled'), 'true')
   assert.ok(texto().includes('Salvando'))
   liberar()
   await esperar()
@@ -246,7 +246,7 @@ test('durante o envio da autorização, os botões do diálogo ficam travados', 
   await clique(botao('Tirar autorização'))
   assert.equal(botao('Cancelar')?.disabled, true)
   assert.equal(botao('Tirar autorização')?.disabled, true)
-  assert.equal(interruptor('Autorizar custo, despesas e meta: Conta A')?.disabled, true)
+  assert.equal(interruptor('Autorizar custo, despesas e meta: Conta A')?.getAttribute('aria-disabled'), 'true')
   liberar(); await esperar()
 })
 
@@ -453,7 +453,7 @@ test('props que chegam durante o envio não tiram o valor pedido; ao dar certo, 
   await clique(interruptor('Loja MotoChefe: Leste'))
   await rerender(comLojaMarcada('l3', true))
   assert.equal(valorDoInterruptor('Loja MotoChefe: Leste'), 'true', 'a página nova chegou no meio do envio')
-  assert.equal(interruptor('Loja MotoChefe: Leste')?.disabled, true, 'ainda envia: segue travado')
+  assert.equal(interruptor('Loja MotoChefe: Leste')?.getAttribute('aria-disabled'), 'true', 'ainda envia: segue travado')
   liberar(); await esperar()
   assert.equal(valorDoInterruptor('Loja MotoChefe: Leste'), 'true')
   assert.equal(interruptor('Loja MotoChefe: Leste')?.disabled, false)
@@ -470,4 +470,45 @@ test('props com o valor de antes chegam durante o envio, e a recusa devolve o in
   liberar(); await esperar()
   assert.equal(valorDoInterruptor('Loja MotoChefe: Leste'), 'false', 'a recusa volta ao valor das props')
   assert.equal(document.querySelector('[role="alert"] p')?.textContent, 'Não deu para marcar a loja. Nada mudou. Tente de novo.')
+})
+
+// Foco: o interruptor acionado não pode perder o foco durante o envio nem depois da resposta. Por isso a trava é
+// aria-disabled (o botão segue focável) e o clique e o teclado são ignorados enquanto envia.
+test('durante o envio, o interruptor segue focável: sem o atributo disabled, que tira o foco de quem o aciona', async () => {
+  let liberar: () => void = () => {}
+  respostaMarcar = () => new Promise<Resposta>(r => { liberar = () => r({ ok: true }) })
+  const { clique, esperar } = await montar()
+  await clique(contaNaLista('Conta A'))
+  const sw = interruptor('Loja MotoChefe: Leste')!
+  sw.focus()
+  await clique(sw)
+  assert.equal(sw.disabled, false)
+  assert.equal(sw.getAttribute('aria-disabled'), 'true')
+  assert.equal(document.activeElement === sw, true, 'o foco fica no interruptor enquanto envia')
+  liberar(); await esperar()
+  assert.equal(document.activeElement === sw, true, 'e continua nele depois de gravar')
+})
+
+test('durante o envio, clique repetido no interruptor não manda outro pedido nem abre diálogo', async () => {
+  let liberar: () => void = () => {}
+  respostaMarcar = () => new Promise<Resposta>(r => { liberar = () => r({ ok: true }) })
+  const { clique, esperar } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Leste'))
+  await clique(interruptor('Loja MotoChefe: Leste'))
+  await clique(interruptor('Loja MotoChefe: Leste'))
+  assert.equal(texto().includes('Desmarcar Leste?'), false, 'nenhum diálogo')
+  liberar(); await esperar()
+  assert.equal(marcar.mock.callCount(), 1, 'um pedido só')
+})
+
+test('depois da recusa, o foco continua no interruptor acionado', async () => {
+  respostaMarcar = async () => ({ ok: false, erro: 'Sem permissão' })
+  const { clique } = await montar()
+  await clique(contaNaLista('Conta A'))
+  const sw = interruptor('Loja MotoChefe: Leste')!
+  sw.focus()
+  await clique(sw)
+  assert.equal(document.activeElement === sw, true, 'o foco fica no interruptor depois do erro')
+  assert.ok(document.querySelector('[role="alert"]'), 'e o erro aparece')
 })

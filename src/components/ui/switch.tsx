@@ -15,7 +15,7 @@ function Switch({ className, ...props }: React.ComponentProps<typeof SwitchPrimi
       nativeButton
       data-slot="switch"
       className={cn(
-        "relative inline-flex h-[1.15rem] w-8 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-input transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 data-[checked]:bg-primary max-md:before:absolute max-md:before:-inset-x-1.5 max-md:before:-inset-y-[13px] max-md:before:content-['']",
+        "relative inline-flex h-[1.15rem] w-8 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-input transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 data-[checked]:bg-primary max-md:before:absolute max-md:before:-inset-x-1.5 max-md:before:-inset-y-[13px] max-md:before:content-['']",
         className
       )}
       {...props}
