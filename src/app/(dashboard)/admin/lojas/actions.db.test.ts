@@ -4,7 +4,7 @@ import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearLoja } from '@/test/semear-conta'
+import { semearContaBase, semearLoja, semearUsuario } from '@/test/semear-conta'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -13,10 +13,12 @@ if (!['localhost', '127.0.0.1'].includes(new URL(url).hostname)) {
 }
 process.env.DATABASE_URL = url
 
-const sessao = { id: randomUUID(), nome: 'Admin', email: 'admin@teste.invalid', papel: 'admin_geral' }
-mock.module('@/lib/auth', { namedExports: {
-  getUsuarioLogado: async () => sessao,
-  isAdmin: (papel: string) => papel === 'admin_geral',
+// Quem está logado: o id do usuário no token (fronteira do Supabase). O papel vem do banco, como em produção.
+let logadoComo: string | null = null
+mock.module('@/lib/supabase/server', { namedExports: {
+  createClient: async () => ({ auth: { getClaims: async () => ({
+    data: logadoComo ? { claims: { sub: logadoComo, app_metadata: {} } } : null,
+  }) } }),
 } })
 mock.module('next/cache', { namedExports: { revalidatePath: () => {}, revalidateTag: () => {} } })
 // Sem rede: a geocodificação do CEP não entra no teste.
@@ -34,6 +36,8 @@ before(async () => {
 })
 after(async () => { await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end() })
 
+// Rótulo único por execução: o e-mail de usuario é único no banco, e o test:db local pode reaproveitar o banco.
+const u = () => randomUUID().slice(0, 8)
 const cnpj = () => String(Math.floor(Math.random() * 1e14)).padStart(14, '0')
 const marcadaDaLoja = async (id: string) =>
   (await execRows(sql`select loja_motochefe from lojas where id = ${id}`))[0].loja_motochefe
@@ -44,6 +48,7 @@ const formulario = (campos: Record<string, string>) => {
 }
 
 test('editar loja não altera a marcação, nem com lojaMotochefe no formulário', async () => {
+  logadoComo = await semearUsuario(db, await semearContaBase(db, { prefixo: 'MCL0', nome: 'Adm', cnpj: cnpj() }), { papel: 'admin_geral', rotulo: `admin-lojas-${u()}`, semLoja: true })
   const conta = await semearContaBase(db, { prefixo: 'MCL1', nome: 'A', cnpj: cnpj() })
   const outra = await semearLoja(db, conta.grupoId, `Loja MCL1 Outra ${randomUUID()}`)
   await db.execute(sql`update lojas set loja_motochefe = true where id = ${conta.lojaId}`)
@@ -56,6 +61,7 @@ test('editar loja não altera a marcação, nem com lojaMotochefe no formulário
 })
 
 test('criar loja nova nasce desmarcada, mesmo com lojaMotochefe no formulário', async () => {
+  logadoComo = await semearUsuario(db, await semearContaBase(db, { prefixo: 'MCL0b', nome: 'Adm', cnpj: cnpj() }), { papel: 'admin_geral', rotulo: `admin-lojas2-${u()}`, semLoja: true })
   const conta = await semearContaBase(db, { prefixo: 'MCL2', nome: 'A', cnpj: cnpj() })
   const nome = `Loja MCL2 Nova ${randomUUID()}`
   const r = await actions.criarLojaAction(formulario({ grupoId: conta.grupoId, nome, cidade: 'C', endereco: 'R', lojaMotochefe: 'true' }))

@@ -4,7 +4,7 @@ import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearContaVazia, semearLoja } from '@/test/semear-conta'
+import { semearContaBase, semearContaVazia, semearGrupo, semearLoja } from '@/test/semear-conta'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -56,7 +56,7 @@ const autorizadaDaConta = async (tx: Tx, id: string) =>
 test('marcar loja grava só nela: a outra loja da mesma Conta e a loja da Conta B não mudam', async () => {
   await emTransacaoDesfeita(async tx => {
     const { a, b, lojaA2 } = await semear(tx)
-    assert.deepEqual(await mod.marcarLojaMotochefe(randomUUID(), { lojaId: a.lojaId, marcada: true }, tx), { ok: true })
+    assert.deepEqual(await mod.marcarLojaMotochefe(randomUUID(), { lojaId: a.lojaId, marcada: true }, tx), { ok: true, dados: undefined })
     assert.equal(await marcadaDaLoja(tx, a.lojaId), true)
     assert.equal(await marcadaDaLoja(tx, lojaA2), false)
     assert.equal(await marcadaDaLoja(tx, b.lojaId), false)
@@ -89,7 +89,7 @@ test('marcar de novo o que já está marcado: nenhuma linha nova no log', async 
     const { a } = await semear(tx)
     const admin = randomUUID()
     await mod.marcarLojaMotochefe(admin, { lojaId: a.lojaId, marcada: true }, tx)
-    assert.deepEqual(await mod.marcarLojaMotochefe(admin, { lojaId: a.lojaId, marcada: true }, tx), { ok: true })
+    assert.deepEqual(await mod.marcarLojaMotochefe(admin, { lojaId: a.lojaId, marcada: true }, tx), { ok: true, dados: undefined })
     assert.equal((await linhas(tx, sql`select 1 from log_acoes where usuario_id = ${admin}`)).length, 1)
   })
 })
@@ -98,7 +98,7 @@ test('autorizar Conta grava só nela; desautorizar volta a false', async () => {
   await emTransacaoDesfeita(async tx => {
     const { a, b } = await semear(tx)
     const admin = randomUUID()
-    assert.deepEqual(await mod.autorizarCustoDespesaMeta(admin, { contaId: a.contaId, autorizada: true }, tx), { ok: true })
+    assert.deepEqual(await mod.autorizarCustoDespesaMeta(admin, { contaId: a.contaId, autorizada: true }, tx), { ok: true, dados: undefined })
     assert.equal(await autorizadaDaConta(tx, a.contaId), true)
     assert.equal(await autorizadaDaConta(tx, b.contaId), false)
     await mod.autorizarCustoDespesaMeta(admin, { contaId: a.contaId, autorizada: false }, tx)
@@ -148,5 +148,53 @@ test('listagem: traz as Contas de A e B com as suas lojas; Conta sem loja aparec
     const contaA = meus.find(c => c.id === a.contaId)!
     assert.deepEqual(contaA.lojas.map(l => [l.id, l.marcada]).sort(), [[a.lojaId, true], [lojaA2, false]].sort())
     assert.equal(meus.find(c => c.id === vazia)!.lojas.length, 0)
+  })
+})
+
+// Loja de Conta desativada e loja de grupo inativo: a mesma frase de loja inexistente, e nada é gravado nem logado.
+test('marcar loja de Conta desativada: "Loja não encontrada", nada gravado, sem log', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const { a } = await semear(tx)
+    await tx.execute(sql`update contas set desativada_em = now() where id = ${a.contaId}`)
+    const admin = randomUUID()
+    assert.deepEqual(await mod.marcarLojaMotochefe(admin, { lojaId: a.lojaId, marcada: true }, tx), { ok: false, erro: 'Loja não encontrada' })
+    assert.equal(await marcadaDaLoja(tx, a.lojaId), false)
+    assert.equal((await linhas(tx, sql`select 1 from log_acoes where usuario_id = ${admin}`)).length, 0)
+  })
+})
+
+test('marcar loja de grupo inativo: "Loja não encontrada", nada gravado, sem log', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const { a } = await semear(tx)
+    await tx.execute(sql`update grupos set ativo = false where id = ${a.grupoId}`)
+    const admin = randomUUID()
+    assert.deepEqual(await mod.marcarLojaMotochefe(admin, { lojaId: a.lojaId, marcada: true }, tx), { ok: false, erro: 'Loja não encontrada' })
+    assert.equal(await marcadaDaLoja(tx, a.lojaId), false)
+    assert.equal((await linhas(tx, sql`select 1 from log_acoes where usuario_id = ${admin}`)).length, 0)
+  })
+})
+
+test('listagem: loja de grupo inativo não aparece; a Conta continua, com as outras lojas', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const { a, lojaA2 } = await semear(tx)
+    // Segundo grupo da Conta A, inativo, com uma loja.
+    const grupoInativo = await semearGrupo(tx, a.contaId, { prefixo: P, nome: 'Inativo', cnpj: cnpj() })
+    await tx.execute(sql`update grupos set ativo = false where id = ${grupoInativo.grupoId}`)
+    const minha = (await mod.listarContasMotochefe(tx)).find(c => c.id === a.contaId)!
+    assert.deepEqual(minha.lojas.map(l => l.id).sort(), [a.lojaId, lojaA2].sort())
+    assert.equal(minha.lojas.some(l => l.id === grupoInativo.lojaId), false)
+  })
+})
+
+
+// Autorizar em Conta desativada: a mesma frase de Conta inexistente, e nada é gravado nem logado.
+test('autorizar Conta desativada: "Conta não encontrada", nada gravado, sem log', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const { a } = await semear(tx)
+    await tx.execute(sql`update contas set desativada_em = now() where id = ${a.contaId}`)
+    const admin = randomUUID()
+    assert.deepEqual(await mod.autorizarCustoDespesaMeta(admin, { contaId: a.contaId, autorizada: true }, tx), { ok: false, erro: 'Conta não encontrada' })
+    assert.equal(await autorizadaDaConta(tx, a.contaId), false)
+    assert.equal((await linhas(tx, sql`select 1 from log_acoes where usuario_id = ${admin}`)).length, 0)
   })
 })
