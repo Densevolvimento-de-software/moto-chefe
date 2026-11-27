@@ -80,6 +80,9 @@ export async function listarLojasDaApi(): Promise<LojaDaApi[]> {
 
 export type RespostaDaApi = { status: number; corpo: unknown }
 
+// Só a frase: a mensagem do erro pode trazer a consulta com o hash da chave nos parâmetros.
+const FRASE_DE_LOG_DE_ERRO = 'api de leitura: erro interno'
+
 const respostaDeErro = (codigo: CodigoErroApi): RespostaDaApi => ({ status: statusDoErro(codigo), corpo: corpoDoErro(codigo) })
 
 /**
@@ -95,6 +98,7 @@ export async function comChaveDaApi<T>(
     if (chave === null) return respostaDeErro('acesso_negado')
     return { status: 200, corpo: await miolo(chave) }
   } catch {
+    console.error(FRASE_DE_LOG_DE_ERRO)
     return respostaDeErro('erro_interno')
   }
 }

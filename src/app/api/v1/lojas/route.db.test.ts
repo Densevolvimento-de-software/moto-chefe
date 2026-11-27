@@ -2,7 +2,7 @@
 // Os dados são gravados de verdade e apagados no after. Chave válida usa validade futura (nunca validade nula),
 // para não ocupar o índice api_chaves_atual_key que outros arquivos do test:db usam. Toda conferência filtra
 // pelas lojas deste teste, porque os arquivos rodam em paralelo no mesmo banco.
-import { after, before, test } from 'node:test'
+import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import { inArray, sql } from 'drizzle-orm'
@@ -22,6 +22,7 @@ type Rota = typeof import('./route')
 let db: Db['db']
 let apiChaves: Schema['apiChaves']
 let GET: Rota['GET']
+let comChaveDaApi: typeof import('@/lib/queries/api-leitura')['comChaveDaApi']
 
 const sha = (texto: string) => createHash('sha256').update(texto).digest('hex')
 const HORA = 60 * 60 * 1000
@@ -59,6 +60,7 @@ before(async () => {
   ;({ db } = await import('@/lib/db'))
   ;({ apiChaves } = await import('@/lib/db/schema'))
   ;({ GET } = await import('./route'))
+  ;({ comChaveDaApi } = await import('@/lib/queries/api-leitura'))
 
   const conta = async (prefixo: string, cnpj: string) => {
     const base = await semearContaBase(db, { prefixo, nome: `Conta ${prefixo}`, cnpj })
@@ -177,5 +179,18 @@ test('desmarcar a loja tira ela da consulta seguinte', async () => {
     assert.equal(depois.includes(LOJA.a1), false)
   } finally {
     await db.execute(sql`update lojas set loja_motochefe = true where id = ${LOJA.a1}`)
+  }
+})
+
+// Prova o catch da casca comChaveDaApi: o miolo lança depois de a chave conferir. Não simula falha do banco.
+test('falha depois da chave: 500 com a frase fixa, e o log só leva a frase constante', async () => {
+  const espiao = mock.method(console, 'error', () => {})
+  try {
+    const resposta = await comChaveDaApi(bearer(CHAVE.vigente), async () => { throw new Error(`segredo ${CHAVE.vigente}`) })
+    assert.equal(resposta.status, 500)
+    assert.deepEqual(resposta.corpo, { codigo: 'erro_interno', frase: 'Erro interno.' })
+    assert.deepEqual(espiao.mock.calls.map(c => c.arguments), [['api de leitura: erro interno']])
+  } finally {
+    espiao.mock.restore()
   }
 })
