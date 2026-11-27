@@ -1,5 +1,5 @@
-// Migração 0211 (#317, API de leitura MotoChefe): confere a estrutura que o banco guarda. Só lê o catálogo,
-// não grava linha nenhuma, então roda em paralelo com os outros arquivos do test:db sem disputa.
+// Migração 0211 (#317, API de leitura MotoChefe): confere a estrutura que o banco guarda. A maioria dos testes só lê
+// o catálogo; os dois de chave inserem linhas dentro de transação que se desfaz (erro ou Desfazer), então nada fica no banco.
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
@@ -78,12 +78,14 @@ const emTransacaoDesfeita = (corpo: (tx: Parameters<Parameters<typeof db.transac
 const inserirChave = (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], extra: ReturnType<typeof sql>) =>
   tx.execute(sql`insert into api_chaves (hash, gerada_por, valida_ate, revogada_em) values (${randomUUID()}, ${randomUUID()}, ${extra}, null)`)
 
-test('duas chaves atuais ao mesmo tempo dão erro de unicidade (23505)', async () => {
+test('duas chaves atuais ao mesmo tempo dão erro 23505 pelo índice api_chaves_atual_key', async () => {
   const erro = await db.transaction(async tx => {
     await inserirChave(tx, sql`null`)
     await inserirChave(tx, sql`null`)
   }).then(() => null, (e: unknown) => e)
-  assert.equal((erro as { cause?: { code?: string } } | null)?.cause?.code, '23505')
+  const causa = (erro as { cause?: { code?: string, constraint?: string } } | null)?.cause
+  assert.equal(causa?.code, '23505')
+  assert.equal(causa?.constraint, 'api_chaves_atual_key')
 })
 
 test('chave trocada (com validade) não conta como atual: a nova entra junto', async () => {
