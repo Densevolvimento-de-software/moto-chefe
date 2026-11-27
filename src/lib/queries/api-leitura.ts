@@ -27,7 +27,7 @@ export async function buscarChaveAceita(token: string | null, agora: Date, execu
   const recebido = token === null ? HASH_SEM_TOKEN : sha256(token)
   const abertas = await chavesNaoRevogadas(executor)
   const achada = abertas.filter(c => iguaisEmTempoConstante(recebido, c.hash)).find(c => chaveAceita(c, agora))
-  return achada ? { id: achada.id } : null
+  return token !== null && achada ? { id: achada.id } : null
 }
 
 async function aplicarPlano(plano: PlanoDaTroca, agora: Date, tx: Tx) {

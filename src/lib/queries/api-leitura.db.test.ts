@@ -100,3 +100,11 @@ test('duas chaves atuais com escrita real dão erro 23505 pelo índice api_chave
   assert.equal(causa?.code, '23505')
   assert.equal(causa?.constraint, 'api_chaves_atual_key')
 })
+
+// Linha com o hash fixo do caminho sem token, com validade futura (não é atual): sem token, nunca confere.
+test('sem token nunca confere, mesmo com uma linha que tem o hash fixo do caminho sem token', async () => {
+  await desfazendo(async tx => {
+    await tx.insert(apiChaves).values({ hash: '0'.repeat(64), geradaPor: randomUUID(), validaAte: emHoras(24) })
+    assert.equal(await consulta.buscarChaveAceita(null, T1, tx), null)
+  })
+})
