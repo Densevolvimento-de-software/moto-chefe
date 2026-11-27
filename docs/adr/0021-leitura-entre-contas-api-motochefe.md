@@ -35,7 +35,8 @@ ativo, e só devolve o que está listado abaixo.
 - **Autorização por Conta.** Custo de compra, despesas e metas só saem de Conta autorizada pelo
   `admin_geral`. Loja marcada de Conta não autorizada sai com o custo nulo e sem linhas de despesa ou
   de meta; o resto da loja sai normal. A lista de Contas autorizadas mora no banco, nunca no código.
-  A primeira Conta autorizada é achada por dado do banco na migração, sem nome nem CNPJ no arquivo.
+  A autorização nasce desligada para todas as Contas, inclusive pela migração, que não autoriza ninguém.
+  O `admin_geral` liga pela tela de autorização (#321).
 - **Lista fechada por conjunto.** Só estes campos saem. Campo novo no banco não sai sozinho.
   - **Lojas:** id, nome, cidade, endereço, CEP e ativa.
   - **Pessoas** (vendedores e técnicos das lojas marcadas): id, nome, função, loja e ativo. Sem
