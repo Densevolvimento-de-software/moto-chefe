@@ -119,15 +119,14 @@ function registrarDepois(linha: LinhaDoAcesso): void {
 /**
  * Casca de toda rota da API. Ordem: chave, limite, miolo, registro. Sem chave, chave errada, revogada ou
  * vencida: a mesma resposta 401. Acima do limite da janela: 429 com Retry-After. Falha no miolo vira 500 com
- * a frase fixa. Toda chamada, inclusive a recusada, gera uma linha em api_acessos. O relógio (`agora`) vem
- * de fora só para o teste; nenhuma rota passa um instante do pedido.
+ * a frase fixa. Toda chamada, inclusive a recusada, gera uma linha em api_acessos.
  */
 export function comChaveDaApi<T extends ResultadoDoMiolo>(
   headers: Headers,
   endpoint: string,
   miolo: (chave: { id: string }) => Promise<T>,
-  agora: Date = new Date(),
 ): Promise<RespostaDaApi> {
+  const agora = new Date()
   const origem = origemDaRequisicao(headers)
   const registrar = (chaveId: string | null, resposta: RespostaDaApi, extra: Partial<ResultadoDoMiolo> = {}): RespostaDaApi => {
     registrarDepois(linhaDoAcesso({

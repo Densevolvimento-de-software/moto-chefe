@@ -142,7 +142,7 @@ test('falha ao gravar o registro não derruba a resposta: 200 igual, e o log lev
   try {
     const cabecalhos = new Headers({ authorization: `Bearer ${chave.token}` })
     // Pagina fora do int4: o banco recusa a linha do registro, e a resposta não pode mudar por isso.
-    const resposta = await consulta.comChaveDaApi(cabecalhos, '/api/v1/teste', async () => ({ corpo: { ok: true }, linhas: 0, pagina: 3_000_000_000 }), T1)
+    const resposta = await consulta.comChaveDaApi(cabecalhos, '/api/v1/teste', async () => ({ corpo: { ok: true }, linhas: 0, pagina: 3_000_000_000 }))
     assert.equal(resposta.status, 200)
     assert.deepEqual(resposta.corpo, { ok: true })
     await esperarRegistros()

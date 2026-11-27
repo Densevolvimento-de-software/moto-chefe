@@ -35,13 +35,6 @@ for (const arquivo of ROTAS) {
   })
 }
 
-// O relógio da casca (`agora`) é o da hora do servidor: nenhuma rota pode trazer um instante do pedido.
-for (const arquivo of ROTAS) {
-  test(`${arquivo}: o texto da rota não menciona agora, então nenhum instante do pedido chega à casca`, () => {
-    assert.doesNotMatch(readFileSync(join(RAIZ, arquivo), 'utf8'), /\bagora\b/)
-  })
-}
-
 for (const arquivo of ROTAS) {
   test(`${arquivo}: sem Authorization, cada método exportado recusa com acesso negado`, async () => {
     const modulo = await import(pathToFileURL(join(RAIZ, arquivo)).href)
