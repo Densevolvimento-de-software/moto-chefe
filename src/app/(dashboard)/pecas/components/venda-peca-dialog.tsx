@@ -14,6 +14,7 @@ import { CurrencyInput } from '@/components/ui/currency-input'
 import { Pencil, Plus, Trash2, ShoppingCart } from 'lucide-react'
 import { carregarVendaPecaParaEdicaoAction, editarVendaPecaAction, registrarVendaPecaAction } from '../actions'
 import { PecaLookup } from './peca-lookup'
+import type { ResponsavelOpcao } from '@/lib/vendedor-escolhido'
 
 type Peca = { id: string; nome: string; valor: string; quantidadeEstoque: number }
 type Loja = { id: string; nome: string }
@@ -36,6 +37,12 @@ const TIPO_LABEL: Record<string, string> = {
 
 function gerarId() { return Math.random().toString(36).slice(2) }
 
+/** O próprio nome leva "(você)": quem registra vê na hora em nome de quem a venda sai. */
+function nomeDoResponsavel(r: ResponsavelOpcao | undefined, usuarioId: string) {
+  if (!r) return 'Selecione o responsável'
+  return r.id === usuarioId ? `${r.nome} (você)` : r.nome
+}
+
 function fmtBRL(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
@@ -54,19 +61,28 @@ type Props = {
   /** Gestor pode sobrepor o preço do catálogo naquela venda. O servidor revalida. */
   podeDefinirPreco: boolean
   /**
+   * Quem pode deixar a venda no nome de outra pessoa (#308) recebe a lista do grupo da loja e o próprio id (o
+   * responsável de partida, que fica na lista mesmo fora do grupo); os demais não recebem e o campo some.
+   * O servidor revalida: quem manda o id sem poder escolher fica com a venda.
+   */
+  escolhaDoResponsavel?: { opcoes: ResponsavelOpcao[]; usuarioId: string }
+  /**
    * Edição de venda já salva (#242): mesmo diálogo, só itens e pagamentos.
    * Loja e cliente ficam como estão.
    */
   edicao?: { vendaId: string; numero: number }
 }
 
-export function VendaPecaDialog({ pecas, lojas, lojaUsuarioId, isAdmin, podeDefinirPreco, edicao }: Props) {
+export function VendaPecaDialog({ pecas, lojas, lojaUsuarioId, isAdmin, podeDefinirPreco, escolhaDoResponsavel, edicao }: Props) {
+  const responsaveis = escolhaDoResponsavel?.opcoes
+  const usuarioId = escolhaDoResponsavel?.usuarioId ?? ''
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const [carregando, setCarregando] = useState(false)
   const [avisos, setAvisos] = useState<string[]>([])
 
   const [lojaId, setLojaId] = useState(isAdmin ? '' : (lojaUsuarioId ?? ''))
+  const [responsavelId, setResponsavelId] = useState(usuarioId)
   const [gravadas, setGravadas] = useState<string[]>([])
   const opcoesMaquininha = opcoesComGravada(useMaquininhas(lojaId ? { loja: lojaId } : null), gravadas)
   const [clienteNome, setClienteNome] = useState('')
@@ -127,6 +143,7 @@ export function VendaPecaDialog({ pecas, lojas, lojaUsuarioId, isAdmin, podeDefi
 
   function resetForm() {
     setLojaId(isAdmin ? '' : (lojaUsuarioId ?? ''))
+    setResponsavelId(usuarioId)
     setClienteNome('')
     setTipoPessoa('fisica')
     setDocumento('')
@@ -219,6 +236,7 @@ export function VendaPecaDialog({ pecas, lojas, lojaUsuarioId, isAdmin, podeDefi
           clienteNome: clienteNome.trim() || undefined,
           clienteTipoPessoa: tipoPessoa,
           clienteDocumento: digitosDoc || null,
+          ...(responsaveis ? { vendedorId: responsavelId } : {}),
           itens: itensParaEnviar(),
           pagamentos: pgtosParaEnviar(),
         })
@@ -275,6 +293,24 @@ export function VendaPecaDialog({ pecas, lojas, lojaUsuarioId, isAdmin, podeDefi
                     </SelectTrigger>
                     <SelectContent>
                       {lojas.map(l => <SelectItem key={l.id} value={l.id}>{l.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {responsaveis && (
+                <div className="space-y-1.5">
+                  <Label>Responsável</Label>
+                  <Select value={responsavelId} onValueChange={v => setResponsavelId(v ?? usuarioId)}>
+                    <SelectTrigger className="w-full">
+                      <span>{nomeDoResponsavel(responsaveis.find(r => r.id === responsavelId), usuarioId)}</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {responsaveis.map(r => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {nomeDoResponsavel(r, usuarioId)}
+                          <span className="ml-auto text-xs text-muted-foreground">{r.lojaNome ?? 'sem loja'}</span>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

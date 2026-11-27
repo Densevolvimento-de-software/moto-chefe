@@ -27,14 +27,14 @@ export async function listarUsuariosDoGrupo(
   grupoId: string,
   filtro: { papeis?: readonly Papel[] } = {},
   exec: Executor = db,
-): Promise<{ id: string; nome: string }[]> {
+): Promise<{ id: string; nome: string; lojaId: string | null }[]> {
   // Papel extra conta como o principal; senão o filtro do dashboard esconde as vendas
   // de quem vende sem ter 'vendedor' como papel principal.
   const doPapel = filtro.papeis
     ? or(inArray(usuarios.papel, [...filtro.papeis]), sql`${usuarios.papeisExtras} && ${sql.param([...filtro.papeis])}::text[]`)
     : undefined
   return exec
-    .select({ id: usuarios.id, nome: usuarios.nome })
+    .select({ id: usuarios.id, nome: usuarios.nome, lojaId: usuarios.lojaId })
     .from(usuarios)
     .where(and(usuarioDoGrupo(grupoId), doPapel))
     .orderBy(usuarios.nome)
