@@ -3,10 +3,11 @@
 // do MOVA, de todas as Contas, mas só de motos da marca MotoChefe. Moto de outra
 // marca (Voi etc.) nunca entra, nem que esteja numa loja MotoChefe.
 //
-// Quem é "loja MotoChefe": a loja ativa que tem o login do portal da fábrica
+// Quem é "loja do painel": a loja ativa que tem o login do portal da fábrica
 // cadastrado (`lojas.fabrica_email`, motochefebrasil.store). É o cadastro que liga a
 // loja à fábrica; sem ele a loja não compra da MotoChefe. A regra de SQL mora em
 // @/lib/queries/painel-fabrica, e as duas pontas (marca e loja) num lugar só.
+// A API de leitura (#315) usa outra regra, a marcação `lojas.loja_motochefe`: não é esta.
 //
 // O que a fábrica vê de cada venda (decisão do Luis, #892, revista em 17/11 no #30): só data,
 // número, loja, modelo, cor, chassi e o valor da moto. Os tipos abaixo só têm isso; o id da
