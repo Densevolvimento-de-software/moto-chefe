@@ -182,16 +182,16 @@ test('quem não é admin e forja o vendedorId: o id é ignorado e a venda sai no
   assert.deepEqual((await vendasDaLoja(c)).map(v => v.vendedor_id), [c.vendedorId])
 })
 
-// admin_rede de OUTRA Conta: na sessão vira admin_socio (src/lib/grupos-liberados.ts); com o grupo da Conta A
-// liberado, a persona opera aquele grupo com o id dele, que é da Conta B.
+// admin_rede de OUTRA Conta, pela usuarioDaRede de verdade (src/lib/grupos-liberados.ts): vira admin_socio e, com o
+// grupo da Conta A liberado e ativo, a persona daquele grupo, com o id dele, que é da Conta B.
 async function entrarComoAdminRede(propria: Conta, alvo: Conta, { liberado }: { liberado: boolean }) {
+  const { usuarioDaRede } = await import('@/lib/grupos-liberados')
   const id = await semearUsuario(db, propria, { papel: 'admin_rede', rotulo: 'rede', comConta: true, semLoja: true })
-  usuario = {
-    id, nome: 'admin_rede de teste', email: 'rede@teste.invalid', papel: 'admin_socio', papelReal: 'admin_rede',
-    lojaId: null, contaId: liberado ? alvo.contaId : propria.contaId,
-    gruposAcesso: [liberado ? alvo.grupoId : propria.grupoId], gruposAprovacao: [], gruposLiberados: [],
-    grupoLiberado: liberado ? alvo.grupoId : null, aprovaPagamentoSensivel: false,
+  const doCadastro = {
+    id, nome: 'admin_rede de teste', email: 'rede@teste.invalid', papel: 'admin_rede', lojaId: null, contaId: propria.contaId,
+    gruposAcesso: [propria.grupoId], gruposAprovacao: [], aprovaPagamentoSensivel: false,
   }
+  usuario = usuarioDaRede(doCadastro, liberado ? [{ grupoId: alvo.grupoId, contaId: alvo.contaId }] : [], alvo.grupoId)
   grupoAtivoNoCookie = alvo.grupoId
   return id
 }
@@ -213,7 +213,7 @@ test('admin_rede sem o grupo liberado: não vende peça na loja de outra Conta, 
   await entrarComoAdminRede(b, a, { liberado: false })
   const semEscolher = await pecas.registrarVendaPecaAction(venda(a))
   const escolhendo = await pecas.registrarVendaPecaAction(venda(a, { vendedorId: a.colegaId }))
-  assert.equal(semEscolher.ok, false)
+  assert.deepEqual(semEscolher, { ok: false, erro: 'Sem permissão para esta loja' })
   assert.deepEqual(escolhendo, semEscolher)
   assert.deepEqual(await estadoDaLoja(a), SEM_MEXER(10))
 })
