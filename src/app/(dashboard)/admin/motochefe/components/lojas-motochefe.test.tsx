@@ -316,3 +316,22 @@ test('a barra de cada Conta na lista usa uma cor da paleta de grupo, e a mesma C
   assert.doesNotMatch(classe('Conta A'), /#|\[/, 'sem cor fixa nem valor arbitrário')
   assert.equal(classe('Conta A'), classe('Conta A'))
 })
+
+// Layout da linha como no protótipo: nome, coluna Ativa/Inativa e o interruptor; seta no Todas as Contas.
+test('linha da loja: nome, coluna Ativa ou Inativa e o interruptor, nessa ordem', async () => {
+  const { clique } = await montar()
+  await clique(contaNaLista('Conta A'))
+  const linha = interruptor('Loja MotoChefe: Norte')!.closest('li')!
+  const colunas = [...linha.children] as HTMLElement[]
+  assert.equal(colunas.length, 3)
+  assert.equal(colunas[1].textContent, 'Ativa')
+  assert.ok(colunas[2].querySelector('[role="switch"]'))
+  const inativa = interruptor('Loja MotoChefe: Leste')!.closest('li')!
+  assert.equal([...inativa.children][1].textContent, 'Ativa')
+})
+
+test('Todas as Contas tem a seta de volta, como no protótipo', async () => {
+  const { clique } = await montar()
+  await clique(contaNaLista('Conta A'))
+  assert.ok(botao('Todas as Contas')?.querySelector('svg'), 'o botão tem a seta')
+})

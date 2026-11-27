@@ -4,7 +4,7 @@
 // a lista e o painel se alternam. Cada gravação mostra o valor pedido enquanto envia; se a action recusa,
 // volta ao valor de antes e diz que nada mudou. Desmarcar e tirar a autorização pedem confirmação.
 import { useState } from 'react'
-import { Loader2, Store, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, Loader2, Store, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -123,7 +123,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                     </span>
                     {conta.autorizada
                       ? <Badge className="bg-primary-soft text-primary-text">Autorizada</Badge>
-                      : <Badge variant="secondary">Sem autorização</Badge>}
+                      : <Badge variant="outline" className="text-muted-foreground">Sem autorização</Badge>}
                   </button>
                 </li>
               )
@@ -136,6 +136,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
           {selecionada ? (
             <>
               <Button type="button" variant="ghost" className="md:hidden" onClick={() => setSelecionadaId(null)}>
+                <ArrowLeft className="size-4" aria-hidden />
                 Todas as Contas
               </Button>
               <Card className="gap-3">
@@ -171,15 +172,15 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                 {selecionada.lojas.length === 0 && <p className="text-muted-foreground px-4 text-sm">Esta Conta ainda não tem lojas.</p>}
                 <ul className="divide-y border-t">
                   {selecionada.lojas.map(loja => (
-                    <li key={loja.id} className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${loja.ativa ? '' : 'text-muted-foreground'}`}>
-                      {erro?.chave === chaveDaLoja(loja.id) && <MensagemDeErro texto={erro.texto} onTentar={erro.tentar} />}
-                      <div className="min-w-0 space-y-1">
-                        <strong className="block">{loja.nome}</strong>
+                    <li key={loja.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3">
+                      {erro?.chave === chaveDaLoja(loja.id) && <MensagemDeErro className="col-span-3" texto={erro.texto} onTentar={erro.tentar} />}
+                      <div className="min-w-0">
+                        <strong className={`block ${loja.ativa ? '' : 'text-muted-foreground'}`}>{loja.nome}</strong>
                         <span className="text-muted-foreground block text-sm">{loja.cidade}</span>
-                        {loja.ativa
-                          ? <Badge className="bg-success/15 text-success">Ativa</Badge>
-                          : <Badge variant="secondary">Inativa</Badge>}
                       </div>
+                      {loja.ativa
+                        ? <Badge className="bg-success/15 text-success">Ativa</Badge>
+                        : <Badge variant="outline" className="text-muted-foreground">Inativa</Badge>}
                       <Interruptor
                         chave={chaveDaLoja(loja.id)}
                         checado={loja.marcada}
@@ -248,9 +249,9 @@ function Interruptor({ chave, checado, enviando, rotuloAcessivel, rotulos, onMud
 }
 
 // Erro da gravação: o texto do protótipo, acima da linha, com Tentar de novo (repete a mesma ação).
-function MensagemDeErro({ texto, onTentar }: { texto: string; onTentar: () => void }) {
+function MensagemDeErro({ texto, onTentar, className = '' }: { texto: string; onTentar: () => void; className?: string }) {
   return (
-    <div role="alert" className="bg-destructive/10 text-destructive flex w-full items-start gap-2 rounded-lg px-3 py-2 text-sm">
+    <div role="alert" className={`bg-destructive/10 text-destructive flex w-full items-start gap-2 rounded-lg px-3 py-2 text-sm ${className}`}>
       <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
       <div className="space-y-2">
         <p>{texto}</p>
