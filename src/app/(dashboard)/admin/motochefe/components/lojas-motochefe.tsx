@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { contarMarcadas, resumoDaTela, type ContaDaTela, type LojaDaTela } from '@/lib/motochefe-marcacao'
+import { corDoGrupo } from '@/lib/grupo-cores'
 import { autorizarContaAction, marcarLojaMotochefeAction } from '../actions'
 import { ConfirmarDialogo } from './confirmar-dialogo'
 
@@ -113,7 +114,8 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                     onClick={() => setSelecionadaId(conta.id)}
                     className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 ${ativa ? 'bg-primary-soft' : 'hover:bg-muted'}`}
                   >
-                    <span className="space-y-0.5">
+                    <span aria-hidden data-barra-conta className={`block h-10 w-1 shrink-0 rounded-full ${corDoGrupo({ id: conta.id }).bar}`} />
+                    <span className="min-w-0 flex-1 space-y-0.5">
                       <strong className="block">{conta.nome}</strong>
                       <span className="text-muted-foreground block text-sm">
                         {conta.lojas.length === 0 ? 'Sem lojas' : `${marcadas} de ${conta.lojas.length} lojas marcadas`}

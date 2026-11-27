@@ -293,3 +293,13 @@ test('resumo: um cartão com três colunas, com os três números do protótipo'
   assert.equal(colunas.length, 3)
   assert.deepEqual(colunas.map(c => c.textContent), ['Lojas marcadas3 de 4', 'Contas com loja marcada2 de 3', 'Contas autorizadas para custo, despesas e meta1 de 3'])
 })
+
+// A barra da Conta na lista usa uma cor da paleta de grupo (classe bg-grupo-*), sem cor fixa no código.
+test('a barra de cada Conta na lista usa uma cor da paleta de grupo, e a mesma Conta sempre a mesma', async () => {
+  await montar()
+  const barra = (nome: string) => contaNaLista(nome)?.querySelector<HTMLElement>('[data-barra-conta]')
+  const classe = (nome: string) => barra(nome)?.className ?? ''
+  assert.match(classe('Conta A'), /bg-grupo-(emerald|blue|amber|violet|rose|cyan|slate)\b/)
+  assert.doesNotMatch(classe('Conta A'), /#|\[/, 'sem cor fixa nem valor arbitrário')
+  assert.equal(classe('Conta A'), classe('Conta A'))
+})
