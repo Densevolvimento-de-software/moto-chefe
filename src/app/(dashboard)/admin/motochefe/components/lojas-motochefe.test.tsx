@@ -440,3 +440,35 @@ test('depois de dar certo, o interruptor segue o pedido até as props novas cheg
   await rerender(CONTAS.map(c => c.id === 'a' ? { ...c, lojas: c.lojas.map(l => l.id === 'l3' ? { ...l, marcada: false } : l) } : c))
   assert.equal(interruptor('Loja MotoChefe: Leste')?.getAttribute('aria-checked'), 'false', 'depois, o valor das props vale de novo')
 })
+
+// Props que chegam enquanto a action ainda roda: o pedido em curso segue até a resposta.
+const comLojaMarcada = (lojaId: string, marcada: boolean) =>
+  CONTAS.map(c => ({ ...c, lojas: c.lojas.map(l => l.id === lojaId ? { ...l, marcada } : l) }))
+const valorDoInterruptor = (rotulo: string) => interruptor(rotulo)?.getAttribute('aria-checked')
+
+test('props que chegam durante o envio não tiram o valor pedido; ao dar certo, segue igual', async () => {
+  let liberar: () => void = () => {}
+  respostaMarcar = () => new Promise<Resposta>(r => { liberar = () => r({ ok: true }) })
+  const { clique, esperar, rerender } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Leste'))
+  await rerender(comLojaMarcada('l3', true))
+  assert.equal(valorDoInterruptor('Loja MotoChefe: Leste'), 'true', 'a página nova chegou no meio do envio')
+  assert.equal(interruptor('Loja MotoChefe: Leste')?.disabled, true, 'ainda envia: segue travado')
+  liberar(); await esperar()
+  assert.equal(valorDoInterruptor('Loja MotoChefe: Leste'), 'true')
+  assert.equal(interruptor('Loja MotoChefe: Leste')?.disabled, false)
+})
+
+test('props com o valor de antes chegam durante o envio, e a recusa devolve o interruptor ao valor das props com o erro', async () => {
+  let liberar: () => void = () => {}
+  respostaMarcar = () => new Promise<Resposta>(r => { liberar = () => r({ ok: false, erro: 'Sem permissão' }) })
+  const { clique, esperar, rerender } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Leste'))
+  await rerender(CONTAS)
+  assert.equal(valorDoInterruptor('Loja MotoChefe: Leste'), 'true', 'o pedido continua mostrado enquanto envia')
+  liberar(); await esperar()
+  assert.equal(valorDoInterruptor('Loja MotoChefe: Leste'), 'false', 'a recusa volta ao valor das props')
+  assert.equal(document.querySelector('[role="alert"] p')?.textContent, 'Não deu para marcar a loja. Nada mudou. Tente de novo.')
+})
