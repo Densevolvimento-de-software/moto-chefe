@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import { ROTA_PAINEL_FABRICA } from '@/lib/painel-fabrica'
 import { PAPEL_FABRICA } from '@/lib/login-fabrica'
 import { ROTA_ACESSOS_FABRICA } from '@/lib/acessos-fabrica'
+import { ROTA_LOJAS_MOTOCHEFE } from '@/lib/motochefe-marcacao'
 import {
   ArrowLeftRight, BarChart3, Bike, Building2, CalendarDays, CalendarRange,
   ClipboardList, CreditCard, Database, FileBarChart, FileSpreadsheet, FileText, Receipt,
@@ -187,7 +188,7 @@ export const ITENS: ItemNav[] = [
   // Tabela de preço sugerido da MotoChefe (#522): da plataforma, só admin_geral carrega.
   { id: 'precos-padrao',  href: '/admin/precos-padrao', label: 'Preços MotoChefe', icon: BadgeDollarSign, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
   // Lojas que a API de leitura da MotoChefe Brasil devolve, e as Contas autorizadas (#321): só o admin_geral.
-  { id: 'lojas-motochefe', href: '/admin/motochefe', label: 'Lojas MotoChefe', icon: Store, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
+  { id: 'lojas-motochefe', href: ROTA_LOJAS_MOTOCHEFE, label: 'Lojas MotoChefe', icon: Store, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
   // Estoque e vendas MotoChefe de todas as Contas para a fábrica: lê fora da Conta, por isso
   // no menu só o admin_geral, sem liberação individual; o login da fábrica abre por visivel().
   { id: 'painel-fabrica', href: ROTA_PAINEL_FABRICA, label: 'Painel Fábrica MotoChefe', icon: FileBarChart, categoria: 'plataforma', papeis: SUPER, soAdminGeral: true },
