@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 import { apiChaves, contas, grupos, lojas } from '@/lib/db/schema'
 import { sha256 } from '@/lib/assinatura/hash'
 import { iguaisEmTempoConstante } from '@/lib/tempo-constante'
-import { chaveAceita, linhaDaLoja, planoDaTroca, type LojaDaApi, type PlanoDaTroca } from '@/lib/api-leitura'
+import { chaveAceita, corpoDoErro, linhaDaLoja, planoDaTroca, statusDoErro, tokenDoBearer, type CodigoErroApi, type LojaDaApi, type PlanoDaTroca } from '@/lib/api-leitura'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 type Executor = Pick<typeof db, 'select' | 'insert' | 'update'> | Tx
@@ -76,4 +76,25 @@ export async function listarLojasDaApi(): Promise<LojaDaApi[]> {
     .where(inArray(lojas.id, lojasQueSaem()))
     .orderBy(lojas.nome, lojas.id)
   return linhas.map(linhaDaLoja)
+}
+
+export type RespostaDaApi = { status: number; corpo: unknown }
+
+const respostaDeErro = (codigo: CodigoErroApi): RespostaDaApi => ({ status: statusDoErro(codigo), corpo: corpoDoErro(codigo) })
+
+/**
+ * Casca de toda rota da API: confere a chave e chama o miolo. Sem chave, chave errada, revogada ou vencida,
+ * a mesma resposta 401. Falha no miolo vira 500 com a frase fixa, sem a mensagem do erro.
+ */
+export async function comChaveDaApi<T>(
+  authorization: string | null,
+  miolo: (chave: { id: string }) => Promise<T>,
+): Promise<RespostaDaApi> {
+  try {
+    const chave = await buscarChaveAceita(tokenDoBearer(authorization), new Date())
+    if (chave === null) return respostaDeErro('acesso_negado')
+    return { status: 200, corpo: await miolo(chave) }
+  } catch {
+    return respostaDeErro('erro_interno')
+  }
 }
