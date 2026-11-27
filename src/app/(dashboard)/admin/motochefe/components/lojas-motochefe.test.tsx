@@ -310,7 +310,6 @@ test('resumo: um cartão com três colunas, com os três números do protótipo'
   assert.deepEqual(colunas.map(c => c.textContent), ['Lojas marcadas3 de 5', 'Contas com loja marcada2 de 3', 'Contas autorizadas para custo, despesas e meta1 de 3'])
 })
 
-// A barra da Conta na lista usa uma cor da paleta de grupo (classe bg-grupo-*), sem cor fixa no código.
 // A barra é a cor que a regra de grupo dá ao id da Conta. Prova: cada Conta recebe a classe que a regra dá ao
 // seu id; a mesma Conta mantém a classe quando muda de posição na lista e quando muda de nome.
 // As classes da barra (ela tem também as de layout): a classe da regra tem de estar entre elas.
