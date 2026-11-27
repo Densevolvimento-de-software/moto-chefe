@@ -131,14 +131,20 @@ test('sem escolher, a venda sai no nome de quem registra', async () => {
   assert.deepEqual((await vendasDaLoja(c)).map(v => v.vendedor_id), [c.auxId])
 })
 
-test('quem registra escolhe o próprio id mesmo sem ser do grupo da loja: vale', async () => {
+test('admin_geral fora de todo grupo escolhe o próprio id: vale, mesmo ele não estando na lista do grupo', async () => {
   const c = await novaConta()
-  // No cadastro o sócio não tem loja nem o grupo (fica fora da lista), mas a sessão o deixa operar a loja:
-  // vender no próprio nome segue valendo.
-  await db.execute(sql`update usuarios set grupos_acesso = '{}'::uuid[] where id = ${c.socioId}`)
-  entrarComo(c, 'admin_socio')
-  assert.equal((await pecas.registrarVendaPecaAction(venda(c, { vendedorId: c.socioId }))).ok, true)
-  assert.deepEqual((await vendasDaLoja(c)).map(v => v.vendedor_id), [c.socioId])
+  // admin_geral não tem loja, Conta nem grupo no cadastro: fica fora da lista de propósito (usuarios-do-grupo.ts).
+  const geralId = await semearUsuario(db, c, { papel: 'admin_geral', rotulo: 'geral', semLoja: true })
+  usuario = {
+    id: geralId, nome: 'admin_geral de teste', email: 'geral@teste.invalid', papel: 'admin_geral', lojaId: null, contaId: null,
+    gruposAcesso: [], gruposAprovacao: [], grupoLiberado: null, aprovaPagamentoSensivel: true,
+  }
+  grupoAtivoNoCookie = c.grupoId
+  const { listarUsuariosDoGrupo } = await import('@/lib/usuarios-do-grupo')
+  assert.equal((await listarUsuariosDoGrupo(c.grupoId)).some(u => u.id === geralId), false)
+  const r = await pecas.registrarVendaPecaAction(venda(c, { vendedorId: geralId }))
+  assert.equal(r.ok, true, r.ok ? '' : r.erro)
+  assert.deepEqual((await vendasDaLoja(c)).map(v => v.vendedor_id), [geralId])
 })
 
 test('pessoa de outro grupo da MESMA Conta é recusada e nada grava', async () => {
