@@ -105,3 +105,11 @@ test('linha do registro com período e página: o período sai em ini e fim', ()
   assert.equal(linha.pagina, 2)
   assert.equal(linha.linhas, 500)
 })
+
+test('IP longo é cortado na linha do registro: IPv6 inteiro cabe em 45 caracteres; IP curto fica como veio', () => {
+  const ipLongo = `${'1'.repeat(60)}`
+  const doIpLongo = linhaDoAcesso({ chaveId: null, endpoint: '/api/v1/lojas', status: 401, origem: { ip: ipLongo, userAgent: null } })
+  assert.equal(doIpLongo.ip, ipLongo.slice(0, 45))
+  const doIpCurto = linhaDoAcesso({ chaveId: null, endpoint: '/api/v1/lojas', status: 401, origem: { ip: '200.1.2.3', userAgent: null } })
+  assert.equal(doIpCurto.ip, '200.1.2.3')
+})

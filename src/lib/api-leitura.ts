@@ -92,13 +92,16 @@ export type LinhaDoAcesso = {
   periodoIni: string | null; periodoFim: string | null; pagina: number | null; linhas: number | null
 }
 
+// 45 é o tamanho máximo de um IPv6 escrito por extenso com prefixo IPv4 embutido. Corta aqui, não no helper de origem.
+const TAMANHO_MAX_IP = 45
+
 /** Só estas colunas vão para api_acessos (ADR-0021): nunca a chave, o Authorization nem trecho do pedido. */
 export function linhaDoAcesso(entrada: EntradaDoAcesso): LinhaDoAcesso {
   return {
     chaveId: entrada.chaveId,
     endpoint: entrada.endpoint,
     status: entrada.status,
-    ip: entrada.origem.ip,
+    ip: entrada.origem.ip?.slice(0, TAMANHO_MAX_IP) ?? null,
     userAgent: entrada.origem.userAgent,
     periodoIni: entrada.periodo?.ini ?? null,
     periodoFim: entrada.periodo?.fim ?? null,
