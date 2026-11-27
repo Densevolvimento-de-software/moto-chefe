@@ -53,13 +53,18 @@ export function agruparContas(linhas: LinhaDaConta[]): ContaDaTela[] {
   })
 }
 
+/** Quantas lojas estão marcadas: a lista de Contas, o painel e o resumo usam esta contagem. */
+export function contarMarcadas(lojas: LojaDaTela[]): number {
+  return lojas.filter(l => l.marcada).length
+}
+
 /** Os números do topo da tela: lojas marcadas, Contas com loja marcada e Contas autorizadas. */
 export function resumoDaTela(contas: ContaDaTela[]) {
   const lojas = contas.flatMap(c => c.lojas)
   return {
-    lojasMarcadas: lojas.filter(l => l.marcada).length,
+    lojasMarcadas: contarMarcadas(lojas),
     lojasTotal: lojas.length,
-    contasComMarcada: contas.filter(c => c.lojas.some(l => l.marcada)).length,
+    contasComMarcada: contas.filter(c => contarMarcadas(c.lojas) > 0).length,
     contasTotal: contas.length,
     contasAutorizadas: contas.filter(c => c.autorizada).length,
   }

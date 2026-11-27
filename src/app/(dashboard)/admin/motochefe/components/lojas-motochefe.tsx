@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
-import { resumoDaTela, type ContaDaTela, type LojaDaTela } from '@/lib/motochefe-marcacao'
+import { contarMarcadas, resumoDaTela, type ContaDaTela, type LojaDaTela } from '@/lib/motochefe-marcacao'
 import { autorizarContaAction, marcarLojaMotochefeAction } from '../actions'
 import { ConfirmarDialogo } from './confirmar-dialogo'
 
@@ -103,7 +103,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
           </div>
           <ul className="divide-y">
             {contas.map(conta => {
-              const marcadas = conta.lojas.filter(l => l.marcada).length
+              const marcadas = contarMarcadas(conta.lojas)
               const ativa = conta.id === selecionadaId
               return (
                 <li key={conta.id}>
@@ -163,7 +163,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                 <div className="flex items-center justify-between gap-3 px-4">
                   <h2 className="font-semibold">Lojas da {selecionada.nome}</h2>
                   <span className="text-muted-foreground text-sm">
-                    {selecionada.lojas.filter(l => l.marcada).length} de {selecionada.lojas.length} lojas marcadas
+                    {contarMarcadas(selecionada.lojas)} de {selecionada.lojas.length} lojas marcadas
                   </span>
                 </div>
                 {selecionada.lojas.length === 0 && <p className="text-muted-foreground px-4 text-sm">Esta Conta ainda não tem lojas.</p>}

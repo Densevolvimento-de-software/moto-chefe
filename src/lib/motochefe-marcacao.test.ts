@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { agruparContas, lerAutorizacao, lerMarcacao, resumoDaTela, type LinhaDaConta } from './motochefe-marcacao'
+import { agruparContas, contarMarcadas, lerAutorizacao, lerMarcacao, resumoDaTela, type LinhaDaConta } from './motochefe-marcacao'
 
 const LOJA_1 = '11111111-1111-4111-8111-111111111111'
 const LOJA_2 = '11111111-1111-4111-8111-222222222222'
@@ -52,4 +52,10 @@ test('resumo da tela bate com o protótipo: 3 de 7, 2 de 3 e 1 de 3', () => {
     { id: 'c', nome: 'C', autorizada: false, lojas: [loja(false)] },
   ])
   assert.deepEqual(resumo, { lojasMarcadas: 3, lojasTotal: 7, contasComMarcada: 2, contasTotal: 3, contasAutorizadas: 1 })
+})
+
+test('contar marcadas: conta só as lojas marcadas, e uma Conta sem loja dá zero', () => {
+  const loja = (marcada: boolean) => ({ id: LOJA_1, nome: 'L', cidade: 'C', ativa: true, marcada })
+  assert.equal(contarMarcadas([loja(true), loja(false), loja(true)]), 2)
+  assert.equal(contarMarcadas([]), 0)
 })
