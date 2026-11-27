@@ -26,6 +26,9 @@ A API de leitura é uma exceção ao isolamento por Conta, e só nestes pontos:
   `admin_geral` liga e desliga, pela tela de marcação. O servidor confere o papel na gravação, e o
   cadastro comum de loja não grava esse campo. Não se deriva do login do portal da fábrica, de nome,
   marca ou CNPJ. Nenhuma loja sai enquanto não for marcada.
+- **A marcação vale pela loja de cada registro.** Venda, OS, meta, despesa e pessoa saem só quando a
+  loja de cada um está marcada. Parâmetro de loja, grupo ou Conta no pedido não amplia o que sai.
+  Contagem e paginação não contam registro de loja de fora.
 - **Custo de compra, despesas e metas exigem autorização da Conta.** Só saem da Conta que o
   `admin_geral` autorizou. Loja marcada de Conta não autorizada sai com o custo nulo e sem linhas de
   despesa ou de meta; o resto da loja sai normal. A lista de Contas autorizadas mora no banco, nunca
