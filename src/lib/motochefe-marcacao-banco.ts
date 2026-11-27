@@ -15,7 +15,12 @@ type Resultado = { ok: true } | { ok: false; erro: string }
 
 export async function marcarLojaMotochefe(adminId: string, m: Marcacao, exec: Escritor = db): Promise<Resultado> {
   return exec.transaction(async tx => {
-    const [alvo] = await tx.select({ nome: lojas.nome }).from(lojas).where(eq(lojas.id, m.lojaId)).limit(1)
+    // Loja de grupo inativo ou de Conta desativada é "não encontrada", como a autorização: a regra é a mesma.
+    const [alvo] = await tx.select({ nome: lojas.nome }).from(lojas)
+      .innerJoin(grupos, eq(grupos.id, lojas.grupoId))
+      .innerJoin(contas, eq(contas.id, grupos.contaId))
+      .where(and(eq(lojas.id, m.lojaId), eq(grupos.ativo, true), isNull(contas.desativadaEm)))
+      .limit(1)
     if (!alvo) return { ok: false, erro: MENSAGEM_LOJA_NAO_ENCONTRADA }
     // A condição de mudança faz parte do update: se dois cliques chegam juntos, só um troca e só um registra o log.
     const [trocada] = await tx.update(lojas).set({ lojaMotochefe: m.marcada })
@@ -61,7 +66,8 @@ export async function listarContasMotochefe(exec: Pick<typeof db, 'select'> = db
     ativa: lojas.ativa,
     marcada: lojas.lojaMotochefe,
   }).from(contas)
-    .leftJoin(grupos, eq(grupos.contaId, contas.id))
+    // Grupo inativo não entra: as lojas dele não aparecem e não se marcam (ver marcarLojaMotochefe).
+    .leftJoin(grupos, and(eq(grupos.contaId, contas.id), eq(grupos.ativo, true)))
     .leftJoin(lojas, eq(lojas.grupoId, grupos.id))
     .where(isNull(contas.desativadaEm))
     .orderBy(asc(contas.nome), asc(lojas.nome))
