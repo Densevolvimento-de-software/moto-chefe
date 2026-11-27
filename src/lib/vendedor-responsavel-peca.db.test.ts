@@ -270,6 +270,14 @@ test('financiamento: o preço ajustado só fica guardado quando quem registra é
   assert.deepEqual(guardados.map(i => i[0].valorUnitario).sort(), [40, undefined])
 })
 
+test('financiamento: preço ajustado que não é número não fica guardado, nem para gestor', async () => {
+  const c = await novaConta()
+  entrarComo(c, 'aux_adm')
+  const itens = [{ pecaId: c.pecaId, quantidade: 1, valorUnitario: '40' }]
+  assert.equal((await pecas.registrarVendaPecaAction(venda(c, { itens }, FINANCIAMENTO))).ok, true)
+  assert.deepEqual((await aprovacaoDaLoja(c)).map(a => a.dados_venda.itens), [[{ pecaId: c.pecaId, quantidade: 1 }]])
+})
+
 test('financiamento com responsável de outro grupo: recusa e nenhuma aprovação fica guardada', async () => {
   const c = await novaConta()
   entrarComo(c, 'aux_adm')

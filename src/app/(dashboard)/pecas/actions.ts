@@ -232,7 +232,7 @@ async function registrarVendaPeca(input: PedidoVendaPeca) {
     clienteTipoPessoa: tipoPessoa,
     clienteDocumento: doc.documento,
     itens: input.itens.map(({ pecaId, quantidade, valorUnitario }) =>
-      podeDefinirPreco && valorUnitario !== undefined ? { pecaId, quantidade, valorUnitario } : { pecaId, quantidade }),
+      podeDefinirPreco && typeof valorUnitario === 'number' ? { pecaId, quantidade, valorUnitario } : { pecaId, quantidade }),
     pagamentos: pagamentosParaGravar(pagamentos, CAMPOS_PAGAMENTO_VENDA, []),
   }
 
