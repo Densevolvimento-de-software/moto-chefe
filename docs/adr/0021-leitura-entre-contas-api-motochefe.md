@@ -35,14 +35,15 @@ A API de leitura é uma exceção ao isolamento por Conta, e só nestes pontos:
   - **Lojas:** id, nome, cidade, endereço, CEP e ativa.
   - **Pessoas** (vendedores e técnicos das lojas marcadas): id, nome, função, loja e ativo. Sem
     e-mail, documento, telefone ou dado de folha.
-  - **Vendas de moto:** data, número, loja, vendedor, modelo, cor, chassi, valor da moto, custo de
-    compra, CEP do cliente, número da NF de saída e data do cancelamento (nula se a venda vale).
-    Sem forma de pagamento.
+  - **Vendas de moto:** só motos da marca MotoChefe (mesma regra de marca do Painel Fábrica). Data,
+    número, loja, vendedor, modelo, cor, chassi, valor da moto, custo de compra, CEP do cliente,
+    número da NF de saída e data do cancelamento (nula se a venda vale). Venda cancelada sai marcada,
+    com essa data. Sem forma de pagamento.
   - **Vendas de peça:** uma linha por item, com data, número da venda, loja, vendedor, peça,
-    quantidade e valor. Sem custo.
-  - **Ordens de serviço:** datas de abertura e conclusão, status, loja, técnico, chassi (ou marca e
-    modelo, quando a moto é de fora) e itens (tipo peça ou mão de obra, quantidade e valor). Sem
-    custo.
+    quantidade e valor. Sem custo e sem filtro de marca.
+  - **Ordens de serviço:** todas as da loja, com qualquer status. Datas de abertura e conclusão,
+    status, loja, técnico, chassi (ou marca e modelo, quando a moto é de fora) e itens (tipo peça ou
+    mão de obra, quantidade e valor). Sem custo.
   - **Metas:** loja, ano, mês e valor.
   - **Despesas:** soma por mês, loja, categoria e grupo do DRE. Sem lançamento individual, descrição
     ou beneficiário. O nome da categoria sai como a Conta cadastrou.
