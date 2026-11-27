@@ -281,3 +281,17 @@ test('a lista do campo é exatamente quem o servidor aceita, e nada da outra Con
   }
   assert.deepEqual(aceitos.sort(), lista.filter(id => id !== a.auxId).sort())
 })
+
+test('loja de outra Conta e loja inexistente: mesma recusa, com ou sem responsável, e nada muda nas duas Contas', async () => {
+  const a = await novaConta()
+  const b = await novaConta()
+  entrarComo(a, 'aux_adm')
+  const deOutraConta = await pecas.registrarVendaPecaAction(venda(a, { lojaId: b.lojaId, vendedorId: a.colegaId }))
+  const semResponsavel = await pecas.registrarVendaPecaAction(venda(a, { lojaId: b.lojaId }))
+  const inexistente = await pecas.registrarVendaPecaAction(venda(a, { lojaId: randomUUID(), vendedorId: a.colegaId }))
+  assert.deepEqual(deOutraConta, { ok: false, erro: 'Sem permissão para esta loja' })
+  assert.deepEqual(semResponsavel, deOutraConta)
+  assert.deepEqual(inexistente, deOutraConta)
+  assert.deepEqual(await estadoDaLoja(a), SEM_MEXER(10))
+  assert.deepEqual(await estadoDaLoja(b), SEM_MEXER(10))
+})
