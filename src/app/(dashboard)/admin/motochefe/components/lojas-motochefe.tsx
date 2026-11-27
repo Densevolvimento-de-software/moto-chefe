@@ -1,8 +1,8 @@
 'use client'
 
 // Tela Lojas MotoChefe (#321, variante 2 do protótipo aprovado). Lista de Contas à esquerda; no celular,
-// a lista e o painel se alternam. Cada gravação mostra o valor pedido enquanto envia; se a action recusa,
-// volta ao valor de antes e diz que nada mudou. Desmarcar e tirar a autorização pedem confirmação.
+// a lista e o painel se alternam. Cada gravação mostra o valor pedido enquanto envia e até a página nova chegar;
+// se a action recusa, volta ao valor de antes e diz que nada mudou. Desmarcar e tirar a autorização pedem confirmação.
 import { useEffect, useState } from 'react'
 import { ArrowLeft, Store } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -23,7 +23,8 @@ type Pedido = { valor: boolean; enviando: boolean }
 
 const soEnviando = (p: Record<string, Pedido>) => Object.fromEntries(Object.entries(p).filter(([, v]) => v.enviando))
 const semChave = (p: Record<string, Pedido>, chave: string) => Object.fromEntries(Object.entries(p).filter(([k]) => k !== chave))
-type Confirmacao = { tipo: 'loja'; loja: LojaDaTela } | { tipo: 'conta'; conta: ContaDaTela } | null
+// A confirmação já vem pronta: o que mostrar e o que fazer ao confirmar. Quem abre o diálogo só entrega o dado.
+type Confirmacao = { chave: string; titulo: string; texto: string; rotuloEnviar: string; enviar: () => Promise<void> } | null
 
 export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null)
@@ -57,7 +58,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
 
   function mudarLoja(loja: LojaDaTela, marcada: boolean) {
     if (marcada) enviarLoja(loja, true)
-    else setConfirmacao({ tipo: 'loja', loja })
+    else setConfirmacao(confirmarDesmarcarLoja(loja))
   }
 
   function enviarLoja(loja: LojaDaTela, marcada: boolean) {
@@ -67,7 +68,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
 
   function mudarAutorizacao(conta: ContaDaTela, autorizada: boolean) {
     if (autorizada) enviarAutorizacao(conta, true)
-    else setConfirmacao({ tipo: 'conta', conta })
+    else setConfirmacao(confirmarTirarAutorizacao(conta))
   }
 
   function enviarAutorizacao(conta: ContaDaTela, autorizada: boolean) {
@@ -75,10 +76,29 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
     return gravar({ chave: chaveDaConta(conta.id), tipo: 'conta', id: conta.id, valor: autorizada }, () => autorizarContaAction({ contaId: conta.id, autorizada }), falha)
   }
 
+  function confirmarDesmarcarLoja(loja: LojaDaTela): Confirmacao {
+    return {
+      chave: chaveDaLoja(loja.id),
+      titulo: `Desmarcar ${loja.nome}?`,
+      texto: 'Ela sai da API na hora, inclusive do histórico desde 01/2026. Quem consulta deixa de ver as vendas dela.',
+      rotuloEnviar: 'Desmarcar loja',
+      enviar: () => enviarLoja(loja, false),
+    }
+  }
+
+  function confirmarTirarAutorizacao(conta: ContaDaTela): Confirmacao {
+    return {
+      chave: chaveDaConta(conta.id),
+      titulo: `Tirar a autorização da ${conta.nome}?`,
+      texto: 'Custo, despesas e meta das lojas dela saem da API na hora. Venda de moto, peça e OS continuam saindo.',
+      rotuloEnviar: 'Tirar autorização',
+      enviar: () => enviarAutorizacao(conta, false),
+    }
+  }
+
   async function confirmar() {
     if (!confirmacao) return
-    const c = confirmacao
-    await (c.tipo === 'loja' ? enviarLoja(c.loja, false) : enviarAutorizacao(c.conta, false))
+    await confirmacao.enviar()
     setConfirmacao(null)
   }
 
@@ -94,20 +114,16 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
       const loja = lojaDaTela(contas, e.id)
       if (!loja) return
       if (e.valor) enviarLoja(loja, true)
-      else setConfirmacao({ tipo: 'loja', loja })
+      else setConfirmacao(confirmarDesmarcarLoja(loja))
     } else {
       const conta = contaDaTela(contas, e.id)
       if (!conta) return
       if (e.valor) enviarAutorizacao(conta, true)
-      else setConfirmacao({ tipo: 'conta', conta })
+      else setConfirmacao(confirmarTirarAutorizacao(conta))
     }
   }
 
-  const chaveDoDialogo = confirmacao === null ? null : confirmacao.tipo === 'loja' ? chaveDaLoja(confirmacao.loja.id) : chaveDaConta(confirmacao.conta.id)
-  const ocupadoNoDialogo = chaveDoDialogo !== null && pedidos[chaveDoDialogo]?.enviando === true
-  const dadosDoDialogo = confirmacao === null ? null : confirmacao.tipo === 'loja'
-    ? { titulo: `Desmarcar ${confirmacao.loja.nome}?`, texto: 'Ela sai da API na hora, inclusive do histórico desde 01/2026. Quem consulta deixa de ver as vendas dela.', rotuloEnviar: 'Desmarcar loja' }
-    : { titulo: `Tirar a autorização da ${confirmacao.conta.nome}?`, texto: 'Custo, despesas e meta das lojas dela saem da API na hora. Venda de moto, peça e OS continuam saindo.', rotuloEnviar: 'Tirar autorização' }
+  const ocupadoNoDialogo = confirmacao !== null && pedidos[confirmacao.chave]?.enviando === true
 
   return (
     <div className="space-y-6">
@@ -224,11 +240,11 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
         </div>
       </div>
 
-      {dadosDoDialogo && (
+      {confirmacao && (
         <ConfirmarDialogo
-          titulo={dadosDoDialogo.titulo}
-          texto={dadosDoDialogo.texto}
-          rotuloEnviar={dadosDoDialogo.rotuloEnviar}
+          titulo={confirmacao.titulo}
+          texto={confirmacao.texto}
+          rotuloEnviar={confirmacao.rotuloEnviar}
           ocupado={ocupadoNoDialogo}
           onCancelar={() => setConfirmacao(null)}
           onConfirmar={confirmar}
