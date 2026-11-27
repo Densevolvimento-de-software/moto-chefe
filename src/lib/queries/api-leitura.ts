@@ -84,7 +84,7 @@ export async function listarLojasDaApi(): Promise<LojaDaApi[]> {
 }
 
 /**
- * Conta um pedido na janela do minuto e devolve o total dela. Um comando só: o insert cria a linha ou soma
+ * Conta um pedido na janela e devolve o total dela. Um comando só: o insert cria a linha ou soma
  * 1 à que já existe, sem ler antes, para duas chamadas ao mesmo tempo não passarem do limite juntas.
  */
 export async function contarPedido(chaveId: string, janela: Date): Promise<number> {

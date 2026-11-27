@@ -38,17 +38,17 @@ export function linhaDaLoja(linha: LojaDaApi): LojaDaApi {
   return { id: linha.id, nome: linha.nome, cidade: linha.cidade, endereco: linha.endereco, cep: linha.cep, ativa: linha.ativa }
 }
 
-/** Início do minuto em que o instante cai: é a janela do contador de cada chave. */
+/** Início da janela em que o instante cai. */
 export function janelaDoMinuto(agora: Date): Date {
   return new Date(Math.floor(agora.getTime() / MINUTO_MS) * MINUTO_MS)
 }
 
-/** `pedidos` já conta o pedido atual: passou do limite quando é o pedido de número LIMITE + 1 ou mais. */
+/** `pedidos` já inclui o pedido atual. */
 export function passouDoLimite(pedidos: number): boolean {
   return pedidos > LIMITE_POR_MINUTO
 }
 
-/** Segundos até a janela seguinte, de 1 a 60: é o Retry-After da recusa por limite. */
+/** Segundos até a janela seguinte: é o Retry-After da recusa. */
 export function segundosAteProximaJanela(agora: Date): number {
   return Math.ceil((janelaDoMinuto(agora).getTime() + MINUTO_MS - agora.getTime()) / 1000)
 }

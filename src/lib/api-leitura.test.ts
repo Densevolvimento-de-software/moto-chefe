@@ -58,12 +58,12 @@ test('erros têm código e frase numa lista só; acesso negado é 401 e erro int
   assert.equal(statusDoErro('limite_atingido'), 429)
 })
 
-test('janela é o início do minuto: 59,999 s ainda é o minuto anterior; 60 s já é o seguinte', () => {
+test('janela: cada instante cai em uma só janela, e a virada acontece na fronteira', () => {
   assert.equal(janelaDoMinuto(new Date('2026-11-27T12:00:59.999Z')).toISOString(), '2026-11-27T12:00:00.000Z')
   assert.equal(janelaDoMinuto(new Date('2026-11-27T12:01:00.000Z')).toISOString(), '2026-11-27T12:01:00.000Z')
 })
 
-test('passa do limite só a partir do pedido seguinte ao teto do minuto', () => {
+test('passa do teto só a partir do pedido seguinte a ele', () => {
   assert.equal(passouDoLimite(LIMITE_POR_MINUTO), false)
   assert.equal(passouDoLimite(LIMITE_POR_MINUTO + 1), true)
 })
@@ -75,7 +75,7 @@ test('limite atingido: 429 com frase fixa, sem número de pedidos nem da chave; 
   assert.deepEqual(resposta.cabecalhos, { 'Retry-After': '30' })
 })
 
-test('Retry-After vai de 1 a 60 s: no início do minuto são 60; no último milissegundo, 1', () => {
+test('Retry-After: segundos até a janela seguinte, do início ao último instante da janela', () => {
   assert.deepEqual(respostaDeLimite(new Date('2026-11-27T12:00:00.000Z')).cabecalhos, { 'Retry-After': '60' })
   assert.deepEqual(respostaDeLimite(new Date('2026-11-27T12:00:59.999Z')).cabecalhos, { 'Retry-After': '1' })
 })

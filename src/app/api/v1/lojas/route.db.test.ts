@@ -49,7 +49,7 @@ const CHAVE = {
   trocada25h: `trocada25h-${randomUUID()}`,
   vencida: `vencida-${randomUUID()}`,
   revogada: `revogada-${randomUUID()}`,
-  // Uma chave por cenário de limite e de registro: o contador é por chave e por minuto.
+  // Uma chave por cenário de limite e de registro, para os contadores não se misturarem.
   limite: `limite-${randomUUID()}`,
   minuto: `minuto-${randomUUID()}`,
   paralelo: `paralelo-${randomUUID()}`,
@@ -240,8 +240,8 @@ test('falha depois da chave: 500 com a frase fixa, e o log só leva a frase cons
   }
 })
 
-// Limite e registro (#320). O relógio fica num ponto fixo a 30 s dentro de um minuto, para o contador e o
-// Retry-After não dependerem da hora em que o teste roda. Cada cenário usa a própria chave.
+// Limite e registro (#320). O relógio fica fixo num ponto conhecido, para a janela e o Retry-After não dependerem
+// da hora em que o teste roda. Cada cenário usa a própria chave.
 const tempoFixo = () => {
   const inicio = Math.floor(Date.now() / 60000) * 60000 + 30000
   mock.timers.enable({ apis: ['Date'], now: inicio })
@@ -256,7 +256,7 @@ const LIMITE_RECUSADO = { codigo: 'limite_atingido', frase: 'Limite de chamadas 
 // Teto da spec #315, copiado aqui (não importado): o vermelho do teste fica de comportamento, não de export ausente.
 const TETO = 60
 
-test('limite: o 61º pedido da chave no minuto recebe 429 com Retry-After e sem lojas; o registro guarda os 61 pedidos', async () => {
+test('limite: o pedido acima do teto recebe 429 com Retry-After e sem lojas; o registro guarda todos os pedidos', async () => {
   const ua = uaNovo('limite')
   tempoFixo()
   try {
@@ -278,7 +278,7 @@ test('limite: o 61º pedido da chave no minuto recebe 429 com Retry-After e sem 
   }
 })
 
-test('limite: no minuto seguinte a mesma chave volta a receber 200', async () => {
+test('limite: na janela seguinte a mesma chave volta a receber 200', async () => {
   const inicio = tempoFixo()
   try {
     for (let n = 1; n <= TETO; n++) await chamar(bearer(CHAVE.minuto))
@@ -290,7 +290,7 @@ test('limite: no minuto seguinte a mesma chave volta a receber 200', async () =>
   }
 })
 
-test('contador: 20 pedidos em paralelo com 5 vagas no minuto: exatamente 5 passam e o contador fecha em 75', async () => {
+test('contador: pedidos em paralelo não passam do teto, e o contador conta todos', async () => {
   const inicio = tempoFixo()
   try {
     await semearContador(CHAVE.paralelo, TETO - 5, janelaDo(inicio))
@@ -307,7 +307,7 @@ test('contador: 20 pedidos em paralelo com 5 vagas no minuto: exatamente 5 passa
   }
 })
 
-test('contador: cada chave tem o seu; a chave esgotada recebe 429 e a outra segue com 200 no mesmo minuto', async () => {
+test('contador: cada chave tem o seu; a chave esgotada recebe 429 e a outra segue com 200 na mesma janela', async () => {
   const inicio = tempoFixo()
   try {
     await semearContador(CHAVE.duas, TETO, janelaDo(inicio))
