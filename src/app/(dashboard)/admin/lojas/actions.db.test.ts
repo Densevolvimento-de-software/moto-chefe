@@ -36,6 +36,8 @@ before(async () => {
 })
 after(async () => { await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end() })
 
+// Rótulo único por execução: o e-mail de usuario é único no banco, e o test:db local pode reaproveitar o banco.
+const u = () => randomUUID().slice(0, 8)
 const cnpj = () => String(Math.floor(Math.random() * 1e14)).padStart(14, '0')
 const marcadaDaLoja = async (id: string) =>
   (await execRows(sql`select loja_motochefe from lojas where id = ${id}`))[0].loja_motochefe
@@ -46,7 +48,7 @@ const formulario = (campos: Record<string, string>) => {
 }
 
 test('editar loja não altera a marcação, nem com lojaMotochefe no formulário', async () => {
-  logadoComo = await semearUsuario(db, await semearContaBase(db, { prefixo: 'MCL0', nome: 'Adm', cnpj: cnpj() }), { papel: 'admin_geral', rotulo: 'admin-lojas', semLoja: true })
+  logadoComo = await semearUsuario(db, await semearContaBase(db, { prefixo: 'MCL0', nome: 'Adm', cnpj: cnpj() }), { papel: 'admin_geral', rotulo: `admin-lojas-${u()}`, semLoja: true })
   const conta = await semearContaBase(db, { prefixo: 'MCL1', nome: 'A', cnpj: cnpj() })
   const outra = await semearLoja(db, conta.grupoId, `Loja MCL1 Outra ${randomUUID()}`)
   await db.execute(sql`update lojas set loja_motochefe = true where id = ${conta.lojaId}`)
@@ -59,7 +61,7 @@ test('editar loja não altera a marcação, nem com lojaMotochefe no formulário
 })
 
 test('criar loja nova nasce desmarcada, mesmo com lojaMotochefe no formulário', async () => {
-  logadoComo = await semearUsuario(db, await semearContaBase(db, { prefixo: 'MCL0b', nome: 'Adm', cnpj: cnpj() }), { papel: 'admin_geral', rotulo: 'admin-lojas2', semLoja: true })
+  logadoComo = await semearUsuario(db, await semearContaBase(db, { prefixo: 'MCL0b', nome: 'Adm', cnpj: cnpj() }), { papel: 'admin_geral', rotulo: `admin-lojas2-${u()}`, semLoja: true })
   const conta = await semearContaBase(db, { prefixo: 'MCL2', nome: 'A', cnpj: cnpj() })
   const nome = `Loja MCL2 Nova ${randomUUID()}`
   const r = await actions.criarLojaAction(formulario({ grupoId: conta.grupoId, nome, cidade: 'C', endereco: 'R', lojaMotochefe: 'true' }))

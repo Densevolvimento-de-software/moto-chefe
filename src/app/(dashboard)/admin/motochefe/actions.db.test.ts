@@ -6,7 +6,7 @@ import { after, before, mock, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { semearContaBase, semearUsuario, type Base } from '@/test/semear-conta'
+import { semearContaBase, semearLoja, semearUsuario, type Base } from '@/test/semear-conta'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL não definida — este teste só roda num Postgres descartável')
@@ -35,6 +35,8 @@ before(async () => {
 })
 after(async () => { await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end() })
 
+// Rótulo único por execução: o e-mail de usuario é único no banco, e o test:db local pode reaproveitar o banco.
+const u = () => randomUUID().slice(0, 8)
 const cnpj = () => String(Math.floor(Math.random() * 1e14)).padStart(14, '0')
 
 async function semear(prefixo: string): Promise<{ a: Base; b: Base }> {
@@ -55,7 +57,7 @@ const PAPEIS_SEM_PERMISSAO = ['admin_socio', 'admin_rede', 'aux_adm', 'vendedor'
 test('papel que não é admin_geral recebe "Sem permissão" nas duas ações, e nada é gravado nem registrado', async () => {
   const { a } = await semear('MCA1')
   for (const papel of PAPEIS_SEM_PERMISSAO) {
-    logadoComo = await semearUsuario(db, a, { papel, rotulo: `sem-${papel}` })
+    logadoComo = await semearUsuario(db, a, { papel, rotulo: `sem-${papel}-${u()}` })
     assert.deepEqual(await actions.marcarLojaMotochefeAction({ lojaId: a.lojaId, marcada: true }), { ok: false, erro: 'Sem permissão' }, papel)
     assert.deepEqual(await actions.autorizarContaAction({ contaId: a.contaId, autorizada: true }), { ok: false, erro: 'Sem permissão' }, papel)
   }
@@ -76,7 +78,7 @@ test('sem login: a action redireciona para o login, e nada é gravado nem regist
 
 test('id inexistente e id que não é uuid recebem a mesma frase', async () => {
   const { a } = await semear('MCA6')
-  logadoComo = await semearUsuario(db, a, { papel: 'admin_geral', rotulo: 'admin-ids', semLoja: true })
+  logadoComo = await semearUsuario(db, a, { papel: 'admin_geral', rotulo: `admin-ids-${u()}`, semLoja: true })
   assert.deepEqual(await actions.marcarLojaMotochefeAction({ lojaId: randomUUID(), marcada: true }), { ok: false, erro: 'Loja não encontrada' })
   assert.deepEqual(await actions.marcarLojaMotochefeAction({ lojaId: 'abc', marcada: true }), { ok: false, erro: 'Loja não encontrada' })
   assert.deepEqual(await actions.autorizarContaAction({ contaId: randomUUID(), autorizada: true }), { ok: false, erro: 'Conta não encontrada' })
@@ -86,8 +88,11 @@ test('id inexistente e id que não é uuid recebem a mesma frase', async () => {
 // Pedido forjado: grupo, Conta, nome e ativa de outra Conta, mais desativadaEm. Só a marcação muda.
 test('marcar loja com campos a mais: só loja_motochefe muda', async () => {
   const { a, b } = await semear('MCA2')
-  logadoComo = await semearUsuario(db, a, { papel: 'admin_geral', rotulo: 'admin-forjado', semLoja: true })
+  const outraLojaDaA = await semearLoja(db, a.grupoId, `Loja MCA2 Outra ${randomUUID()}`)
+  logadoComo = await semearUsuario(db, a, { papel: 'admin_geral', rotulo: `admin-forjado-${u()}`, semLoja: true })
   const antes = await lojaDe(a.lojaId)
+  const outraAntes = await lojaDe(outraLojaDaA)
+  const bAntes = await lojaDe(b.lojaId)
   const r = await actions.marcarLojaMotochefeAction({ lojaId: a.lojaId, marcada: true, grupoId: b.grupoId, contaId: b.contaId, ativa: false, nome: 'Trocada', desativadaEm: '2020-01-01' })
   assert.deepEqual(r, { ok: true, dados: undefined })
   const depois = await lojaDe(a.lojaId)
@@ -95,11 +100,17 @@ test('marcar loja com campos a mais: só loja_motochefe muda', async () => {
   assert.equal(depois.grupo_id, antes.grupo_id)
   assert.equal(depois.ativa, antes.ativa)
   assert.equal(depois.nome, antes.nome)
+  // A linha do log sai do registro da loja (grupo e Conta de A), não do grupo e da Conta do pedido (de B).
+  const log = await execRows(sql`select grupo_id, conta_id from log_acoes where detalhe->>'lojaId' = ${a.lojaId}`)
+  assert.deepEqual(log.map(l => [l.grupo_id, l.conta_id]), [[a.grupoId, a.contaId]])
+  // As outras lojas, da mesma Conta e de outra, ficam como estavam.
+  assert.deepEqual(await lojaDe(outraLojaDaA), outraAntes)
+  assert.deepEqual(await lojaDe(b.lojaId), bAntes)
 })
 
 test('autorizar Conta com campos a mais: só autoriza_custo_despesa_meta muda', async () => {
   const { a } = await semear('MCA3')
-  logadoComo = await semearUsuario(db, a, { papel: 'admin_geral', rotulo: 'admin-forjado-conta', semLoja: true })
+  logadoComo = await semearUsuario(db, a, { papel: 'admin_geral', rotulo: `admin-forjado-conta-${u()}`, semLoja: true })
   const antes = await contaDe(a.contaId)
   const r = await actions.autorizarContaAction({ contaId: a.contaId, autorizada: true, nome: 'Trocada', desativadaEm: '2020-01-01T00:00:00Z' })
   assert.deepEqual(r, { ok: true, dados: undefined })
@@ -107,4 +118,7 @@ test('autorizar Conta com campos a mais: só autoriza_custo_despesa_meta muda', 
   assert.equal(depois.autoriza_custo_despesa_meta, true)
   assert.equal(depois.nome, antes.nome)
   assert.equal(depois.desativada_em, null)
+  // O log da Conta leva a Conta do registro (A), e não a do pedido (que aqui nem existe como campo do log).
+  const log = await execRows(sql`select grupo_id, conta_id from log_acoes where detalhe->>'contaId' = ${a.contaId}`)
+  assert.deepEqual(log.map(l => [l.grupo_id, l.conta_id]), [[null, a.contaId]])
 })
