@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CARENCIA_MS, chaveAceita, corpoDoErro, linhaDaLoja, planoDaTroca, statusDoErro, type LojaDaApi,
+  CARENCIA_MS, LIMITE_POR_MINUTO, chaveAceita, corpoDoErro, janelaDoMinuto, linhaDaLoja, linhaDoAcesso, passouDoLimite,
+  planoDaTroca, respostaDeLimite, statusDoErro, type LojaDaApi,
 } from './api-leitura'
 
 const AGORA = new Date('2026-11-27T12:00:00Z')
@@ -54,4 +55,61 @@ test('erros têm código e frase numa lista só; acesso negado é 401 e erro int
   assert.deepEqual(corpoDoErro('erro_interno'), { codigo: 'erro_interno', frase: 'Erro interno.' })
   assert.equal(statusDoErro('acesso_negado'), 401)
   assert.equal(statusDoErro('erro_interno'), 500)
+  assert.equal(statusDoErro('limite_atingido'), 429)
+})
+
+test('janela: cada instante cai em uma só janela, e a virada acontece na fronteira', () => {
+  assert.equal(janelaDoMinuto(new Date('2026-11-27T12:00:59.999Z')).toISOString(), '2026-11-27T12:00:00.000Z')
+  assert.equal(janelaDoMinuto(new Date('2026-11-27T12:01:00.000Z')).toISOString(), '2026-11-27T12:01:00.000Z')
+})
+
+test('passa do teto só a partir do pedido seguinte a ele', () => {
+  assert.equal(passouDoLimite(LIMITE_POR_MINUTO), false)
+  assert.equal(passouDoLimite(LIMITE_POR_MINUTO + 1), true)
+})
+
+test('limite atingido: 429 com frase fixa, sem número de pedidos nem da chave; Retry-After são os segundos até a janela seguinte', () => {
+  const resposta = respostaDeLimite(new Date('2026-11-27T12:00:30.000Z'))
+  assert.equal(resposta.status, 429)
+  assert.deepEqual(resposta.corpo, { codigo: 'limite_atingido', frase: 'Limite de chamadas atingido.' })
+  assert.deepEqual(resposta.cabecalhos, { 'Retry-After': '30' })
+})
+
+test('Retry-After: segundos até a janela seguinte, do início ao último instante da janela', () => {
+  assert.deepEqual(respostaDeLimite(new Date('2026-11-27T12:00:00.000Z')).cabecalhos, { 'Retry-After': '60' })
+  assert.deepEqual(respostaDeLimite(new Date('2026-11-27T12:00:59.999Z')).cabecalhos, { 'Retry-After': '1' })
+})
+
+test('linha do registro sai só com as colunas da tabela; token, Authorization e corpo do pedido nunca entram', () => {
+  const pedido = {
+    chaveId: null, endpoint: '/api/v1/lojas', status: 401,
+    origem: { ip: '200.1.2.3', userAgent: 'agente-de-teste' },
+    periodo: null, pagina: null, linhas: null,
+    authorization: 'Bearer segredo-que-nao-pode-sair', corpo: 'trecho do pedido',
+  }
+  const linha = linhaDoAcesso(pedido)
+  assert.deepEqual(linha, {
+    chaveId: null, endpoint: '/api/v1/lojas', status: 401, ip: '200.1.2.3', userAgent: 'agente-de-teste',
+    periodoIni: null, periodoFim: null, pagina: null, linhas: null,
+  })
+  assert.equal(JSON.stringify(linha).includes('segredo-que-nao-pode-sair'), false)
+})
+
+test('linha do registro com período e página: o período sai em ini e fim', () => {
+  const linha = linhaDoAcesso({
+    chaveId: 'k1', endpoint: '/api/v1/vendas', status: 200, origem: { ip: null, userAgent: null },
+    periodo: { ini: '2026-01-01', fim: '2026-03-31' }, pagina: 2, linhas: 500,
+  })
+  assert.equal(linha.periodoIni, '2026-01-01')
+  assert.equal(linha.periodoFim, '2026-03-31')
+  assert.equal(linha.pagina, 2)
+  assert.equal(linha.linhas, 500)
+})
+
+test('IP longo é cortado na linha do registro: IPv6 inteiro cabe em 45 caracteres; IP curto fica como veio', () => {
+  const ipLongo = `${'1'.repeat(60)}`
+  const doIpLongo = linhaDoAcesso({ chaveId: null, endpoint: '/api/v1/lojas', status: 401, origem: { ip: ipLongo, userAgent: null } })
+  assert.equal(doIpLongo.ip, ipLongo.slice(0, 45))
+  const doIpCurto = linhaDoAcesso({ chaveId: null, endpoint: '/api/v1/lojas', status: 401, origem: { ip: '200.1.2.3', userAgent: null } })
+  assert.equal(doIpCurto.ip, '200.1.2.3')
 })
