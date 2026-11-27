@@ -130,3 +130,12 @@ test('troca de vendedor da venda: rótulo próprio, sensível, com o número e q
   assert.equal(ehSensivel('vendedor_venda_trocado'), true)
   assert.equal(ROTULO_TIPO.vendedor_venda_trocado, 'Trocou o vendedor da venda')
 })
+
+test('tipos da API MotoChefe e da entrega: rótulo próprio e sensíveis, para a tela do log', () => {
+  const novos = ['loja_motochefe_alterada', 'autorizacao_conta_alterada', 'api_chave_gerada', 'api_chave_trocada', 'api_chave_revogada']
+  for (const tipo of novos) {
+    assert.ok(ROTULO_TIPO[tipo], `${tipo} sem rótulo`)
+    assert.equal(ehSensivel(tipo), true, `${tipo} não é sensível`)
+  }
+  assert.equal(ROTULO_TIPO.entrega_alterada, 'Alterou a entrega')
+})
