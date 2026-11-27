@@ -1,5 +1,6 @@
 // Regra da API de leitura da MotoChefe Brasil (#315, ADR-0021). Puro: sem banco e sem relógio.
 // Quem chama passa o instante (`agora`) e as linhas lidas do banco.
+import type { Origem } from '@/lib/log-acoes'
 
 /** Tempo que a chave trocada continua valendo depois da troca (ADR-0021). */
 export const CARENCIA_MS = 24 * 60 * 60 * 1000
@@ -79,12 +80,11 @@ export function respostaDeLimite(agora: Date): RespostaDaApi {
   return { ...respostaDeErro('limite_atingido'), cabecalhos: { 'Retry-After': String(segundosAteProximaJanela(agora)) } }
 }
 
-/** O que a casca sabe de cada chamada: quem chamou, o quê e o que devolveu. Os campos de período e página são opcionais. */
-export type OrigemDoPedido = { ip: string | null; userAgent: string | null }
+/** O que a casca sabe de cada chamada: quem chamou, o quê e o que devolveu. Período e página são opcionais. */
 export type PeriodoDoAcesso = { ini: string; fim: string }
 export type ResultadoDoMiolo = { corpo: unknown; linhas?: number; periodo?: PeriodoDoAcesso | null; pagina?: number | null }
 export type EntradaDoAcesso = {
-  chaveId: string | null; endpoint: string; status: number; origem: OrigemDoPedido
+  chaveId: string | null; endpoint: string; status: number; origem: Origem
   periodo?: PeriodoDoAcesso | null; pagina?: number | null; linhas?: number | null
 }
 export type LinhaDoAcesso = {
