@@ -126,8 +126,9 @@ export default async function PecasPage({
                 lojaUsuarioId={usuario.lojaId}
                 isAdmin={isAdmin}
                 podeDefinirPreco={isGestor}
-                responsaveis={podeEscolherVendedor(usuario.papel) ? opcoesDeResponsavel(vendedoresOpts, lojasOpts, usuario) : undefined}
-                usuarioId={usuario.id}
+                escolhaDoResponsavel={podeEscolherVendedor(usuario.papel)
+                  ? { opcoes: opcoesDeResponsavel(vendedoresOpts, lojasOpts, usuario), usuarioId: usuario.id }
+                  : undefined}
               />
             </div>
 

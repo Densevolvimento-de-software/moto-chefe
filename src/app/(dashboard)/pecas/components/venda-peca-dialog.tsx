@@ -61,12 +61,11 @@ type Props = {
   /** Gestor pode sobrepor o preço do catálogo naquela venda. O servidor revalida. */
   podeDefinirPreco: boolean
   /**
-   * Quem pode deixar a venda no nome de outra pessoa (#308) recebe a lista do grupo da loja; os demais não
-   * recebem e o campo some. O servidor revalida: quem manda o id sem poder escolher fica com a venda.
+   * Quem pode deixar a venda no nome de outra pessoa (#308) recebe a lista do grupo da loja e o próprio id (o
+   * responsável de partida, que fica na lista mesmo fora do grupo); os demais não recebem e o campo some.
+   * O servidor revalida: quem manda o id sem poder escolher fica com a venda.
    */
-  responsaveis?: ResponsavelOpcao[]
-  /** Quem registra: é o responsável de partida e fica na lista mesmo fora do grupo da loja. */
-  usuarioId?: string
+  escolhaDoResponsavel?: { opcoes: ResponsavelOpcao[]; usuarioId: string }
   /**
    * Edição de venda já salva (#242): mesmo diálogo, só itens e pagamentos.
    * Loja e cliente ficam como estão.
@@ -74,7 +73,9 @@ type Props = {
   edicao?: { vendaId: string; numero: number }
 }
 
-export function VendaPecaDialog({ pecas, lojas, lojaUsuarioId, isAdmin, podeDefinirPreco, responsaveis, usuarioId = '', edicao }: Props) {
+export function VendaPecaDialog({ pecas, lojas, lojaUsuarioId, isAdmin, podeDefinirPreco, escolhaDoResponsavel, edicao }: Props) {
+  const responsaveis = escolhaDoResponsavel?.opcoes
+  const usuarioId = escolhaDoResponsavel?.usuarioId ?? ''
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const [carregando, setCarregando] = useState(false)

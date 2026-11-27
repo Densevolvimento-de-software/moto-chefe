@@ -78,7 +78,7 @@ async function preencherEConfirmar(t: Awaited<ReturnType<typeof montar>>) {
 }
 
 test('quem pode escolher vê o campo com o próprio nome e "(você)", e envia o próprio id se não mexer', async () => {
-  const t = await montar({ responsaveis: RESPONSAVEIS, usuarioId: 'u-aux' })
+  const t = await montar({ escolhaDoResponsavel: { opcoes: RESPONSAVEIS, usuarioId: 'u-aux' } })
   await t.act(async () => { clicar(botao('Nova venda')); await esperar(50) })
   assert.match(campoResponsavel()?.textContent ?? '', /^Marina Alves \(você\)/)
   await t.clique('Cancelar', 300)
@@ -88,7 +88,7 @@ test('quem pode escolher vê o campo com o próprio nome e "(você)", e envia o 
 })
 
 test('a lista traz as pessoas com a loja de cada uma, e escolher outra pessoa mostra o nome dela no campo', async () => {
-  const t = await montar({ responsaveis: RESPONSAVEIS, usuarioId: 'u-aux' })
+  const t = await montar({ escolhaDoResponsavel: { opcoes: RESPONSAVEIS, usuarioId: 'u-aux' } })
   await t.act(async () => { clicar(botao('Nova venda')); await esperar(50) })
   await t.act(async () => { clicar(campoResponsavel()); await esperar(30) })
   assert.deepEqual(opcoes(), ['Marina Alves (você)Loja Centro', 'Bruno NogueiraLoja Norte', 'Rafael Teixeirasem loja'])
@@ -97,7 +97,7 @@ test('a lista traz as pessoas com a loja de cada uma, e escolher outra pessoa mo
 })
 
 test('escolher outra pessoa e registrar: a action recebe o id escolhido', async () => {
-  const t = await montar({ responsaveis: RESPONSAVEIS, usuarioId: 'u-aux' })
+  const t = await montar({ escolhaDoResponsavel: { opcoes: RESPONSAVEIS, usuarioId: 'u-aux' } })
   await t.act(async () => { clicar(botao('Nova venda')); await esperar(50) })
   await t.act(async () => { clicar(campoResponsavel()); await esperar(30) })
   await t.act(async () => { clicarNaOpcao('Bruno Nogueira'); await esperar(30) })
@@ -110,7 +110,7 @@ test('escolher outra pessoa e registrar: a action recebe o id escolhido', async 
 })
 
 test('quem não pode escolher (sem a lista) não vê o campo e não envia vendedorId', async () => {
-  const t = await montar({ usuarioId: 'u-vendedor' })
+  const t = await montar()
   await t.act(async () => { clicar(botao('Nova venda')); await esperar(50) })
   assert.equal(rotulo(/^Responsável$/), undefined)
   assert.doesNotMatch(textoDaTela(), /Responsável/)
@@ -120,8 +120,8 @@ test('quem não pode escolher (sem a lista) não vê o campo e não envia vended
   assert.equal('vendedorId' in (registrar.mock.calls[0].arguments[0] as object), false)
 })
 
-test('depois de registrar, o diálogo volta ao próprio nome na venda seguinte', async () => {
-  const t = await montar({ responsaveis: RESPONSAVEIS, usuarioId: 'u-aux' })
+test('cancelar e abrir de novo: o campo volta ao próprio nome', async () => {
+  const t = await montar({ escolhaDoResponsavel: { opcoes: RESPONSAVEIS, usuarioId: 'u-aux' } })
   await t.act(async () => { clicar(botao('Nova venda')); await esperar(50) })
   await t.act(async () => { clicar(campoResponsavel()); await esperar(30) })
   await t.act(async () => { clicarNaOpcao('Bruno Nogueira'); await esperar(30) })
@@ -131,7 +131,7 @@ test('depois de registrar, o diálogo volta ao próprio nome na venda seguinte',
 })
 
 test('editar uma venda não mostra o campo e envia só itens e pagamentos', async () => {
-  const t = await montar({ responsaveis: RESPONSAVEIS, usuarioId: 'u-aux', edicao: { vendaId: 'v-9', numero: 9 } })
+  const t = await montar({ escolhaDoResponsavel: { opcoes: RESPONSAVEIS, usuarioId: 'u-aux' }, edicao: { vendaId: 'v-9', numero: 9 } })
   await t.act(async () => { clicar(botao('Editar')); await esperar(80) })
   assert.doesNotMatch(textoDaTela(), /Responsável/)
   await t.act(async () => { clicar(botao('Salvar alterações')); await esperar(50) })
