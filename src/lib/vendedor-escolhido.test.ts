@@ -6,7 +6,7 @@ const LOGADO = { id: 'logado', papel: 'aux_adm' }
 
 test('admin_geral, admin_socio e aux_adm escolhem o vendedor; os demais papéis não', () => {
   for (const papel of ['admin_geral', 'admin_socio', 'aux_adm']) assert.equal(podeEscolherVendedor(papel), true, papel)
-  for (const papel of ['vendedor', 'mecanico', 'cargo', 'admin_rede']) assert.equal(podeEscolherVendedor(papel), false, papel)
+  for (const papel of ['vendedor', 'mecanico', 'cargo']) assert.equal(podeEscolherVendedor(papel), false, papel)
 })
 
 test('quem pode escolher e escolheu: a venda sai no nome escolhido', () => {

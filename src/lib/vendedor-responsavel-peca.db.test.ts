@@ -292,7 +292,7 @@ test('as opções do campo Responsável são exatamente quem o servidor aceita, 
   const { listarUsuariosDoGrupo } = await import('@/lib/usuarios-do-grupo')
   const { opcoesDeResponsavel } = await import('@/lib/vendedor-escolhido')
   const { PAPEIS_VENDA_PECA } = await import('@/app/(dashboard)/pecas/papeis')
-  // Como a página monta o campo: a lista do grupo da loja, pela mesma função do servidor, e as opções da tela.
+  // Reproduz a montagem do campo em pecas/page.tsx: a lista do grupo da loja, pela mesma função do servidor, e as opções da tela.
   const lojasDoGrupo = await execRows(sql`select id, nome from lojas where grupo_id = ${a.grupoId}`) as { id: string; nome: string }[]
   const doGrupo = await listarUsuariosDoGrupo(a.grupoId, { papeis: PAPEIS_VENDA_PECA })
   const opcoes = opcoesDeResponsavel(doGrupo, lojasDoGrupo, { id: a.auxId, nome: 'aux', lojaId: a.lojaId }).map(o => o.id)
