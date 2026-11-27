@@ -161,3 +161,100 @@ test('o painel mostra a Conta escolhida; Todas as Contas tira o painel e volta a
   assert.equal(texto().includes('Lojas da Conta A'), false)
   assert.ok(texto().includes('Escolha uma Conta à esquerda'))
 })
+
+// Diálogos de confirmação: sem o X, Escape só fecha fora do envio, clique fora nunca fecha, e tudo trava no envio.
+const dialogo = () => document.querySelector<HTMLElement>('[data-slot="dialog-content"]')
+const fundo = () => document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')
+const tecla = (el: Element | null | undefined, key: string) => el?.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }))
+const clicarFora = (el: Element | null | undefined) => {
+  el?.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }))
+  el?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+}
+
+test('diálogo de desmarcar não tem o X: só Cancelar e Desmarcar loja', async () => {
+  const { clique } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Centro'))
+  const botoes = [...(dialogo()?.querySelectorAll('button') ?? [])].map(b => (b.textContent ?? '').trim())
+  assert.deepEqual(botoes, ['Cancelar', 'Desmarcar loja'])
+})
+
+test('diálogo da autorização não tem o X: só Cancelar e Tirar autorização', async () => {
+  const { clique } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Autorizar custo, despesas e meta: Conta A'))
+  const botoes = [...(dialogo()?.querySelectorAll('button') ?? [])].map(b => (b.textContent ?? '').trim())
+  assert.deepEqual(botoes, ['Cancelar', 'Tirar autorização'])
+})
+
+test('clique fora não fecha o diálogo de desmarcar, nem o de tirar a autorização', async () => {
+  const { clique, esperar } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Centro'))
+  clicarFora(fundo()); await esperar()
+  assert.ok(texto().includes('Desmarcar Centro?'))
+  await clique(botao('Cancelar'))
+  await clique(interruptor('Autorizar custo, despesas e meta: Conta A'))
+  clicarFora(fundo()); await esperar()
+  assert.ok(texto().includes('Tirar a autorização da Conta A?'))
+})
+
+test('Escape fecha o diálogo quando não há envio', async () => {
+  const { clique, esperar } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Centro'))
+  tecla(dialogo(), 'Escape'); await esperar()
+  assert.equal(texto().includes('Desmarcar Centro?'), false)
+  assert.equal(marcar.mock.callCount(), 0)
+})
+
+test('durante o envio, Escape não fecha o diálogo nem solta a trava', async () => {
+  let liberar: () => void = () => {}
+  marcar.mock.mockImplementationOnce(() => new Promise<Resposta>(r => { liberar = () => r({ ok: true }) }))
+  const { clique, esperar } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Centro'))
+  await clique(botao('Desmarcar loja'))
+  tecla(dialogo(), 'Escape'); await esperar()
+  assert.ok(texto().includes('Desmarcar Centro?'))
+  assert.equal(botao('Cancelar')?.disabled, true)
+  liberar(); await esperar()
+})
+
+test('durante o envio da autorização, os botões do diálogo ficam travados', async () => {
+  let liberar: () => void = () => {}
+  autorizar.mock.mockImplementationOnce(() => new Promise<Resposta>(r => { liberar = () => r({ ok: true }) }))
+  const { clique, esperar } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Autorizar custo, despesas e meta: Conta A'))
+  await clique(botao('Tirar autorização'))
+  assert.equal(botao('Cancelar')?.disabled, true)
+  assert.equal(botao('Tirar autorização')?.disabled, true)
+  assert.equal(interruptor('Autorizar custo, despesas e meta: Conta A')?.disabled, true)
+  liberar(); await esperar()
+})
+
+// O valor mostrado no interruptor enquanto envia é o pedido, e o desfecho fecha ou volta o valor.
+test('enquanto envia, o interruptor mostra o valor pedido; ao dar certo, o diálogo fecha', async () => {
+  let liberar: () => void = () => {}
+  marcar.mock.mockImplementationOnce(() => new Promise<Resposta>(r => { liberar = () => r({ ok: true }) }))
+  const { clique, esperar } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Centro'))
+  await clique(botao('Desmarcar loja'))
+  assert.equal(interruptor('Loja MotoChefe: Centro')?.getAttribute('aria-checked'), 'false')
+  liberar(); await esperar()
+  assert.equal(texto().includes('Desmarcar Centro?'), false)
+  assert.equal(document.querySelector('[role="alert"]'), null)
+})
+
+test('recusa: o interruptor volta ao valor de antes, o diálogo fecha e a frase aparece', async () => {
+  marcar.mock.mockImplementationOnce(async () => ({ ok: false, erro: 'Sem permissão' }))
+  const { clique } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Centro'))
+  await clique(botao('Desmarcar loja'))
+  assert.equal(interruptor('Loja MotoChefe: Centro')?.getAttribute('aria-checked'), 'true')
+  assert.equal(texto().includes('Desmarcar Centro?'), false)
+  assert.ok(document.querySelector('[role="alert"]'))
+})

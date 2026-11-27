@@ -195,7 +195,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
 
       <Dialog open={confirmacao?.tipo === 'loja'} onOpenChange={aberto => { if (!aberto && !ocupadoNoDialogo) setConfirmacao(null) }} disablePointerDismissal>
         {confirmacao?.tipo === 'loja' && (
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-md" showCloseButton={false}>
             <DialogHeader>
               <DialogTitle>Desmarcar {confirmacao.loja.nome}?</DialogTitle>
               <DialogDescription>
@@ -212,7 +212,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
 
       <Dialog open={confirmacao?.tipo === 'conta'} onOpenChange={aberto => { if (!aberto && !ocupadoNoDialogo) setConfirmacao(null) }} disablePointerDismissal>
         {confirmacao?.tipo === 'conta' && (
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-md" showCloseButton={false}>
             <DialogHeader>
               <DialogTitle>Tirar a autorização da {confirmacao.conta.nome}?</DialogTitle>
               <DialogDescription>
