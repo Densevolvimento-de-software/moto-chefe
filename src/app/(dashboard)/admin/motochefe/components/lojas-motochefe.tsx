@@ -15,7 +15,10 @@ import { ConfirmarDialogo } from './confirmar-dialogo'
 import { chaveDaConta, chaveDaLoja, Interruptor, MensagemDeErro } from './interruptor'
 import { LinhaDaLoja } from './linha-da-loja'
 
-type Erro = { chave: string; texto: string; tentar: () => void }
+// O que falhou: a linha (tipo e id), o valor que se tentou gravar, e a frase. Vale só enquanto a linha segue como
+// estava antes do pedido (erroAtivo).
+type Erro = { chave: string; texto: string; tipo: 'loja' | 'conta'; id: string; valor: boolean }
+type Alvo = Omit<Erro, 'texto'>
 type Confirmacao = { tipo: 'loja'; loja: LojaDaTela } | { tipo: 'conta'; conta: ContaDaTela } | null
 
 
@@ -29,16 +32,16 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
   const resumo = resumoDaTela(contas)
   const selecionada = contas.find(c => c.id === selecionadaId) ?? null
 
-  async function gravar(chave: string, enviar: () => Promise<{ ok: boolean; erro?: string }>, falha: string) {
+  async function gravar(alvo: Alvo, enviar: () => Promise<{ ok: boolean }>, falha: string) {
     setErro(null)
-    setEnviando(e => ({ ...e, [chave]: true }))
+    setEnviando(e => ({ ...e, [alvo.chave]: true }))
     try {
       const r = await enviar()
-      if (!r.ok) setErro({ chave, texto: falha, tentar: () => gravar(chave, enviar, falha) })
+      if (!r.ok) setErro({ ...alvo, texto: falha })
     } catch {
-      setErro({ chave, texto: falha, tentar: () => gravar(chave, enviar, falha) })
+      setErro({ ...alvo, texto: falha })
     } finally {
-      setEnviando(e => ({ ...e, [chave]: false }))
+      setEnviando(e => ({ ...e, [alvo.chave]: false }))
     }
   }
 
@@ -49,7 +52,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
 
   function enviarLoja(loja: LojaDaTela, marcada: boolean) {
     const falha = `Não deu para ${marcada ? 'marcar' : 'desmarcar'} a loja. Nada mudou. Tente de novo.`
-    return gravar(chaveDaLoja(loja.id), () => marcarLojaMotochefeAction({ lojaId: loja.id, marcada }), falha)
+    return gravar({ chave: chaveDaLoja(loja.id), tipo: 'loja', id: loja.id, valor: marcada }, () => marcarLojaMotochefeAction({ lojaId: loja.id, marcada }), falha)
   }
 
   function mudarAutorizacao(conta: ContaDaTela, autorizada: boolean) {
@@ -59,7 +62,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
 
   function enviarAutorizacao(conta: ContaDaTela, autorizada: boolean) {
     const falha = 'Não deu para mudar a autorização. Nada mudou. Tente de novo.'
-    return gravar(chaveDaConta(conta.id), () => autorizarContaAction({ contaId: conta.id, autorizada }), falha)
+    return gravar({ chave: chaveDaConta(conta.id), tipo: 'conta', id: conta.id, valor: autorizada }, () => autorizarContaAction({ contaId: conta.id, autorizada }), falha)
   }
 
   async function confirmar() {
@@ -67,6 +70,31 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
     const c = confirmacao
     await (c.tipo === 'loja' ? enviarLoja(c.loja, false) : enviarAutorizacao(c.conta, false))
     setConfirmacao(null)
+  }
+
+  // Valor atual da linha do erro (undefined se a linha sumiu).
+  const valorAtual = (e: Erro): boolean | undefined => e.tipo === 'loja'
+    ? contas.flatMap(c => c.lojas).find(l => l.id === e.id)?.marcada
+    : contas.find(c => c.id === e.id)?.autorizada
+  // O erro vale só enquanto a linha segue como estava antes do pedido que falhou: se mudou, o pedido ficou velho.
+  const erroAtivo = erro && valorAtual(erro) === !erro.valor ? erro : null
+
+  // Tentar de novo: a ação sem volta volta pela confirmação; a que dá para desfazer repete o pedido. Pedido velho não
+  // é reenviado.
+  function tentarDeNovo(e: Erro) {
+    setErro(null)
+    if (valorAtual(e) !== !e.valor) return
+    if (e.tipo === 'loja') {
+      const loja = contas.flatMap(c => c.lojas).find(l => l.id === e.id)
+      if (!loja) return
+      if (e.valor) enviarLoja(loja, true)
+      else setConfirmacao({ tipo: 'loja', loja })
+    } else {
+      const conta = contas.find(c => c.id === e.id)
+      if (!conta) return
+      if (e.valor) enviarAutorizacao(conta, true)
+      else setConfirmacao({ tipo: 'conta', conta })
+    }
   }
 
   const chaveDoDialogo = confirmacao === null ? null : confirmacao.tipo === 'loja' ? chaveDaLoja(confirmacao.loja.id) : chaveDaConta(confirmacao.conta.id)
@@ -111,7 +139,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                     type="button"
                     data-conta-id={conta.id}
                     aria-current={ativa ? 'true' : undefined}
-                    onClick={() => setSelecionadaId(conta.id)}
+                    onClick={() => { setSelecionadaId(conta.id); setErro(null) }}
                     className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 ${ativa ? 'bg-primary-soft' : 'hover:bg-muted'}`}
                   >
                     <span aria-hidden data-barra-conta className={`block h-10 w-1 shrink-0 rounded-full ${corDoGrupo({ id: conta.id }).bar}`} />
@@ -144,16 +172,15 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                   <h2 className="font-semibold">Custo, despesas e meta</h2>
                   <p className="text-muted-foreground text-sm">{selecionada.nome}</p>
                 </div>
-                {erro?.chave === chaveDaConta(selecionada.id) && <MensagemDeErro texto={erro.texto} onTentar={erro.tentar} />}
+                {erroAtivo?.chave === chaveDaConta(selecionada.id) && <MensagemDeErro texto={erroAtivo.texto} onTentar={() => tentarDeNovo(erroAtivo)} />}
                 <div className="flex flex-wrap items-center justify-between gap-4 border-t px-4 pt-3">
                   <p className="text-muted-foreground max-w-prose text-sm">
                     Custo de compra, despesas e meta. Sem autorização, as lojas marcadas saem sem custo e sem linhas de despesa e meta.
                     Venda de moto, peça e OS saem normal.
                   </p>
                   <Interruptor
-                    chave={chaveDaConta(selecionada.id)}
                     checado={selecionada.autorizada}
-                    enviando={enviando}
+                    salvando={enviando[chaveDaConta(selecionada.id)] === true}
                     rotuloAcessivel={`Autorizar custo, despesas e meta: ${selecionada.nome}`}
                     rotulos={{ ligado: 'Autorizada', desligado: 'Sem autorização' }}
                     onMudar={v => mudarAutorizacao(selecionada, v)}
@@ -175,8 +202,9 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                     <LinhaDaLoja
                       key={loja.id}
                       loja={loja}
-                      enviando={enviando}
-                      erro={erro?.chave === chaveDaLoja(loja.id) ? erro : null}
+                      salvando={enviando[chaveDaLoja(loja.id)] === true}
+                      erro={erroAtivo?.chave === chaveDaLoja(loja.id) ? erroAtivo : null}
+                      onTentar={() => { if (erroAtivo) tentarDeNovo(erroAtivo) }}
                       onMudar={v => mudarLoja(loja, v)}
                     />
                   ))}

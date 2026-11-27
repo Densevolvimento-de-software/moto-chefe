@@ -261,7 +261,7 @@ test('enquanto envia, o interruptor mostra o valor pedido; ao dar certo, o diál
   assert.equal(interruptor('Loja MotoChefe: Centro')?.getAttribute('aria-checked'), 'false')
   liberar(); await esperar()
   assert.equal(texto().includes('Desmarcar Centro?'), false)
-  assert.equal(document.querySelector('[role="alert"]'), null)
+  assert.equal(document.querySelector('[role="alert"]') === null, true)
 })
 
 test('recusa: o interruptor volta ao valor de antes, o diálogo fecha e a frase aparece', async () => {
@@ -286,7 +286,7 @@ test('Tentar de novo repete a mesma ação, e dando certo o erro some', async ()
   await clique(botao('Tentar de novo'))
   await esperar()
   assert.deepEqual(marcar.mock.calls.map(c => c.arguments), [[{ lojaId: 'l3', marcada: true }], [{ lojaId: 'l3', marcada: true }]])
-  assert.equal(document.querySelector('[role="alert"]'), null)
+  assert.equal(document.querySelector('[role="alert"]') === null, true)
 })
 
 test('o erro fica acima da linha da loja, não abaixo', async () => {
@@ -354,4 +354,76 @@ test('Todas as Contas tem a seta de volta, como no protótipo', async () => {
   const { clique } = await montar()
   await clique(contaNaLista('Conta A'))
   assert.ok(botao('Todas as Contas')?.querySelector('svg'), 'o botão tem a seta')
+})
+
+// Tentar de novo: ação sem volta nunca pula a confirmação; o erro e o pedido guardado somem ao trocar de Conta
+// e quando a linha muda; pedido velho nunca é reenviado.
+test('Tentar de novo em desmarcar reabre a confirmação, e só confirmar envia', async () => {
+  respostaMarcar = async () => ({ ok: false, erro: 'Sem permissão' })
+  const { clique, esperar } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Centro'))
+  await clique(botao('Desmarcar loja'))
+  assert.equal(marcar.mock.callCount(), 1)
+  respostaMarcar = PADRAO
+  await clique(botao('Tentar de novo'))
+  assert.equal(marcar.mock.callCount(), 1, 'não enviou de novo sem confirmar')
+  assert.ok(texto().includes('Desmarcar Centro?'), 'reabriu a confirmação')
+  await clique(botao('Desmarcar loja'))
+  await esperar()
+  assert.deepEqual(marcar.mock.calls.map(c => c.arguments), [[{ lojaId: 'l1', marcada: false }], [{ lojaId: 'l1', marcada: false }]])
+})
+
+test('Tentar de novo em tirar a autorização reabre a confirmação, e só confirmar envia', async () => {
+  respostaAutorizar = async () => ({ ok: false, erro: 'Sem permissão' })
+  const { clique, esperar } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Autorizar custo, despesas e meta: Conta A'))
+  await clique(botao('Tirar autorização'))
+  assert.equal(autorizar.mock.callCount(), 1)
+  respostaAutorizar = PADRAO
+  await clique(botao('Tentar de novo'))
+  assert.equal(autorizar.mock.callCount(), 1, 'não enviou de novo sem confirmar')
+  assert.ok(texto().includes('Tirar a autorização da Conta A?'), 'reabriu a confirmação')
+  await clique(botao('Tirar autorização'))
+  await esperar()
+  assert.deepEqual(autorizar.mock.calls.map(c => c.arguments), [[{ contaId: 'a', autorizada: false }], [{ contaId: 'a', autorizada: false }]])
+})
+
+test('trocar de Conta limpa o erro', async () => {
+  respostaMarcar = async () => ({ ok: false, erro: 'Sem permissão' })
+  const { clique } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Leste'))
+  assert.ok(document.querySelector('[role="alert"]'))
+  await clique(contaNaLista('Conta B'))
+  await clique(contaNaLista('Conta A'))
+  assert.equal(document.querySelector('[role="alert"]') === null, true, 'o erro da Conta A não volta ao reabri-la')
+  assert.equal(botao('Tentar de novo') === undefined, true)
+})
+
+// Outro admin mexeu na loja: o pedido que falhou ficou velho. Some o erro e o Tentar de novo, e nada é enviado.
+test('pedido velho não é reenviado: se a loja mudou desde a falha, o erro some e nada é enviado', async () => {
+  respostaMarcar = async () => ({ ok: false, erro: 'Sem permissão' })
+  const { clique, rerender } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Leste'))
+  assert.ok(botao('Tentar de novo'))
+  await rerender(CONTAS.map(c => c.id === 'a' ? { ...c, lojas: c.lojas.map(l => l.id === 'l3' ? { ...l, marcada: true } : l) } : c))
+  assert.equal(document.querySelector('[role="alert"]') === null, true)
+  assert.equal(botao('Tentar de novo') === undefined, true)
+  assert.equal(marcar.mock.callCount(), 1, 'só a tentativa original')
+})
+
+test('pedido velho de desmarcar também não reabre nada: a loja já foi desmarcada por outro', async () => {
+  respostaMarcar = async () => ({ ok: false, erro: 'Sem permissão' })
+  const { clique, rerender } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Centro'))
+  await clique(botao('Desmarcar loja'))
+  await rerender(CONTAS.map(c => c.id === 'a' ? { ...c, lojas: c.lojas.map(l => l.id === 'l1' ? { ...l, marcada: false } : l) } : c))
+  assert.equal(document.querySelector('[role="alert"]') === null, true)
+  assert.equal(botao('Tentar de novo') === undefined, true)
+  assert.equal(texto().includes('Desmarcar Centro?'), false)
+  assert.equal(marcar.mock.callCount(), 1)
 })

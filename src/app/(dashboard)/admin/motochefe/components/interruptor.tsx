@@ -8,15 +8,13 @@ import { Switch } from '@/components/ui/switch'
 export const chaveDaLoja = (id: string) => `loja:${id}`
 export const chaveDaConta = (id: string) => `conta:${id}`
 
-export function Interruptor({ chave, checado, enviando, rotuloAcessivel, rotulos, onMudar }: {
-  chave: string
+export function Interruptor({ checado, salvando, rotuloAcessivel, rotulos, onMudar }: {
   checado: boolean
-  enviando: Record<string, boolean>
+  salvando: boolean
   rotuloAcessivel: string
   rotulos: { ligado: string; desligado: string }
   onMudar: (v: boolean) => void
 }) {
-  const salvando = enviando[chave] === true
   // Enquanto envia, mostra o valor pedido: é o que o usuário acabou de escolher.
   const mostrado = salvando ? !checado : checado
   return (
