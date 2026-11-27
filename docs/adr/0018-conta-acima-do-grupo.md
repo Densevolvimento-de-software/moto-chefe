@@ -258,7 +258,8 @@ Exceção à regra do #320 nesta tela. Decisão do Cesar em 05/11/2026, aceita p
 
 ## Adendo de 2026-11-27: leitura da API pela MotoChefe Brasil (#315, #316)
 
-A API de leitura lê várias Contas sem sessão, só das lojas que o `admin_geral` marcou como MotoChefe
-e só das colunas listadas no [ADR-0021](0021-leitura-entre-contas-api-motochefe.md). É a única exceção
+A API de leitura (a construir, #317 a #326) vai ler várias Contas sem sessão, só das lojas que o
+`admin_geral` marcar como MotoChefe e só das colunas listadas no
+[ADR-0021](0021-leitura-entre-contas-api-motochefe.md). É a única exceção
 a "toda leitura filtra pela Conta" fora do Painel Fábrica (#892), e vale só para a API. O ADR-0021
 diz o que sai, de quem e por quê, e declara o que muda em relação ao #892.
