@@ -50,6 +50,8 @@ export const contas = pgTable('contas', {
   // Transferência de moto entre grupos da mesma Conta, com a NF de saída pelo grupo
   // que comprou a moto (#552). Só o admin_geral liga.
   transferenciaEntreGrupos: boolean('transferencia_entre_grupos').notNull().default(false),
+  // Custo de compra, despesas e metas podem sair pela API de leitura (#317). Só o admin_geral liga (#321).
+  autorizaCustoDespesaMeta: boolean('autoriza_custo_despesa_meta').notNull().default(false),
 })
 
 // ─── cargos ──────────────────────────────────────────────────────────────────
@@ -174,6 +176,8 @@ export const lojas = pgTable('lojas', {
   // Entrada mínima da reserva (#283): % do preço mínimo PIX, de 0 a 100 (trava no banco).
   // O padrão repete ENTRADA_MINIMA_PADRAO_PCT de @/lib/entrada-minima-reserva.
   entradaMinimaReservaPct: integer('entrada_minima_reserva_pct').notNull().default(30),
+  // Loja que a API de leitura da MotoChefe (#317) devolve. Só o admin_geral liga (#321).
+  lojaMotochefe: boolean('loja_motochefe').notNull().default(false),
 })
 
 // ─── maquininhas ─────────────────────────────────────────────────────────────
@@ -2195,3 +2199,40 @@ export const gruposLiberados = pgTable('grupos_liberados', {
   liberadoEm:  timestamp('liberado_em', { withTimezone: true }).notNull().defaultNow(),
   revogadoEm:  timestamp('revogado_em', { withTimezone: true }),
 }, t => [uniqueIndex('grupos_liberados_vivo_key').on(t.usuarioId, t.grupoId).where(sql`revogado_em is null`)])
+
+// ─── API de leitura MotoChefe (#317, migração 0211) ──────────────────────────
+// Dado da plataforma, sem grupo nem usuário de sessão (ADR-0017). RLS ligado, sem policy: o app lê pelo Drizzle.
+// Regras de chave, limite e registro chegam nos tickets #319 e #320.
+
+/** Chave de acesso: só o hash. A chave em claro aparece uma vez, na geração. */
+export const apiChaves = pgTable('api_chaves', {
+  id:         uuid('id').primaryKey().defaultRandom(),
+  hash:       text('hash').notNull().unique(),
+  // Sem FK de propósito: histórico, como em log_acoes (0136). Excluir o usuário não pode falhar.
+  geradaPor:  uuid('gerada_por').notNull(),
+  geradaEm:   timestamp('gerada_em', { withTimezone: true }).notNull().defaultNow(),
+  validaAte:  timestamp('valida_ate', { withTimezone: true }),
+  revogadaEm: timestamp('revogada_em', { withTimezone: true }),
+}, t => [uniqueIndex('api_chaves_atual_key').on(sql`(revogada_em is null)`).where(sql`valida_ate is null and revogada_em is null`)])
+
+/** Uma linha por chamada da API, inclusive a recusada (chaveId nulo quando não havia chave). */
+export const apiAcessos = pgTable('api_acessos', {
+  id:         bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+  chaveId:    uuid('chave_id').references(() => apiChaves.id),
+  endpoint:   text('endpoint').notNull(),
+  periodoIni: date('periodo_ini'),
+  periodoFim: date('periodo_fim'),
+  pagina:     integer('pagina'),
+  ip:         text('ip'),
+  userAgent:  text('user_agent'),
+  linhas:     integer('linhas'),
+  status:     integer('status').notNull(),
+  criadoEm:   timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+}, t => [index('api_acessos_criado_em_idx').on(t.criadoEm)])
+
+/** Contador do limite de chamadas: uma linha por chave e minuto. */
+export const apiLimite = pgTable('api_limite', {
+  chaveId: uuid('chave_id').notNull().references(() => apiChaves.id),
+  janela:  timestamp('janela', { withTimezone: true }).notNull(),
+  pedidos: integer('pedidos').notNull().default(0),
+}, t => [primaryKey({ columns: [t.chaveId, t.janela] })])
