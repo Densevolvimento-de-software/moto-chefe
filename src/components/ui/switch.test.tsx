@@ -1,5 +1,6 @@
-// Interruptor do design system: é um botão de verdade, mostra o valor pedido e, desabilitado, não responde ao
-// clique. Foco checado com document.activeElement; a troca por Espaço só se vê no navegador (Etapa 6).
+// Interruptor do design system. Prova: é um botão (role switch), mostra o valor pedido, desabilitado não responde
+// ao clique, pode receber foco e fica na ordem de Tab. Não prova a troca por Espaço nem o tamanho da área de toque
+// na tela: a classe da área ampliada no celular é conferida aqui; o tamanho real, só no navegador (Etapa 6).
 import { createElement } from 'react'
 import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
@@ -52,4 +53,10 @@ test('pode receber foco e fica na ordem de Tab (a troca por Espaço não é cobe
   assert.notEqual(el.getAttribute('tabindex'), '-1')
   el.focus()
   assert.equal(document.activeElement, el)
+})
+
+test('no celular, a área de toque passa de 44 px (a classe da área ampliada está no interruptor)', async () => {
+  const el = await montar({ checked: false, onCheckedChange: () => {}, 'aria-label': 'Loja' })
+  assert.match(el.className, /max-md:before:-inset-x-1\.5/)
+  assert.match(el.className, /max-md:before:-inset-y-\[13px\]/)
 })
