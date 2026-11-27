@@ -35,7 +35,8 @@ export async function marcarLojaMotochefe(adminId: string, m: Marcacao, exec: Es
   })
 }
 
-// Conta desativada não aceita a autorização: a tela não a lista, e a API de leitura não a devolve (ticket 319).
+// Conta desativada não aceita a autorização, e a tela não a lista. A API de leitura também não devolve as lojas
+// dela: lojasQueSaem() (src/lib/queries/api-leitura.ts) filtra contas.desativadaEm.
 export async function autorizarCustoDespesaMeta(adminId: string, a: Autorizacao, exec: Escritor = db): Promise<ResultadoAction> {
   return exec.transaction(async tx => {
     const [alvo] = await tx.select({ nome: contas.nome }).from(contas)
