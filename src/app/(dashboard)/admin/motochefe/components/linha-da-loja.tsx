@@ -6,8 +6,9 @@ import { chaveDaLoja, Interruptor, MensagemDeErro } from './interruptor'
 
 // Uma loja da Conta escolhida: nome e cidade, a situação (Ativa ou Inativa) e o interruptor de marcação.
 // O erro da gravação aparece acima da linha.
-export function LinhaDaLoja({ loja, salvando, erro, onMudar, onTentar }: {
+export function LinhaDaLoja({ loja, checado, salvando, erro, onMudar, onTentar }: {
   loja: LojaDaTela
+  checado: boolean
   salvando: boolean
   erro: { texto: string } | null
   onMudar: (v: boolean) => void
@@ -24,7 +25,7 @@ export function LinhaDaLoja({ loja, salvando, erro, onMudar, onTentar }: {
         ? <Badge className="bg-success/15 text-success">Ativa</Badge>
         : <Badge variant="outline" className="text-muted-foreground">Inativa</Badge>}
       <Interruptor
-        checado={loja.marcada}
+        checado={checado}
         salvando={salvando}
         rotuloAcessivel={`Loja MotoChefe: ${loja.nome}`}
         rotulos={{ ligado: 'Marcada', desligado: 'Desmarcada' }}

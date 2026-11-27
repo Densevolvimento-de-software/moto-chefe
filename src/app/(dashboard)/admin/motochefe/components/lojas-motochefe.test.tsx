@@ -427,3 +427,16 @@ test('pedido velho de desmarcar também não reabre nada: a loja já foi desmarc
   assert.equal(texto().includes('Desmarcar Centro?'), false)
   assert.equal(marcar.mock.callCount(), 1)
 })
+
+// Depois de dar certo, o interruptor segue o pedido até a página trazer o valor novo (sem piscar o antigo).
+test('depois de dar certo, o interruptor segue o pedido até as props novas chegarem', async () => {
+  const { clique, esperar, rerender } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Leste'))
+  await esperar()
+  assert.equal(interruptor('Loja MotoChefe: Leste')?.getAttribute('aria-checked'), 'true', 'a resposta chegou, as props ainda são as de antes')
+  await rerender(CONTAS.map(c => c.id === 'a' ? { ...c, lojas: c.lojas.map(l => l.id === 'l3' ? { ...l, marcada: true } : l) } : c))
+  assert.equal(interruptor('Loja MotoChefe: Leste')?.getAttribute('aria-checked'), 'true', 'props novas trazem o mesmo valor')
+  await rerender(CONTAS.map(c => c.id === 'a' ? { ...c, lojas: c.lojas.map(l => l.id === 'l3' ? { ...l, marcada: false } : l) } : c))
+  assert.equal(interruptor('Loja MotoChefe: Leste')?.getAttribute('aria-checked'), 'false', 'depois, o valor das props vale de novo')
+})

@@ -15,15 +15,13 @@ export function Interruptor({ checado, salvando, rotuloAcessivel, rotulos, onMud
   rotulos: { ligado: string; desligado: string }
   onMudar: (v: boolean) => void
 }) {
-  // Enquanto envia, mostra o valor pedido: é o que o usuário acabou de escolher.
-  const mostrado = salvando ? !checado : checado
   return (
     <div className="flex items-center gap-2">
-      <Switch checked={mostrado} disabled={salvando} onCheckedChange={onMudar} aria-label={rotuloAcessivel} />
+      <Switch checked={checado} disabled={salvando} onCheckedChange={onMudar} aria-label={rotuloAcessivel} />
       <span className="text-sm">
         {salvando
           ? <span className="inline-flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" aria-hidden />Salvando</span>
-          : (mostrado ? rotulos.ligado : rotulos.desligado)}
+          : (checado ? rotulos.ligado : rotulos.desligado)}
       </span>
     </div>
   )

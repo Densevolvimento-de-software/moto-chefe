@@ -3,7 +3,7 @@
 // Tela Lojas MotoChefe (#321, variante 2 do protótipo aprovado). Lista de Contas à esquerda; no celular,
 // a lista e o painel se alternam. Cada gravação mostra o valor pedido enquanto envia; se a action recusa,
 // volta ao valor de antes e diz que nada mudou. Desmarcar e tirar a autorização pedem confirmação.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowLeft, Store } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,13 +19,20 @@ import { LinhaDaLoja } from './linha-da-loja'
 // estava antes do pedido (erroAtivo).
 type Erro = { chave: string; texto: string; tipo: 'loja' | 'conta'; id: string; valor: boolean }
 type Alvo = Omit<Erro, 'texto'>
-type Confirmacao = { tipo: 'loja'; loja: LojaDaTela } | { tipo: 'conta'; conta: ContaDaTela } | null
+type Pedido = { valor: boolean; enviando: boolean }
 
+const soEnviando = (p: Record<string, Pedido>) => Object.fromEntries(Object.entries(p).filter(([, v]) => v.enviando))
+const semChave = (p: Record<string, Pedido>, chave: string) => Object.fromEntries(Object.entries(p).filter(([k]) => k !== chave))
+type Confirmacao = { tipo: 'loja'; loja: LojaDaTela } | { tipo: 'conta'; conta: ContaDaTela } | null
 
 export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null)
-  // Valor pedido por cada interruptor enquanto a action roda (a chave diz de qual).
-  const [enviando, setEnviando] = useState<Record<string, boolean>>({})
+  // O pedido de cada interruptor: o valor que se tentou gravar e se a action ainda roda. Fica depois de dar certo,
+  // até a página trazer o valor novo (ver o efeito abaixo); assim o interruptor não volta ao valor antigo por um instante.
+  const [pedidos, setPedidos] = useState<Record<string, Pedido>>({})
+  useEffect(() => {
+    setPedidos(p => soEnviando(p))
+  }, [contas])
   const [erro, setErro] = useState<Erro | null>(null)
   const [confirmacao, setConfirmacao] = useState<Confirmacao>(null)
 
@@ -34,14 +41,17 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
 
   async function gravar(alvo: Alvo, enviar: () => Promise<{ ok: boolean }>, falha: string) {
     setErro(null)
-    setEnviando(e => ({ ...e, [alvo.chave]: true }))
+    setPedidos(p => ({ ...p, [alvo.chave]: { valor: alvo.valor, enviando: true } }))
+    let ok = false
     try {
-      const r = await enviar()
-      if (!r.ok) setErro({ ...alvo, texto: falha })
+      ok = (await enviar()).ok
     } catch {
+      ok = false
+    }
+    if (ok) setPedidos(p => ({ ...p, [alvo.chave]: { valor: alvo.valor, enviando: false } }))
+    else {
+      setPedidos(p => semChave(p, alvo.chave))
       setErro({ ...alvo, texto: falha })
-    } finally {
-      setEnviando(e => ({ ...e, [alvo.chave]: false }))
     }
   }
 
@@ -98,7 +108,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
   }
 
   const chaveDoDialogo = confirmacao === null ? null : confirmacao.tipo === 'loja' ? chaveDaLoja(confirmacao.loja.id) : chaveDaConta(confirmacao.conta.id)
-  const ocupadoNoDialogo = chaveDoDialogo !== null && enviando[chaveDoDialogo] === true
+  const ocupadoNoDialogo = chaveDoDialogo !== null && pedidos[chaveDoDialogo]?.enviando === true
   const dadosDoDialogo = confirmacao === null ? null : confirmacao.tipo === 'loja'
     ? { titulo: `Desmarcar ${confirmacao.loja.nome}?`, texto: 'Ela sai da API na hora, inclusive do histórico desde 01/2026. Quem consulta deixa de ver as vendas dela.', rotuloEnviar: 'Desmarcar loja' }
     : { titulo: `Tirar a autorização da ${confirmacao.conta.nome}?`, texto: 'Custo, despesas e meta das lojas dela saem da API na hora. Venda de moto, peça e OS continuam saindo.', rotuloEnviar: 'Tirar autorização' }
@@ -179,14 +189,14 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                     Venda de moto, peça e OS saem normal.
                   </p>
                   <Interruptor
-                    checado={selecionada.autorizada}
-                    salvando={enviando[chaveDaConta(selecionada.id)] === true}
+                    checado={pedidos[chaveDaConta(selecionada.id)]?.valor ?? selecionada.autorizada}
+                    salvando={pedidos[chaveDaConta(selecionada.id)]?.enviando === true}
                     rotuloAcessivel={`Autorizar custo, despesas e meta: ${selecionada.nome}`}
                     rotulos={{ ligado: 'Autorizada', desligado: 'Sem autorização' }}
                     onMudar={v => mudarAutorizacao(selecionada, v)}
                   />
                 </div>
-                
+
               </Card>
 
               <Card className="gap-3">
@@ -202,7 +212,8 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                     <LinhaDaLoja
                       key={loja.id}
                       loja={loja}
-                      salvando={enviando[chaveDaLoja(loja.id)] === true}
+                      checado={pedidos[chaveDaLoja(loja.id)]?.valor ?? loja.marcada}
+                      salvando={pedidos[chaveDaLoja(loja.id)]?.enviando === true}
                       erro={erroAtivo?.chave === chaveDaLoja(loja.id) ? erroAtivo : null}
                       onTentar={() => { if (erroAtivo) tentarDeNovo(erroAtivo) }}
                       onMudar={v => mudarLoja(loja, v)}
