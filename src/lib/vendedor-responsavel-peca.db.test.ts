@@ -97,6 +97,7 @@ const DINHEIRO = [{ tipo: 'dinheiro', valor: 100 }]
 const venda = (c: Conta, extra: Record<string, unknown> = {}, pagamentos: object[] = DINHEIRO) =>
   ({ lojaId: c.lojaId, clienteNome: 'Cliente sintético', clienteDocumento: CPF, itens: [{ pecaId: c.pecaId, quantidade: 1 }], pagamentos, ...extra }) as Pedido
 
+const saldoDaPeca = async (c: Conta) => (await execRows(sql`select quantidade from pecas_estoque_loja where peca_id = ${c.pecaId} and loja_id = ${c.lojaId}`))[0].quantidade
 const vendasDaLoja = (c: Conta) => execRows(sql`select id, vendedor_id from vendas_pecas where loja_id = ${c.lojaId}`)
 const caixaDaLoja = (c: Conta) => execRows(sql`select usuario_id from lancamentos_caixa where loja_id = ${c.lojaId} and venda_peca_id is not null`)
 
@@ -255,4 +256,23 @@ test('financiamento com responsável de outro grupo: recusa e nenhuma aprovaçã
   const r = await pecas.registrarVendaPecaAction(venda(c, { vendedorId: c.deOutroGrupoId }, FINANCIAMENTO))
   assert.deepEqual(r, { ok: false, erro: NAO_ENCONTRADO })
   assert.deepEqual(await aprovacaoDaLoja(c), [])
+})
+
+test('a lista do campo é exatamente quem o servidor aceita, e nada da outra Conta aparece', async () => {
+  const a = await novaConta()
+  const b = await novaConta()
+  const { listarUsuariosDoGrupo } = await import('@/lib/usuarios-do-grupo')
+  const { PAPEIS_VENDA_PECA } = await import('@/app/(dashboard)/pecas/papeis')
+  const lista = (await listarUsuariosDoGrupo(a.grupoId, { papeis: PAPEIS_VENDA_PECA })).map(u => u.id)
+  const deA = [a.auxId, a.socioId, a.vendedorId, a.colegaId, a.mecanicoId, a.deOutroGrupoId]
+  const deB = [b.auxId, b.socioId, b.vendedorId, b.colegaId, b.mecanicoId, b.deOutroGrupoId]
+  assert.equal(deB.some(id => lista.includes(id)), false)
+  // O servidor aceita a pessoa escolhida se ela está na lista; o aux_adm que registra fica sempre aceito (é ele).
+  entrarComo(a, 'aux_adm')
+  const aceitos: string[] = []
+  for (const id of [...deA, ...deB]) {
+    if (id === a.auxId) continue
+    if ((await pecas.registrarVendaPecaAction(venda(a, { vendedorId: id }))).ok) aceitos.push(id)
+  }
+  assert.deepEqual(aceitos.sort(), lista.filter(id => id !== a.auxId).sort())
 })
