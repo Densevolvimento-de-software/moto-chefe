@@ -31,11 +31,24 @@ A API de leitura é uma exceção ao isolamento por Conta, e só nestes pontos:
   despesa ou de meta; o resto da loja sai normal. A lista de Contas autorizadas mora no banco, nunca
   no código. A primeira Conta autorizada é achada por dado do banco na migração, sem nome nem CNPJ no
   arquivo.
-- **Lista fechada por conjunto.** Cada conjunto (lojas, pessoas, vendas de moto, vendas de peça,
-  ordens de serviço, metas e despesas) tem as colunas fixadas no código. Campo novo no banco não sai
-  sozinho. Não saem: e-mail, documento, telefone e endereço de pessoa; forma de pagamento; custo de
-  peça; descrição livre de OS e de item; lançamento de despesa; cliente da ordem de serviço (fica
-  fora desta fatia). Sai o CEP do cliente na venda de moto, e nome de vendedor e técnico.
+- **Lista fechada por conjunto.** Só estes campos saem. Campo novo no banco não sai sozinho.
+  - **Lojas:** id, nome, cidade, endereço, CEP e ativa.
+  - **Pessoas** (vendedores e técnicos das lojas marcadas): id, nome, função, loja e ativo. Sem
+    e-mail, documento, telefone ou dado de folha.
+  - **Vendas de moto:** data, número, loja, vendedor, modelo, cor, chassi, valor da moto, custo de
+    compra, CEP do cliente, número da NF de saída e data do cancelamento (nula se a venda vale).
+    Sem forma de pagamento.
+  - **Vendas de peça:** uma linha por item, com data, número da venda, loja, vendedor, peça,
+    quantidade e valor. Sem custo.
+  - **Ordens de serviço:** datas de abertura e conclusão, status, loja, técnico, chassi (ou marca e
+    modelo, quando a moto é de fora) e itens (tipo peça ou mão de obra, quantidade e valor). Sem
+    custo.
+  - **Metas:** loja, ano, mês e valor.
+  - **Despesas:** soma por mês, loja, categoria e grupo do DRE. Sem lançamento individual, descrição
+    ou beneficiário. O nome da categoria sai como a Conta cadastrou.
+  - Em todos, o id que sai é o identificador do MOVA de loja e de pessoa, só para ligar um conjunto ao
+    outro. Fora da lista: cliente da OS (fica para depois), descrição livre de OS e de item, e qualquer
+    outro campo.
 - **Chave de acesso é dado da plataforma**, sem grupo, em tabela própria, como no ADR-0017. Não fica
   a chave em claro: fica só o resumo dela, quem gerou, quando, quando foi revogada e até quando a
   anterior vale. A chave aparece uma única vez, na geração. O `admin_geral` gera, troca e revoga pela
