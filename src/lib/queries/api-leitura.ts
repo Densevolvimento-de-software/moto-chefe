@@ -1,7 +1,7 @@
 // Consultas da API de leitura da MotoChefe Brasil (#315, ADR-0021). Lê várias Contas de propósito, sem sessão:
 // o filtro de loja fica dentro da consulta, e a lista de colunas sai da regra pura em @/lib/api-leitura.
 import { randomBytes } from 'node:crypto'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { apiChaves, contas, grupos, lojas } from '@/lib/db/schema'
 import { sha256 } from '@/lib/assinatura/hash'
@@ -16,14 +16,13 @@ const chavesNaoRevogadas = (executor: Executor) => executor
   .from(apiChaves)
   .where(isNull(apiChaves.revogadaEm))
 
-/**
- * O token confere com alguma chave não revogada e vigente. Compara o hash com todas, em tempo constante,
- * antes de decidir (sem parar na primeira que bate).
- */
 // Sem token, compara com um valor fixo de mesmo tamanho que nunca é hash de chave: o caminho é o mesmo.
 const HASH_SEM_TOKEN = '0'.repeat(64)
 
-/** Id da chave que o token confere e ainda vale, ou nulo. O 320 usa o id para o limite e o registro. */
+/**
+ * Id da chave que o token confere e ainda vale, ou nulo. Compara o hash com todas, em tempo constante,
+ * antes de decidir. O 320 usa o id para o limite e o registro.
+ */
 export async function buscarChaveAceita(token: string | null, agora: Date, executor: Executor = db): Promise<{ id: string } | null> {
   const recebido = token === null ? HASH_SEM_TOKEN : sha256(token)
   const abertas = await chavesNaoRevogadas(executor)
@@ -58,14 +57,23 @@ export function trocarChave(opcoes: { geradaPor: string; agora: Date }, executor
     : db.transaction(tx => trocarNaTransacao(tx, opcoes))
 }
 
-/** Lojas marcadas pelo admin_geral, de Contas e grupos ativos. Inativa continua aparecendo, com ativa falso. */
+/**
+ * Ids das lojas que saem na API: marcadas pelo admin_geral, de grupo ativo e Conta não desativada.
+ * Quem lê dado de loja (vendas, OS, pessoas) filtra com `inArray(coluna, lojasQueSaem())`, sem copiar a regra.
+ */
+export const lojasQueSaem = () => db
+  .select({ id: lojas.id })
+  .from(lojas)
+  .innerJoin(grupos, eq(lojas.grupoId, grupos.id))
+  .innerJoin(contas, eq(grupos.contaId, contas.id))
+  .where(and(eq(lojas.lojaMotochefe, true), eq(grupos.ativo, true), isNull(contas.desativadaEm)))
+
+/** Lojas que saem na API. Inativa continua aparecendo, com ativa falso. */
 export async function listarLojasDaApi(): Promise<LojaDaApi[]> {
   const linhas = await db
     .select({ id: lojas.id, nome: lojas.nome, cidade: lojas.cidade, endereco: lojas.endereco, cep: lojas.cep, ativa: lojas.ativa })
     .from(lojas)
-    .innerJoin(grupos, eq(lojas.grupoId, grupos.id))
-    .innerJoin(contas, eq(grupos.contaId, contas.id))
-    .where(and(eq(lojas.lojaMotochefe, true), eq(grupos.ativo, true), isNull(contas.desativadaEm)))
+    .where(inArray(lojas.id, lojasQueSaem()))
     .orderBy(lojas.nome, lojas.id)
   return linhas.map(linhaDaLoja)
 }
