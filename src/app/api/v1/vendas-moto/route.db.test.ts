@@ -393,7 +393,7 @@ test('período de 93 dias, ou sem o fim, é recusado com 400', async () => {
   assert.equal((await chamar('?de=2026-02-01')).status, 400)
 })
 
-test('cursor adulterado ou de outro período é recusado com 400', async () => {
+test('cursor adulterado, ou que cai fora do período pedido, é recusado com 400', async () => {
   const adulterado = await chamar(`${periodo(DIA.fevereiro, DIA.fevereiro)}&cursor=nao-e-cursor`)
   assert.equal(adulterado.status, 400)
   const outroDia = Buffer.from(JSON.stringify({ d: '2026-03-10T12:00:00.000Z', n: 1 })).toString('base64url')
