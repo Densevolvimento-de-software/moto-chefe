@@ -12,8 +12,14 @@ export const ROTULO_TIPO: Record<string, string> = {
   transferencia_grupos_alterada: 'Mudou transferência entre grupos',
   moto_arquivada: 'Arquivou moto', moto_desarquivada: 'Desarquivou moto', moto_removida: 'Removeu moto',
   vendedor_venda_trocado: 'Trocou o vendedor da venda',
+  entrega_alterada: 'Alterou a entrega',
+  loja_motochefe_alterada: 'Marcou ou desmarcou loja MotoChefe',
+  autorizacao_conta_alterada: 'Mudou a autorização de custo, despesas e meta',
+  api_chave_gerada: 'Gerou chave da API',
+  api_chave_trocada: 'Trocou chave da API',
+  api_chave_revogada: 'Revogou chave da API',
 }
-export const TIPOS_SENSIVEIS = ['venda_cancelada', 'nf_emitida', 'nf_cancelada', 'permissao_alterada', 'certificado_aplicado', 'portal_aplicado', 'notas_enviadas_contador', 'logo_danfe_enviada', 'preco_compra_alterado', 'grupo_movido_de_conta', 'transferencia_grupos_alterada', 'moto_arquivada', 'moto_desarquivada', 'moto_removida', 'vendedor_venda_trocado']
+export const TIPOS_SENSIVEIS = ['venda_cancelada', 'nf_emitida', 'nf_cancelada', 'permissao_alterada', 'certificado_aplicado', 'portal_aplicado', 'notas_enviadas_contador', 'logo_danfe_enviada', 'preco_compra_alterado', 'grupo_movido_de_conta', 'transferencia_grupos_alterada', 'moto_arquivada', 'moto_desarquivada', 'moto_removida', 'vendedor_venda_trocado', 'loja_motochefe_alterada', 'autorizacao_conta_alterada', 'api_chave_gerada', 'api_chave_trocada', 'api_chave_revogada']
 /** Desfazem algo já feito: a tela pinta de vermelho. */
 export const TIPOS_DESTRUTIVOS = ['venda_cancelada', 'nf_cancelada']
 export const ehSensivel = (tipo: string) => TIPOS_SENSIVEIS.includes(tipo)
