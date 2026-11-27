@@ -224,12 +224,17 @@ test('desmarcar a loja tira ela da consulta seguinte', async () => {
 test('falha depois da chave: 500 com a frase fixa, e o log só leva a frase constante', async () => {
   const espiao = mock.method(console, 'error', () => {})
   try {
-    const cabecalhos = new Headers({ authorization: bearer(CHAVE.vigente) })
+    const ua = uaNovo('falha')
+    const cabecalhos = new Headers({ authorization: bearer(CHAVE.vigente), 'user-agent': ua })
     const resposta = await comChaveDaApi(cabecalhos, '/api/v1/lojas', async () => { throw new Error(`segredo ${CHAVE.vigente}`) })
     await esperarRegistros()
     assert.equal(resposta.status, 500)
     assert.deepEqual(resposta.corpo, { codigo: 'erro_interno', frase: 'Erro interno.' })
     assert.deepEqual(espiao.mock.calls.map(c => c.arguments), [['api de leitura: erro interno']])
+    const linhas = await linhasDoUa(ua)
+    assert.equal(linhas.length, 1, 'a falha do miolo não gerou a linha do registro')
+    assert.equal(linhas[0].status, 500)
+    assert.equal(linhas[0].chaveId, await idDaChave(CHAVE.vigente))
   } finally {
     espiao.mock.restore()
   }
