@@ -1,6 +1,6 @@
 # 0018. Conta acima do grupo: isolamento por cliente do MOVA
 
-- **Status:** Revisada por [0019](0019-admin-rede-acesso-entre-contas.md)
+- **Status:** Revisada por [0019](0019-admin-rede-acesso-entre-contas.md) e [0021](0021-leitura-entre-contas-api-motochefe.md)
 - **Data da decisão:** 2026-10-17
 - **Fontes:** issue #164; call do Luis com o Cesar em 2026-10-16 ("Contrato e Operação do Mova",
   Read.ai); grilling da #164 em 2026-10-17 (decisões nos comentários da issue)
@@ -255,3 +255,11 @@ Exceção à regra do #320 nesta tela. Decisão do Cesar em 05/11/2026, aceita p
   tem loja nem grupo marcado não aparece em nenhum. Funcionário de outro grupo recebe a mesma frase
   do id inexistente.
 - As outras telas da Conta seguem a regra deste ADR; a exceção vale só aqui.
+
+## Adendo de 2026-11-27: leitura da API pela MotoChefe Brasil (#315, #316)
+
+A API de leitura (a construir, #317 a #326) vai ler várias Contas sem sessão, só das lojas que o
+`admin_geral` marcar como MotoChefe e só das colunas listadas no
+[ADR-0021](0021-leitura-entre-contas-api-motochefe.md). É a única exceção
+a "toda leitura filtra pela Conta" fora do Painel Fábrica (#892), e vale só para a API. O ADR-0021
+diz o que sai, de quem e por quê, e declara o que muda em relação ao #892.
