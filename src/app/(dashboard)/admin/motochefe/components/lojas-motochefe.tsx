@@ -8,10 +8,10 @@ import { Loader2, Store } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { resumoDaTela, type ContaDaTela, type LojaDaTela } from '@/lib/motochefe-marcacao'
 import { autorizarContaAction, marcarLojaMotochefeAction } from '../actions'
+import { ConfirmarDialogo } from './confirmar-dialogo'
 
 type Erro = { chave: string; texto: string }
 type Confirmacao = { tipo: 'loja'; loja: LojaDaTela } | { tipo: 'conta'; conta: ContaDaTela } | null
@@ -71,6 +71,9 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
 
   const chaveDoDialogo = confirmacao === null ? null : confirmacao.tipo === 'loja' ? chaveDaLoja(confirmacao.loja.id) : chaveDaConta(confirmacao.conta.id)
   const ocupadoNoDialogo = chaveDoDialogo !== null && enviando[chaveDoDialogo] === true
+  const dadosDoDialogo = confirmacao === null ? null : confirmacao.tipo === 'loja'
+    ? { titulo: `Desmarcar ${confirmacao.loja.nome}?`, texto: 'Ela sai da API na hora, inclusive do histórico desde 01/2026. Quem consulta deixa de ver as vendas dela.', rotuloEnviar: 'Desmarcar loja' }
+    : { titulo: `Tirar a autorização da ${confirmacao.conta.nome}?`, texto: 'Custo, despesas e meta das lojas dela saem da API na hora. Venda de moto, peça e OS continuam saindo.', rotuloEnviar: 'Tirar autorização' }
 
   return (
     <div className="space-y-6">
@@ -193,39 +196,16 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
         </div>
       </div>
 
-      <Dialog open={confirmacao?.tipo === 'loja'} onOpenChange={aberto => { if (!aberto && !ocupadoNoDialogo) setConfirmacao(null) }} disablePointerDismissal>
-        {confirmacao?.tipo === 'loja' && (
-          <DialogContent className="sm:max-w-md" showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>Desmarcar {confirmacao.loja.nome}?</DialogTitle>
-              <DialogDescription>
-                Ela sai da API na hora, inclusive do histórico desde 01/2026. Quem consulta deixa de ver as vendas dela.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button type="button" variant="outline" disabled={ocupadoNoDialogo} onClick={() => setConfirmacao(null)}>Cancelar</Button>
-              <Button type="button" variant="destructive" disabled={ocupadoNoDialogo} onClick={confirmar}>Desmarcar loja</Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
-
-      <Dialog open={confirmacao?.tipo === 'conta'} onOpenChange={aberto => { if (!aberto && !ocupadoNoDialogo) setConfirmacao(null) }} disablePointerDismissal>
-        {confirmacao?.tipo === 'conta' && (
-          <DialogContent className="sm:max-w-md" showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>Tirar a autorização da {confirmacao.conta.nome}?</DialogTitle>
-              <DialogDescription>
-                Custo, despesas e meta das lojas dela saem da API na hora. Venda de moto, peça e OS continuam saindo.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button type="button" variant="outline" disabled={ocupadoNoDialogo} onClick={() => setConfirmacao(null)}>Cancelar</Button>
-              <Button type="button" variant="destructive" disabled={ocupadoNoDialogo} onClick={confirmar}>Tirar autorização</Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
+      {dadosDoDialogo && (
+        <ConfirmarDialogo
+          titulo={dadosDoDialogo.titulo}
+          texto={dadosDoDialogo.texto}
+          rotuloEnviar={dadosDoDialogo.rotuloEnviar}
+          ocupado={ocupadoNoDialogo}
+          onCancelar={() => setConfirmacao(null)}
+          onConfirmar={confirmar}
+        />
+      )}
     </div>
   )
 }
