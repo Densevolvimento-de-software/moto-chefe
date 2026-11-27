@@ -186,3 +186,15 @@ test('listagem: loja de grupo inativo não aparece; a Conta continua, com as out
   })
 })
 
+
+// Autorizar em Conta desativada: a mesma frase de Conta inexistente, e nada é gravado nem logado.
+test('autorizar Conta desativada: "Conta não encontrada", nada gravado, sem log', async () => {
+  await emTransacaoDesfeita(async tx => {
+    const { a } = await semear(tx)
+    await tx.execute(sql`update contas set desativada_em = now() where id = ${a.contaId}`)
+    const admin = randomUUID()
+    assert.deepEqual(await mod.autorizarCustoDespesaMeta(admin, { contaId: a.contaId, autorizada: true }, tx), { ok: false, erro: 'Conta não encontrada' })
+    assert.equal(await autorizadaDaConta(tx, a.contaId), false)
+    assert.equal((await linhas(tx, sql`select 1 from log_acoes where usuario_id = ${admin}`)).length, 0)
+  })
+})
