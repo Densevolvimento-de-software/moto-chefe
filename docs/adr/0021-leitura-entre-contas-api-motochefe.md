@@ -76,8 +76,9 @@ Regras que a spec da #315 fixou e que o Luis ainda não confirmou um a um (confo
   em reais, com duas casas.
 - **Loja desmarcada.** Desmarcar tira a loja de todas as respostas na hora, inclusive do histórico.
   Loja marcada e desativada continua no histórico, indicada como inativa.
-- **Despesa "empresa geral"** (sem loja). Sai somada por CNPJ, quando o CNPJ tem ao menos uma loja
-  marcada.
+- **Despesa "empresa geral"** (sem loja). Sai somada por CNPJ, e só de Conta autorizada, quando o CNPJ
+  tem ao menos uma loja marcada. Efeito: um CNPJ com uma única loja marcada expõe a despesa geral do
+  CNPJ inteiro, que não é da loja marcada.
 - **Painel Fábrica não muda.** Segue com a regra dele neste ADR.
 
 ## Por quê
