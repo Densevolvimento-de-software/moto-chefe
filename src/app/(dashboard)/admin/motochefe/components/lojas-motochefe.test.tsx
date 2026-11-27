@@ -115,8 +115,10 @@ test('recusa da action: o interruptor volta ao valor de antes, e a tela diz que 
   await clique(contaNaLista('Conta A'))
   await clique(interruptor('Loja MotoChefe: Leste'))
   assert.equal(interruptor('Loja MotoChefe: Leste')?.getAttribute('aria-checked'), 'false')
-  const alerta = document.querySelector('[role="alert"]')?.textContent ?? ''
-  assert.equal(alerta, 'Não deu para marcar a loja. Nada mudou. Tente de novo. Motivo: Sem permissão.')
+  const alerta = document.querySelector('[role="alert"] p')?.textContent ?? ''
+  assert.equal(alerta, 'Não deu para marcar a loja. Nada mudou. Tente de novo.')
+  assert.ok(document.querySelector('[role="alert"] svg'), 'o alerta tem o ícone')
+  assert.ok(botao('Tentar de novo'), 'o alerta tem o botão Tentar de novo')
 })
 
 test('falha inesperada (action lança) vira a frase de nada mudou, sem quebrar a tela', async () => {
@@ -124,7 +126,7 @@ test('falha inesperada (action lança) vira a frase de nada mudou, sem quebrar a
   const { clique } = await montar()
   await clique(contaNaLista('Conta A'))
   await clique(interruptor('Loja MotoChefe: Leste'))
-  assert.equal(document.querySelector('[role="alert"]')?.textContent, 'Não deu para marcar a loja. Nada mudou. Tente de novo.')
+  assert.equal(document.querySelector('[role="alert"] p')?.textContent, 'Não deu para marcar a loja. Nada mudou. Tente de novo.')
   assert.equal(interruptor('Loja MotoChefe: Leste')?.getAttribute('aria-checked'), 'false')
 })
 
@@ -257,4 +259,27 @@ test('recusa: o interruptor volta ao valor de antes, o diálogo fecha e a frase 
   assert.equal(interruptor('Loja MotoChefe: Centro')?.getAttribute('aria-checked'), 'true')
   assert.equal(texto().includes('Desmarcar Centro?'), false)
   assert.ok(document.querySelector('[role="alert"]'))
+})
+
+// O erro aparece acima da linha da loja, e Tentar de novo repete a mesma ação; dando certo, o erro some.
+test('Tentar de novo repete a mesma ação, e dando certo o erro some', async () => {
+  marcar.mock.mockImplementationOnce(async () => ({ ok: false, erro: 'Sem permissão' }))
+  const { clique, esperar } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Leste'))
+  await clique(botao('Tentar de novo'))
+  await esperar()
+  assert.deepEqual(marcar.mock.calls.map(c => c.arguments), [[{ lojaId: 'l3', marcada: true }], [{ lojaId: 'l3', marcada: true }]])
+  assert.equal(document.querySelector('[role="alert"]'), null)
+})
+
+test('o erro fica acima da linha da loja, não abaixo', async () => {
+  marcar.mock.mockImplementationOnce(async () => ({ ok: false, erro: 'Sem permissão' }))
+  const { clique } = await montar()
+  await clique(contaNaLista('Conta A'))
+  await clique(interruptor('Loja MotoChefe: Leste'))
+  const alerta = document.querySelector('[role="alert"]')!
+  const linha = interruptor('Loja MotoChefe: Leste')!.closest('li')!
+  assert.ok(linha.contains(alerta), 'o alerta fica dentro do item da loja')
+  assert.ok(linha.firstElementChild === alerta || linha.firstElementChild?.contains(alerta), 'e vem antes do conteúdo da linha')
 })

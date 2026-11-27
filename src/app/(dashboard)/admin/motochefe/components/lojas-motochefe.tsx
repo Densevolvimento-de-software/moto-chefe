@@ -4,7 +4,7 @@
 // a lista e o painel se alternam. Cada gravação mostra o valor pedido enquanto envia; se a action recusa,
 // volta ao valor de antes e diz que nada mudou. Desmarcar e tirar a autorização pedem confirmação.
 import { useState } from 'react'
-import { Loader2, Store } from 'lucide-react'
+import { Loader2, Store, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,7 +13,7 @@ import { resumoDaTela, type ContaDaTela, type LojaDaTela } from '@/lib/motochefe
 import { autorizarContaAction, marcarLojaMotochefeAction } from '../actions'
 import { ConfirmarDialogo } from './confirmar-dialogo'
 
-type Erro = { chave: string; texto: string }
+type Erro = { chave: string; texto: string; tentar: () => void }
 type Confirmacao = { tipo: 'loja'; loja: LojaDaTela } | { tipo: 'conta'; conta: ContaDaTela } | null
 
 const chaveDaLoja = (id: string) => `loja:${id}`
@@ -34,9 +34,9 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
     setEnviando(e => ({ ...e, [chave]: true }))
     try {
       const r = await enviar()
-      if (!r.ok) setErro({ chave, texto: `${falha} Motivo: ${r.erro}.` })
+      if (!r.ok) setErro({ chave, texto: falha, tentar: () => gravar(chave, enviar, falha) })
     } catch {
-      setErro({ chave, texto: falha })
+      setErro({ chave, texto: falha, tentar: () => gravar(chave, enviar, falha) })
     } finally {
       setEnviando(e => ({ ...e, [chave]: false }))
     }
@@ -141,6 +141,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                   <h2 className="font-semibold">Custo, despesas e meta</h2>
                   <p className="text-muted-foreground text-sm">{selecionada.nome}</p>
                 </div>
+                {erro?.chave === chaveDaConta(selecionada.id) && <MensagemDeErro texto={erro.texto} onTentar={erro.tentar} />}
                 <div className="flex flex-wrap items-center justify-between gap-4 border-t px-4 pt-3">
                   <p className="text-muted-foreground max-w-prose text-sm">
                     Custo de compra, despesas e meta. Sem autorização, as lojas marcadas saem sem custo e sem linhas de despesa e meta.
@@ -155,7 +156,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                     onMudar={v => mudarAutorizacao(selecionada, v)}
                   />
                 </div>
-                {erro?.chave === chaveDaConta(selecionada.id) && <MensagemDeErro texto={erro.texto} />}
+                
               </Card>
 
               <Card className="gap-3">
@@ -169,6 +170,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                 <ul className="divide-y border-t">
                   {selecionada.lojas.map(loja => (
                     <li key={loja.id} className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${loja.ativa ? '' : 'text-muted-foreground'}`}>
+                      {erro?.chave === chaveDaLoja(loja.id) && <MensagemDeErro texto={erro.texto} onTentar={erro.tentar} />}
                       <div className="min-w-0 space-y-1">
                         <strong className="block">{loja.nome}</strong>
                         <span className="text-muted-foreground block text-sm">{loja.cidade}</span>
@@ -184,7 +186,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                         rotulos={{ ligado: 'Marcada', desligado: 'Desmarcada' }}
                         onMudar={v => mudarLoja(loja, v)}
                       />
-                      {erro?.chave === chaveDaLoja(loja.id) && <div className="w-full"><MensagemDeErro texto={erro.texto} /></div>}
+                      
                     </li>
                   ))}
                 </ul>
@@ -242,8 +244,15 @@ function Interruptor({ chave, checado, enviando, rotuloAcessivel, rotulos, onMud
   )
 }
 
-function MensagemDeErro({ texto }: { texto: string }) {
+// Erro da gravação: o texto do protótipo, acima da linha, com Tentar de novo (repete a mesma ação).
+function MensagemDeErro({ texto, onTentar }: { texto: string; onTentar: () => void }) {
   return (
-    <p role="alert" className="bg-destructive/10 text-destructive mx-4 rounded-lg px-3 py-2 text-sm">{texto}</p>
+    <div role="alert" className="bg-destructive/10 text-destructive flex w-full items-start gap-2 rounded-lg px-3 py-2 text-sm">
+      <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <div className="space-y-2">
+        <p>{texto}</p>
+        <Button type="button" variant="outline" size="sm" onClick={onTentar}>Tentar de novo</Button>
+      </div>
+    </div>
   )
 }
