@@ -5,6 +5,7 @@ import test, { after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { montarDom } from '@/test/montar-dom'
 import { clicar } from '@/test/eventos-dom'
+import { corDoGrupo } from '@/lib/grupo-cores'
 import type { ContaDaTela } from '@/lib/motochefe-marcacao'
 
 const { desmontar: desmontarDom } = montarDom()
@@ -56,6 +57,7 @@ async function montar(contas = CONTAS) {
   return {
     clique: async (el: Element | null | undefined) => { await clicar(el); await esperar() },
     esperar,
+    rerender: async (novas: ContaDaTela[]) => { await act(async () => { root.render(createElement(LojasMotochefe, { contas: novas })) }) },
   }
 }
 
@@ -308,13 +310,27 @@ test('resumo: um cartão com três colunas, com os três números do protótipo'
 })
 
 // A barra da Conta na lista usa uma cor da paleta de grupo (classe bg-grupo-*), sem cor fixa no código.
-test('a barra de cada Conta na lista usa uma cor da paleta de grupo, e a mesma Conta sempre a mesma', async () => {
+// A barra é a cor que a regra de grupo dá ao id da Conta. Prova: cada Conta recebe a classe que a regra dá ao
+// seu id; a mesma Conta mantém a classe quando muda de posição na lista e quando muda de nome.
+// As classes da barra (ela tem também as de layout): a classe da regra tem de estar entre elas.
+const classesDaBarra = (id: string) => (document.querySelector<HTMLElement>(`[data-conta-id="${id}"] [data-barra-conta]`)?.className ?? '').split(' ')
+
+test('a barra de cada Conta é a cor que a regra de grupo dá ao id da Conta', async () => {
   await montar()
-  const barra = (nome: string) => contaNaLista(nome)?.querySelector<HTMLElement>('[data-barra-conta]')
-  const classe = (nome: string) => barra(nome)?.className ?? ''
-  assert.match(classe('Conta A'), /bg-grupo-(emerald|blue|amber|violet|rose|cyan|slate)\b/)
-  assert.doesNotMatch(classe('Conta A'), /#|\[/, 'sem cor fixa nem valor arbitrário')
-  assert.equal(classe('Conta A'), classe('Conta A'))
+  for (const c of CONTAS) {
+    assert.ok(classesDaBarra(c.id).includes(corDoGrupo({ id: c.id }).bar), c.nome)
+  }
+  assert.ok(classesDaBarra('a').some(c => /^bg-grupo-(emerald|blue|amber|violet|rose|cyan|slate)$/.test(c)))
+  assert.ok(classesDaBarra('a').every(c => !/#|\[/.test(c)), 'sem cor fixa nem valor arbitrário')
+})
+
+test('a mesma Conta mantém a sua barra ao mudar de posição na lista e ao mudar de nome', async () => {
+  const { rerender } = await montar()
+  const esperada = corDoGrupo({ id: 'a' }).bar
+  await rerender([...CONTAS].reverse())
+  assert.ok(classesDaBarra('a').includes(esperada), 'mudou de posição')
+  await rerender(CONTAS.map(c => c.id === 'a' ? { ...c, nome: 'Conta Renomeada' } : c))
+  assert.ok(classesDaBarra('a').includes(esperada), 'mudou de nome')
 })
 
 // Layout da linha como no protótipo: nome, coluna Ativa/Inativa e o interruptor; seta no Todas as Contas.

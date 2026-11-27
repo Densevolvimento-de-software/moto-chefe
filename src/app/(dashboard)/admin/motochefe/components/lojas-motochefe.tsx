@@ -109,6 +109,7 @@ export function LojasMotochefe({ contas }: { contas: ContaDaTela[] }) {
                 <li key={conta.id}>
                   <button
                     type="button"
+                    data-conta-id={conta.id}
                     aria-current={ativa ? 'true' : undefined}
                     onClick={() => setSelecionadaId(conta.id)}
                     className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 ${ativa ? 'bg-primary-soft' : 'hover:bg-muted'}`}
