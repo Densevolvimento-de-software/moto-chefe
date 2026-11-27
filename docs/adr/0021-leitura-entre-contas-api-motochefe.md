@@ -67,8 +67,9 @@ ativo, e só devolve o que está listado abaixo.
   variável de ambiente nova para a chave.
 - **Limite e registro de acesso.** Há limite de chamadas por minuto por chave, contado no banco. Cada
   chamada fica registrada em tabela própria da plataforma, inclusive a recusada. O registro é guardado
-  por 12 meses, pela rotina que já apaga o log antigo (`src/app/api/cron/log-acoes/route.ts`), e
-  nesta fatia não tem tela. Falha ao registrar não derruba a resposta.
+  por 12 meses. A rotina que hoje apaga só o `log_acoes` (`src/app/api/cron/log-acoes/route.ts`) será
+  estendida no ticket #320 para apagar também o registro de acesso e as janelas antigas do contador
+  do limite. Nesta fatia não tem tela. Falha ao registrar não derruba a resposta.
 - **Erro sem vazamento.** Qualquer falha de chave recebe a mesma resposta de acesso negado, sem dado.
   Nenhuma mensagem diz se loja, venda ou Conta existe.
 - **Fronteira num lugar só.** Um módulo puro decide quais lojas saem, quais Contas liberam custo,
