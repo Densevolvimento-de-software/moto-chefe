@@ -85,7 +85,8 @@ export async function editarVendaPecaTx(tx: Tx, e: EdicaoVendaPeca) {
   await tx.update(vendasPecas)
     .set({ pagamentos, formaPagamento, valorTotal: valorTotal.toFixed(2) })
     .where(and(eq(vendasPecas.id, e.vendaId), eq(vendasPecas.lojaId, venda.lojaId)))
-  await sincronizarCaixaDaVendaPeca(tx, venda, pagamentos, e.usuarioId)
+  // O caixa em dinheiro é do responsável da venda, lido com a linha travada; o histórico abaixo fica em nome de quem editou (#308).
+  await sincronizarCaixaDaVendaPeca(tx, venda, pagamentos, venda.vendedorId)
 
   const antes = {
     itens: antigos.map(i => ({ pecaId: i.pecaId, descricao: i.descricao, quantidade: Number(i.quantidade), valorUnitario: Number(i.valorUnitario) })),

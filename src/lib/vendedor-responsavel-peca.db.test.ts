@@ -322,3 +322,41 @@ test('loja de outra Conta e loja inexistente: mesma recusa, com ou sem responsá
   assert.deepEqual(await estadoDaLoja(a), SEM_MEXER(10))
   assert.deepEqual(await estadoDaLoja(b), SEM_MEXER(10))
 })
+
+// Caixa na edição: o lançamento em dinheiro segue o RESPONSÁVEL da venda, não quem edita (#308, decisão do Luis).
+const lancamentosDaVenda = (vendaId: string) =>
+  execRows(sql`select usuario_id, valor from lancamentos_caixa where venda_peca_id = ${vendaId} order by id`)
+const itensIguais = (c: Conta) => [{ pecaId: c.pecaId, quantidade: 1 }]
+
+async function vendaEmDinheiroComResponsavel(c: Conta) {
+  entrarComo(c, 'aux_adm')
+  assert.equal((await pecas.registrarVendaPecaAction(venda(c, { vendedorId: c.colegaId }))).ok, true)
+  const [v] = await vendasDaLoja(c)
+  assert.deepEqual((await lancamentosDaVenda(v.id)).map(l => l.usuario_id), [c.colegaId])
+  return v.id as string
+}
+
+test('editar o valor em dinheiro (edição direta): o lançamento novo fica no responsável, com o valor novo, e não sobra o antigo', async () => {
+  const c = await novaConta()
+  const vendaId = await vendaEmDinheiroComResponsavel(c)
+  entrarComo(c, 'admin_socio')
+  const r = await pecas.editarVendaPecaAction(vendaId, { itens: itensIguais(c), pagamentos: [{ tipo: 'dinheiro', valor: 70 }] })
+  assert.equal(r.ok, true, r.ok ? '' : r.erro)
+  assert.deepEqual(await lancamentosDaVenda(vendaId), [{ usuario_id: c.colegaId, valor: '70.00' }])
+})
+
+test('editar o valor em dinheiro (edição aprovada depois): o lançamento novo fica no responsável, com o valor novo, e não sobra o antigo', async () => {
+  const c = await novaConta()
+  const vendaId = await vendaEmDinheiroComResponsavel(c)
+  // O aux_adm não aprova financiamento: a edição espera o sócio.
+  const pedida = await pecas.editarVendaPecaAction(vendaId, {
+    itens: itensIguais(c), pagamentos: [{ tipo: 'dinheiro', valor: 60 }, { tipo: 'financiamento', valor: 40 }],
+  })
+  assert.equal(pedida.ok && pedida.dados.aguardandoAprovacao, true)
+  assert.deepEqual((await lancamentosDaVenda(vendaId)).map(l => l.valor), ['100.00'])
+  entrarComo(c, 'admin_socio')
+  const [pedido] = await execRows(sql`select id from aprovacoes_venda where origem = 'peca_edicao' and loja_id = ${c.lojaId}`)
+  const aprovada = await vendas.aprovarVendaAction(pedido.id)
+  assert.equal(aprovada.ok, true, aprovada.ok ? '' : aprovada.erro)
+  assert.deepEqual(await lancamentosDaVenda(vendaId), [{ usuario_id: c.colegaId, valor: '60.00' }])
+})
