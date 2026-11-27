@@ -22,6 +22,7 @@ import { definirSaldo } from '@/lib/estoque-pecas-loja'
 import { aplicarVendaPeca, type DadosVendaPeca, type ItemVendaPecaInput, type PagamentoVendaPecaInput } from '@/lib/venda-peca'
 import { pixCobertoSql } from '@/lib/queries/pix-coberto'
 import { alvoConciliado } from '@/lib/alvo-conciliado'
+import { CAMPOS_PAGAMENTO_VENDA, pagamentosParaGravar } from '@/lib/pagamentos-gravacao'
 
 
 async function verificarAcesso() {
@@ -232,7 +233,7 @@ async function registrarVendaPeca(input: PedidoVendaPeca) {
     clienteDocumento: doc.documento,
     itens: input.itens.map(({ pecaId, quantidade, valorUnitario }) =>
       podeDefinirPreco && valorUnitario !== undefined ? { pecaId, quantidade, valorUnitario } : { pecaId, quantidade }),
-    pagamentos,
+    pagamentos: pagamentosParaGravar(pagamentos, CAMPOS_PAGAMENTO_VENDA, []),
   }
 
   if (temPagamentoSensivelPeca(saneado.pagamentos) && !(await podeAprovarPagamentoSensivelNaLoja(usuario, saneado.lojaId))) {

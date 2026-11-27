@@ -201,6 +201,15 @@ test('financiamento: a aprovação guarda o responsável, nada de campo a mais n
   assert.deepEqual((await vendasDaLoja(c)).map(v => v.vendedor_id), [c.colegaId])
 })
 
+test('financiamento: campo a mais dentro de um pagamento não fica guardado na aprovação', async () => {
+  const c = await novaConta()
+  entrarComo(c, 'aux_adm')
+  const r = await pecas.registrarVendaPecaAction(venda(c, {}, [{ tipo: 'financiamento', valor: 500, extra: 'x', conciliadoManual: { motivo: 'forjado' } }]))
+  assert.deepEqual(r, { ok: true, dados: { aguardandoAprovacao: true } })
+  const [aprovacao] = await aprovacaoDaLoja(c)
+  assert.deepEqual(aprovacao.dados_venda.pagamentos, [{ tipo: 'financiamento', valor: 500 }])
+})
+
 test('financiamento com responsável de outro grupo: recusa e nenhuma aprovação fica guardada', async () => {
   const c = await novaConta()
   entrarComo(c, 'aux_adm')
