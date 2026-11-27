@@ -1,12 +1,17 @@
 // Consultas da API de leitura da MotoChefe Brasil (#315, ADR-0021). Lê várias Contas de propósito, sem sessão:
 // o filtro de loja fica dentro da consulta, e a lista de colunas sai da regra pura em @/lib/api-leitura.
 import { randomBytes } from 'node:crypto'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { after } from 'next/server'
+import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { apiChaves, contas, grupos, lojas } from '@/lib/db/schema'
+import { apiAcessos, apiChaves, apiLimite, contas, grupos, lojas } from '@/lib/db/schema'
 import { sha256 } from '@/lib/assinatura/hash'
+import { origemDaRequisicao } from '@/lib/log-acoes'
 import { iguaisEmTempoConstante, tokenDoBearer } from '@/lib/tempo-constante'
-import { chaveAceita, linhaDaLoja, planoDaTroca, respostaDeErro, type LojaDaApi, type PlanoDaTroca, type RespostaDaApi } from '@/lib/api-leitura'
+import {
+  chaveAceita, janelaDoMinuto, linhaDaLoja, linhaDoAcesso, passouDoLimite, planoDaTroca, respostaDeErro, respostaDeLimite,
+  type LinhaDoAcesso, type LojaDaApi, type PlanoDaTroca, type RespostaDaApi, type ResultadoDoMiolo,
+} from '@/lib/api-leitura'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 type Executor = Pick<typeof db, 'select' | 'insert' | 'update'> | Tx
@@ -21,7 +26,7 @@ const HASH_SEM_TOKEN = '0'.repeat(64)
 
 /**
  * Id da chave que o token confere e ainda vale, ou nulo. Compara o hash com todas, em tempo constante,
- * antes de decidir. O 320 usa o id para o limite e o registro.
+ * antes de decidir. O id alimenta o limite e o registro.
  */
 export async function buscarChaveAceita(token: string | null, agora: Date, executor: Executor = db): Promise<{ id: string } | null> {
   const recebido = token === null ? HASH_SEM_TOKEN : sha256(token)
@@ -78,23 +83,87 @@ export async function listarLojasDaApi(): Promise<LojaDaApi[]> {
   return linhas.map(linhaDaLoja)
 }
 
+/**
+ * Conta um pedido na janela do minuto e devolve o total dela. Um comando só: o insert cria a linha ou soma
+ * 1 à que já existe, sem ler antes, para duas chamadas ao mesmo tempo não passarem do limite juntas.
+ */
+export async function contarPedido(chaveId: string, janela: Date): Promise<number> {
+  const [linha] = await db
+    .insert(apiLimite)
+    .values({ chaveId, janela, pedidos: 1 })
+    .onConflictDoUpdate({ target: [apiLimite.chaveId, apiLimite.janela], set: { pedidos: sql`${apiLimite.pedidos} + 1` } })
+    .returning({ pedidos: apiLimite.pedidos })
+  return linha.pedidos
+}
+
 // Só a frase: a mensagem do erro pode trazer a consulta com o hash da chave nos parâmetros.
 const FRASE_DE_LOG_DE_ERRO = 'api de leitura: erro interno'
+// Só a frase: a mensagem do banco pode trazer a linha do registro, com o IP e o pedido.
+const FRASE_DE_LOG_DE_REGISTRO = 'api de leitura: registro de acesso não gravado'
+
+async function gravarAcesso(linha: LinhaDoAcesso): Promise<void> {
+  await db.insert(apiAcessos).values(linha)
+}
+
+// `after` roda depois da resposta: a gravação não atrasa a chamada, e o Next mantém a função viva até ela acabar.
+function registrarDepois(linha: LinhaDoAcesso): void {
+  after(async () => {
+    try {
+      await gravarAcesso(linha)
+    } catch {
+      console.error(FRASE_DE_LOG_DE_REGISTRO)
+    }
+  })
+}
 
 /**
- * Casca de toda rota da API: confere a chave e chama o miolo. Sem chave, chave errada, revogada ou vencida,
- * a mesma resposta 401. Falha no miolo vira 500 com a frase fixa, sem a mensagem do erro.
+ * Casca de toda rota da API. Ordem: chave, limite, miolo, registro. Sem chave, chave errada, revogada ou
+ * vencida: a mesma resposta 401. Acima do limite da janela: 429 com Retry-After. Falha no miolo vira 500 com
+ * a frase fixa. Toda chamada, inclusive a recusada, gera uma linha em api_acessos. O relógio (`agora`) vem
+ * de fora só para o teste; nenhuma rota passa um instante do pedido.
  */
-export async function comChaveDaApi<T>(
-  authorization: string | null,
+export function comChaveDaApi<T extends ResultadoDoMiolo>(
+  headers: Headers,
+  endpoint: string,
   miolo: (chave: { id: string }) => Promise<T>,
+  agora: Date = new Date(),
 ): Promise<RespostaDaApi> {
-  try {
-    const chave = await buscarChaveAceita(tokenDoBearer(authorization), new Date())
-    if (chave === null) return respostaDeErro('acesso_negado')
-    return { status: 200, corpo: await miolo(chave) }
-  } catch {
-    console.error(FRASE_DE_LOG_DE_ERRO)
-    return respostaDeErro('erro_interno')
+  const origem = origemDaRequisicao(headers)
+  const registrar = (chaveId: string | null, resposta: RespostaDaApi, extra: Partial<ResultadoDoMiolo> = {}): RespostaDaApi => {
+    registrarDepois(linhaDoAcesso({
+      chaveId, endpoint, status: resposta.status, origem, periodo: extra.periodo, pagina: extra.pagina, linhas: extra.linhas,
+    }))
+    return resposta
   }
+  const erroInterno = (chaveId: string | null) => {
+    console.error(FRASE_DE_LOG_DE_ERRO)
+    return registrar(chaveId, respostaDeErro('erro_interno'))
+  }
+  const comChave = async (chave: { id: string }): Promise<RespostaDaApi> => {
+    if (passouDoLimite(await contarPedido(chave.id, janelaDoMinuto(agora)))) {
+      return registrar(chave.id, respostaDeLimite(agora))
+    }
+    const resultado = await miolo(chave)
+    return registrar(chave.id, { status: 200, corpo: resultado.corpo }, resultado)
+  }
+  return buscarChaveAceita(tokenDoBearer(headers.get('authorization')), agora).then(
+    chave => (chave === null ? registrar(null, respostaDeErro('acesso_negado')) : comChave(chave).catch(() => erroInterno(chave.id))),
+    () => erroInterno(null),
+  )
+}
+
+/** Registro de acesso com mais de 12 meses sai (ADR-0021). O índice de criado_em cobre o filtro. */
+export async function apagarAcessosAntigos(): Promise<number> {
+  const apagadas = await db.delete(apiAcessos)
+    .where(lt(apiAcessos.criadoEm, sql`now() - interval '12 months'`))
+    .returning({ id: apiAcessos.id })
+  return apagadas.length
+}
+
+/** Janela do contador com mais de 1 dia sai: o limite só olha a janela atual. */
+export async function apagarJanelasAntigas(): Promise<number> {
+  const apagadas = await db.delete(apiLimite)
+    .where(lt(apiLimite.janela, sql`now() - interval '1 day'`))
+    .returning({ chaveId: apiLimite.chaveId })
+  return apagadas.length
 }
