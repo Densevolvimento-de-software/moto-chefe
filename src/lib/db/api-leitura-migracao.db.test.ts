@@ -44,15 +44,21 @@ test('as tabelas da API têm RLS ligado e nenhuma policy', async () => {
   assert.equal(policies.length, 0)
 })
 
-test('anon e authenticated não têm nenhum privilégio nas tabelas da API', async () => {
+// Mesma conferência da 0187 (papéis e privilégios), limitada aos objetos novos: tabelas e a sequência do id.
+test('anon e authenticated não têm nenhum privilégio nas tabelas e na sequência da API', async () => {
+  const [seq] = await execRows(sql`select pg_get_serial_sequence('api_acessos', 'id') as nome`)
+  assert.ok(seq.nome, 'sequência do id de api_acessos não existe')
   const abertos: string[] = []
-  for (const tabela of TABELAS) {
-    for (const papel of ['anon', 'authenticated']) {
-      for (const privilegio of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
-        const [r] = await execRows(sql`select has_table_privilege(${papel}, ${tabela}, ${privilegio}) as tem`)
-        if (r.tem) abertos.push(`${papel} ${privilegio} ${tabela}`)
-      }
+  for (const papel of ['anon', 'authenticated']) {
+    for (const tabela of TABELAS) {
+      const [r] = await execRows(sql`select
+        has_table_privilege(${papel}, ${tabela}, 'DELETE, TRUNCATE, TRIGGER') as tabela,
+        has_any_column_privilege(${papel}, ${tabela}, 'SELECT, INSERT, UPDATE, REFERENCES') as coluna`)
+      if (r.tabela) abertos.push(`${papel} tabela ${tabela}`)
+      if (r.coluna) abertos.push(`${papel} coluna ${tabela}`)
     }
+    const [s] = await execRows(sql`select has_sequence_privilege(${papel}, ${seq.nome}, 'USAGE, SELECT, UPDATE') as tem`)
+    if (s.tem) abertos.push(`${papel} sequência ${seq.nome}`)
   }
   assert.deepEqual(abertos, [])
 })
