@@ -1,4 +1,5 @@
-// Quem pode deixar a venda no nome de outra pessoa. admin_rede entra como admin_socio na sessão
+// Quem pode deixar a venda no nome de outra pessoa AO LANÇAR. Trocar o vendedor de venda já feita é outra
+// regra, só dos sócios (podeTrocarVendedorVenda, valor-venda.ts). admin_rede entra como admin_socio na sessão
 // (grupos-liberados.ts), então a lista cobre a persona também.
 const PAPEIS_QUE_ESCOLHEM_VENDEDOR: readonly string[] = ['admin_geral', 'admin_socio', 'aux_adm']
 
