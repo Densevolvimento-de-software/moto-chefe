@@ -168,12 +168,40 @@ test('quem não é admin e forja o vendedorId: o id é ignorado e a venda sai no
   assert.deepEqual((await vendasDaLoja(c)).map(v => v.vendedor_id), [c.vendedorId])
 })
 
-test('persona do admin_rede (grupo liberado): só escolhe quem é do grupo da loja', async () => {
-  const c = await novaConta()
-  entrarComo(c, 'admin_socio', { grupoLiberado: c.grupoId, lojaId: null })
-  assert.deepEqual(await pecas.registrarVendaPecaAction(venda(c, { vendedorId: c.deOutroGrupoId })), { ok: false, erro: NAO_ENCONTRADO })
-  assert.equal((await pecas.registrarVendaPecaAction(venda(c, { vendedorId: c.colegaId }))).ok, true)
-  assert.deepEqual((await vendasDaLoja(c)).map(v => v.vendedor_id), [c.colegaId])
+// admin_rede de OUTRA Conta: na sessão vira admin_socio (src/lib/grupos-liberados.ts); com o grupo da Conta A
+// liberado, a persona opera aquele grupo com o id dele, que é da Conta B.
+async function entrarComoAdminRede(propria: Conta, alvo: Conta, { liberado }: { liberado: boolean }) {
+  const id = await semearUsuario(db, propria, { papel: 'admin_rede', rotulo: 'rede', comConta: true, semLoja: true })
+  usuario = {
+    id, nome: 'admin_rede de teste', email: 'rede@teste.invalid', papel: 'admin_socio', papelReal: 'admin_rede',
+    lojaId: null, contaId: liberado ? alvo.contaId : propria.contaId,
+    gruposAcesso: [liberado ? alvo.grupoId : propria.grupoId], gruposAprovacao: [], gruposLiberados: [],
+    grupoLiberado: liberado ? alvo.grupoId : null, aprovaPagamentoSensivel: false,
+  }
+  grupoAtivoNoCookie = alvo.grupoId
+  return id
+}
+
+test('admin_rede de outra Conta em grupo liberado: escolhe quem é do grupo liberado e não quem é da Conta dele', async () => {
+  const a = await novaConta()
+  const b = await novaConta()
+  const redeId = await entrarComoAdminRede(b, a, { liberado: true })
+  assert.deepEqual(await pecas.registrarVendaPecaAction(venda(a, { vendedorId: b.vendedorId })), { ok: false, erro: NAO_ENCONTRADO })
+  assert.deepEqual(await pecas.registrarVendaPecaAction(venda(a, { vendedorId: a.deOutroGrupoId })), { ok: false, erro: NAO_ENCONTRADO })
+  assert.equal((await pecas.registrarVendaPecaAction(venda(a, { vendedorId: a.colegaId }))).ok, true)
+  assert.equal((await pecas.registrarVendaPecaAction(venda(a))).ok, true)
+  assert.deepEqual((await vendasDaLoja(a)).map(v => v.vendedor_id).sort(), [a.colegaId, redeId].sort())
+})
+
+test('admin_rede sem o grupo liberado: não vende peça na loja de outra Conta, nem escolhendo ninguém', async () => {
+  const a = await novaConta()
+  const b = await novaConta()
+  await entrarComoAdminRede(b, a, { liberado: false })
+  const semEscolher = await pecas.registrarVendaPecaAction(venda(a))
+  const escolhendo = await pecas.registrarVendaPecaAction(venda(a, { vendedorId: a.colegaId }))
+  assert.equal(semEscolher.ok, false)
+  assert.deepEqual(escolhendo, semEscolher)
+  assert.deepEqual(await vendasDaLoja(a), [])
 })
 
 const FINANCIAMENTO = [{ tipo: 'financiamento', valor: 500 }]
