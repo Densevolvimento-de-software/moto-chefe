@@ -1,10 +1,11 @@
 // Consulta da API de vendas de moto (#323, ADR-0021). Lê várias Contas de propósito, sem sessão: o filtro de loja
 // (lojasQueSaem, o mesmo de /lojas) e o de marca (o do Painel Fábrica) ficam dentro da consulta. As colunas saem só
 // pelo mapeamento puro em @/lib/api-leitura-vendas.
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { contas, grupos, lojas, modelos, motos, notasFiscaisSaida, usuarios, vendas } from '@/lib/db/schema'
-import { fimDoDiaBrt, inicioDoDiaBrt } from '@/lib/data-venda'
+import { inicioDoDiaBrt } from '@/lib/data-venda'
+import { addDias } from '@/lib/calendario'
 import { STATUS_FINAIS_VIVAS } from '@/lib/notagateway/status'
 import { custoMotoExpr } from '@/lib/queries/custo-moto'
 import { corExibida, marcaDoPainel, modeloExibido, valorDaMoto } from '@/lib/queries/painel-fabrica'
@@ -18,7 +19,7 @@ import {
 // microssegundo do banco faria a página seguinte repetir a última linha.
 const dataDaOrdem = sql<Date>`date_trunc('milliseconds', ${vendas.dataVenda})`
 
-// NF de saída de produção viva, com número (a lista de mortas mora em status.ts). A subconsulta devolve no máximo
+// NF de saída de produção viva, com número (a lista de final e viva mora em status.ts). A subconsulta devolve no máximo
 // uma linha, então a venda nunca se duplica mesmo que haja mais de uma nota viva (uma de homologação, por exemplo).
 const numeroDaNfViva = () => db
   .select({ numero: notasFiscaisSaida.numero })
@@ -69,7 +70,8 @@ export async function listarVendasMotoDaApi(
       inArray(lojas.id, lojasQueSaem()),
       marcaDoPainel(),
       gte(vendas.dataVenda, inicioDoDiaBrt(periodo.de)),
-      lte(vendas.dataVenda, fimDoDiaBrt(periodo.ate)),
+      // Até o último instante do dia: menor que o início do dia seguinte, sem perder microssegundo.
+      lt(vendas.dataVenda, inicioDoDiaBrt(addDias(periodo.ate, 1))),
       depoisDoCursor,
     ))
     .orderBy(asc(dataDaOrdem), asc(vendas.numero))

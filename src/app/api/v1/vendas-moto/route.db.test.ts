@@ -313,10 +313,13 @@ test('dia de Brasília nos dois limites: 27/02 às 21:30 e 23:59 entram em 27/02
   const noite = await semearVenda({ lojaId: A1, vendedorId: VENDEDORA_A, dataVenda: '2026-02-28T00:30:00.000Z' })
   const fimDoDia = await semearVenda({ lojaId: A1, vendedorId: VENDEDORA_A, dataVenda: '2026-02-28T02:59:30.000Z' })
   const inicioDoDia = await semearVenda({ lojaId: A1, vendedorId: VENDEDORA_A, dataVenda: '2026-02-28T03:00:00.000Z' })
+  // Último microssegundo do dia: 23:59:59,999500 de Brasília. Entra em 27/02 mesmo passando do milissegundo do fim.
+  const ultimoMicro = await semearVenda({ lojaId: A1, vendedorId: VENDEDORA_A, dataVenda: '2026-02-28T02:59:59.999500Z' })
   const dia27 = deste((await chamar(periodo(DIA.virada, DIA.virada))).corpo.vendas)
   const dia28 = deste((await chamar(periodo(DIA.viradaSeguinte, DIA.viradaSeguinte))).corpo.vendas)
   assert.ok(dia27.some(x => x.numero === noite.numero), '21:30 de 27/02 deveria entrar em 27/02')
   assert.ok(dia27.some(x => x.numero === fimDoDia.numero), '23:59 de 27/02 deveria entrar em 27/02')
+  assert.ok(dia27.some(x => x.numero === ultimoMicro.numero), 'o último microssegundo de 27/02 deveria entrar em 27/02')
   assert.equal(dia27.some(x => x.numero === inicioDoDia.numero), false)
   assert.ok(dia28.some(x => x.numero === inicioDoDia.numero), '00:00 de 28/02 deveria entrar em 28/02')
   assert.equal(dia28.some(x => x.numero === fimDoDia.numero), false)
