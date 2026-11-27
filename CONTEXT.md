@@ -30,6 +30,8 @@ Ponto físico de um grupo. Toda moto está em uma loja, e todo funcionário de l
 Loja que o `admin_geral` marca para a API de leitura da MotoChefe Brasil (ADR-0021; a construir,
 #317 a #326). A marcação é própria da loja e começa desligada; não vem do login do portal da
 fábrica, nem de nome, marca ou CNPJ.
+A regra do Painel Fábrica é outra: ali, loja MotoChefe é a que tem login do portal da fábrica
+(`fabrica_email`).
 _Evitar_: loja da fábrica, loja do painel
 
 **Galpão Matriz**:
