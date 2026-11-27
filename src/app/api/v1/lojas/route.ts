@@ -7,5 +7,5 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   const resposta = await comChaveDaApi(req.headers.get('authorization'), async () => ({ lojas: await listarLojasDaApi() }))
-  return NextResponse.json(resposta.corpo, { status: resposta.status })
+  return NextResponse.json(resposta.corpo, { status: resposta.status, headers: { 'Cache-Control': 'no-store' } })
 }

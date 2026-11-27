@@ -50,7 +50,7 @@ type Corpo = { lojas?: { id: string, nome: string, cidade: string, endereco: str
 const chamar = async (authorization: string | null, query = '') => {
   const headers = new Headers(authorization === null ? {} : { authorization })
   const resposta = await GET(new NextRequest(`http://localhost/api/v1/lojas${query}`, { headers }))
-  return { status: resposta.status, corpo: await resposta.json() as Corpo }
+  return { status: resposta.status, cacheControl: resposta.headers.get('cache-control'), corpo: await resposta.json() as Corpo }
 }
 const bearer = (token: string) => `Bearer ${token}`
 const minhas = <T extends { id: string }>(lojas: T[] = []) => lojas.filter(l => Object.values(LOJA).includes(l.id))
@@ -106,8 +106,9 @@ after(async () => {
 })
 
 test('chave vigente: sai só o que está marcado, com as seis colunas', async () => {
-  const { status, corpo } = await chamar(bearer(CHAVE.vigente))
+  const { status, cacheControl, corpo } = await chamar(bearer(CHAVE.vigente))
   assert.equal(status, 200)
+  assert.equal(cacheControl, 'no-store', 'resposta 200 pode ser guardada por cache')
   assert.deepEqual(minhas(corpo.lojas).map(l => l.id).sort(), [LOJA.a1, LOJA.a3, LOJA.b1].sort())
   const a1 = minhas(corpo.lojas).find(l => l.id === LOJA.a1)
   assert.ok(a1)
@@ -145,8 +146,9 @@ test('ausente, errada, revogada, vencida, trocada há 25 horas ou sem o prefixo 
     ['sem o prefixo Bearer', CHAVE.vigente],
   ]
   for (const [nome, authorization] of casos) {
-    const { status, corpo } = await chamar(authorization)
+    const { status, cacheControl, corpo } = await chamar(authorization)
     assert.equal(status, 401, nome)
+    assert.equal(cacheControl, 'no-store', nome)
     assert.deepEqual(corpo, ERRO_DE_ACESSO, nome)
   }
 })
