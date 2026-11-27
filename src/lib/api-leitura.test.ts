@@ -1,19 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CARENCIA_MS, chaveAceita, corpoDoErro, linhaDaLoja, planoDaTroca, statusDoErro, tokenDoBearer, type LojaDaApi,
+  CARENCIA_MS, chaveAceita, corpoDoErro, linhaDaLoja, planoDaTroca, statusDoErro, type LojaDaApi,
 } from './api-leitura'
 
 const AGORA = new Date('2026-11-27T12:00:00Z')
 const emMs = (ms: number) => new Date(AGORA.getTime() + ms)
-
-test('Bearer: devolve o token depois do prefixo; sem header, sem prefixo ou vazio, não devolve nada', () => {
-  assert.equal(tokenDoBearer('Bearer abc-123'), 'abc-123')
-  assert.equal(tokenDoBearer(null), null)
-  assert.equal(tokenDoBearer('abc-123'), null)
-  assert.equal(tokenDoBearer('bearer abc-123'), null)
-  assert.equal(tokenDoBearer('Bearer '), null)
-})
 
 test('chave atual (sem validade e sem revogação) é aceita', () => {
   assert.equal(chaveAceita({ validaAte: null, revogadaEm: null }, AGORA), true)

@@ -9,14 +9,6 @@ export type PlanoDaTroca = { revogar: string[]; expirar: { id: string; validaAte
 export type LojaDaApi = { id: string; nome: string; cidade: string; endereco: string; cep: string | null; ativa: boolean }
 export type CodigoErroApi = 'acesso_negado' | 'erro_interno'
 
-const PREFIXO_BEARER = 'Bearer '
-
-/** Token do `Authorization: Bearer <token>`; sem o prefixo, vazio ou ausente, não há token. */
-export function tokenDoBearer(authorization: string | null): string | null {
-  if (authorization === null || !authorization.startsWith(PREFIXO_BEARER)) return null
-  return authorization.slice(PREFIXO_BEARER.length) || null
-}
-
 /** Chave vale se não foi revogada e, quando tem validade, ela ainda não passou. */
 export function chaveAceita(chave: Pick<ChaveNoBanco, 'validaAte' | 'revogadaEm'>, agora: Date): boolean {
   return chave.revogadaEm === null && (chave.validaAte === null || chave.validaAte.getTime() > agora.getTime())
