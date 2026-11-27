@@ -13,7 +13,9 @@ export const TIPOS_LOG = [
   'certificado_aplicado', 'portal_aplicado', 'notas_enviadas_contador',
   'logo_danfe_enviada', 'preco_compra_alterado', 'grupo_movido_de_conta',
   'transferencia_grupos_alterada', 'moto_arquivada', 'moto_desarquivada', 'moto_removida',
-  'vendedor_venda_trocado',
+  'vendedor_venda_trocado', 'entrega_alterada',
+  'loja_motochefe_alterada', 'autorizacao_conta_alterada',
+  'api_chave_gerada', 'api_chave_trocada', 'api_chave_revogada',
 ] as const
 export type TipoLog = (typeof TIPOS_LOG)[number]
 
