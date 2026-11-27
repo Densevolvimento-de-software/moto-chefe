@@ -26,6 +26,12 @@ _Evitar_: bandeira (no sentido de grupo; "bandeira" do cartão é outra coisa), 
 **Loja**:
 Ponto físico de um grupo. Toda moto está em uma loja, e todo funcionário de loja pertence a uma.
 
+**Loja MotoChefe**:
+Loja que o `admin_geral` marcou para a API de leitura da MotoChefe Brasil (ADR-0021). A marcação
+é própria da loja e começa desligada; não vem do login do portal da fábrica, nem de nome, marca
+ou CNPJ.
+_Evitar_: loja da fábrica, loja do painel (o Painel Fábrica segue a regra do login do portal)
+
 **Galpão Matriz**:
 Loja do grupo Sul de Minas que funciona como estoque central de chegada; qualquer vendedor pode
 reservar ou vender moto que está nela.
@@ -33,6 +39,13 @@ _Evitar_: galpão (sozinho), que se confunde com o galpão da fábrica
 
 **Galpão da fábrica**:
 Depósito da fábrica onde a loja retira peças compradas.
+
+## Integrações
+
+**Chave de acesso da API**:
+Chave que o sistema de fora envia para ler a API de leitura (ADR-0021). Só o resumo fica
+guardado; a chave aparece uma vez, na geração, e pode ser trocada ou revogada pelo `admin_geral`.
+_Evitar_: token (é o da Nota Gateway), API key, senha da API
 
 ## Pessoas e papéis
 
