@@ -125,6 +125,7 @@ let cargoMecanico: string, cargoSocio: string, papelExtra: string
 let vendedorA2: string, vendedorB: string, vendedorC: string, vendedorD: string, pessoaComDados: string
 let f1: string, f2: string, f3: string
 let geralComVendedor: string
+let vendedorComExtraGeral: string
 let ordemMecanicoPrimeiro: string, ordemVendedorPrimeiro: string, ordemSocioPrimeiro: string, ordemVendedorDepoisSocio: string
 let motoristaComVendedor: string, motoristaExtraSocio: string, motoristaExtraVendedorFora: string, motoristaExtraGeral: string
 
@@ -183,6 +184,9 @@ before(async () => {
     { id: ordemSocioPrimeiro, papel: 'motorista', cargo: null, lojaQueSai: false, contaQueSai: true, extras: ['admin_socio', 'vendedor'] },
     { id: ordemVendedorDepoisSocio, papel: 'motorista', cargo: null, lojaQueSai: false, contaQueSai: true, extras: ['vendedor', 'admin_socio'] },
   )
+  // Vendedor de loja marcada com extra admin_geral: sai como vendedor (o principal de pessoa vale).
+  vendedorComExtraGeral = await semearPessoa(A, 'pe324a', 'Vendedor Extra Geral 324', { papel: 'vendedor', lojaId: A1, extras: ['admin_geral'] })
+  candidatos.push({ id: vendedorComExtraGeral, papel: 'vendedor', cargo: null, lojaQueSai: true, contaQueSai: true, extras: ['admin_geral'] })
   // admin_geral com extra de pessoa, em loja marcada: nunca é pessoa (decisão do Luis na #324).
   geralComVendedor = await semearPessoa(A, 'pe324a', 'Plataforma Com Extra 324', { papel: 'admin_geral', lojaId: A1, extras: ['vendedor'] })
   candidatos.push({ id: geralComVendedor, papel: 'admin_geral', cargo: null, lojaQueSai: true, contaQueSai: true, extras: ['vendedor'] })
@@ -317,6 +321,11 @@ test('dois extras em ordens diferentes: a função é a do primeiro de pessoa, e
   assert.equal(achada(ordemVendedorPrimeiro)?.funcao, 'vendedor')
   assert.deepEqual(achada(ordemSocioPrimeiro), { id: ordemSocioPrimeiro, nome: 'Ordem Sócio Primeiro 324', funcao: 'admin_socio', loja: null, ativo: true })
   assert.equal(achada(ordemVendedorDepoisSocio), undefined)
+})
+
+test('vendedor de loja marcada com extra admin_geral sai como vendedor, na loja dele', async () => {
+  const { pessoas } = await todasAsPaginas()
+  assert.deepEqual(pessoas.find(p => p.id === vendedorComExtraGeral), { id: vendedorComExtraGeral, nome: 'Vendedor Extra Geral 324', funcao: 'vendedor', loja: { id: A1, nome: 'Loja 324 A1' }, ativo: true })
 })
 
 test('admin_geral não aparece nem com extra de pessoa em loja marcada', async () => {

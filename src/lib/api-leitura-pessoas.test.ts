@@ -41,6 +41,12 @@ test('admin_geral nunca é pessoa, tenha o extra que tiver: nem pela loja que sa
   assert.equal(ehPessoaQueSai(geral), false)
 })
 
+test('vendedor com extra admin_geral sai como vendedor: o principal de pessoa vale, o extra admin_geral não tira', () => {
+  const vendedor = { papel: 'vendedor', cargo: null, papeisExtras: ['admin_geral'], lojaQueSai: true, contaQueSai: false }
+  assert.equal(ehPessoaQueSai(vendedor), true)
+  assert.equal(papelDePessoa(vendedor), 'vendedor')
+})
+
 test('papel extra de pessoa conta: motorista com extra vendedor, na loja que sai, é pessoa', () => {
   assert.equal(ehPessoaQueSai({ papel: 'motorista', cargo: null, lojaQueSai: true, contaQueSai: false, papeisExtras: ['vendedor'] }), true)
 })
