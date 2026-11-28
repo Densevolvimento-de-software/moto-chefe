@@ -4,8 +4,6 @@ import { diaValido, hojeBrt } from '@/lib/data-venda'
 import { diffDias } from '@/lib/calendario'
 import { codificarCursorObjeto, cortarPagina, decodificarCursorObjeto, TAMANHO_DA_PAGINA } from '@/lib/api-leitura-pagina'
 
-export { cortarPagina, TAMANHO_DA_PAGINA }
-
 /** O histórico da API começa em 01/2026 (spec #315). */
 export const INICIO_DO_HISTORICO = '2026-01-01'
 // Mesmo número que TETO_PERIODO_DIAS do Painel (#901), mas regra separada: este teto é o contrato da API (spec #315).
