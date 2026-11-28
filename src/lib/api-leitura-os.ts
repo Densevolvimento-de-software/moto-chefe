@@ -29,7 +29,7 @@ export type OSDaApi = {
   loja: { id: string; nome: string }
   tecnico: { id: string; nome: string } | null
   chassi: string | null; marca: string | null; modelo: string | null
-  itens: ItemDaApi[]; total: number | null
+  itens: ItemDaApi[]; total: number
 }
 
 /** Ordem da página: data de abertura até o milissegundo e id da OS (desempate). */
@@ -57,7 +57,8 @@ function osDaApi(linha: LinhaOSBanco, itens: ItemOSBanco[]): OSDaApi {
     tecnico: linha.tecnicoId === null || linha.tecnicoNome === null ? null : { id: linha.tecnicoId, nome: linha.tecnicoNome },
     ...veiculoDaOS(linha),
     itens: itens.map(itemDaApi).filter((i): i is ItemDaApi => i !== null),
-    total: linha.valorTotal,
+    // Número sempre: OS sem total gravado sai 0.
+    total: linha.valorTotal ?? 0,
   }
 }
 

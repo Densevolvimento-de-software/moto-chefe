@@ -67,11 +67,11 @@ test('técnico sai com id e nome; sem técnico sai nulo', () => {
   assert.equal(sem.tecnico, null)
 })
 
-test('total sai como está gravado; total nulo sai nulo', () => {
+test('total sai como está gravado; total nulo sai zero', () => {
   const [gravado] = montarOSDaApi([linha({ valorTotal: 350 })], [])
   assert.equal(gravado.total, 350)
   const [nulo] = montarOSDaApi([linha({ valorTotal: null })], [])
-  assert.equal(nulo.total, null)
+  assert.equal(nulo.total, 0)
 })
 
 test('serviço vira mão de obra e peça vira peça', () => {

@@ -317,7 +317,9 @@ test('OS sem item sai com lista vazia', async () => {
   const dia = '2026-03-30'
   const os = await semearOS({ lojaId: A1, abertaPor: A.abertaPorId, dataAbertura: `${dia}T15:00:00.000Z` })
   const { corpo } = await chamar(periodo(dia, dia))
-  assert.deepEqual(deste(corpo.ordens).find(o => o.id === os)?.itens, [])
+  const saida = deste(corpo.ordens).find(o => o.id === os)
+  assert.deepEqual(saida?.itens, [])
+  assert.equal(saida?.total, 0, 'OS sem total gravado sai com total zero')
 })
 
 test('período pela data de abertura em Brasília: 31/03 às 21:30 entra em 31/03 e não em 01/04; 01/04 à meia-noite entra em 01/04', async () => {
