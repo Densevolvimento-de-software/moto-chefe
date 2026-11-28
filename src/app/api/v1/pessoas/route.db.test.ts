@@ -125,6 +125,7 @@ let cargoMecanico: string, cargoSocio: string, papelExtra: string
 let vendedorA2: string, vendedorB: string, vendedorC: string, vendedorD: string, pessoaComDados: string
 let f1: string, f2: string, f3: string
 let geralComVendedor: string
+let ordemMecanicoPrimeiro: string, ordemVendedorPrimeiro: string, ordemSocioPrimeiro: string, ordemVendedorDepoisSocio: string
 let motoristaComVendedor: string, motoristaExtraSocio: string, motoristaExtraVendedorFora: string, motoristaExtraGeral: string
 
 before(async () => {
@@ -169,6 +170,18 @@ before(async () => {
     { id: motoristaExtraSocio, papel: 'motorista', cargo: null, lojaQueSai: false, contaQueSai: true, extras: ['admin_socio'] },
     { id: motoristaExtraVendedorFora, papel: 'motorista', cargo: null, lojaQueSai: false, contaQueSai: false, extras: ['vendedor'] },
     { id: motoristaExtraGeral, papel: 'motorista', cargo: null, lojaQueSai: true, contaQueSai: true, extras: ['admin_geral'] },
+  )
+  // Dois extras de pessoa em ordens diferentes: a função que sai é a do primeiro extra, na ordem do array.
+  // O sócio entra pela Conta; a loja não marcada (A2) só entra se o papel escolhido for o sócio.
+  ordemMecanicoPrimeiro = await semearPessoa(A, 'pe324a', 'Ordem Mecânico Primeiro 324', { papel: 'motorista', lojaId: A1, extras: ['mecanico', 'vendedor'] })
+  ordemVendedorPrimeiro = await semearPessoa(A, 'pe324a', 'Ordem Vendedor Primeiro 324', { papel: 'motorista', lojaId: A1, extras: ['vendedor', 'mecanico'] })
+  ordemSocioPrimeiro = await semearPessoa(A, 'pe324a', 'Ordem Sócio Primeiro 324', { papel: 'motorista', lojaId: A2, extras: ['admin_socio', 'vendedor'] })
+  ordemVendedorDepoisSocio = await semearPessoa(A, 'pe324a', 'Ordem Vendedor Depois Sócio 324', { papel: 'motorista', lojaId: A2, extras: ['vendedor', 'admin_socio'] })
+  candidatos.push(
+    { id: ordemMecanicoPrimeiro, papel: 'motorista', cargo: null, lojaQueSai: true, contaQueSai: true, extras: ['mecanico', 'vendedor'] },
+    { id: ordemVendedorPrimeiro, papel: 'motorista', cargo: null, lojaQueSai: true, contaQueSai: true, extras: ['vendedor', 'mecanico'] },
+    { id: ordemSocioPrimeiro, papel: 'motorista', cargo: null, lojaQueSai: false, contaQueSai: true, extras: ['admin_socio', 'vendedor'] },
+    { id: ordemVendedorDepoisSocio, papel: 'motorista', cargo: null, lojaQueSai: false, contaQueSai: true, extras: ['vendedor', 'admin_socio'] },
   )
   // admin_geral com extra de pessoa, em loja marcada: nunca é pessoa (decisão do Luis na #324).
   geralComVendedor = await semearPessoa(A, 'pe324a', 'Plataforma Com Extra 324', { papel: 'admin_geral', lojaId: A1, extras: ['vendedor'] })
@@ -295,6 +308,15 @@ test('papel extra: motorista com extra vendedor entra com função vendedor; só
   assert.deepEqual(achada(motoristaExtraSocio), { id: motoristaExtraSocio, nome: 'Motorista Sócio 324', funcao: 'admin_socio', loja: null, ativo: true })
   assert.equal(achada(motoristaExtraVendedorFora), undefined)
   assert.equal(achada(motoristaExtraGeral), undefined)
+})
+
+test('dois extras em ordens diferentes: a função é a do primeiro de pessoa, e sócio decide pela Conta do mesmo papel', async () => {
+  const { pessoas } = await todasAsPaginas()
+  const achada = (id: string) => pessoas.find(p => p.id === id)
+  assert.equal(achada(ordemMecanicoPrimeiro)?.funcao, 'mecanico')
+  assert.equal(achada(ordemVendedorPrimeiro)?.funcao, 'vendedor')
+  assert.deepEqual(achada(ordemSocioPrimeiro), { id: ordemSocioPrimeiro, nome: 'Ordem Sócio Primeiro 324', funcao: 'admin_socio', loja: null, ativo: true })
+  assert.equal(achada(ordemVendedorDepoisSocio), undefined)
 })
 
 test('admin_geral não aparece nem com extra de pessoa em loja marcada', async () => {
