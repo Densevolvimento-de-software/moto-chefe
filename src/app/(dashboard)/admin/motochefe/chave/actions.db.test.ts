@@ -257,6 +257,23 @@ test('troca e revogação ao mesmo tempo: no fim nenhuma chave segue valendo', a
   if (trocada.ok) assert.equal((await chamarApi(trocada.dados.chave)).status, 401, 'a chave trocada também foi revogada')
 })
 
+// Duas trocas ao mesmo tempo: a trava põe uma depois da outra. A primeira deixa a chave antiga no prazo; a segunda
+// tira o prazo dela e põe a sua atual. No fim, uma atual e uma no prazo, a antiga revogada, e as duas novas aceitas.
+test('duas trocas ao mesmo tempo: sobra uma atual e uma no prazo, e a chave antiga não volta', async () => {
+  await zerarChaves()
+  const gerada = await actions.gerarChaveAction()
+  assert.equal(gerada.ok, true)
+  if (!gerada.ok) return
+  const trocas = await Promise.all([actions.trocarChaveAction(), actions.trocarChaveAction()])
+  assert.ok(trocas.every(t => t.ok), 'as duas trocas deram certo')
+  assert.equal((await atuaisDoAdmin()).length, 1)
+  assert.equal((await naoRevogadasDoAdmin()).length, 2, 'uma atual e uma no prazo')
+  assert.equal((await chamarApi(gerada.dados.chave)).status, 401, 'a chave antiga está revogada')
+  for (const troca of trocas) {
+    if (troca.ok) assert.equal((await chamarApi(troca.dados.chave)).status, 200, 'cada chave nova passa')
+  }
+})
+
 // Duas gerações: a primeira grava uma chave atual sem terminar (transação aberta); a ação chamada depois fica presa
 // na trava dela, e quando a primeira termina, a ação recebe a frase de recarregar, pelo índice da chave atual.
 test('corrida de gerar: a segunda ação recebe a frase de recarregar, e sobra uma só chave atual', async () => {
