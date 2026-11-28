@@ -57,8 +57,7 @@ async function chamar(query: string, token: string | null = TOKEN) {
 // E: autorizada, só loja sem marca (sem empresa geral na API). F: autorizada, com loja marcada e empresa geral.
 // CNPJ sintéticos. O do grupo A vem formatado, como o cadastro grava (grupos.cnpj é texto livre); os outros só com dígitos.
 const CNPJ = { a: '32.600.000/0001-11', b: '32600000000012', c: '32600000000013', d: '32600000000014', e: '32600000000015', f: '32600000000016', h: '32.600.000/0000-16' }
-// Como a resposta devolve o CNPJ: só dígitos.
-// A empresa geral sai com o CNPJ como está no cadastro do grupo (decisão do Luis, issue 326).
+// A empresa geral sai uma linha por grupo, com o CNPJ como está no cadastro (decisão do Luis, issue 326).
 const CNPJ_SAIDA = { a: CNPJ.a, f: CNPJ.f }
 const G = {} as Record<'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'H', { contaId: string; grupoId: string; usuarioId: string }>
 const L = { a1: '', a2: '', b1: '', c1: '', d1: '', e1: '', f1: '' }
@@ -181,7 +180,7 @@ async function lancarNoGrupo(g: Grupo, o: { lojaId: string | null; categoria: st
 const deNossas = (linhas: Linha[] = []) => linhas.filter(l => l.loja?.id === L.a1 || l.cnpj === CNPJ_SAIDA.a)
 const chaveDaLinha = (l: Linha) => `${l.ano}-${String(l.mes).padStart(2, '0')}|${l.loja ? l.loja.id : `geral:${l.cnpj}`}|${l.categoria}|${l.valor}`
 
-test('chave válida: sai a despesa somada por mês, loja e categoria, com o grupo do DRE e a empresa geral por CNPJ', async () => {
+test('chave válida: sai a despesa somada por mês, loja e categoria, com o grupo do DRE e a empresa geral por grupo', async () => {
   const { status, corpo } = await chamar('?de=2026-01&ate=2026-02')
   assert.equal(status, 200)
   assert.deepEqual(deNossas(corpo.despesas).map(chaveDaLinha).sort(), [
@@ -221,7 +220,7 @@ test('despesa que já veio do banco conta uma vez, e a manual vinculada não con
   assert.deepEqual(agua.map(l => l.valor), [80])
 })
 
-test('empresa geral sai por CNPJ com loja marcada; CNPJ sem loja marcada não aparece', async () => {
+test('empresa geral sai uma linha por grupo com loja marcada; grupo sem loja marcada não aparece', async () => {
   const { corpo, texto } = await chamar('?de=2026-02&ate=2026-02')
   const geraisA = (corpo.despesas ?? []).filter(l => l.loja === null && l.cnpj === CNPJ_SAIDA.a)
   assert.deepEqual(geraisA.map(l => [l.categoria, l.valor]), [['Seguro DS326', 300]])

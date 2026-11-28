@@ -23,7 +23,7 @@ function cnpjDoCadastro(texto: string): string | null {
   return texto.trim() === '' ? null : texto
 }
 
-/** Grupos com ao menos uma loja que sai, de Conta autorizada. A empresa geral deles sai por CNPJ. */
+/** Grupos com ao menos uma loja que sai, de Conta autorizada. A empresa geral de cada um sai numa linha por grupo. */
 async function gruposQueSaem(): Promise<GrupoQueSai[]> {
   const linhas = await db
     .select({ grupoId: grupos.id, cnpj: grupos.cnpj, lojaId: lojas.id, lojaNome: lojas.nome })

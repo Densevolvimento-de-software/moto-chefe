@@ -1,5 +1,5 @@
 // GET /api/v1/despesas (#326): despesas por mês, loja e categoria (com o grupo do DRE), das lojas marcadas de Conta
-// autorizada, e a empresa geral por CNPJ com loja marcada. Sem sessão; a chave, o limite e o registro ficam na casca
+// autorizada, e a empresa geral de cada grupo com loja marcada. Sem sessão; a chave, o limite e o registro ficam na casca
 // comChaveDaApi, porque o middleware não cobre /api.
 import { NextRequest, NextResponse } from 'next/server'
 import { periodoDeMesesDaApi, periodoParaAcesso } from '@/lib/api-leitura-metas'
