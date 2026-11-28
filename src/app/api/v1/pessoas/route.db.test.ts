@@ -81,8 +81,9 @@ async function todasAsPaginas(): Promise<{ pessoas: Pessoa[]; textos: string[] }
   throw new Error('paginação sem fim')
 }
 
-type Candidato = { id: string; papel: string; cargo: { nome: string; papelBase: PapelBase } | null; lojaQueSai: boolean; contaQueSai: boolean }
+type Candidato = { id: string; papel: string; cargo: { nome: string; papelBase: string } | null; lojaQueSai: boolean; contaQueSai: boolean }
 const candidatos: Candidato[] = []
+const candidatosSemPapelDePessoa: Candidato[] = []
 
 async function semearConta(letra: string, cnpj: string, opcoes: { desativada?: boolean; grupoInativo?: boolean } = {}): Promise<Base> {
   const prefixo = `PE324${letra}`
@@ -156,6 +157,17 @@ before(async () => {
   const cargoSoc = await cargoDe(A.contaId, 'Sócio de cargo 324', 'admin_socio')
   cargoMecanico = await semearPessoa(A, 'pe324a', 'Cargo Mecânico 324', { papel: 'cargo', lojaId: A1, cargoId: cargoMec })
   cargoSocio = await semearPessoa(A, 'pe324a', 'Cargo Sócio 324', { papel: 'cargo', lojaId: A1, cargoId: cargoSoc })
+  // Papéis que nunca são pessoa, e vendedor sem loja nem Conta. Cargo com papel base admin_geral: o banco aceita, a regra recusa.
+  const motoristaA1 = await semearPessoa(A, 'pe324a', 'Motorista Sintético 324', { papel: 'motorista', lojaId: A1 })
+  const adminRedeA1 = await semearPessoa(A, 'pe324a', 'Admin Rede Sintético 324', { papel: 'admin_rede', lojaId: A1 })
+  const fabricaSemVinculo = await semearPessoa(A, 'pe324a', 'Fábrica Sintética 324', { papel: 'fabrica', lojaId: null, contaId: null })
+  const vendedorSemLoja = await semearPessoa(A, 'pe324a', 'Vendedor Sem Loja 324', { papel: 'vendedor', lojaId: null, contaId: null })
+  candidatosSemPapelDePessoa.push(
+    { id: motoristaA1, papel: 'motorista', cargo: null, lojaQueSai: true, contaQueSai: true },
+    { id: adminRedeA1, papel: 'admin_rede', cargo: null, lojaQueSai: true, contaQueSai: true },
+    { id: fabricaSemVinculo, papel: 'fabrica', cargo: null, lojaQueSai: false, contaQueSai: false },
+    { id: vendedorSemLoja, papel: 'vendedor', cargo: null, lojaQueSai: false, contaQueSai: false },
+  )
 
   // Fora: loja não marcada da mesma Conta, outra Conta, Conta desativada e grupo inativo.
   vendedorA2 = await semearPessoa(A, 'pe324a', 'Vendedora Loja Não Marcada 324', { papel: 'vendedor', lojaId: A2 })
@@ -283,8 +295,8 @@ test('papel extra não duplica a pessoa: uma linha, com a função principal', a
 test('o SQL e a regra pura dizem a mesma coisa para cada usuário candidato', async () => {
   const { pessoas } = await todasAsPaginas()
   const ids = new Set(pessoas.map(p => p.id))
-  for (const c of candidatos) {
-    const esperado = ehPessoaQueSai({ papel: c.papel, cargo: c.cargo, lojaQueSai: c.lojaQueSai, contaQueSai: c.contaQueSai })
+  for (const c of [...candidatos, ...candidatosSemPapelDePessoa]) {
+    const esperado = ehPessoaQueSai({ papel: c.papel, cargo: c.cargo && { nome: c.cargo.nome, papelBase: c.cargo.papelBase as PapelBase }, lojaQueSai: c.lojaQueSai, contaQueSai: c.contaQueSai })
     assert.equal(ids.has(c.id), esperado, `candidato ${c.papel} (cargo ${c.cargo?.papelBase ?? '-'}, conta ${c.contaQueSai})`)
   }
 })
