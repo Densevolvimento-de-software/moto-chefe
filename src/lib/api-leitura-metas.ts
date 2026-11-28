@@ -63,8 +63,8 @@ export function linhaDaMeta(l: LinhaMetaBanco): MetaDaApi {
   return { ano: l.ano, mes: l.mes, loja: { id: l.lojaId, nome: l.lojaNome }, valor: Number(l.valorMeta) }
 }
 
-/** Último dia do mês AAAA-MM, como AAAA-MM-DD (o registro de acesso guarda datas). */
-function ultimoDiaDoMes(mes: string): string {
+/** Último dia do mês AAAA-MM, como AAAA-MM-DD (o registro de acesso e a consulta de despesas usam datas). */
+export function ultimoDiaDoMes(mes: string): string {
   const ano = Number(mes.slice(0, 4))
   const m = Number(mes.slice(5, 7))
   const dia = new Date(Date.UTC(ano, m, 0)).getUTCDate()
