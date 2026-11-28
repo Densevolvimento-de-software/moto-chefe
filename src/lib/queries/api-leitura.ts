@@ -74,11 +74,14 @@ export const lojasQueSaem = () => db
   .where(and(eq(lojas.lojaMotochefe, true), eq(grupos.ativo, true), isNull(contas.desativadaEm)))
 
 /**
- * Custo só de Conta autorizada pelo admin_geral (ADR-0021). O CASE mora aqui: a consulta de vendas (#323) e a de
- * metas e despesas (#326) usam a mesma regra. Exige `contas` no FROM da consulta.
+ * Conta que o admin_geral autorizou para custo, despesa e meta (ADR-0021). É a única regra: o WHERE de metas e
+ * despesas (#326) e o CASE do custo (#323) saem daqui. Exige `contas` no FROM da consulta.
  */
+export const contaAutorizada = () => eq(contas.autorizaCustoDespesaMeta, true)
+
+/** Custo só de Conta autorizada: a consulta de vendas (#323) usa a mesma condição de contaAutorizada. */
 export const custoDaContaExpr = (custo: SQL) =>
-  sql<number | null>`CASE WHEN ${contas.autorizaCustoDespesaMeta} THEN (${custo})::float8 ELSE NULL END`
+  sql<number | null>`CASE WHEN ${contaAutorizada()} THEN (${custo})::float8 ELSE NULL END`
 
 /** Lojas que saem na API. Inativa continua aparecendo, com ativa falso. */
 export async function listarLojasDaApi(): Promise<LojaDaApi[]> {
