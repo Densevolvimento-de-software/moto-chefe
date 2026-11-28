@@ -257,6 +257,15 @@ test('troca e revogação ao mesmo tempo: no fim nenhuma chave segue valendo', a
   if (trocada.ok) assert.equal((await chamarApi(trocada.dados.chave)).status, 401, 'a chave trocada também foi revogada')
 })
 
+// Dois gerar ao mesmo tempo: a trava põe um depois do outro. O segundo vê a chave do primeiro e recebe a frase fixa.
+test('dois gerar ao mesmo tempo: um dá certo e o outro recebe a frase de que já existe chave', async () => {
+  await zerarChaves()
+  const respostas = await Promise.all([actions.gerarChaveAction(), actions.gerarChaveAction()])
+  assert.equal(respostas.filter(r => r.ok).length, 1)
+  assert.deepEqual(respostas.filter(r => !r.ok), [{ ok: false, erro: FRASE_JA_TEM_CHAVE }])
+  assert.equal((await atuaisDoAdmin()).length, 1)
+})
+
 // Duas trocas ao mesmo tempo: a trava põe uma depois da outra. A primeira deixa a chave antiga no prazo; a segunda
 // tira o prazo dela e põe a sua atual. No fim, uma atual e uma no prazo, a antiga revogada, e as duas novas aceitas.
 test('duas trocas ao mesmo tempo: sobra uma atual e uma no prazo, e a chave antiga não volta', async () => {
