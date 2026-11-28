@@ -2,18 +2,19 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   aposCursorDeDespesa, codificarCursorDeDespesas, cursorDaDespesa, lerCursorDeDespesas, linhaDaDespesa, mesDaData,
-  ordenarLinhasDespesa, somarEmpresaGeral, type LinhaDespesa,
+  ordenarLinhasDespesa, type LinhaDespesa,
 } from './api-leitura-despesas'
 
 const PERIODO = { de: '2026-01', ate: '2026-03' }
 const LOJA_A = '5f1c8a3e-2b7d-4c1e-9a0f-3d2e1b4c5a6a'
 const LOJA_B = '5f1c8a3e-2b7d-4c1e-9a0f-3d2e1b4c5a6b'
 const GRUPO = '7e2d9b1a-4c3f-4e8a-8b6d-1f0a2c3d4e5f'
+const GRUPO_OUTRO = '7e2d9b1a-4c3f-4e8a-8b6d-1f0a2c3d4e60'
 const CNPJ = '32600000000001'
 const base64 = (valor: unknown) => Buffer.from(JSON.stringify(valor)).toString('base64url')
 
 const linha = (o: Partial<LinhaDespesa> & Pick<LinhaDespesa, 'ano' | 'mes'>): LinhaDespesa => ({
-  loja: null, cnpj: CNPJ, grupoDre: 'operacional', categoria: 'Luz', valor: 10, ...o,
+  loja: null, grupoId: GRUPO, cnpj: CNPJ, grupoDre: 'operacional', categoria: 'Luz', valor: 10, ...o,
 })
 const com = (id: string, nome: string) => ({ id, nome })
 
@@ -45,7 +46,7 @@ test('ordem: dentro do mês, loja vem antes da empresa geral; lojas por id; gera
 test('cursor de loja e cursor de empresa geral voltam iguais e valem dentro do período', () => {
   const deLoja = cursorDaDespesa(linha({ ano: 2026, mes: 2, loja: com(LOJA_A, 'A'), categoria: 'Luz' }))
   const deGeral = cursorDaDespesa(linha({ ano: 2026, mes: 2, categoria: 'Luz' }))
-  assert.equal(deGeral.k, CNPJ)
+  assert.equal(deGeral.k, GRUPO)
   assert.deepEqual(lerCursorDeDespesas(codificarCursorDeDespesas(deLoja), PERIODO), { ok: true, cursor: deLoja })
   assert.deepEqual(lerCursorDeDespesas(codificarCursorDeDespesas(deGeral), PERIODO), { ok: true, cursor: deGeral })
 })
@@ -72,27 +73,26 @@ test('depois do cursor: a própria linha não conta; a linha seguinte conta; a g
 })
 
 test('a linha tem só as colunas da lista; o valor sai com duas casas', () => {
-  const l = linhaDaDespesa({ ano: 2026, mes: 2, loja: com(LOJA_A, 'Loja Sintética 326'), cnpj: CNPJ, grupoDre: 'operacional', categoria: 'Luz', valor: 1234.5678 })
+  const l = linhaDaDespesa({ ano: 2026, mes: 2, loja: com(LOJA_A, 'Loja Sintética 326'), grupoId: GRUPO, cnpj: CNPJ, grupoDre: 'operacional', categoria: 'Luz', valor: 1234.5678 })
   assert.deepEqual(l, { ano: 2026, mes: 2, loja: { id: LOJA_A, nome: 'Loja Sintética 326' }, cnpj: CNPJ, grupoDre: 'operacional', categoria: 'Luz', valor: 1234.57 })
   assert.deepEqual(Object.keys(l).sort(), ['ano', 'categoria', 'cnpj', 'grupoDre', 'loja', 'mes', 'valor'])
 })
 
 
-test('empresa geral: o cursor leva o CNPJ em dígitos como chave, não o id do grupo', () => {
+test('empresa geral: o cursor leva o id do grupo (UUID), não o CNPJ', () => {
   const cursor = cursorDaDespesa(linha({ ano: 2026, mes: 2, categoria: 'Luz' }))
-  assert.equal(cursor.k, CNPJ)
+  assert.equal(cursor.k, GRUPO)
   assert.deepEqual(lerCursorDeDespesas(codificarCursorDeDespesas(cursor), PERIODO), { ok: true, cursor })
 })
 
-test('empresa geral: um id de grupo (UUID) no lugar do CNPJ no cursor não vale', () => {
-  assert.deepEqual(lerCursorDeDespesas(base64({ a: 2026, m: 2, t: 1, k: GRUPO, c: 'Luz' }), PERIODO), { ok: false })
+test('empresa geral: um CNPJ no lugar do id do grupo no cursor não vale', () => {
+  assert.deepEqual(lerCursorDeDespesas(base64({ a: 2026, m: 2, t: 1, k: CNPJ, c: 'Luz' }), PERIODO), { ok: false })
 })
 
-test('empresa geral de grupos com o mesmo CNPJ sai somada numa linha por mês e categoria', () => {
-  const somada = somarEmpresaGeral([
-    linha({ ano: 2026, mes: 2, valor: 150 }),
-    linha({ ano: 2026, mes: 2, valor: 40 }),
-    linha({ ano: 2026, mes: 2, loja: com(LOJA_A, 'A'), valor: 7 }),
-  ])
-  assert.deepEqual(somada.map(l => [l.loja?.id ?? 'geral', l.valor]), [[LOJA_A, 7], ['geral', 190]])
+test('empresa geral: grupos com o mesmo CNPJ ficam em linhas separadas, na ordem do id do grupo', () => {
+  const dois = [
+    linha({ ano: 2026, mes: 2, grupoId: GRUPO_OUTRO, valor: 40 }),
+    linha({ ano: 2026, mes: 2, grupoId: GRUPO, valor: 150 }),
+  ]
+  assert.deepEqual(ordenarLinhasDespesa(dois).map(l => [l.grupoId, l.valor]), [[GRUPO, 150], [GRUPO_OUTRO, 40]])
 })
