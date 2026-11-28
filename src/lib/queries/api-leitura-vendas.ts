@@ -10,8 +10,9 @@ import { condicoesDeNfVivaDeProducao } from '@/lib/notagateway/nf-viva'
 import { custoMotoExpr } from '@/lib/queries/custo-moto'
 import { corExibida, marcaDoPainel, modeloExibido, valorDaMoto } from '@/lib/queries/painel-fabrica'
 import { custoDaContaExpr, lojasQueSaem } from '@/lib/queries/api-leitura'
+import { cortarPagina, TAMANHO_DA_PAGINA } from '@/lib/api-leitura-pagina'
 import {
-  codificarCursor, cortarPagina, cursorDaUltimaLinha, linhaDaVendaMoto, TAMANHO_DA_PAGINA, type Cursor,
+  codificarCursor, cursorDaUltimaLinha, linhaDaVendaMoto, type Cursor,
   type LinhaVendaMotoBanco, type Periodo, type VendaMotoDaApi,
 } from '@/lib/api-leitura-vendas'
 

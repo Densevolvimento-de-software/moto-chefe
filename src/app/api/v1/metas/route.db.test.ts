@@ -235,3 +235,22 @@ test('registro de acesso: uma linha por chamada, com o período de primeiro a ú
   assert.deepEqual(daOk, { endpoint: ENDPOINT, status: 200, chave_id: chaveId, ini: '2026-01-01', fim: '2026-03-31' })
   assert.deepEqual(daRecusada, { endpoint: ENDPOINT, status: 401, chave_id: null, ini: null, fim: null })
 })
+
+test('registro de acesso: a chamada recusada com 400 também gera uma linha, sem período', async () => {
+  const recusada = await chamar('?de=2025-12&ate=2026-03')
+  await esperarRegistros()
+  const linhas = await execRows(sql`
+    select endpoint, status, chave_id, periodo_ini, periodo_fim, linhas from api_acessos where user_agent = ${recusada.ua}`)
+  assert.deepEqual(linhas, [{ endpoint: ENDPOINT, status: 400, chave_id: chaveId, periodo_ini: null, periodo_fim: null, linhas: null }])
+})
+
+test('duas lojas no mesmo mês: a ordem é pelo id da loja, de forma estável', async () => {
+  const primeira = await semearLojaDaApi(db, A.grupoId, 'Loja Sintética MT326 ordem 1', { marcada: true })
+  const segunda = await semearLojaDaApi(db, A.grupoId, 'Loja Sintética MT326 ordem 2', { marcada: true })
+  lojaIds.push(primeira, segunda)
+  await semearMeta(primeira, 2032, 5, '100')
+  await semearMeta(segunda, 2032, 5, '200')
+  const { corpo } = await chamar('?de=2032-05&ate=2032-05')
+  const ids = (corpo.metas ?? []).map(m => m.loja.id).filter(id => id === primeira || id === segunda)
+  assert.deepEqual(ids, [primeira, segunda].sort())
+})
