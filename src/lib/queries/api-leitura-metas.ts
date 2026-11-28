@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 import { contas, grupos, lojas, metasLoja } from '@/lib/db/schema'
 import { cortarPagina, TAMANHO_DA_PAGINA } from '@/lib/api-leitura-pagina'
 import {
-  codificarCursorDeMetas, cursorDaMeta, linhaDaMeta, ordemDoMes, type CursorMeta, type MetaDaApi, type PeriodoMeses,
+  codificarCursorDeMetas, cursorDaMeta, linhaDaMeta, ordemDeAnoMes, ordemDoMes, type CursorMeta, type MetaDaApi, type PeriodoMeses,
 } from '@/lib/api-leitura-metas'
 import { contaAutorizada, lojasQueSaem } from '@/lib/queries/api-leitura'
 
@@ -16,7 +16,7 @@ export async function listarMetasDaApi(
   cursor: CursorMeta | null,
 ): Promise<{ metas: MetaDaApi[]; proximaPagina: string | null }> {
   const depoisDoCursor = cursor
-    ? sql`(${metasLoja.ano} * 100 + ${metasLoja.mes}, ${lojas.id}) > (${cursor.a * 100 + cursor.m}::int, ${cursor.l}::uuid)`
+    ? sql`(${metasLoja.ano} * 100 + ${metasLoja.mes}, ${lojas.id}) > (${ordemDeAnoMes(cursor.a, cursor.m)}::int, ${cursor.l}::uuid)`
     : undefined
   const linhas = await db
     .select({

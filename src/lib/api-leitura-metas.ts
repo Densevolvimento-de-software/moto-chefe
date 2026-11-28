@@ -18,8 +18,12 @@ export type LinhaMetaBanco = { ano: number; mes: number; lojaId: string; lojaNom
 export type MetaDaApi = { ano: number; mes: number; loja: { id: string; nome: string }; valor: number }
 
 /** Ordem de um mês como número (AAAA*100 + mês): compara períodos e vira chave do cursor. */
+export function ordemDeAnoMes(ano: number, mes: number): number {
+  return ano * 100 + mes
+}
+
 export function ordemDoMes(mes: string): number {
-  return Number(mes.slice(0, 4)) * 100 + Number(mes.slice(5, 7))
+  return ordemDeAnoMes(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)))
 }
 
 /** Quantos meses há de `de` a `ate`, contando os dois extremos. */
