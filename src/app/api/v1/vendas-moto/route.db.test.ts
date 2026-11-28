@@ -6,7 +6,8 @@ import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { NextRequest } from 'next/server'
-import { apagarContasSemeadas, semearContaBase, semearLoja, semearUsuario } from '@/test/semear-conta'
+import { apagarContasSemeadas, semearUsuario } from '@/test/semear-conta'
+import { semearChaveDaApi, semearContaDaApi, semearLojaDaApi } from '@/test/api-leitura-semear'
 import { mockAfterDaResposta } from '@/test/after-resposta'
 
 const url = process.env.TEST_DATABASE_URL
@@ -41,7 +42,6 @@ let cancelarVendaCompletaAction: typeof import('@/app/(dashboard)/vendas/actions
 
 const ENDPOINT = '/api/v1/vendas-moto'
 const DIA = { janeiro: '2026-01-25', fevereiro: '2026-02-10', virada: '2026-02-27', viradaSeguinte: '2026-02-28' }
-const HORA = 60 * 60 * 1000
 const sha = (texto: string) => createHash('sha256').update(texto).digest('hex')
 
 // Valores do cliente sintético: nenhum deles pode aparecer na resposta. O CEP é o único que sai.
@@ -67,7 +67,7 @@ const prefixos: string[] = []
 
 async function gravarChave(token: string) {
   hashes.push(sha(token))
-  await db.insert(apiChaves).values({ hash: sha(token), geradaPor: randomUUID(), validaAte: new Date(Date.now() + 365 * 24 * HORA) })
+  await semearChaveDaApi(db, token)
 }
 const CHAVE = `chave-vm323-${randomUUID()}`
 
@@ -91,22 +91,19 @@ type Conta = { contaId: string; grupoId: string; prefixo: string; vendedorId: st
 
 async function semearConta(letra: string, cnpj: string, opcoes: { autorizada?: boolean; desativada?: boolean; grupoInativo?: boolean } = {}): Promise<Conta> {
   const prefixo = `VM323${letra}`
-  const base = await semearContaBase(db, { prefixo, nome: `Conta ${prefixo} ${randomUUID()}`, cnpj })
+  const base = await semearContaDaApi(db, { prefixo, cnpj, autorizada: opcoes.autorizada, desativada: opcoes.desativada, grupoInativo: opcoes.grupoInativo })
   contaIds.push(base.contaId)
   grupoIds.push(base.grupoId)
   lojaIds.push(base.lojaId)
   prefixos.push(prefixo)
-  await db.execute(sql`update contas set autoriza_custo_despesa_meta = ${opcoes.autorizada ?? false}, desativada_em = ${opcoes.desativada ? sql`now()` : null} where id = ${base.contaId}`)
-  if (opcoes.grupoInativo) await db.execute(sql`update grupos set ativo = false where id = ${base.grupoId}`)
   const vendedorId = await semearUsuario(db, base, { papel: 'aux_adm', rotulo: `vend${letra}`, nomeDoUsuario: 'Vendedora Homônima 323', comConta: true })
   const vendedorHomonimoId = await semearUsuario(db, base, { papel: 'aux_adm', rotulo: `homo${letra}`, nomeDoUsuario: 'Vendedora Homônima 323', comConta: true })
   return { contaId: base.contaId, grupoId: base.grupoId, prefixo, vendedorId, vendedorHomonimoId }
 }
 
 async function semearLojaNaConta(c: Conta, nome: string, { marcada = false, painel = false }: { marcada?: boolean; painel?: boolean }) {
-  const id = await semearLoja(db, c.grupoId, nome)
+  const id = await semearLojaDaApi(db, c.grupoId, nome, { marcada, emailFabrica: painel ? 'portal-sintetico-323@teste.invalid' : null })
   lojaIds.push(id)
-  await db.execute(sql`update lojas set loja_motochefe = ${marcada}, fabrica_email = ${painel ? 'portal-sintetico-323@teste.invalid' : null} where id = ${id}`)
   return id
 }
 
