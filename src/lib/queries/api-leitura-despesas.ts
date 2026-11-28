@@ -68,7 +68,9 @@ export async function listarDespesasDaApi(
   cursor: CursorDespesa | null,
 ): Promise<{ despesas: LinhaDespesaDaApi[]; proximaPagina: string | null }> {
   // Dia 1 do mês inicial até o dia 1 do mês seguinte ao final, em Brasília (03:00 UTC é meia-noite de Brasília).
-  const inicio = inicioDoDiaBrt(`${periodo.de}-01`)
+  // Página seguinte: começa no mês do cursor. Os meses antes dele já saíram na página anterior; somar só o necessário.
+  const mesInicial = cursor ? `${cursor.a}-${String(cursor.m).padStart(2, '0')}` : periodo.de
+  const inicio = inicioDoDiaBrt(`${mesInicial}-01`)
   const fim = inicioDoDiaBrt(addDias(ultimoDiaDoMes(periodo.ate), 1))
   // Um grupo por vez: as consultas do DRE já mostraram que rodar tudo junto derruba o pool.
   const linhas: LinhaDespesa[] = []

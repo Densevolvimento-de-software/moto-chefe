@@ -321,3 +321,18 @@ test('fontes do banco e do caixa: só as lojas que saem entram; retirada pela de
   ].sort())
   assert.ok(!(corpo.despesas ?? []).some(l => [999, 888, 555].includes(l.valor)))
 })
+
+test('página seguinte que começa num mês: o mês anterior, já paginado, não se perde nem se repete', async () => {
+  await lancar('A', { lojaId: L.a1, categoria: 'Abr326 DS326', valor: 7, data: '2031-04-10' })
+  const primeira = await chamar('?de=2031-04&ate=2031-05')
+  assert.equal(primeira.status, 200)
+  const nossas = (primeira.corpo.despesas ?? []).filter(l => l.loja?.id === L.a1)
+  assert.equal(nossas[0].categoria, 'Abr326 DS326')
+  assert.ok(primeira.corpo.proximaPagina)
+  const segunda = await chamar(`?de=2031-04&ate=2031-05&cursor=${primeira.corpo.proximaPagina}`)
+  assert.equal(segunda.status, 200)
+  const todas = [...(primeira.corpo.despesas ?? []), ...(segunda.corpo.despesas ?? [])].filter(l => l.loja?.id === L.a1 || l.cnpj === CNPJ_SAIDA.a)
+  // 499 de loja (498 de maio, 1 de abril) e 5 da empresa geral de maio: 504, sem repetir nem perder.
+  assert.equal(todas.length, 504)
+  assert.equal(new Set(todas.map(chaveDaLinha)).size, todas.length)
+})
