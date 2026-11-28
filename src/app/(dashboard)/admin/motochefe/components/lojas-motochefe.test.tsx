@@ -472,8 +472,6 @@ test('props com o valor de antes chegam durante o envio, e a recusa devolve o in
   assert.equal(document.querySelector('[role="alert"] p')?.textContent, 'Não deu para marcar a loja. Nada mudou. Tente de novo.')
 })
 
-// Foco: o interruptor acionado não pode perder o foco durante o envio nem depois da resposta. Por isso a trava é
-// aria-disabled (o botão segue focável) e o clique e o teclado são ignorados enquanto envia.
 // Clique repetido na autorização da Conta: o mesmo que a loja já faz, agora também testado no interruptor da Conta.
 test('durante o envio da autorização da Conta, clique repetido não manda outro pedido', async () => {
   let liberar: () => void = () => {}
@@ -487,6 +485,9 @@ test('durante o envio da autorização da Conta, clique repetido não manda outr
   liberar(); await esperar()
   assert.equal(autorizar.mock.callCount(), 1, 'um pedido só')
 })
+
+// Foco: o interruptor acionado não pode perder o foco durante o envio nem depois da resposta. Por isso a trava é
+// aria-disabled (o botão segue focável) e o clique e o teclado são ignorados enquanto envia.
 
 test('durante o envio, o interruptor segue focável: sem o atributo disabled, que tira o foco de quem o aciona', async () => {
   let liberar: () => void = () => {}
