@@ -39,7 +39,6 @@ const contaIds: string[] = []
 const grupoIds: string[] = []
 const lojaIds: string[] = []
 const prefixos: string[] = []
-const pecaIds: string[] = []
 
 type OS = {
   id: string; numero: number | null; status: string; abertura: string; conclusao: string | null
@@ -211,7 +210,6 @@ test('texto de cliente, placa, descrição, diagnóstico, observações, motivo 
 
 test('nome da peça do catálogo não sai; o item sai com tipo, quantidade e valor', async () => {
   const catalogo = await linha(sql`insert into pecas_catalogo (nome, valor, conta_id) values ('PecaCatalogoSintetica325', 10, ${A.contaId}) returning id`)
-  pecaIds.push(catalogo.id)
   const dia = '2026-03-22'
   const os = await semearOS({ lojaId: A1, abertaPor: A.abertaPorId, dataAbertura: `${dia}T15:00:00.000Z` })
   await semearItem(os, { tipo: 'peca', quantidade: 1, valorUnitario: 10, pecaId: catalogo.id, descricao: 'Peça livre 325' })
@@ -261,8 +259,7 @@ test('todos os status saem como estão no banco; só a concluída tem data de co
   const { corpo } = await chamar(periodo(dia, dia))
   const saidas = new Map(deste(corpo.ordens).map(o => [o.id, o]))
   for (const [s, id] of ids) assert.equal(saidas.get(id)?.status, s)
-  assert.equal(saidas.get(ids.get('concluida')!)?.conclusao, '2026-03-25T23:00:00.000Z')
-  assert.equal(saidas.get(ids.get('aberta')!)?.conclusao, null)
+  for (const [s, id] of ids) assert.equal(saidas.get(id)?.conclusao, s === 'concluida' ? '2026-03-25T23:00:00.000Z' : null, `conclusão de ${s}`)
   assert.equal(Object.keys(saidas.get(ids.get('cancelada')!) ?? {}).includes('motivo'), false)
 })
 
