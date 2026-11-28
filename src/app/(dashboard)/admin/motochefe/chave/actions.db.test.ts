@@ -39,6 +39,7 @@ let db: typeof import('@/lib/db')['db']
 let execRows: typeof import('@/lib/db')['execRows']
 let apiChaves: typeof import('@/lib/db/schema')['apiChaves']
 let actions: Actions
+let consulta: typeof import('@/lib/queries/api-leitura')
 let GET: Rota['GET']
 let esperarRegistros: () => Promise<void>
 
@@ -54,6 +55,7 @@ before(async () => {
   ;({ db, execRows } = await import('@/lib/db'))
   ;({ apiChaves } = await import('@/lib/db/schema'))
   actions = await import('./actions')
+  consulta = await import('@/lib/queries/api-leitura')
   ;({ GET } = await import('@/app/api/v1/lojas/route'))
   base = await semearContaBase(db, { prefixo: 'API322', nome: 'Conta API322', cnpj: cnpj() })
   adminId = await semearUsuario(db, base, { papel: 'admin_geral', rotulo: `admin-322-${u()}`, semLoja: true })
@@ -219,6 +221,40 @@ test('revogada não volta a valer: uma chave nova não reabre a antiga', async (
   if (!nova.ok) return
   assert.equal((await chamarApi(nova.dados.chave)).status, 200, 'a chave nova passa')
   assert.deepEqual(await chamarApi(primeira.dados.chave), recusaAntiga, 'a revogada continua recusada, com a mesma resposta')
+})
+
+// Ordem fixa, sem depender de sorte: a troca fica aberta (com a chave antiga travada e a nova ainda não commitada)
+// enquanto a revogação chega e espera. Quando a troca termina, a revogação não pode deixar a chave nova valendo.
+test('revogação que espera uma troca em curso: a chave que a troca gravou também sai', async () => {
+  await zerarChaves()
+  assert.equal((await actions.gerarChaveAction()).ok, true)
+  let revogacao: Promise<number> | undefined
+  let novaChave = ''
+  await db.transaction(async tx => {
+    const troca = await consulta.trocarChaveAtual({ geradaPor: adminId, agora: new Date() }, tx)
+    assert.equal(troca.ok, true)
+    if (!troca.ok) return
+    novaChave = troca.chave
+    revogacao = consulta.revogarChaves(new Date())
+    await esperarBloqueio()
+  })
+  await revogacao
+  assert.equal((await naoRevogadasDoAdmin()).length, 0, 'nenhuma chave segue valendo')
+  assert.equal((await chamarApi(novaChave)).status, 401, 'a chave que a troca gravou está revogada')
+})
+
+// Troca e revogação ao mesmo tempo: a ordem entre elas não é fixa, mas em qualquer ordem nenhuma chave não revogada
+// sobra, e a chave de antes não volta.
+test('troca e revogação ao mesmo tempo: no fim nenhuma chave segue valendo', async () => {
+  await zerarChaves()
+  const gerada = await actions.gerarChaveAction()
+  assert.equal(gerada.ok, true)
+  if (!gerada.ok) return
+  assert.match(gerada.dados.chave, /^[A-Za-z0-9_-]{43}$/)
+  const [trocada] = await Promise.all([actions.trocarChaveAction(), actions.revogarChaveAction()])
+  assert.equal((await naoRevogadasDoAdmin()).length, 0)
+  assert.equal((await chamarApi(gerada.dados.chave)).status, 401, 'a chave de antes está revogada')
+  if (trocada.ok) assert.equal((await chamarApi(trocada.dados.chave)).status, 401, 'a chave trocada também foi revogada')
 })
 
 // Duas gerações: a primeira grava uma chave atual sem terminar (transação aberta); a ação chamada depois fica presa

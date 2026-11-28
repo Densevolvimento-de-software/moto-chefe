@@ -48,6 +48,7 @@ async function aplicarPlano(plano: PlanoDaTroca, agora: Date, tx: Tx) {
 export type TrocaDaChave = { chave: string; tipo: TipoLogDaTroca }
 
 async function trocarNaTransacao(tx: Tx, { geradaPor, agora }: { geradaPor: string; agora: Date }): Promise<TrocaDaChave> {
+  await travarGravacaoDaChave(tx)
   const plano = planoDaTroca(await chavesNaoRevogadas(tx).for('update'), agora)
   await aplicarPlano(plano, agora, tx)
   const chave = randomBytes(32).toString('base64url')
@@ -71,6 +72,7 @@ export async function trocarChave(opcoes: { geradaPor: string; agora: Date }, ex
 }
 
 async function revogarNaTransacao(tx: Tx, agora: Date): Promise<number> {
+  await travarGravacaoDaChave(tx)
   const abertas = await chavesNaoRevogadas(tx).for('update')
   if (abertas.length === 0) return 0
   await tx.update(apiChaves).set({ revogadaEm: agora }).where(inArray(apiChaves.id, abertas.map(c => c.id)))
@@ -84,6 +86,11 @@ export function revogarChaves(agora: Date, executor?: Tx): Promise<number> {
     : db.transaction(tx => revogarNaTransacao(tx, agora))
 }
 
+// Trava de toda gravação da chave da API: cada transação que gera, troca ou revoga espera a anterior terminar.
+// Sem ela, a revogação que chega durante uma troca não enxerga a chave que a troca acabou de gravar.
+const TRAVA_DA_CHAVE_DA_API = 4220322
+const travarGravacaoDaChave = (tx: Tx) => tx.execute(sql`select pg_advisory_xact_lock(${TRAVA_DA_CHAVE_DA_API})`)
+
 /** Chave nova, sem checar nada: quem chama já checou a pré-condição na mesma transação. */
 async function inserirNovaChave(tx: Tx, geradaPor: string, agora: Date): Promise<string> {
   const chave = randomBytes(32).toString('base64url')
@@ -95,12 +102,14 @@ export type ResultadoDaChave = { ok: true; chave: string } | { ok: false; recusa
 
 // Gerar só sem nenhuma chave não revogada. A checagem e a gravação ficam na mesma transação.
 async function gerarNaTransacao(tx: Tx, { geradaPor, agora }: { geradaPor: string; agora: Date }): Promise<ResultadoDaChave> {
+  await travarGravacaoDaChave(tx)
   if ((await chavesNaoRevogadas(tx).for('update')).length > 0) return { ok: false, recusa: 'ja_tem_chave' }
   return { ok: true, chave: await inserirNovaChave(tx, geradaPor, agora) }
 }
 
 // Trocar só com uma chave não revogada: a atual e a do prazo saem como na troca, e a nova entra.
 async function trocarAtualNaTransacao(tx: Tx, { geradaPor, agora }: { geradaPor: string; agora: Date }): Promise<ResultadoDaChave> {
+  await travarGravacaoDaChave(tx)
   const abertas = await chavesNaoRevogadas(tx).for('update')
   if (abertas.length === 0) return { ok: false, recusa: 'sem_chave' }
   await aplicarPlano(planoDaTroca(abertas, agora), agora, tx)
