@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { FRASE_CHAVE_TROCADA_AGORA, FRASE_JA_TEM_CHAVE, FRASE_SEM_CHAVE } from '@/lib/api-leitura'
-import { dataHoraBrt, horasQueFaltam, progressoDoPrazo, textoDaTroca, textoFaltam } from '@/lib/chave-da-tela'
+import { horasQueFaltam, progressoDoPrazo, textoDaTroca, textoFaltam } from '@/lib/chave-da-tela'
+import { dataEHoraBrt } from '@/lib/data-venda'
 import type { SituacaoDaChave } from '@/lib/queries/api-leitura'
 import type { ResultadoAction } from '@/lib/resultado-action'
 import { gerarChaveAction, revogarChaveAction, trocarChaveAction } from '../actions'
@@ -125,9 +126,9 @@ export function ChaveDaApi({ situacao, agora }: { situacao: SituacaoDaChave; ago
             A chave inteira aparece uma vez, na hora em que é gerada. Depois disso, ela não fica visível aqui.
           </p>
           <dl className="grid gap-3 px-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Fato rotulo="Gerada em" valor={dataHoraBrt(atual.geradaEm)} />
+            <Fato rotulo="Gerada em" valor={dataEHoraBrt(atual.geradaEm.toISOString())} />
             <Fato rotulo="Gerada por" valor={atual.geradaPor ?? 'Usuário não encontrado'} />
-            <Fato rotulo="Último uso" valor={atual.ultimoUso ? dataHoraBrt(atual.ultimoUso) : 'Ainda não foi usada'} />
+            <Fato rotulo="Último uso" valor={atual.ultimoUso ? dataEHoraBrt(atual.ultimoUso.toISOString()) : 'Ainda não foi usada'} />
             <Fato rotulo="Limite" valor={`${situacao.limitePorMinuto} chamadas por minuto`} />
           </dl>
           <div className="flex flex-wrap gap-2 px-4">
@@ -161,7 +162,7 @@ export function ChaveDaApi({ situacao, agora }: { situacao: SituacaoDaChave; ago
         <Card className="gap-3">
           <div className="flex items-center justify-between gap-3 px-4">
             <h2 className="font-semibold">Chave anterior</h2>
-            <Badge className="bg-warning/15 text-warning">Vale até {dataHoraBrt(anterior.validaAte)}</Badge>
+            <Badge className="bg-warning/15 text-warning">Vale até {dataEHoraBrt(anterior.validaAte.toISOString())}</Badge>
           </div>
           <p className="text-muted-foreground px-4 text-sm">
             Ela ainda funciona durante 24 horas depois da troca, para a integração trocar sem parar. Depois disso, só a chave atual funciona.

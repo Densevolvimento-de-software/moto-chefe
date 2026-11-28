@@ -96,8 +96,8 @@ test('chave ativa: máscara sem nenhum caractere da chave, datas de Brasília, �
   await montar(ATIVA)
   assert.ok(texto().includes('••••'), 'a máscara aparece')
   assert.equal(texto().includes('mova_api'), false, 'sem prefixo que a chave gerada não tem')
-  assert.ok(texto().includes('27/11/2026, 09:05'), 'gerada em, no horário de Brasília')
-  assert.ok(texto().includes('28/11/2026, 10:28'), 'último uso, no horário de Brasília')
+  assert.ok(texto().includes('27/11/2026 09:05'), 'gerada em, no horário de Brasília')
+  assert.ok(texto().includes('28/11/2026 10:28'), 'último uso, no horário de Brasília')
   assert.ok(texto().includes('60 chamadas por minuto'))
 })
 
@@ -115,10 +115,10 @@ test('trocar sem chave anterior: a confirmação diz só a frase da chave atual;
 
 test('trocar com chave anterior no prazo: a confirmação diz até quando ela vale e que para na hora; confirmar chama uma vez', async () => {
   const { clique } = await montar(COM_ANTERIOR)
-  assert.ok(texto().includes('Vale até 29/11/2026, 03:00'), 'a anterior mostra o fim do prazo')
+  assert.ok(texto().includes('Vale até 29/11/2026 03:00'), 'a anterior mostra o fim do prazo')
   assert.ok(texto().includes('Faltam 18 horas'))
   await clique(botao('Trocar chave'))
-  assert.ok(texto().includes('A chave anterior, que vale até 29/11/2026, 03:00, para na hora.'))
+  assert.ok(texto().includes('A chave anterior, que vale até 29/11/2026 03:00, para na hora.'))
   await clique(botaoDoDialogo('Trocar chave'))
   assert.equal(trocar.mock.callCount(), 1)
   assert.ok(texto().includes(CHAVE_TESTE), 'a chave nova aparece depois de trocar')

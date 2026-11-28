@@ -1,14 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dataHoraBrt, horasQueFaltam, progressoDoPrazo, textoDaTroca, textoFaltam } from './chave-da-tela'
+import { dataEHoraBrt } from './data-venda'
+import { horasQueFaltam, progressoDoPrazo, textoDaTroca, textoFaltam } from './chave-da-tela'
 
 const HORA = 60 * 60 * 1000
 const AGORA = new Date('2026-11-28T12:00:00Z')
 const emHoras = (h: number) => new Date(AGORA.getTime() + h * HORA)
 
-test('data e hora saem no fuso de Brasília, também perto da meia-noite', () => {
-  assert.equal(dataHoraBrt(new Date('2026-11-28T12:05:00Z')), '28/11/2026, 09:05')
-  assert.equal(dataHoraBrt(new Date('2026-11-29T02:30:00Z')), '28/11/2026, 23:30')
+test('data e hora da tela saem no fuso de Brasília, também perto da meia-noite (helper do app)', () => {
+  assert.equal(dataEHoraBrt('2026-11-28T12:05:00Z'), '28/11/2026 09:05')
+  assert.equal(dataEHoraBrt('2026-11-29T02:30:00Z'), '28/11/2026 23:30')
 })
 
 test('horas que faltam arredondam para cima e nunca saem negativas', () => {
@@ -36,6 +37,6 @@ test('texto da troca sem chave no prazo: só a frase da chave atual', () => {
 test('texto da troca com chave no prazo: a frase da anterior diz até quando vale e que para na hora', () => {
   assert.equal(
     textoDaTroca(emHoras(24)),
-    'Gerar uma chave nova. A chave atual vale por mais 24 horas. A chave anterior, que vale até 29/11/2026, 09:00, para na hora.',
+    'Gerar uma chave nova. A chave atual vale por mais 24 horas. A chave anterior, que vale até 29/11/2026 09:00, para na hora.',
   )
 })
