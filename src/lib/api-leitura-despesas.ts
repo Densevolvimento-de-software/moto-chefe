@@ -3,6 +3,7 @@
 import { mesBrt } from '@/lib/data-venda'
 import { codificarCursorObjeto, decodificarCursorObjeto } from '@/lib/api-leitura-pagina'
 import { ordemDeAnoMes, type PeriodoMeses } from '@/lib/api-leitura-metas'
+import { ehUuid } from '@/lib/uuid'
 
 /** Linha como a consulta a monta. O id do grupo fica aqui só para a ordem e o cursor: a resposta não o devolve. */
 export type LinhaDespesa = {
@@ -21,7 +22,6 @@ export type LinhaDespesaDaApi = Omit<LinhaDespesa, 'grupoId'>
 export type CursorDespesa = { a: number; m: number; t: 0 | 1; k: string; c: string }
 
 const MES_RE = /^\d{4}-(0[1-9]|1[0-2])$/
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Mês de competência como AAAA-MM. Timestamp usa o calendário de Brasília; data pura já é o dia. */
 export function mesDaData(data: Date | string): string {
@@ -73,7 +73,7 @@ export function lerCursorDeDespesas(
   const { a, m, t, k, c } = valor
   if (typeof a !== 'number' || !Number.isSafeInteger(a) || typeof m !== 'number' || !Number.isSafeInteger(m)) return { ok: false }
   if (t !== 0 && t !== 1) return { ok: false }
-  if (typeof k !== 'string' || !UUID_RE.test(k)) return { ok: false }
+  if (typeof k !== 'string' || !ehUuid(k)) return { ok: false }
   if (typeof c !== 'string' || c.length === 0) return { ok: false }
   const mes = `${a}-${String(m).padStart(2, '0')}`
   if (!MES_RE.test(mes) || mes < periodo.de || mes > periodo.ate) return { ok: false }
