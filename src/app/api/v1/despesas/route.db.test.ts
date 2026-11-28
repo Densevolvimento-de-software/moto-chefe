@@ -309,21 +309,26 @@ test('fontes do banco e do caixa: só as lojas que saem entram; retirada pela de
            (${G.A.grupoId}, 'conta-ds326', 'Banco DS326', ${`tx-ds326-ret-${randomUUID()}`}, '2033-07-12T12:00:00Z', 555, 'Banco ret DS326', ${L.a1})`)
   await db.execute(sql`update despesas_open_finance set descricao = 'Retirada DS326 julho' where categoria = 'Banco ret DS326'`)
   await db.insert(lancamentosCaixa).values([
-    { lojaId: L.a1, usuarioId: G.A.usuarioId, tipo: 'saida', categoria: 'Caixa A1 DS326', valor: '44', data: '2033-07-11' },
+    { lojaId: L.a1, usuarioId: G.A.usuarioId, tipo: 'saida', categoria: 'Aluguel Caixa DS326', valor: '22', data: '2033-07-11' },
     { lojaId: L.a2, usuarioId: G.A.usuarioId, tipo: 'saida', categoria: 'Caixa A2 DS326', valor: '888', data: '2033-07-11' },
   ])
   const { status, corpo } = await chamar('?de=2033-07&ate=2033-07')
   assert.equal(status, 200)
   const ours = (corpo.despesas ?? []).filter(l => l.loja?.id === L.a1 || l.loja?.id === L.a2 || l.cnpj === CNPJ_SAIDA.a)
-  assert.deepEqual(ours.map(chaveDaLinha).sort(), [
+  // Ordem exata, sem sort: o somarDespesas põe as categorias do maior valor para o menor (Banco 33 antes de Aluguel 22),
+  // e a ordem por nome (Aluguel antes de Banco) é a da página: sem a ordenação, o teste falha.
+  assert.deepEqual(ours.map(chaveDaLinha), [
+    `2033-07|${L.a1}|Aluguel Caixa DS326|22`,
     `2033-07|${L.a1}|Banco A1 DS326|33`,
-    `2033-07|${L.a1}|Caixa A1 DS326|44`,
-  ].sort())
+  ])
   assert.ok(!(corpo.despesas ?? []).some(l => [999, 888, 555].includes(l.valor)))
 })
 
 test('página seguinte que começa num mês: o mês anterior, já paginado, não se perde nem se repete', async () => {
   await lancar('A', { lojaId: L.a1, categoria: 'Abr326 DS326', valor: 7, data: '2031-04-10' })
+  // Lançamento de banco em maio: o cálculo lê o banco primeiro, então maio entra antes de abril sem a ordenação.
+  await db.execute(sql`insert into despesas_open_finance (grupo_id, conta_id, banco, transacao_id, data, valor, categoria, loja_id)
+    values (${G.A.grupoId}, 'conta-ds326', 'Banco DS326', ${`tx-ds326-mai-${randomUUID()}`}, '2031-05-02T12:00:00Z', 1, 'Banco Mai326 DS326', ${L.a1})`)
   const primeira = await chamar('?de=2031-04&ate=2031-05')
   assert.equal(primeira.status, 200)
   const nossas = (primeira.corpo.despesas ?? []).filter(l => l.loja?.id === L.a1)
@@ -332,7 +337,7 @@ test('página seguinte que começa num mês: o mês anterior, já paginado, não
   const segunda = await chamar(`?de=2031-04&ate=2031-05&cursor=${primeira.corpo.proximaPagina}`)
   assert.equal(segunda.status, 200)
   const todas = [...(primeira.corpo.despesas ?? []), ...(segunda.corpo.despesas ?? [])].filter(l => l.loja?.id === L.a1 || l.cnpj === CNPJ_SAIDA.a)
-  // 499 de loja (498 de maio, 1 de abril) e 5 da empresa geral de maio: 504, sem repetir nem perder.
-  assert.equal(todas.length, 504)
+  // 500 de loja (498 de maio da carga, 1 do banco de maio, 1 de abril) e 5 da empresa geral de maio: 505, sem repetir nem perder.
+  assert.equal(todas.length, 505)
   assert.equal(new Set(todas.map(chaveDaLinha)).size, todas.length)
 })
