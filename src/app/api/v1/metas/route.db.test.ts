@@ -235,3 +235,11 @@ test('registro de acesso: uma linha por chamada, com o período de primeiro a ú
   assert.deepEqual(daOk, { endpoint: ENDPOINT, status: 200, chave_id: chaveId, ini: '2026-01-01', fim: '2026-03-31' })
   assert.deepEqual(daRecusada, { endpoint: ENDPOINT, status: 401, chave_id: null, ini: null, fim: null })
 })
+
+test('registro de acesso: a chamada recusada com 400 também gera uma linha, sem período', async () => {
+  const recusada = await chamar('?de=2025-12&ate=2026-03')
+  await esperarRegistros()
+  const linhas = await execRows(sql`
+    select endpoint, status, chave_id, periodo_ini, periodo_fim, linhas from api_acessos where user_agent = ${recusada.ua}`)
+  assert.deepEqual(linhas, [{ endpoint: ENDPOINT, status: 400, chave_id: chaveId, periodo_ini: null, periodo_fim: null, linhas: null }])
+})
