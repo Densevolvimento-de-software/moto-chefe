@@ -17,7 +17,7 @@ export const papelEfetivoSql = sql<string>`(case when ${usuarios.papel} = 'cargo
  * Papel de pessoa em SQL, espelho de papelDePessoa: o principal efetivo se for de pessoa; senão o primeiro extra que for.
  * Nulo se nenhum é de pessoa. Exige `cargos` e `usuarios` no FROM.
  */
-export const papelDePessoaSql = sql<string | null>`(case when (${papelEfetivoSql})::text = any(${sql.param([...PAPEIS_DE_PESSOA])}::text[])
+export const papelDePessoaSql = sql<string | null>`(case when (${papelEfetivoSql})::text = 'admin_geral' then null when (${papelEfetivoSql})::text = any(${sql.param([...PAPEIS_DE_PESSOA])}::text[])
   then (${papelEfetivoSql})::text
   else (select t.e::text from unnest(${usuarios.papeisExtras}) with ordinality as t(e, ord)
     where t.e::text = any(${sql.param([...PAPEIS_DE_PESSOA])}::text[]) order by t.ord limit 1) end)`
@@ -27,6 +27,7 @@ export const papelDePessoaSql = sql<string | null>`(case when (${papelEfetivoSql
  * da lista de vendedor, papelExtraEm). Sócio entra pela Conta; os outros pela loja.
  */
 export const pessoaQueSaiSql = () => and(
+  sql`${papelEfetivoSql} <> 'admin_geral'`,
   or(inArray(papelEfetivoSql, [...PAPEIS_DE_PESSOA]), papelExtraEm(PAPEIS_DE_PESSOA)),
   or(
     and(sql`${papelDePessoaSql} = 'admin_socio'`, inArray(usuarios.contaId, contasQueSaem())),

@@ -124,6 +124,7 @@ let vendedorAtivo: string, mecanicoSaiu: string, auxiliar: string, socioA: strin
 let cargoMecanico: string, cargoSocio: string, papelExtra: string
 let vendedorA2: string, vendedorB: string, vendedorC: string, vendedorD: string, pessoaComDados: string
 let f1: string, f2: string, f3: string
+let geralComVendedor: string
 let motoristaComVendedor: string, motoristaExtraSocio: string, motoristaExtraVendedorFora: string, motoristaExtraGeral: string
 
 before(async () => {
@@ -169,6 +170,9 @@ before(async () => {
     { id: motoristaExtraVendedorFora, papel: 'motorista', cargo: null, lojaQueSai: false, contaQueSai: false, extras: ['vendedor'] },
     { id: motoristaExtraGeral, papel: 'motorista', cargo: null, lojaQueSai: true, contaQueSai: true, extras: ['admin_geral'] },
   )
+  // admin_geral com extra de pessoa, em loja marcada: nunca é pessoa (decisão do Luis na #324).
+  geralComVendedor = await semearPessoa(A, 'pe324a', 'Plataforma Com Extra 324', { papel: 'admin_geral', lojaId: A1, extras: ['vendedor'] })
+  candidatos.push({ id: geralComVendedor, papel: 'admin_geral', cargo: null, lojaQueSai: true, contaQueSai: true, extras: ['vendedor'] })
   // Papéis que nunca são pessoa, e vendedor sem loja nem Conta. Cargo com papel base admin_geral: o banco aceita, a regra recusa.
   const motoristaA1 = await semearPessoa(A, 'pe324a', 'Motorista Sintético 324', { papel: 'motorista', lojaId: A1 })
   const adminRedeA1 = await semearPessoa(A, 'pe324a', 'Admin Rede Sintético 324', { papel: 'admin_rede', lojaId: A1 })
@@ -291,6 +295,11 @@ test('papel extra: motorista com extra vendedor entra com função vendedor; só
   assert.deepEqual(achada(motoristaExtraSocio), { id: motoristaExtraSocio, nome: 'Motorista Sócio 324', funcao: 'admin_socio', loja: null, ativo: true })
   assert.equal(achada(motoristaExtraVendedorFora), undefined)
   assert.equal(achada(motoristaExtraGeral), undefined)
+})
+
+test('admin_geral não aparece nem com extra de pessoa em loja marcada', async () => {
+  const { pessoas } = await todasAsPaginas()
+  assert.equal(pessoas.some(p => p.id === geralComVendedor), false)
 })
 
 test('admin_geral sem loja nem Conta não aparece', async () => {

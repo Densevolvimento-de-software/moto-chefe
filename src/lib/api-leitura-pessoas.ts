@@ -39,6 +39,8 @@ export function papelEfetivo(u: Pick<UsuarioParaRegra, 'papel' | 'cargo'>): stri
  */
 export function papelDePessoa(u: Pick<UsuarioParaRegra, 'papel' | 'cargo' | 'papeisExtras'>): string | null {
   const principal = papelEfetivo(u)
+  // admin_geral nunca é pessoa, com o extra que tiver (decisão do Luis na #324).
+  if (principal === 'admin_geral') return null
   if (ehPapelDePessoa(principal)) return principal
   return u.papeisExtras.find(ehPapelDePessoa) ?? null
 }

@@ -35,6 +35,12 @@ test('cargo vale o papel base do cargo: mecânico entra pela loja; sócio de car
   assert.equal(ehPessoaQueSai({ papel: 'cargo', cargo: socio, lojaQueSai: false, contaQueSai: true, ...SEM_EXTRA }), true)
 })
 
+test('admin_geral nunca é pessoa, tenha o extra que tiver: nem pela loja que sai, nem pela Conta que sai', () => {
+  const geral = { papel: 'admin_geral', cargo: null, papeisExtras: ['vendedor', 'aux_adm'], lojaQueSai: true, contaQueSai: true }
+  assert.equal(papelDePessoa(geral), null)
+  assert.equal(ehPessoaQueSai(geral), false)
+})
+
 test('papel extra de pessoa conta: motorista com extra vendedor, na loja que sai, é pessoa', () => {
   assert.equal(ehPessoaQueSai({ papel: 'motorista', cargo: null, lojaQueSai: true, contaQueSai: false, papeisExtras: ['vendedor'] }), true)
 })
