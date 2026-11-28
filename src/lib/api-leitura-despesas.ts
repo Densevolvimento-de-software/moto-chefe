@@ -2,7 +2,7 @@
 // empresa geral do grupo), uma categoria e o total. Lançamento individual não sai.
 import { mesBrt } from '@/lib/data-venda'
 import { codificarCursorObjeto, decodificarCursorObjeto } from '@/lib/api-leitura-pagina'
-import type { PeriodoMeses } from '@/lib/api-leitura-metas'
+import { ordemDeAnoMes, type PeriodoMeses } from '@/lib/api-leitura-metas'
 
 /** Linha como a consulta a monta. O grupo fica só para desempatar a ordem: a resposta não o devolve. */
 export type LinhaDespesa = {
@@ -30,7 +30,7 @@ export function mesDaData(data: Date | string): string {
 type ChaveDaDespesa = { ordem: number; t: 0 | 1; k: string; c: string }
 
 function chaveDaLinha(l: LinhaDespesa): ChaveDaDespesa {
-  const ordem = l.ano * 100 + l.mes
+  const ordem = ordemDeAnoMes(l.ano, l.mes)
   return l.loja
     ? { ordem, t: 0, k: l.loja.id, c: l.categoria }
     : { ordem, t: 1, k: l.grupoId, c: l.categoria }
@@ -82,7 +82,7 @@ export function lerCursorDeDespesas(
 /** Vale para a página seguinte: a linha vem depois da chave do cursor. */
 export function aposCursorDeDespesa(l: LinhaDespesa, cursor: CursorDespesa): boolean {
   const chave = chaveDaLinha(l)
-  return compararChaves(chave, { ordem: cursor.a * 100 + cursor.m, t: cursor.t, k: cursor.k, c: cursor.c }) > 0
+  return compararChaves(chave, { ordem: ordemDeAnoMes(cursor.a, cursor.m), t: cursor.t, k: cursor.k, c: cursor.c }) > 0
 }
 
 /** Só estas colunas saem; o valor com duas casas. */
