@@ -4,13 +4,14 @@ import { randomBytes } from 'node:crypto'
 import { after } from 'next/server'
 import { and, eq, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { apiAcessos, apiChaves, apiLimite, contas, grupos, lojas } from '@/lib/db/schema'
+import { apiAcessos, apiChaves, apiLimite, contas, grupos, lojas, usuarios } from '@/lib/db/schema'
 import { sha256 } from '@/lib/assinatura/hash'
 import { origemDaRequisicao } from '@/lib/log-acoes'
 import { iguaisEmTempoConstante, tokenDoBearer } from '@/lib/tempo-constante'
 import {
-  chaveAceita, janelaDoMinuto, linhaDaLoja, linhaDoAcesso, passouDoLimite, planoDaTroca, respostaDeErro, respostaDeLimite,
-  type ErroDoMiolo, type LinhaDoAcesso, type LojaDaApi, type PlanoDaTroca, type RespostaDaApi, type ResultadoDoMiolo,
+  chaveAceita, janelaDoMinuto, LIMITE_POR_MINUTO, linhaDaLoja, linhaDoAcesso, passouDoLimite, planoDaTroca, respostaDeErro,
+  respostaDeLimite, type ErroDoMiolo, type LinhaDoAcesso, type LojaDaApi, type PlanoDaTroca, type RespostaDaApi,
+  type ResultadoDoMiolo,
 } from '@/lib/api-leitura'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -44,22 +45,97 @@ async function aplicarPlano(plano: PlanoDaTroca, agora: Date, tx: Tx) {
   }
 }
 
-async function trocarNaTransacao(tx: Tx, { geradaPor, agora }: { geradaPor: string; agora: Date }): Promise<string> {
-  const plano = planoDaTroca(await chavesNaoRevogadas(tx).for('update'), agora)
-  await aplicarPlano(plano, agora, tx)
+async function revogarNaTransacao(tx: Tx, agora: Date): Promise<number> {
+  await travarGravacaoDaChave(tx)
+  const abertas = await chavesNaoRevogadas(tx).for('update')
+  if (abertas.length === 0) return 0
+  await tx.update(apiChaves).set({ revogadaEm: agora }).where(inArray(apiChaves.id, abertas.map(c => c.id)))
+  return abertas.length
+}
+
+/** Revoga toda chave que ainda não foi revogada: a atual e a do prazo. Devolve quantas saíram; zero não muda nada. */
+export function revogarChaves(agora: Date, executor?: Tx): Promise<number> {
+  return executor
+    ? revogarNaTransacao(executor, agora)
+    : db.transaction(tx => revogarNaTransacao(tx, agora))
+}
+
+// Trava de toda gravação da chave da API: cada transação que gera, troca ou revoga espera a anterior terminar.
+// Sem ela, a revogação que chega durante uma troca não enxerga a chave que a troca acabou de gravar.
+const TRAVA_DA_CHAVE_DA_API = 4220322
+const travarGravacaoDaChave = (tx: Tx) => tx.execute(sql`select pg_advisory_xact_lock(${TRAVA_DA_CHAVE_DA_API})`)
+
+/** Chave nova, sem checar nada: quem chama já checou a pré-condição na mesma transação. */
+async function inserirNovaChave(tx: Tx, geradaPor: string, agora: Date): Promise<string> {
   const chave = randomBytes(32).toString('base64url')
   await tx.insert(apiChaves).values({ hash: sha256(chave), geradaPor, geradaEm: agora })
   return chave
 }
 
-/**
- * Gera uma chave nova e devolve o texto dela uma única vez: no banco fica só o hash. A atual vira carência
- * de 24h e a que já estava em carência sai na hora (ver planoDaTroca). Quem chama informa quem gerou.
- */
-export function trocarChave(opcoes: { geradaPor: string; agora: Date }, executor?: Tx): Promise<string> {
+export type ResultadoDaChave = { ok: true; chave: string } | { ok: false; recusa: 'ja_tem_chave' | 'sem_chave' }
+
+// Gerar só sem nenhuma chave não revogada. A checagem e a gravação ficam na mesma transação.
+async function gerarNaTransacao(tx: Tx, { geradaPor, agora }: { geradaPor: string; agora: Date }): Promise<ResultadoDaChave> {
+  await travarGravacaoDaChave(tx)
+  if ((await chavesNaoRevogadas(tx).for('update')).length > 0) return { ok: false, recusa: 'ja_tem_chave' }
+  return { ok: true, chave: await inserirNovaChave(tx, geradaPor, agora) }
+}
+
+// Trocar só com uma chave não revogada: a atual e a do prazo saem como na troca, e a nova entra.
+async function trocarAtualNaTransacao(tx: Tx, { geradaPor, agora }: { geradaPor: string; agora: Date }): Promise<ResultadoDaChave> {
+  await travarGravacaoDaChave(tx)
+  const abertas = await chavesNaoRevogadas(tx).for('update')
+  if (abertas.length === 0) return { ok: false, recusa: 'sem_chave' }
+  await aplicarPlano(planoDaTroca(abertas, agora), agora, tx)
+  return { ok: true, chave: await inserirNovaChave(tx, geradaPor, agora) }
+}
+
+export function gerarChave(opcoes: { geradaPor: string; agora: Date }, executor?: Tx): Promise<ResultadoDaChave> {
   return executor
-    ? trocarNaTransacao(executor, opcoes)
-    : db.transaction(tx => trocarNaTransacao(tx, opcoes))
+    ? gerarNaTransacao(executor, opcoes)
+    : db.transaction(tx => gerarNaTransacao(tx, opcoes))
+}
+
+export function trocarChaveAtual(opcoes: { geradaPor: string; agora: Date }, executor?: Tx): Promise<ResultadoDaChave> {
+  return executor
+    ? trocarAtualNaTransacao(executor, opcoes)
+    : db.transaction(tx => trocarAtualNaTransacao(tx, opcoes))
+}
+
+export type SituacaoDaChave = {
+  atual: { geradaEm: Date; geradaPor: string | null; ultimoUso: Date | null } | null
+  anterior: { validaAte: Date } | null
+  limitePorMinuto: number
+}
+
+/**
+ * O que a tela mostra da chave: a atual e a que ainda está no prazo, com a lista fechada de campos (sem hash, sem id).
+ * Quem gerou sai pelo nome; usuário que não existe mais sai nulo.
+ */
+export async function lerSituacaoDaChave(agora: Date, executor: Executor = db): Promise<SituacaoDaChave> {
+  const abertas = await executor
+    .select({
+      id: apiChaves.id, geradaEm: apiChaves.geradaEm, geradaPor: usuarios.nome, validaAte: apiChaves.validaAte,
+    })
+    .from(apiChaves)
+    .leftJoin(usuarios, eq(usuarios.id, apiChaves.geradaPor))
+    .where(isNull(apiChaves.revogadaEm))
+  const atual = abertas.find(c => c.validaAte === null) ?? null
+  const anterior = abertas.find(c => c.validaAte !== null && c.validaAte.getTime() > agora.getTime()) ?? null
+  return {
+    atual: atual && { geradaEm: atual.geradaEm, geradaPor: atual.geradaPor, ultimoUso: await ultimoUsoDaChave(atual.id, executor) },
+    anterior: anterior && { validaAte: anterior.validaAte! },
+    limitePorMinuto: LIMITE_POR_MINUTO,
+  }
+}
+
+async function ultimoUsoDaChave(chaveId: string, executor: Executor): Promise<Date | null> {
+  const [linha] = await executor
+    // mapWith: o driver devolve timestamptz como texto cru; a coluna converte para Date como em qualquer select.
+    .select({ ultimo: sql<Date | null>`max(${apiAcessos.criadoEm})`.mapWith(apiAcessos.criadoEm) })
+    .from(apiAcessos)
+    .where(eq(apiAcessos.chaveId, chaveId))
+  return linha?.ultimo ?? null
 }
 
 /**
