@@ -121,10 +121,19 @@ async function semearItem(osId: string, o: { tipo: string; quantidade: number; v
 }
 
 // Muitas OS no mesmo instante: a ordem só se decide pelo id, e o corte de página cai no meio do empate.
-async function semear501NoMesmoInstante(lojaId: string, abertaPor: string, dataAbertura: string) {
+async function semear501NoMesmoInstante(lojaId: string, abertaPor: string, dataAbertura: string, quantidade = 501) {
   await db.execute(sql`insert into ordens_servico (loja_id, aberta_por, descricao, status, data_abertura)
     select ${lojaId}, ${abertaPor}, 'Em massa sintética 325', 'concluida', ${dataAbertura}::timestamptz
-    from generate_series(1, 501)`)
+    from generate_series(1, ${quantidade})`)
+}
+
+// Dá a cada OS da massa dois ou três itens (conforme o id), para a página ter OS com vários itens.
+async function semearItensNasOS(lojaId: string, dataAbertura: string) {
+  await db.execute(sql`insert into os_itens (os_id, tipo, descricao, quantidade, valor_unitario)
+    select o.id, 'servico', 'Item em massa 325', 1, 10
+    from ordens_servico o cross join generate_series(1, 3) g(n)
+    where o.loja_id = ${lojaId} and o.data_abertura = ${dataAbertura}::timestamptz and o.descricao = 'Em massa sintética 325'
+      and g.n <= 2 + (abs(hashtext(o.id::text)) % 2)`)
 }
 
 let A: Conta, B: Conta, C: Conta, D: Conta
@@ -416,6 +425,35 @@ test('registro de acesso: período e quantidade de OS devolvidas quando deu cert
   const [registroRecusada] = await execRows(sql`select status, periodo_ini from api_acessos where user_agent = ${recusada.ua}`)
   assert.equal(registroRecusada.status, 400)
   assert.equal(registroRecusada.periodo_ini, null)
+})
+
+test('500 OS com itens no período: cada OS sai uma vez, com 2 ou 3 itens, e a página não tem próxima', async () => {
+  const dia = '2026-05-04'
+  const instante = `${dia}T12:00:00.000Z`
+  await semear501NoMesmoInstante(A1, A.abertaPorId, instante, 500)
+  await semearItensNasOS(A1, instante)
+  const { status, corpo } = await chamar(periodo(dia, dia))
+  assert.equal(status, 200)
+  const ours = deste(corpo.ordens)
+  assert.equal(ours.length, 500)
+  assert.equal(new Set(ours.map(o => o.id)).size, 500)
+  assert.equal(corpo.proximaPagina, null)
+  const tamanhos = ours.map(o => o.itens.length)
+  assert.equal(tamanhos.every(n => n === 2 || n === 3), true, 'cada OS da massa tem 2 ou 3 itens')
+  assert.equal(tamanhos.includes(3), true)
+})
+
+test('501 OS com itens: 500 na primeira página com cursor e a 501ª na segunda, cada OS uma vez', async () => {
+  const dia = '2026-05-05'
+  const instante = `${dia}T12:00:00.000Z`
+  await semear501NoMesmoInstante(A1, A.abertaPorId, instante, 501)
+  await semearItensNasOS(A1, instante)
+  const paginas = await percorrer(periodo(dia, dia))
+  assert.equal(paginas[0].ordens?.length, 500)
+  assert.ok(paginas[0].proximaPagina, 'a primeira página deveria apontar para a próxima')
+  const ours = paginas.flatMap(p => deste(p.ordens))
+  assert.equal(ours.length, 501)
+  assert.equal(new Set(ours.map(o => o.id)).size, 501)
 })
 
 // Lê todas as páginas do período, na ordem que a API devolve, até não haver próxima.
