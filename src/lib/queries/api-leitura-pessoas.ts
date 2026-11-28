@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { cargos, lojas, usuarios } from '@/lib/db/schema'
 import { contasQueSaem, lojasQueSaem } from '@/lib/queries/api-leitura'
 import { cortarPagina, TAMANHO_DA_PAGINA } from '@/lib/api-leitura-pagina'
+import { papelExtraEm } from '@/lib/usuarios-do-grupo'
 import {
   codificarCursorDePessoas, linhaDaPessoa, PAPEIS_DE_PESSOA, type LinhaPessoaBanco, type PessoaDaApi,
 } from '@/lib/api-leitura-pessoas'
@@ -13,14 +14,23 @@ import {
 export const papelEfetivoSql = sql<string>`(case when ${usuarios.papel} = 'cargo' then ${cargos.papelBase} else ${usuarios.papel} end)`
 
 /**
- * "É pessoa que sai" em SQL, espelho de ehPessoaQueSai. Sócio entra pela Conta (tem loja que sai); os outros pela loja.
- * O teste de banco confere os dois com os mesmos usuários.
+ * Papel de pessoa em SQL, espelho de papelDePessoa: o principal efetivo se for de pessoa; senão o primeiro extra que for.
+ * Nulo se nenhum é de pessoa. Exige `cargos` e `usuarios` no FROM.
+ */
+export const papelDePessoaSql = sql<string | null>`(case when (${papelEfetivoSql})::text = any(${sql.param([...PAPEIS_DE_PESSOA])}::text[])
+  then (${papelEfetivoSql})::text
+  else (select t.e::text from unnest(${usuarios.papeisExtras}) with ordinality as t(e, ord)
+    where t.e::text = any(${sql.param([...PAPEIS_DE_PESSOA])}::text[]) order by t.ord limit 1) end)`
+
+/**
+ * "É pessoa que sai" em SQL, espelho de ehPessoaQueSai. Entra quem tem papel de pessoa (principal ou extra; a mesma regra
+ * da lista de vendedor, papelExtraEm). Sócio entra pela Conta; os outros pela loja.
  */
 export const pessoaQueSaiSql = () => and(
-  inArray(papelEfetivoSql, [...PAPEIS_DE_PESSOA]),
+  or(inArray(papelEfetivoSql, [...PAPEIS_DE_PESSOA]), papelExtraEm(PAPEIS_DE_PESSOA)),
   or(
-    and(sql`${papelEfetivoSql} = 'admin_socio'`, inArray(usuarios.contaId, contasQueSaem())),
-    and(sql`${papelEfetivoSql} <> 'admin_socio'`, inArray(usuarios.lojaId, lojasQueSaem())),
+    and(sql`${papelDePessoaSql} = 'admin_socio'`, inArray(usuarios.contaId, contasQueSaem())),
+    and(sql`${papelDePessoaSql} <> 'admin_socio'`, inArray(usuarios.lojaId, lojasQueSaem())),
   ),
 )
 
@@ -37,10 +47,11 @@ export async function listarPessoasDaApi(
       nome: usuarios.nome,
       papel: usuarios.papel,
       ativo: usuarios.ativo,
+      papeisExtras: usuarios.papeisExtras,
       cargoNome: cargos.nome,
       cargoPapelBase: cargos.papelBase,
-      lojaId: sql<string | null>`(case when ${papelEfetivoSql} = 'admin_socio' then null else ${lojas.id} end)`,
-      lojaNome: sql<string | null>`(case when ${papelEfetivoSql} = 'admin_socio' then null else ${lojas.nome} end)`,
+      lojaId: sql<string | null>`(case when ${papelDePessoaSql} = 'admin_socio' then null else ${lojas.id} end)`,
+      lojaNome: sql<string | null>`(case when ${papelDePessoaSql} = 'admin_socio' then null else ${lojas.nome} end)`,
     })
     .from(usuarios)
     .leftJoin(lojas, eq(usuarios.lojaId, lojas.id))

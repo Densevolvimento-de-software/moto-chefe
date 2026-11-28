@@ -5,18 +5,20 @@ import { usuarioComCargo, type CargoDoUsuario } from '@/lib/usuario-com-cargo'
 import { codificarCursorObjeto, decodificarCursorObjeto } from '@/lib/api-leitura-pagina'
 import { ehUuid } from '@/lib/uuid'
 
-/** Papéis efetivos que contam como pessoa (padrão do Maestro, #324; sócio entra pela decisão do Luis). admin_geral fica de fora. */
+/** Papéis que contam como pessoa, no principal ou em papeis_extras (decisão do Luis na #324). admin_geral fica de fora. */
 export const PAPEIS_DE_PESSOA = ['vendedor', 'aux_adm', 'mecanico', 'admin_socio'] as const
 
 /**
  * `lojaQueSai`: a loja do usuário está entre as que saem (marcada, grupo ativo, Conta não desativada).
- * `contaQueSai`: a Conta do usuário tem ao menos uma loja que sai. Só o sócio usa esta flag: ele não tem loja de origem
- * obrigatória, então entra pela Conta (padrão do Maestro, opção (a) da #324).
+ * `contaQueSai`: a Conta do usuário tem ao menos uma loja que sai. Só o sócio usa esta flag: ele entra pela Conta.
  */
-export type UsuarioParaRegra = { papel: string; cargo: CargoDoUsuario | null; lojaQueSai: boolean; contaQueSai: boolean }
+export type UsuarioParaRegra = {
+  papel: string; cargo: CargoDoUsuario | null; papeisExtras: readonly string[]
+  lojaQueSai: boolean; contaQueSai: boolean
+}
 
 export type LinhaPessoaBanco = {
-  id: string; nome: string; papel: string; ativo: boolean
+  id: string; nome: string; papel: string; ativo: boolean; papeisExtras: readonly string[]
   cargoNome: string | null; cargoPapelBase: CargoDoUsuario['papelBase'] | null
   lojaId: string | null; lojaNome: string | null
 }
@@ -24,20 +26,33 @@ export type LinhaPessoaBanco = {
 /** Só estes campos saem (spec #315: sem e-mail, documento, telefone nem folha). `loja` é nulo para o sócio. */
 export type PessoaDaApi = { id: string; nome: string; funcao: string; loja: { id: string; nome: string } | null; ativo: boolean }
 
+const ehPapelDePessoa = (papel: string): boolean => (PAPEIS_DE_PESSOA as readonly string[]).includes(papel)
+
 /** Papel efetivo: cargo vale o papel base do cargo (mesma regra de usuarioComCargo). */
 export function papelEfetivo(u: Pick<UsuarioParaRegra, 'papel' | 'cargo'>): string {
   return usuarioComCargo({ papel: u.papel }, u.cargo).papel
 }
 
+/**
+ * O papel pelo qual a pessoa entra e que aparece em `funcao`: o principal efetivo, se for um dos de pessoa; senão o
+ * primeiro extra que for. Nulo se nenhum deles é de pessoa.
+ */
+export function papelDePessoa(u: Pick<UsuarioParaRegra, 'papel' | 'cargo' | 'papeisExtras'>): string | null {
+  const principal = papelEfetivo(u)
+  if (ehPapelDePessoa(principal)) return principal
+  return u.papeisExtras.find(ehPapelDePessoa) ?? null
+}
+
 export function ehPessoaQueSai(u: UsuarioParaRegra): boolean {
-  const papel = papelEfetivo(u)
-  if (!(PAPEIS_DE_PESSOA as readonly string[]).includes(papel)) return false
+  const papel = papelDePessoa(u)
+  if (papel === null) return false
   return papel === 'admin_socio' ? u.contaQueSai : u.lojaQueSai
 }
 
 export function linhaDaPessoa(l: LinhaPessoaBanco): PessoaDaApi {
   const cargo = l.cargoNome !== null && l.cargoPapelBase !== null ? { nome: l.cargoNome, papelBase: l.cargoPapelBase } : null
-  const funcao = papelEfetivo({ papel: l.papel, cargo })
+  // Linha só vem da consulta, que já filtrou pela regra: quando não há papel de pessoa, o efetivo é só o fallback.
+  const funcao = papelDePessoa({ papel: l.papel, cargo, papeisExtras: l.papeisExtras }) ?? papelEfetivo({ papel: l.papel, cargo })
   const loja = funcao !== 'admin_socio' && l.lojaId !== null && l.lojaNome !== null ? { id: l.lojaId, nome: l.lojaNome } : null
   return { id: l.id, nome: l.nome, funcao, loja, ativo: l.ativo }
 }

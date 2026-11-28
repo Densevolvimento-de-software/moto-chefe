@@ -81,7 +81,7 @@ async function todasAsPaginas(): Promise<{ pessoas: Pessoa[]; textos: string[] }
   throw new Error('paginação sem fim')
 }
 
-type Candidato = { id: string; papel: string; cargo: { nome: string; papelBase: string } | null; lojaQueSai: boolean; contaQueSai: boolean }
+type Candidato = { id: string; papel: string; cargo: { nome: string; papelBase: string } | null; lojaQueSai: boolean; contaQueSai: boolean; extras?: string[] }
 const candidatos: Candidato[] = []
 const candidatosSemPapelDePessoa: Candidato[] = []
 
@@ -124,6 +124,7 @@ let vendedorAtivo: string, mecanicoSaiu: string, auxiliar: string, socioA: strin
 let cargoMecanico: string, cargoSocio: string, papelExtra: string
 let vendedorA2: string, vendedorB: string, vendedorC: string, vendedorD: string, pessoaComDados: string
 let f1: string, f2: string, f3: string
+let motoristaComVendedor: string, motoristaExtraSocio: string, motoristaExtraVendedorFora: string, motoristaExtraGeral: string
 
 before(async () => {
   ;({ esperarRegistros } = await mockAfterDaResposta())
@@ -157,6 +158,17 @@ before(async () => {
   const cargoSoc = await cargoDe(A.contaId, 'Sócio de cargo 324', 'admin_socio')
   cargoMecanico = await semearPessoa(A, 'pe324a', 'Cargo Mecânico 324', { papel: 'cargo', lojaId: A1, cargoId: cargoMec })
   cargoSocio = await semearPessoa(A, 'pe324a', 'Cargo Sócio 324', { papel: 'cargo', lojaId: A1, cargoId: cargoSoc })
+  // Papel extra: entra se for de pessoa; sócio extra segue a regra do sócio (pela Conta); extra fora da regra não entra.
+  motoristaComVendedor = await semearPessoa(A, 'pe324a', 'Motorista Vendedor 324', { papel: 'motorista', lojaId: A1, extras: ['vendedor'] })
+  motoristaExtraSocio = await semearPessoa(A, 'pe324a', 'Motorista Sócio 324', { papel: 'motorista', lojaId: A2, extras: ['admin_socio'] })
+  motoristaExtraVendedorFora = await semearPessoa(B, 'pe324b', 'Motorista Vendedor Fora 324', { papel: 'motorista', lojaId: B2, extras: ['vendedor'] })
+  motoristaExtraGeral = await semearPessoa(A, 'pe324a', 'Motorista Geral 324', { papel: 'motorista', lojaId: A1, extras: ['admin_geral'] })
+  candidatos.push(
+    { id: motoristaComVendedor, papel: 'motorista', cargo: null, lojaQueSai: true, contaQueSai: true, extras: ['vendedor'] },
+    { id: motoristaExtraSocio, papel: 'motorista', cargo: null, lojaQueSai: false, contaQueSai: true, extras: ['admin_socio'] },
+    { id: motoristaExtraVendedorFora, papel: 'motorista', cargo: null, lojaQueSai: false, contaQueSai: false, extras: ['vendedor'] },
+    { id: motoristaExtraGeral, papel: 'motorista', cargo: null, lojaQueSai: true, contaQueSai: true, extras: ['admin_geral'] },
+  )
   // Papéis que nunca são pessoa, e vendedor sem loja nem Conta. Cargo com papel base admin_geral: o banco aceita, a regra recusa.
   const motoristaA1 = await semearPessoa(A, 'pe324a', 'Motorista Sintético 324', { papel: 'motorista', lojaId: A1 })
   const adminRedeA1 = await semearPessoa(A, 'pe324a', 'Admin Rede Sintético 324', { papel: 'admin_rede', lojaId: A1 })
@@ -272,6 +284,15 @@ test('sócio de Conta desativada e de grupo inativo fica de fora; sócio que sai
   assert.equal(pessoas.find(p => p.id === socioInativo)?.ativo, false)
 })
 
+test('papel extra: motorista com extra vendedor entra com função vendedor; sócio extra entra pela Conta, com loja nula; extra de fora não entra', async () => {
+  const { pessoas } = await todasAsPaginas()
+  const achada = (id: string) => pessoas.find(p => p.id === id)
+  assert.equal(achada(motoristaComVendedor)?.funcao, 'vendedor')
+  assert.deepEqual(achada(motoristaExtraSocio), { id: motoristaExtraSocio, nome: 'Motorista Sócio 324', funcao: 'admin_socio', loja: null, ativo: true })
+  assert.equal(achada(motoristaExtraVendedorFora), undefined)
+  assert.equal(achada(motoristaExtraGeral), undefined)
+})
+
 test('admin_geral sem loja nem Conta não aparece', async () => {
   const { pessoas } = await todasAsPaginas()
   assert.equal(pessoas.some(p => p.id === adminGeralSemLoja), false)
@@ -296,7 +317,7 @@ test('o SQL e a regra pura dizem a mesma coisa para cada usuário candidato', as
   const { pessoas } = await todasAsPaginas()
   const ids = new Set(pessoas.map(p => p.id))
   for (const c of [...candidatos, ...candidatosSemPapelDePessoa]) {
-    const esperado = ehPessoaQueSai({ papel: c.papel, cargo: c.cargo && { nome: c.cargo.nome, papelBase: c.cargo.papelBase as PapelBase }, lojaQueSai: c.lojaQueSai, contaQueSai: c.contaQueSai })
+    const esperado = ehPessoaQueSai({ papel: c.papel, cargo: c.cargo && { nome: c.cargo.nome, papelBase: c.cargo.papelBase as PapelBase }, papeisExtras: c.extras ?? [], lojaQueSai: c.lojaQueSai, contaQueSai: c.contaQueSai })
     assert.equal(ids.has(c.id), esperado, `candidato ${c.papel} (cargo ${c.cargo?.papelBase ?? '-'}, conta ${c.contaQueSai})`)
   }
 })

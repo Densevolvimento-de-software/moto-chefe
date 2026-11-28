@@ -23,6 +23,9 @@ export const usuarioDoGrupo = (grupoId: string) => and(
 export const usuarioDoEscopo = ({ contaId, grupoLiberado }: { contaId: string; grupoLiberado: string | null }): SQL =>
   grupoLiberado ? usuarioDoGrupo(grupoLiberado)! : usuarioOuLojaDaConta(contaId)
 
+/** Papel extra conta como o principal na lista do grupo: o usuário tem algum desses papéis em papeis_extras. */
+export const papelExtraEm = (papeis: readonly string[]) => sql`${usuarios.papeisExtras} && ${sql.param([...papeis])}::text[]`
+
 export async function listarUsuariosDoGrupo(
   grupoId: string,
   filtro: { papeis?: readonly Papel[] } = {},
@@ -31,7 +34,7 @@ export async function listarUsuariosDoGrupo(
   // Papel extra conta como o principal; senão o filtro do dashboard esconde as vendas
   // de quem vende sem ter 'vendedor' como papel principal.
   const doPapel = filtro.papeis
-    ? or(inArray(usuarios.papel, [...filtro.papeis]), sql`${usuarios.papeisExtras} && ${sql.param([...filtro.papeis])}::text[]`)
+    ? or(inArray(usuarios.papel, [...filtro.papeis]), papelExtraEm(filtro.papeis))
     : undefined
   return exec
     .select({ id: usuarios.id, nome: usuarios.nome, lojaId: usuarios.lojaId })
