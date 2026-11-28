@@ -54,7 +54,10 @@ async function chamar(query: string, token: string | null = TOKEN) {
 
 // Contas da semente. A: autorizada, loja A1 marcada, A2 sem marca. B: não autorizada. C: desativada. D: grupo inativo.
 // E: autorizada, só loja sem marca (sem empresa geral na API). F: autorizada, com loja marcada e empresa geral.
-const CNPJ = { a: '32600000000011', b: '32600000000012', c: '32600000000013', d: '32600000000014', e: '32600000000015', f: '32600000000016' }
+// CNPJ sintéticos. O do grupo A vem formatado, como o cadastro grava (grupos.cnpj é texto livre); os outros só com dígitos.
+const CNPJ = { a: '32.600.000/0001-11', b: '32600000000012', c: '32600000000013', d: '32600000000014', e: '32600000000015', f: '32600000000016' }
+// Como a resposta devolve o CNPJ: só dígitos.
+const CNPJ_SAIDA = { a: '32600000000011', f: '32600000000016' }
 const G = {} as Record<'A' | 'B' | 'C' | 'D' | 'E' | 'F', { contaId: string; grupoId: string; usuarioId: string }>
 const L = { a1: '', a2: '', b1: '', c1: '', d1: '', e1: '', f1: '' }
 let idLancadoNoBanco = ''
@@ -150,7 +153,7 @@ after(async () => {
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
 })
 
-const deNossas = (linhas: Linha[] = []) => linhas.filter(l => l.loja?.id === L.a1 || l.cnpj === CNPJ.a)
+const deNossas = (linhas: Linha[] = []) => linhas.filter(l => l.loja?.id === L.a1 || l.cnpj === CNPJ_SAIDA.a)
 const chaveDaLinha = (l: Linha) => `${l.ano}-${String(l.mes).padStart(2, '0')}|${l.loja ? l.loja.id : `geral:${l.cnpj}`}|${l.categoria}|${l.valor}`
 
 test('chave válida: sai a despesa somada por mês, loja e categoria, com o grupo do DRE e a empresa geral por CNPJ', async () => {
@@ -161,7 +164,7 @@ test('chave válida: sai a despesa somada por mês, loja e categoria, com o grup
     `2026-02|${L.a1}|Aluguel DS326|1000`,
     `2026-02|${L.a1}|Luz DS326|90.25`,
     `2026-02|${L.a1}|Água DS326|80`,
-    `2026-02|geral:${CNPJ.a}|Seguro DS326|300`,
+    `2026-02|geral:${CNPJ_SAIDA.a}|Seguro DS326|300`,
   ].sort())
   const luz = deNossas(corpo.despesas).find(l => l.categoria === 'Luz DS326' && l.mes === 2)
   assert.equal(luz?.grupoDre, 'ocupacao')
@@ -195,10 +198,10 @@ test('despesa que já veio do banco conta uma vez, e a manual vinculada não con
 
 test('empresa geral sai por CNPJ com loja marcada; CNPJ sem loja marcada não aparece', async () => {
   const { corpo, texto } = await chamar('?de=2026-02&ate=2026-02')
-  const geraisA = (corpo.despesas ?? []).filter(l => l.loja === null && l.cnpj === CNPJ.a)
+  const geraisA = (corpo.despesas ?? []).filter(l => l.loja === null && l.cnpj === CNPJ_SAIDA.a)
   assert.deepEqual(geraisA.map(l => [l.categoria, l.valor]), [['Seguro DS326', 300]])
   assert.ok(!texto.includes(CNPJ.e))
-  const geraisF = (corpo.despesas ?? []).filter(l => l.loja === null && l.cnpj === CNPJ.f)
+  const geraisF = (corpo.despesas ?? []).filter(l => l.loja === null && l.cnpj === CNPJ_SAIDA.f)
   assert.deepEqual(geraisF.map(l => [l.categoria, l.valor]), [['Seguro DS326', 150]])
 })
 
