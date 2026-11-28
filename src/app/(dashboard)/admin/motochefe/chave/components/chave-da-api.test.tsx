@@ -146,6 +146,39 @@ test('revogar tira da tela a chave que acabou de aparecer: ela não vale mais', 
   assert.equal(texto().includes(CHAVE_TESTE), false, 'a chave revogada sai da tela')
 })
 
+test('enquanto gera, clique repetido em Gerar não manda outro pedido', async () => {
+  let liberar: () => void = () => {}
+  resposta = () => new Promise<Resposta>(r => { liberar = () => r({ ok: true, dados: { chave: CHAVE_TESTE } }) })
+  const { clique, esperar } = await montar(SEM_CHAVE)
+  await clique(botao('Gerar chave'))
+  await clique(botao('Gerando chave'))
+  await clique(botao('Gerando chave'))
+  liberar(); await esperar()
+  assert.equal(gerar.mock.callCount(), 1, 'um pedido só')
+})
+
+// Clique no fundo do diálogo: o gesto que, sem a trava, fecharia a confirmação.
+const clicarFora = async (el: Element | null | undefined) => {
+  const { act } = await import('react')
+  await act(async () => {
+    el?.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }))
+    el?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  })
+}
+
+test('enquanto revoga, clicar fora do diálogo não o fecha', async () => {
+  let liberar: () => void = () => {}
+  resposta = () => new Promise<Resposta>(r => { liberar = () => r({ ok: true }) })
+  const { clique, esperar } = await montar(ATIVA)
+  await clique(botao('Revogar chave'))
+  await clique(botaoDoDialogo('Revogar chave'))
+  await clicarFora(document.body)
+  await esperar()
+  assert.ok(dialogo(), 'clique fora não fecha durante o envio')
+  liberar(); await esperar()
+  assert.equal(revogar.mock.callCount(), 1)
+})
+
 test('enquanto envia, os botões ficam travados e Escape não fecha a confirmação', async () => {
   let liberar: () => void = () => {}
   resposta = () => new Promise<Resposta>(r => { liberar = () => r({ ok: true }) })
