@@ -13,7 +13,9 @@ const MINUTO_MS = 60 * 1000
 export type ChaveNoBanco = { id: string; hash: string; validaAte: Date | null; revogadaEm: Date | null }
 export type PlanoDaTroca = { revogar: string[]; expirar: { id: string; validaAte: Date }[] }
 export type LojaDaApi = { id: string; nome: string; cidade: string; endereco: string; cep: string | null; ativa: boolean }
-export type CodigoErroApi = 'acesso_negado' | 'erro_interno' | 'limite_atingido'
+export type CodigoErroApi = 'acesso_negado' | 'erro_interno' | 'limite_atingido' | 'parametro_invalido'
+/** Erro que o miolo pode devolver: só código da lista fixa, nunca texto livre nem eco do pedido. */
+export type ErroDoMiolo = { erro: Extract<CodigoErroApi, 'parametro_invalido'> }
 
 /** Chave vale se não foi revogada e, quando tem validade, ela ainda não passou. */
 export function chaveAceita(chave: Pick<ChaveNoBanco, 'validaAte' | 'revogadaEm'>, agora: Date): boolean {
@@ -58,6 +60,7 @@ const ERROS: Record<CodigoErroApi, { status: number; frase: string }> = {
   acesso_negado: { status: 401, frase: 'Acesso negado.' },
   erro_interno: { status: 500, frase: 'Erro interno.' },
   limite_atingido: { status: 429, frase: 'Limite de chamadas atingido.' },
+  parametro_invalido: { status: 400, frase: 'Parâmetro inválido.' },
 }
 
 export function corpoDoErro(codigo: CodigoErroApi): { codigo: CodigoErroApi; frase: string } {
