@@ -84,6 +84,41 @@ export function revogarChaves(agora: Date, executor?: Tx): Promise<number> {
     : db.transaction(tx => revogarNaTransacao(tx, agora))
 }
 
+/** Chave nova, sem checar nada: quem chama já checou a pré-condição na mesma transação. */
+async function inserirNovaChave(tx: Tx, geradaPor: string, agora: Date): Promise<string> {
+  const chave = randomBytes(32).toString('base64url')
+  await tx.insert(apiChaves).values({ hash: sha256(chave), geradaPor, geradaEm: agora })
+  return chave
+}
+
+export type ResultadoDaChave = { ok: true; chave: string } | { ok: false; recusa: 'ja_tem_chave' | 'sem_chave' }
+
+// Gerar só sem nenhuma chave não revogada. A checagem e a gravação ficam na mesma transação.
+async function gerarNaTransacao(tx: Tx, { geradaPor, agora }: { geradaPor: string; agora: Date }): Promise<ResultadoDaChave> {
+  if ((await chavesNaoRevogadas(tx).for('update')).length > 0) return { ok: false, recusa: 'ja_tem_chave' }
+  return { ok: true, chave: await inserirNovaChave(tx, geradaPor, agora) }
+}
+
+// Trocar só com uma chave não revogada: a atual e a do prazo saem como na troca, e a nova entra.
+async function trocarAtualNaTransacao(tx: Tx, { geradaPor, agora }: { geradaPor: string; agora: Date }): Promise<ResultadoDaChave> {
+  const abertas = await chavesNaoRevogadas(tx).for('update')
+  if (abertas.length === 0) return { ok: false, recusa: 'sem_chave' }
+  await aplicarPlano(planoDaTroca(abertas, agora), agora, tx)
+  return { ok: true, chave: await inserirNovaChave(tx, geradaPor, agora) }
+}
+
+export function gerarChave(opcoes: { geradaPor: string; agora: Date }, executor?: Tx): Promise<ResultadoDaChave> {
+  return executor
+    ? gerarNaTransacao(executor, opcoes)
+    : db.transaction(tx => gerarNaTransacao(tx, opcoes))
+}
+
+export function trocarChaveAtual(opcoes: { geradaPor: string; agora: Date }, executor?: Tx): Promise<ResultadoDaChave> {
+  return executor
+    ? trocarAtualNaTransacao(executor, opcoes)
+    : db.transaction(tx => trocarAtualNaTransacao(tx, opcoes))
+}
+
 export type SituacaoDaChave = {
   atual: { geradaEm: Date; geradaPor: string | null; ultimoUso: Date | null } | null
   anterior: { validaAte: Date } | null

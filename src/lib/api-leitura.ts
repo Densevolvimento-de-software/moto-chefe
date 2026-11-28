@@ -117,6 +117,10 @@ export function linhaDoAcesso(entrada: EntradaDoAcesso): LinhaDoAcesso {
 export const FRASE_ERRO_GERAR = 'Não deu para gerar a chave. Nenhuma chave foi criada e a atual continua valendo. Tente de novo.'
 export const FRASE_CHAVE_TROCADA_AGORA = 'A chave acabou de ser trocada. Recarregue a página.'
 export const FRASE_ERRO_REVOGAR = 'Não deu para revogar a chave. Nada mudou. Tente de novo.'
+// Gerar só sem chave ativa; trocar só com uma. A frase de recarregar serve quando a tela ficou velha.
+export const FRASE_JA_TEM_CHAVE = 'Já existe uma chave. Recarregue a página.'
+export const FRASE_SEM_CHAVE = 'Não há chave para trocar. Recarregue a página.'
+export const FRASE_ERRO_TROCAR = 'Não deu para trocar a chave. Nada mudou. Tente de novo.'
 
 export type TipoLogDaTroca = 'api_chave_gerada' | 'api_chave_trocada'
 
@@ -129,9 +133,9 @@ export function ehCorridaDeTroca(erro: unknown): boolean {
   return causa?.code === '23505' && causa?.constraint === INDICE_CHAVE_ATUAL
 }
 
-/** Frase da tela quando gerar ou trocar falha: a corrida tem a sua; qualquer outro erro, a genérica. */
-export function fraseDoErroDeGerar(erro: unknown): string {
-  return ehCorridaDeTroca(erro) ? FRASE_CHAVE_TROCADA_AGORA : FRASE_ERRO_GERAR
+/** Frase da tela quando gerar ou trocar falha: a corrida tem a sua; qualquer outro erro, a genérica da ação. */
+export function fraseDoErroDaChave(erro: unknown, fraseGenerica: string): string {
+  return ehCorridaDeTroca(erro) ? FRASE_CHAVE_TROCADA_AGORA : fraseGenerica
 }
 
 /** Com chave atual antes da troca, o log diz "trocada"; sem ela, é a primeira "gerada". */

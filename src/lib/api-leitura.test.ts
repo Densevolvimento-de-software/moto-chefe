@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   CARENCIA_MS, LIMITE_POR_MINUTO, chaveAceita, corpoDoErro, ehCorridaDeTroca,
-  fraseDoErroDeGerar, janelaDoMinuto, linhaDaLoja, linhaDoAcesso, passouDoLimite, planoDaTroca, respostaDeLimite,
+  fraseDoErroDaChave, FRASE_ERRO_GERAR, janelaDoMinuto, linhaDaLoja, linhaDoAcesso, passouDoLimite, planoDaTroca, respostaDeLimite,
   statusDoErro, tipoDoLogDaTroca, type LojaDaApi,
 } from './api-leitura'
 
@@ -124,10 +124,10 @@ test('corrida de troca: só o 23505 do índice da chave atual conta; outro índi
   assert.equal(ehCorridaDeTroca(new Error('falhou')), false)
 })
 
-test('erro ao gerar: a corrida recebe a frase de recarregar; qualquer outro erro recebe a frase genérica, sem a mensagem do erro', () => {
-  assert.equal(fraseDoErroDeGerar(erroDeIndice('api_chaves_atual_key')), 'A chave acabou de ser trocada. Recarregue a página.')
+test('erro ao gerar ou trocar: a corrida recebe a frase de recarregar; qualquer outro erro recebe a frase da ação, sem a mensagem do erro', () => {
+  assert.equal(fraseDoErroDaChave(erroDeIndice('api_chaves_atual_key'), FRASE_ERRO_GERAR), 'A chave acabou de ser trocada. Recarregue a página.')
   const outro = Object.assign(new Error('insert into api_chaves (hash) values ($1)'), { cause: { code: '42P01' } })
-  const frase = fraseDoErroDeGerar(outro)
+  const frase = fraseDoErroDaChave(outro, FRASE_ERRO_GERAR)
   assert.equal(frase, 'Não deu para gerar a chave. Nenhuma chave foi criada e a atual continua valendo. Tente de novo.')
   assert.equal(frase.includes('insert'), false)
 })
