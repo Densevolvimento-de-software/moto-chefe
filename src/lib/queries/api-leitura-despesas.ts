@@ -10,7 +10,7 @@ import { chaveCategoria, somarDespesas, soDigitos } from '@/lib/despesas-operaci
 import { cortarPagina } from '@/lib/api-leitura-pagina'
 import {
   aposCursorDeDespesa, codificarCursorDeDespesas, cursorDaDespesa, linhaDaDespesa, mesDaData, ordenarLinhasDespesa,
-  type CursorDespesa, type LinhaDespesa, type LinhaDespesaDaApi,
+  somarEmpresaGeral, type CursorDespesa, type LinhaDespesa, type LinhaDespesaDaApi,
 } from '@/lib/api-leitura-despesas'
 import type { PeriodoMeses } from '@/lib/api-leitura-metas'
 import { contaAutorizada, lojasQueSaem } from '@/lib/queries/api-leitura'
@@ -50,11 +50,11 @@ async function linhasDoGrupo(grupo: GrupoQueSai, inicio: Date, fim: Date): Promi
     const grupoDre = (categoria: string) => grupoDoDre.get(chaveCategoria(categoria)) ?? 'outras'
     const cnpj = soDigitos(grupo.cnpj)
     const porLoja = [...total.porCategoriaPorLoja].flatMap(([lojaId, categorias]) => categorias.map(c => ({
-      ano, mes: numeroDoMes, loja: { id: lojaId, nome: nomeDaLoja.get(lojaId) ?? '' }, grupoId: grupo.grupoId, cnpj,
+      ano, mes: numeroDoMes, loja: { id: lojaId, nome: nomeDaLoja.get(lojaId) ?? '' }, cnpj,
       grupoDre: grupoDre(c.categoria), categoria: c.categoria, valor: c.total,
     })))
     const geral = total.porCategoriaGeral.map(c => ({
-      ano, mes: numeroDoMes, loja: null, grupoId: grupo.grupoId, cnpj,
+      ano, mes: numeroDoMes, loja: null, cnpj,
       grupoDre: grupoDre(c.categoria), categoria: c.categoria, valor: c.total,
     }))
     return [...porLoja, ...geral]
@@ -76,7 +76,7 @@ export async function listarDespesasDaApi(
   for (const grupo of await gruposQueSaem()) {
     linhas.push(...await linhasDoGrupo(grupo, inicio, fim))
   }
-  const ordenadas = ordenarLinhasDespesa(linhas)
+  const ordenadas = ordenarLinhasDespesa(somarEmpresaGeral(linhas))
   const depois = cursor ? ordenadas.filter(l => aposCursorDeDespesa(l, cursor)) : ordenadas
   const pagina = cortarPagina(depois)
   const ultima = pagina.linhas[pagina.linhas.length - 1]

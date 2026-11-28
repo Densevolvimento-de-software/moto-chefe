@@ -1,26 +1,23 @@
 // Regra da API de despesas (#326, ADR-0021). Puro: sem banco e sem relógio. Uma linha é um mês, uma loja (ou a
-// empresa geral do grupo), uma categoria e o total. Lançamento individual não sai.
+// empresa geral, por CNPJ), uma categoria e o total. Lançamento individual não sai.
 import { mesBrt } from '@/lib/data-venda'
 import { codificarCursorObjeto, decodificarCursorObjeto } from '@/lib/api-leitura-pagina'
 import { ordemDeAnoMes, type PeriodoMeses } from '@/lib/api-leitura-metas'
 
-/** Linha como a consulta a monta. O grupo fica só para desempatar a ordem: a resposta não o devolve. */
-export type LinhaDespesa = {
-  ano: number; mes: number; loja: { id: string; nome: string } | null; grupoId: string; cnpj: string
-  grupoDre: string; categoria: string; valor: number
-}
 export type LinhaDespesaDaApi = {
   ano: number; mes: number; loja: { id: string; nome: string } | null; cnpj: string
   grupoDre: string; categoria: string; valor: number
 }
+export type LinhaDespesa = LinhaDespesaDaApi
 /**
- * Ordem da página: mês; depois loja (t=0) antes da empresa geral (t=1); depois o id da loja ou o id do grupo (k, sempre
- * UUID, para duas empresas gerais com o mesmo CNPJ não se confundirem); depois a categoria.
+ * Ordem da página: mês; depois loja (t=0) antes da empresa geral (t=1); depois o id da loja (k, UUID) ou o CNPJ da
+ * empresa geral (k, só dígitos); depois a categoria. O cursor não leva id de grupo: a empresa geral é por CNPJ.
  */
 export type CursorDespesa = { a: number; m: number; t: 0 | 1; k: string; c: string }
 
 const MES_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CNPJ_DIGITOS_RE = /^\d{1,14}$/
 
 /** Mês de competência como AAAA-MM. Timestamp usa o calendário de Brasília; data pura já é o dia. */
 export function mesDaData(data: Date | string): string {
@@ -33,7 +30,7 @@ function chaveDaLinha(l: LinhaDespesa): ChaveDaDespesa {
   const ordem = ordemDeAnoMes(l.ano, l.mes)
   return l.loja
     ? { ordem, t: 0, k: l.loja.id, c: l.categoria }
-    : { ordem, t: 1, k: l.grupoId, c: l.categoria }
+    : { ordem, t: 1, k: l.cnpj, c: l.categoria }
 }
 
 function comparar(x: string | number, y: string | number): number {
@@ -49,6 +46,21 @@ export function ordenarLinhasDespesa(linhas: LinhaDespesa[]): LinhaDespesa[] {
   return [...linhas].sort((a, b) => compararChaves(chaveDaLinha(a), chaveDaLinha(b)))
 }
 
+/**
+ * Empresa geral sai por CNPJ (spec #315): grupos com o mesmo CNPJ viram uma linha só por mês e categoria, com a soma.
+ * A classificação do DRE (grupoDre) vem da primeira linha encontrada. As linhas de loja passam sem mudança.
+ */
+export function somarEmpresaGeral(linhas: LinhaDespesa[]): LinhaDespesa[] {
+  const porChave = new Map<string, LinhaDespesa>()
+  for (const l of linhas) {
+    if (l.loja !== null) continue
+    const chave = `${l.ano}|${l.mes}|${l.cnpj}|${l.categoria}`
+    const atual = porChave.get(chave)
+    porChave.set(chave, atual ? { ...atual, valor: atual.valor + l.valor } : l)
+  }
+  return [...linhas.filter(l => l.loja !== null), ...porChave.values()]
+}
+
 export function cursorDaDespesa(l: LinhaDespesa): CursorDespesa {
   const chave = chaveDaLinha(l)
   return { a: l.ano, m: l.mes, t: chave.t, k: chave.k, c: chave.c }
@@ -59,8 +71,8 @@ export function codificarCursorDeDespesas(c: CursorDespesa): string {
 }
 
 /**
- * Ausência de cursor é a 1ª página. Cada campo é validado pelo tipo dele: a, m são inteiros; t é 0 ou 1; k é UUID
- * (de loja ou de grupo, nunca CNPJ); c é texto não vazio. Mês fora do período não vale.
+ * Ausência de cursor é a 1ª página. Cada campo é validado pelo tipo dele: a e m são inteiros; t é 0 ou 1; k é UUID
+ * de loja (t=0) ou só dígitos de CNPJ (t=1); c é texto não vazio. Mês fora do período não vale.
  */
 export function lerCursorDeDespesas(
   texto: string | null,
@@ -72,7 +84,7 @@ export function lerCursorDeDespesas(
   const { a, m, t, k, c } = valor
   if (typeof a !== 'number' || !Number.isSafeInteger(a) || typeof m !== 'number' || !Number.isSafeInteger(m)) return { ok: false }
   if (t !== 0 && t !== 1) return { ok: false }
-  if (typeof k !== 'string' || !UUID_RE.test(k)) return { ok: false }
+  if (typeof k !== 'string' || !(t === 0 ? UUID_RE.test(k) : CNPJ_DIGITOS_RE.test(k))) return { ok: false }
   if (typeof c !== 'string' || c.length === 0) return { ok: false }
   const mes = `${a}-${String(m).padStart(2, '0')}`
   if (!MES_RE.test(mes) || mes < periodo.de || mes > periodo.ate) return { ok: false }
@@ -91,9 +103,4 @@ export function linhaDaDespesa(l: LinhaDespesa): LinhaDespesaDaApi {
     ano: l.ano, mes: l.mes, loja: l.loja, cnpj: l.cnpj, grupoDre: l.grupoDre, categoria: l.categoria,
     valor: Math.round(l.valor * 100) / 100,
   }
-}
-
-/** Stub do teste vermelho (#326): ainda não soma a empresa geral por CNPJ. */
-export function somarEmpresaGeral(linhas: LinhaDespesa[]): LinhaDespesa[] {
-  return linhas
 }
