@@ -9,7 +9,12 @@ import { cn } from "@/lib/utils"
 // No celular, a área de toque é ampliada por um pseudo-elemento: 7 px de cada lado, sobre a área interna de 30 px
 // (a borda de 1 px fica fora da conta), chega a 44 px. Sem mudar o desenho.
 // Cor só por variável do globals.css.
-function Switch({ className, ...props }: React.ComponentProps<typeof SwitchPrimitive.Root>) {
+type MudancaDoSwitch = NonNullable<React.ComponentProps<typeof SwitchPrimitive.Root>['onCheckedChange']>
+
+// Com aria-disabled, o próprio Switch ignora a mudança (o foco segue no botão, sem o disabled nativo).
+function Switch({ className, onCheckedChange, ...props }: React.ComponentProps<typeof SwitchPrimitive.Root>) {
+  const travado = props['aria-disabled'] === true || props['aria-disabled'] === 'true'
+  const aoMudar: MudancaDoSwitch = (...args) => { if (!travado) onCheckedChange?.(...args) }
   return (
     <SwitchPrimitive.Root
       render={<button type="button" />}
@@ -20,6 +25,7 @@ function Switch({ className, ...props }: React.ComponentProps<typeof SwitchPrimi
         className
       )}
       {...props}
+      onCheckedChange={aoMudar}
     >
       <SwitchPrimitive.Thumb
         data-slot="switch-thumb"
