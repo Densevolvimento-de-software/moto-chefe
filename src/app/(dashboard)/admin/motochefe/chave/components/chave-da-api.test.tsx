@@ -157,7 +157,8 @@ test('enquanto gera, clique repetido em Gerar não manda outro pedido', async ()
   assert.equal(gerar.mock.callCount(), 1, 'um pedido só')
 })
 
-// Clique no fundo do diálogo: o gesto que, sem a trava, fecharia a confirmação.
+// Clique no corpo da página, fora da confirmação. O jsdom não dispara o fechamento por fora do base-ui: este clique
+// não prova a trava do diálogo. Essa prova é o roteiro do navegador (Etapa 6).
 const clicarFora = async (el: Element | null | undefined) => {
   const { act } = await import('react')
   await act(async () => {
@@ -166,7 +167,7 @@ const clicarFora = async (el: Element | null | undefined) => {
   })
 }
 
-test('enquanto revoga, clicar fora do diálogo não o fecha', async () => {
+test('enquanto revoga, um clique no corpo da página deixa a confirmação na tela (a trava do diálogo: só no navegador)', async () => {
   let liberar: () => void = () => {}
   resposta = () => new Promise<Resposta>(r => { liberar = () => r({ ok: true }) })
   const { clique, esperar } = await montar(ATIVA)
@@ -174,7 +175,7 @@ test('enquanto revoga, clicar fora do diálogo não o fecha', async () => {
   await clique(botaoDoDialogo('Revogar chave'))
   await clicarFora(document.body)
   await esperar()
-  assert.ok(dialogo(), 'clique fora não fecha durante o envio')
+  assert.ok(dialogo(), 'a confirmação continua aberta durante o envio')
   liberar(); await esperar()
   assert.equal(revogar.mock.callCount(), 1)
 })
