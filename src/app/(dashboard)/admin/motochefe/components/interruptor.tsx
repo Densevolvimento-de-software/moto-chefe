@@ -17,14 +17,15 @@ export function Interruptor({ checado, salvando, rotuloAcessivel, rotulos, onMud
 }) {
   return (
     <div className="flex items-center gap-2">
-      {/* aria-disabled e não disabled: o disabled tira o foco de quem acabou de acionar o interruptor. */}
+      {/* aria-disabled e não disabled: o disabled tira o foco de quem acabou de acionar o interruptor. O Switch ignora a mudança sozinho. */}
       <Switch
         checked={checado}
         aria-disabled={salvando || undefined}
-        onCheckedChange={v => { if (!salvando) onMudar(v) }}
+        onCheckedChange={onMudar}
         aria-label={rotuloAcessivel}
       />
-      <span className="text-sm">
+      {/* A região existe antes da mudança: o leitor de tela anuncia o "Salvando" quando o texto entra. */}
+      <span role="status" className="text-sm">
         {salvando
           ? <span className="inline-flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" aria-hidden />Salvando</span>
           : (checado ? rotulos.ligado : rotulos.desligado)}

@@ -48,6 +48,18 @@ test('desabilitado: não muda com o clique e fica com disabled', async () => {
   assert.equal((el as HTMLButtonElement).disabled, true)
 })
 
+// Trava pelo próprio Switch (aria-disabled): o clique não chega ao pai, e o foco continua no botão.
+test('com aria-disabled, o próprio Switch ignora a mudança: o pai não recebe nada e o foco fica no botão', async () => {
+  const mudou = mock.fn((_v: boolean) => {})
+  const el = await montar({ checked: false, 'aria-disabled': true, onCheckedChange: mudou, 'aria-label': 'Loja' })
+  el.focus()
+  await clicar(el)
+  assert.equal(mudou.mock.callCount(), 0)
+  assert.equal(el.getAttribute('aria-checked'), 'false')
+  assert.equal(document.activeElement, el)
+  assert.equal((el as HTMLButtonElement).disabled, false)
+})
+
 test('pode receber foco e fica na ordem de Tab (a troca por Espaço não é coberta aqui)', async () => {
   const el = await montar({ checked: false, onCheckedChange: () => {}, 'aria-label': 'Loja' })
   assert.notEqual(el.getAttribute('tabindex'), '-1')
