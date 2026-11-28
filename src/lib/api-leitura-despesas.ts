@@ -92,3 +92,8 @@ export function linhaDaDespesa(l: LinhaDespesa): LinhaDespesaDaApi {
     valor: Math.round(l.valor * 100) / 100,
   }
 }
+
+/** Stub do teste vermelho (#326): ainda não soma a empresa geral por CNPJ. */
+export function somarEmpresaGeral(linhas: LinhaDespesa[]): LinhaDespesa[] {
+  return linhas
+}

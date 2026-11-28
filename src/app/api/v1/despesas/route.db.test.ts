@@ -56,14 +56,14 @@ async function chamar(query: string, token: string | null = TOKEN) {
 // Contas da semente. A: autorizada, loja A1 marcada, A2 sem marca. B: não autorizada. C: desativada. D: grupo inativo.
 // E: autorizada, só loja sem marca (sem empresa geral na API). F: autorizada, com loja marcada e empresa geral.
 // CNPJ sintéticos. O do grupo A vem formatado, como o cadastro grava (grupos.cnpj é texto livre); os outros só com dígitos.
-const CNPJ = { a: '32.600.000/0001-11', b: '32600000000012', c: '32600000000013', d: '32600000000014', e: '32600000000015', f: '32600000000016' }
+const CNPJ = { a: '32.600.000/0001-11', b: '32600000000012', c: '32600000000013', d: '32600000000014', e: '32600000000015', f: '32600000000016', h: '32.600.000/0000-16' }
 // Como a resposta devolve o CNPJ: só dígitos.
 const CNPJ_SAIDA = { a: CNPJ.a.replace(/\D/g, ''), f: CNPJ.f }
-const G = {} as Record<'A' | 'B' | 'C' | 'D' | 'E' | 'F', { contaId: string; grupoId: string; usuarioId: string }>
+const G = {} as Record<'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'H', { contaId: string; grupoId: string; usuarioId: string }>
 const L = { a1: '', a2: '', b1: '', c1: '', d1: '', e1: '', f1: '' }
 let idLancadoNoBanco = ''
 
-async function semearConta(letra: 'A' | 'B' | 'C' | 'D' | 'E' | 'F', opcoes: { autorizada?: boolean; desativada?: boolean; grupoInativo?: boolean } = {}) {
+async function semearConta(letra: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'H', opcoes: { autorizada?: boolean; desativada?: boolean; grupoInativo?: boolean } = {}) {
   const prefixo = `DS326${letra}`
   const base = await semearContaDaApi(db, { prefixo, cnpj: CNPJ[letra.toLowerCase() as keyof typeof CNPJ], ...opcoes })
   contaIds.push(base.contaId)
@@ -350,4 +350,17 @@ test('categoria que só existe no catálogo de outra Conta: a despesa sai com o 
   assert.equal(status, 200)
   const nossas = (corpo.despesas ?? []).filter(l => l.loja?.id === L.a1)
   assert.deepEqual(nossas.map(l => [l.categoria, l.grupoDre, l.valor]), [['Categoria Outra Conta DS326', 'outras', 61]])
+})
+
+test('dois grupos com o mesmo CNPJ: a empresa geral sai numa linha só, com a soma dos dois', async () => {
+  // Mesmo CNPJ do grupo F, escrito com pontuação: a empresa geral é por CNPJ, e não por grupo.
+  await semearConta('H', { autorizada: true })
+  const lojaH1 = await semearLojaDaApi(db, G.H.grupoId, 'Loja Sintética 326 H1', { marcada: true })
+  lojaIds.push(lojaH1)
+  await lancar('F', { lojaId: null, categoria: 'Seguro DS326', valor: 150, data: '2035-01-15' })
+  await lancar('H', { lojaId: null, categoria: 'Seguro DS326', valor: 40, data: '2035-01-15' })
+  const { status, corpo } = await chamar('?de=2035-01&ate=2035-01')
+  assert.equal(status, 200)
+  const gerais = (corpo.despesas ?? []).filter(l => l.loja === null && l.cnpj === CNPJ_SAIDA.f)
+  assert.deepEqual(gerais.map(l => [l.categoria, l.valor]), [['Seguro DS326', 190]])
 })

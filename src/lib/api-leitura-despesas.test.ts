@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   aposCursorDeDespesa, codificarCursorDeDespesas, cursorDaDespesa, lerCursorDeDespesas, linhaDaDespesa, mesDaData,
-  ordenarLinhasDespesa, type LinhaDespesa,
+  ordenarLinhasDespesa, somarEmpresaGeral, type LinhaDespesa,
 } from './api-leitura-despesas'
 
 const PERIODO = { de: '2026-01', ate: '2026-03' }
@@ -84,4 +84,22 @@ test('empresa geral de dois grupos com o mesmo CNPJ: as duas saem, na ordem do i
     linha({ ano: 2026, mes: 2, grupoId: GRUPO }),
   ]
   assert.deepEqual(ordenarLinhasDespesa(dois).map(l => l.grupoId), [GRUPO, GRUPO_OUTRO])
+})
+
+test('empresa geral: o cursor leva o CNPJ em dígitos como chave, não o id do grupo', () => {
+  const cursor = cursorDaDespesa(linha({ ano: 2026, mes: 2, categoria: 'Luz' }))
+  assert.equal(cursor.k, CNPJ)
+  assert.deepEqual(lerCursorDeDespesas(codificarCursorDeDespesas(cursor), PERIODO), { ok: true, cursor })
+})
+
+test('empresa geral: um id de grupo (UUID) no lugar do CNPJ no cursor não vale', () => {
+  assert.deepEqual(lerCursorDeDespesas(base64({ a: 2026, m: 2, t: 1, k: GRUPO, c: 'Luz' }), PERIODO), { ok: false })
+})
+
+test('empresa geral de grupos com o mesmo CNPJ sai somada numa linha por mês e categoria', () => {
+  const somada = somarEmpresaGeral([
+    linha({ ano: 2026, mes: 2, grupoId: GRUPO, valor: 150 }),
+    linha({ ano: 2026, mes: 2, grupoId: GRUPO_OUTRO, valor: 40 }),
+  ])
+  assert.deepEqual(somada.map(l => [l.cnpj, l.valor]), [[CNPJ, 190]])
 })
