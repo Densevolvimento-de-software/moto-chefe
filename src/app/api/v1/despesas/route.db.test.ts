@@ -391,13 +391,17 @@ test('dois grupos autorizados com o mesmo CNPJ: uma linha por grupo, cada uma co
 })
 
 test('mesmo CNPJ numa Conta não autorizada ou num grupo sem loja marcada: não entra', async () => {
-  const q = await grupoExtra('Q', '32.600.000/0002-22', { autorizada: false })
-  const r = await grupoExtra('R', '32.600.000/0002-22', { marcada: false })
-  await lancarNoGrupo(q, { lojaId: null, categoria: 'Seguro Mesmo326', valor: 999, data: '2040-03-10' })
-  await lancarNoGrupo(r, { lojaId: null, categoria: 'Seguro Mesmo326', valor: 777, data: '2040-03-10' })
-  const { corpo, texto } = await chamar('?de=2040-03&ate=2040-03')
-  const gerais = (corpo.despesas ?? []).filter(l => l.loja === null && l.cnpj === '32.600.000/0002-22')
-  assert.deepEqual(gerais.map(l => l.valor).sort((a, b) => a - b), [40, 150])
+  // Período próprio (2044-03), com um só grupo autorizado: não depende das linhas de outros testes.
+  const cnpj = '32.600.000/0002-22'
+  const autorizado = await grupoExtra('Y2', cnpj)
+  const q = await grupoExtra('Q', cnpj, { autorizada: false })
+  const r = await grupoExtra('R', cnpj, { marcada: false })
+  await lancarNoGrupo(autorizado, { lojaId: null, categoria: 'Seguro Isolado326', valor: 40, data: '2044-03-10' })
+  await lancarNoGrupo(q, { lojaId: null, categoria: 'Seguro Isolado326', valor: 999, data: '2044-03-10' })
+  await lancarNoGrupo(r, { lojaId: null, categoria: 'Seguro Isolado326', valor: 777, data: '2044-03-10' })
+  const { corpo, texto } = await chamar('?de=2044-03&ate=2044-03')
+  const gerais = (corpo.despesas ?? []).filter(l => l.loja === null && l.cnpj === cnpj)
+  assert.deepEqual(gerais.map(l => [l.categoria, l.valor]), [['Seguro Isolado326', 40]])
   assert.ok(!texto.includes(q.grupoId) && !texto.includes(r.grupoId))
 })
 
