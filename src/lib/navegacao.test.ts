@@ -5,7 +5,7 @@ import { podeOperarNfSaida } from '@/app/(dashboard)/vendas/papeis-nf-saida'
 import { ROTA_PAINEL_FABRICA } from './painel-fabrica'
 import { PAPEL_FABRICA } from './login-fabrica'
 import { ROTA_ACESSOS_FABRICA } from './acessos-fabrica'
-import { ROTA_LOJAS_MOTOCHEFE } from './motochefe-marcacao'
+import { ROTA_CHAVE_MOTOCHEFE, ROTA_LOJAS_MOTOCHEFE } from './motochefe-marcacao'
 
 const SEM_REGRA_PROPRIA = {}
 
@@ -292,6 +292,16 @@ test('Lojas MotoChefe (#321): só admin_geral, nem com liberação individual; a
   assert.equal(podeAcessar(ADMIN_GERAL, '/admin/motochefe', SEM_REGRA_PROPRIA), true)
   assert.ok(ids(ADMIN_GERAL).includes('lojas-motochefe'))
   assert.equal(ids(SOCIO).includes('lojas-motochefe'), false)
+})
+
+test('Chave da API (#322): item de menu e rota só para admin_geral, como as Lojas MotoChefe', () => {
+  const liberado: UsuarioNav = { papel: 'admin_socio', modulosExtras: ['chave-motochefe'] }
+  for (const u of [SOCIO, AUX, liberado]) {
+    assert.equal(podeAcessar(u, ROTA_CHAVE_MOTOCHEFE, SEM_REGRA_PROPRIA), false)
+  }
+  assert.equal(podeAcessar(ADMIN_GERAL, ROTA_CHAVE_MOTOCHEFE, SEM_REGRA_PROPRIA), true)
+  assert.ok(ids(ADMIN_GERAL).includes('chave-motochefe'))
+  assert.equal(ids(SOCIO).includes('chave-motochefe'), false)
 })
 
 test('Lojas MotoChefe: admin_rede (com e sem grupo liberado) e o login da fábrica não abrem a rota', () => {
