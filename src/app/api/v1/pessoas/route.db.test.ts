@@ -119,7 +119,7 @@ async function semearPessoa(
 
 let A: Base, B: Base, C: Base, D: Base
 let A1: string, A2: string, B2: string, C1: string, D1: string
-let vendedorAtivo: string, mecanicoSaiu: string, auxiliar: string, socioA: string, socioB: string, adminGeralSemLoja: string
+let vendedorAtivo: string, mecanicoSaiu: string, auxiliar: string, socioA: string, socioB: string, socioC: string, socioD: string, socioInativo: string, adminGeralSemLoja: string
 let cargoMecanico: string, cargoSocio: string, papelExtra: string
 let vendedorA2: string, vendedorB: string, vendedorC: string, vendedorD: string, pessoaComDados: string
 let f1: string, f2: string, f3: string
@@ -146,6 +146,10 @@ before(async () => {
   auxiliar = await semearPessoa(A, 'pe324a', 'Auxiliar Sintético 324', { papel: 'aux_adm', lojaId: A1 })
   socioA = await semearPessoa(A, 'pe324a', 'Sócio Sintético 324', { papel: 'admin_socio', lojaId: A2 })
   socioB = await semearPessoa(B, 'pe324b', 'Sócio Outra Conta 324', { papel: 'admin_socio', lojaId: B2 })
+  // Sócio da Conta desativada e do grupo inativo: a Conta tem loja marcada, mas a Conta ou o grupo estão fora.
+  socioC = await semearPessoa(C, 'pe324c', 'Sócio Conta Desativada 324', { papel: 'admin_socio', lojaId: C1 })
+  socioD = await semearPessoa(D, 'pe324d', 'Sócio Grupo Inativo 324', { papel: 'admin_socio', lojaId: D1 })
+  socioInativo = await semearPessoa(A, 'pe324a', 'Sócio Saiu 324', { papel: 'admin_socio', lojaId: A2, ativo: false })
   adminGeralSemLoja = await semearPessoa(A, 'pe324a', 'Plataforma Sintética 324', { papel: 'admin_geral', lojaId: null, contaId: null })
   papelExtra = await semearPessoa(A, 'pe324a', 'Auxiliar com Extra 324', { papel: 'aux_adm', lojaId: A1, extras: ['vendedor'] })
   const cargoMec = await cargoDe(A.contaId, 'Chefe de oficina 324', 'mecanico')
@@ -175,6 +179,9 @@ before(async () => {
     { id: auxiliar, papel: 'aux_adm', cargo: null, lojaQueSai: true, contaQueSai: true },
     { id: socioA, papel: 'admin_socio', cargo: null, lojaQueSai: false, contaQueSai: true },
     { id: socioB, papel: 'admin_socio', cargo: null, lojaQueSai: false, contaQueSai: false },
+    { id: socioC, papel: 'admin_socio', cargo: null, lojaQueSai: false, contaQueSai: false },
+    { id: socioD, papel: 'admin_socio', cargo: null, lojaQueSai: false, contaQueSai: false },
+    { id: socioInativo, papel: 'admin_socio', cargo: null, lojaQueSai: false, contaQueSai: true },
     { id: adminGeralSemLoja, papel: 'admin_geral', cargo: null, lojaQueSai: false, contaQueSai: false },
     { id: papelExtra, papel: 'aux_adm', cargo: null, lojaQueSai: true, contaQueSai: true },
     { id: cargoMecanico, papel: 'cargo', cargo: { nome: 'Chefe de oficina 324', papelBase: 'mecanico' }, lojaQueSai: true, contaQueSai: true },
@@ -243,6 +250,14 @@ test('sócio sai pela Conta com loja que sai, com loja nula; sócio de Conta sem
   const socio = pessoas.find(p => p.id === socioA)
   assert.deepEqual(socio, { id: socioA, nome: 'Sócio Sintético 324', funcao: 'admin_socio', loja: null, ativo: true })
   assert.equal(pessoas.some(p => p.id === socioB), false)
+})
+
+test('sócio de Conta desativada e de grupo inativo fica de fora; sócio que saiu continua com ativo falso', async () => {
+  const { pessoas } = await todasAsPaginas()
+  const ids = new Set(pessoas.map(p => p.id))
+  assert.equal(ids.has(socioC), false)
+  assert.equal(ids.has(socioD), false)
+  assert.equal(pessoas.find(p => p.id === socioInativo)?.ativo, false)
 })
 
 test('admin_geral sem loja nem Conta não aparece', async () => {
