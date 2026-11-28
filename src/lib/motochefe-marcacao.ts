@@ -3,6 +3,7 @@
 import { ehUuid } from '@/lib/uuid'
 
 export const ROTA_LOJAS_MOTOCHEFE = '/admin/motochefe'
+export const ROTA_CHAVE_MOTOCHEFE = '/admin/motochefe/chave'
 // Mesma frase para id inválido e id inexistente: a resposta não diz o que existe.
 export const MENSAGEM_LOJA_NAO_ENCONTRADA = 'Loja não encontrada'
 export const MENSAGEM_CONTA_NAO_ENCONTRADA = 'Conta não encontrada'

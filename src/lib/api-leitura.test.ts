@@ -1,8 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CARENCIA_MS, LIMITE_POR_MINUTO, chaveAceita, corpoDoErro, janelaDoMinuto, linhaDaLoja, linhaDoAcesso, passouDoLimite,
-  planoDaTroca, respostaDeLimite, statusDoErro, type LojaDaApi,
+  CARENCIA_MS, LIMITE_POR_MINUTO, chaveAceita, corpoDoErro, ehCorridaDeTroca,
+  fraseDoErroDaChave, FRASE_ERRO_GERAR, janelaDoMinuto, linhaDaLoja, linhaDoAcesso, passouDoLimite, planoDaTroca, respostaDeLimite,
+  statusDoErro, type LojaDaApi,
 } from './api-leitura'
 
 const AGORA = new Date('2026-11-27T12:00:00Z')
@@ -113,3 +114,21 @@ test('IP longo é cortado na linha do registro: IPv6 inteiro cabe em 45 caracter
   const doIpCurto = linhaDoAcesso({ chaveId: null, endpoint: '/api/v1/lojas', status: 401, origem: { ip: '200.1.2.3', userAgent: null } })
   assert.equal(doIpCurto.ip, '200.1.2.3')
 })
+
+// Chave da tela (#322): a corrida só tem frase própria quando o índice da chave atual barra a segunda.
+const erroDeIndice = (constraint: string) => ({ cause: { code: '23505', constraint } })
+
+test('corrida de troca: só o 23505 do índice da chave atual conta; outro índice e outros erros não', () => {
+  assert.equal(ehCorridaDeTroca(erroDeIndice('api_chaves_atual_key')), true)
+  assert.equal(ehCorridaDeTroca(erroDeIndice('outro_indice')), false)
+  assert.equal(ehCorridaDeTroca(new Error('falhou')), false)
+})
+
+test('erro ao gerar ou trocar: a corrida recebe a frase de recarregar; qualquer outro erro recebe a frase da ação, sem a mensagem do erro', () => {
+  assert.equal(fraseDoErroDaChave(erroDeIndice('api_chaves_atual_key'), FRASE_ERRO_GERAR), 'A chave acabou de ser trocada. Recarregue a página.')
+  const outro = Object.assign(new Error('insert into api_chaves (hash) values ($1)'), { cause: { code: '42P01' } })
+  const frase = fraseDoErroDaChave(outro, FRASE_ERRO_GERAR)
+  assert.equal(frase, 'Não deu para gerar a chave. Nenhuma chave foi criada e a atual continua valendo. Tente de novo.')
+  assert.equal(frase.includes('insert'), false)
+})
+
