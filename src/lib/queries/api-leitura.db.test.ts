@@ -226,6 +226,15 @@ test('revogar tira a atual e a que está no prazo; a chamada seguinte não revog
   })
 })
 
+test('último uso sem nenhum acesso sai nulo, e não uma data inválida', async () => {
+  await desfazendo(async tx => {
+    await consulta.revogarChaves(T1, tx)
+    await consulta.gerarChave({ geradaPor: randomUUID(), agora: T1 }, tx)
+    const situacao = await consulta.lerSituacaoDaChave(emHoras(1), tx)
+    assert.equal(situacao.atual!.ultimoUso, null)
+  })
+})
+
 test('situação da tela: lista fechada de campos, sem o hash nem a chave, com a do prazo e a atual', async () => {
   await desfazendo(async tx => {
     await consulta.revogarChaves(T1, tx)
@@ -233,7 +242,8 @@ test('situação da tela: lista fechada de campos, sem o hash nem a chave, com a
     const primeira = await chaveDaTroca({ geradaPor: quem, agora: T1 }, tx)
     const trocada = await chaveDaTroca({ geradaPor: quem, agora: emHoras(1) }, tx)
     const [atual] = await tx.select({ id: apiChaves.id }).from(apiChaves).where(eq(apiChaves.hash, sha(trocada)))
-    await tx.insert(apiAcessos).values({ chaveId: atual.id, endpoint: '/api/v1/lojas', status: 200 })
+    // Último uso = o acesso mais recente da chave atual: o instante é fixo para o teste conferir o valor, não só a presença.
+    await tx.insert(apiAcessos).values({ chaveId: atual.id, endpoint: '/api/v1/lojas', status: 200, criadoEm: emHoras(1.5) })
 
     const situacao = await consulta.lerSituacaoDaChave(emHoras(2), tx)
     assert.deepEqual(Object.keys(situacao).sort(), ['anterior', 'atual', 'limitePorMinuto'])
@@ -241,7 +251,8 @@ test('situação da tela: lista fechada de campos, sem o hash nem a chave, com a
     assert.deepEqual(Object.keys(situacao.anterior!), ['validaAte'])
     assert.equal(situacao.anterior!.validaAte.getTime(), emHoras(25).getTime(), 'a anterior vale 24h a partir da segunda troca, que a expirou')
     assert.equal(situacao.atual!.geradaPor, null, 'o usuário não existe no banco: nome vazio, sem erro')
-    assert.notEqual(situacao.atual!.ultimoUso, null)
+    assert.ok(situacao.atual!.ultimoUso instanceof Date, 'último uso sai como Date, não como texto do banco')
+    assert.equal(situacao.atual!.ultimoUso!.getTime(), emHoras(1.5).getTime(), 'último uso é o instante do acesso gravado')
     const texto = JSON.stringify(situacao)
     assert.equal(texto.includes(sha(trocada)), false, 'o hash da chave saiu na situação')
     assert.equal(texto.includes(trocada), false, 'a chave saiu na situação')

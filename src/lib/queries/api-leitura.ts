@@ -131,7 +131,8 @@ export async function lerSituacaoDaChave(agora: Date, executor: Executor = db): 
 
 async function ultimoUsoDaChave(chaveId: string, executor: Executor): Promise<Date | null> {
   const [linha] = await executor
-    .select({ ultimo: sql<Date | null>`max(${apiAcessos.criadoEm})` })
+    // mapWith: o driver devolve timestamptz como texto cru; a coluna converte para Date como em qualquer select.
+    .select({ ultimo: sql<Date | null>`max(${apiAcessos.criadoEm})`.mapWith(apiAcessos.criadoEm) })
     .from(apiAcessos)
     .where(eq(apiAcessos.chaveId, chaveId))
   return linha?.ultimo ?? null
