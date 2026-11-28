@@ -35,13 +35,13 @@ export function Interruptor({ checado, salvando, rotuloAcessivel, rotulos, onMud
 }
 
 // Erro da gravação: o texto do protótipo, acima da linha, com Tentar de novo (repete a mesma ação).
-export function MensagemDeErro({ texto, onTentar, className = '' }: { texto: string; onTentar: () => void; className?: string }) {
+export function MensagemDeErro({ texto, onTentar, className = '', rotulo = 'Tentar de novo' }: { texto: string; onTentar: () => void; className?: string; rotulo?: string }) {
   return (
     <div role="alert" className={`bg-destructive/10 text-destructive flex w-full items-start gap-2 rounded-lg px-3 py-2 text-sm ${className}`}>
       <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
       <div className="space-y-2">
         <p>{texto}</p>
-        <Button type="button" variant="outline" size="sm" onClick={onTentar}>Tentar de novo</Button>
+        <Button type="button" variant="outline" size="sm" onClick={onTentar}>{rotulo}</Button>
       </div>
     </div>
   )
