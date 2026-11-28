@@ -73,6 +73,14 @@ export const lojasQueSaem = () => db
   .innerJoin(contas, eq(grupos.contaId, contas.id))
   .where(and(eq(lojas.lojaMotochefe, true), eq(grupos.ativo, true), isNull(contas.desativadaEm)))
 
+/** Contas com ao menos uma loja que sai (#324, opção (a)): a Conta de sócio entra por aqui. Mesma regra de lojasQueSaem. */
+export const contasQueSaem = () => db
+  .select({ id: contas.id })
+  .from(contas)
+  .innerJoin(grupos, eq(grupos.contaId, contas.id))
+  .innerJoin(lojas, eq(lojas.grupoId, grupos.id))
+  .where(and(eq(lojas.lojaMotochefe, true), eq(grupos.ativo, true), isNull(contas.desativadaEm)))
+
 /**
  * Conta que o admin_geral autorizou para custo, despesa e meta (ADR-0021). É a única regra: o WHERE de metas e
  * despesas (#326) e o CASE do custo (#323) saem daqui. Exige `contas` no FROM da consulta.
