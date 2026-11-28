@@ -2,12 +2,14 @@
 // o cursor vindo do navegador e a linha que o banco devolveu.
 import { diaValido, hojeBrt } from '@/lib/data-venda'
 import { diffDias } from '@/lib/calendario'
+import { codificarCursorObjeto, cortarPagina, decodificarCursorObjeto, TAMANHO_DA_PAGINA } from '@/lib/api-leitura-pagina'
+
+export { cortarPagina, TAMANHO_DA_PAGINA }
 
 /** O histórico da API começa em 01/2026 (spec #315). */
 export const INICIO_DO_HISTORICO = '2026-01-01'
 // Mesmo número que TETO_PERIODO_DIAS do Painel (#901), mas regra separada: este teto é o contrato da API (spec #315).
 export const TETO_DIAS_DO_PERIODO = 92
-export const TAMANHO_DA_PAGINA = 500
 
 export type Periodo = { de: string; ate: string }
 /** Ordem da página: data da venda (até o milissegundo) e número. O número é único (vendas_numero_unique). */
@@ -44,23 +46,15 @@ export function periodoDaApi(params: { de?: string | null; ate?: string | null }
 // Só os dois campos da ordem. O cursor não é segredo: a data e o número já saem na resposta, e a consulta
 // filtra pela Conta e pelo período de qualquer jeito. Um cursor forjado só muda a página dentro do que a chave vê.
 export function codificarCursor(c: Cursor): string {
-  return Buffer.from(JSON.stringify({ d: c.d, n: c.n })).toString('base64url')
+  return codificarCursorObjeto({ d: c.d, n: c.n })
 }
 
-const BASE64URL = /^[A-Za-z0-9_-]+$/
 const INSTANTE_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
 function decodificarCursor(texto: string): Cursor | null {
-  if (!BASE64URL.test(texto)) return null
-  let valor: unknown
-  try {
-    valor = JSON.parse(Buffer.from(texto, 'base64url').toString('utf8'))
-  } catch {
-    return null
-  }
-  if (typeof valor !== 'object' || valor === null || Array.isArray(valor)) return null
-  if (Object.keys(valor).sort().join(',') !== 'd,n') return null
-  const { d, n } = valor as { d: unknown; n: unknown }
+  const valor = decodificarCursorObjeto(texto)
+  if (valor === null || Object.keys(valor).sort().join(',') !== 'd,n') return null
+  const { d, n } = valor
   if (typeof d !== 'string' || !INSTANTE_ISO.test(d)) return null
   const instante = Date.parse(d)
   if (Number.isNaN(instante) || new Date(instante).toISOString() !== d) return null
@@ -76,11 +70,6 @@ export function lerCursor(texto: string | null, periodo: Periodo): { ok: true; c
   const diaDoCursor = hojeBrt(new Date(cursor.d))
   if (diaDoCursor < periodo.de || diaDoCursor > periodo.ate) return { ok: false }
   return { ok: true, cursor }
-}
-
-/** Corta a página: a consulta traz uma linha a mais, e ela só serve para dizer que há próxima página. */
-export function cortarPagina<T>(linhas: T[]): { linhas: T[]; temMais: boolean } {
-  return { linhas: linhas.slice(0, TAMANHO_DA_PAGINA), temMais: linhas.length > TAMANHO_DA_PAGINA }
 }
 
 export function cursorDaUltimaLinha(linha: { dataVenda: Date; numero: number }): Cursor {
