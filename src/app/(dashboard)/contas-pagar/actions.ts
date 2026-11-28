@@ -9,9 +9,10 @@ import { revalidatePath } from 'next/cache'
 import { getUsuarioLogado } from '@/lib/auth'
 import { getGrupoAtivo, listarLojaIdsDoGrupoAtivo } from '@/lib/grupo'
 import { hojeBrt, inicioDoDiaBrt, fimDoDiaBrt } from '@/lib/data-venda'
+import { ultimoDiaIsoDoMes } from '@/lib/calendario'
 import {
   isTipoConta, isBaseFormula, isMesReferencia, contaVigenteNoMes, vencimentoNoMes,
-  mesApurado, ultimoDiaDoMes, valorAutomatico,
+  mesApurado, valorAutomatico,
 } from '@/lib/contas-pagar'
 import { buscarDadosFolha, agregarFolha } from '@/lib/queries/folha'
 
@@ -36,7 +37,7 @@ async function checarAdmin() {
 async function apurarBase(base: string, mes: string, lojaIds: string[], grupoId: string): Promise<number> {
   if (lojaIds.length === 0) return 0
   const inicio = inicioDoDiaBrt(`${mes}-01`)
-  const fim = fimDoDiaBrt(`${mes}-${String(ultimoDiaDoMes(mes)).padStart(2, '0')}`)
+  const fim = fimDoDiaBrt(ultimoDiaIsoDoMes(mes))
 
   const somaMotos = async (apenasComNf: boolean) => {
     const [r] = await db
