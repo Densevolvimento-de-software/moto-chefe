@@ -6,7 +6,7 @@ import { diaValido } from '@/lib/data-venda'
 
 export type PeriodoFinanceiro = { de: string; ate: string }
 
-function mesInteiro(mes: string): PeriodoFinanceiro {
+export function mesInteiro(mes: string): PeriodoFinanceiro {
   return { de: `${mes}-01`, ate: `${mes}-${String(ultimoDiaDoMes(mes)).padStart(2, '0')}` }
 }
 

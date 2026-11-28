@@ -2,7 +2,7 @@
 // calendário (a meta é ano e mês, não instante).
 import { codificarCursorObjeto, decodificarCursorObjeto } from '@/lib/api-leitura-pagina'
 import { INICIO_DO_HISTORICO } from '@/lib/api-leitura-vendas'
-import { ultimoDiaDoMes as diasDoMes } from '@/lib/contas-pagar'
+import { mesInteiro } from '@/lib/periodo-financeiro'
 
 /** Um pedido cobre no máximo um ano de meses (padrão do Maestro, #326; a confirmar com o Luis). */
 export const LIMITE_MESES_DO_PERIODO = 12
@@ -68,9 +68,9 @@ export function linhaDaMeta(l: LinhaMetaBanco): MetaDaApi {
   return { ano: l.ano, mes: l.mes, loja: { id: l.lojaId, nome: l.lojaNome }, valor: Number(l.valorMeta) }
 }
 
-/** Último dia do mês AAAA-MM, como AAAA-MM-DD (o registro de acesso guarda datas). */
-function ultimoDiaDoMes(mes: string): string {
-  return `${mes}-${String(diasDoMes(mes)).padStart(2, '0')}`
+/** Último dia do mês AAAA-MM, como AAAA-MM-DD (o registro de acesso e a consulta de despesas usam datas). */
+export function ultimoDiaDoMes(mes: string): string {
+  return mesInteiro(mes).ate
 }
 
 /** Período no formato que o registro de acesso guarda: primeiro dia do início, último dia do fim. */
