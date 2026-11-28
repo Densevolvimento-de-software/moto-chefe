@@ -26,6 +26,7 @@ let apiAcessos: Schema['apiAcessos']
 let apiLimite: Schema['apiLimite']
 let apiChaves: Schema['apiChaves']
 let despesas: Schema['despesas']
+let lancamentosCaixa: Schema['lancamentosCaixa']
 let esperarRegistros: () => Promise<void>
 let GET: Rota['GET']
 
@@ -89,7 +90,7 @@ async function lancar(letra: keyof typeof G, o: { lojaId: string | null; categor
 before(async () => {
   ;({ esperarRegistros } = await mockAfterDaResposta())
   ;({ db, execRows } = await import('@/lib/db'))
-  ;({ apiAcessos, apiLimite, apiChaves, despesas } = await import('@/lib/db/schema'))
+  ;({ apiAcessos, apiLimite, apiChaves, despesas, lancamentosCaixa } = await import('@/lib/db/schema'))
   ;({ GET } = await import('./route'))
   chaveId = (await semearChaveDaApi(db, TOKEN)).id
 
@@ -146,6 +147,7 @@ after(async () => {
   await db.delete(apiChaves).where(sql`id = ${chaveId}`)
   if (Object.keys(G).length > 0) {
     await db.delete(despesas).where(inArray(despesas.grupoId, Object.values(G).map(g => g.grupoId)))
+  await db.execute(sql`delete from lancamentos_caixa where usuario_id in (select id from usuarios where email like '%-ds326%-%')`)
   }
   for (const [i, contaId] of contaIds.entries()) {
     await apagarContasSemeadas(db, { contaIds: [contaId], prefixo: prefixos[i] })
@@ -205,7 +207,9 @@ test('empresa geral sai por CNPJ com loja marcada; CNPJ sem loja marcada não ap
   assert.deepEqual(geraisF.map(l => [l.categoria, l.valor]), [['Seguro DS326', 150]])
 })
 
-test('soma das linhas das lojas que saem e da empresa geral bate com o total no banco do mesmo período', async () => {
+// Mesmo SQL do total do banco, com a retirada pelo nome da categoria. Prova a regra de não somar duas vezes e de tirar
+// o que não é a loja; não prova a exclusão por descrição (isso é do teste de fontes de julho de 2033).
+test('soma das linhas bate com o total do banco, com a regra de não somar duas vezes e a retirada pelo nome', async () => {
   const { corpo } = await chamar('?de=2026-02&ate=2026-02')
   const somaDaResposta = deNossas(corpo.despesas).reduce((s, l) => s + l.valor, 0)
   const [linha] = await execRows(sql`
@@ -294,4 +298,26 @@ test('desmarcar a loja: as despesas dela somem na consulta seguinte', async () =
   await db.execute(sql`update lojas set loja_motochefe = false where id = ${L.a1}`)
   const depois = await chamar('?de=2026-02&ate=2026-02')
   assert.ok(!depois.texto.includes(L.a1))
+})
+
+test('fontes do banco e do caixa: só as lojas que saem entram; retirada pela descrição do banco fica de fora', async () => {
+  // Roda depois de 'desmarcar a loja' (que desmarca A1): marca de novo, para este teste ter a loja A1 de volta.
+  await db.execute(sql`update lojas set loja_motochefe = true where id = ${L.a1}`)
+  await db.execute(sql`insert into despesas_open_finance (grupo_id, conta_id, banco, transacao_id, data, valor, categoria, loja_id)
+    values (${G.A.grupoId}, 'conta-ds326', 'Banco DS326', ${`tx-ds326-a1-${randomUUID()}`}, '2033-07-10T12:00:00Z', 33, 'Banco A1 DS326', ${L.a1}),
+           (${G.A.grupoId}, 'conta-ds326', 'Banco DS326', ${`tx-ds326-a2-${randomUUID()}`}, '2033-07-10T12:00:00Z', 999, 'Banco A2 DS326', ${L.a2}),
+           (${G.A.grupoId}, 'conta-ds326', 'Banco DS326', ${`tx-ds326-ret-${randomUUID()}`}, '2033-07-12T12:00:00Z', 555, 'Banco ret DS326', ${L.a1})`)
+  await db.execute(sql`update despesas_open_finance set descricao = 'Retirada DS326 julho' where categoria = 'Banco ret DS326'`)
+  await db.insert(lancamentosCaixa).values([
+    { lojaId: L.a1, usuarioId: G.A.usuarioId, tipo: 'saida', categoria: 'Caixa A1 DS326', valor: '44', data: '2033-07-11' },
+    { lojaId: L.a2, usuarioId: G.A.usuarioId, tipo: 'saida', categoria: 'Caixa A2 DS326', valor: '888', data: '2033-07-11' },
+  ])
+  const { status, corpo } = await chamar('?de=2033-07&ate=2033-07')
+  assert.equal(status, 200)
+  const ours = (corpo.despesas ?? []).filter(l => l.loja?.id === L.a1 || l.loja?.id === L.a2 || l.cnpj === CNPJ_SAIDA.a)
+  assert.deepEqual(ours.map(chaveDaLinha).sort(), [
+    `2033-07|${L.a1}|Banco A1 DS326|33`,
+    `2033-07|${L.a1}|Caixa A1 DS326|44`,
+  ].sort())
+  assert.ok(!(corpo.despesas ?? []).some(l => [999, 888, 555].includes(l.valor)))
 })
