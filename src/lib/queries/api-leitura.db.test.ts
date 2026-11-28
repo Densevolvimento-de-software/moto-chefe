@@ -184,3 +184,52 @@ test('limpeza pelo cron: janela do contador de mais de 1 dia sai; a janela atual
     await apagarChaveDeTeste(chave.id)
   }
 })
+
+// Chave da tela (#322). Cada teste revoga antes as chaves que outros arquivos do test:db deixaram no banco:
+// dentro da transação que se desfaz, então a conta de chaves da tela é só a deste teste.
+test('gerar sem chave atual devolve o tipo gerada; trocar com uma atual devolve o tipo trocada', async () => {
+  await desfazendo(async tx => {
+    await consulta.revogarChaves(T1, tx)
+    const primeira = await consulta.gerarOuTrocarChave({ geradaPor: randomUUID(), agora: T1 }, tx)
+    assert.equal(primeira.tipo, 'api_chave_gerada')
+    const segunda = await consulta.gerarOuTrocarChave({ geradaPor: randomUUID(), agora: emHoras(1) }, tx)
+    assert.equal(segunda.tipo, 'api_chave_trocada')
+    assert.equal(await confere(segunda.chave, emHoras(2), tx), true)
+  })
+})
+
+test('revogar tira a atual e a que está no prazo; a chamada seguinte não revoga nada', async () => {
+  await desfazendo(async tx => {
+    await consulta.revogarChaves(T1, tx)
+    const primeira = await consulta.gerarOuTrocarChave({ geradaPor: randomUUID(), agora: T1 }, tx)
+    const segunda = await consulta.gerarOuTrocarChave({ geradaPor: randomUUID(), agora: emHoras(1) }, tx)
+    assert.equal(await consulta.revogarChaves(emHoras(2), tx), 2)
+    assert.equal(await confere(primeira.chave, emHoras(3), tx), false)
+    assert.equal(await confere(segunda.chave, emHoras(3), tx), false)
+    assert.equal(await consulta.revogarChaves(emHoras(3), tx), 0)
+  })
+})
+
+test('situação da tela: lista fechada de campos, sem o hash nem a chave, com a do prazo e a atual', async () => {
+  await desfazendo(async tx => {
+    await consulta.revogarChaves(T1, tx)
+    const quem = randomUUID()
+    const primeira = await consulta.gerarOuTrocarChave({ geradaPor: quem, agora: T1 }, tx)
+    const trocada = await consulta.gerarOuTrocarChave({ geradaPor: quem, agora: emHoras(1) }, tx)
+    const [atual] = await tx.select({ id: apiChaves.id }).from(apiChaves).where(eq(apiChaves.hash, sha(trocada.chave)))
+    await tx.insert(apiAcessos).values({ chaveId: atual.id, endpoint: '/api/v1/lojas', status: 200 })
+
+    const situacao = await consulta.lerSituacaoDaChave(emHoras(2), tx)
+    assert.deepEqual(Object.keys(situacao).sort(), ['anterior', 'atual', 'limitePorMinuto'])
+    assert.deepEqual(Object.keys(situacao.atual!).sort(), ['geradaEm', 'geradaPor', 'ultimoUso'])
+    assert.deepEqual(Object.keys(situacao.anterior!), ['validaAte'])
+    assert.equal(situacao.anterior!.validaAte.getTime(), emHoras(25).getTime(), 'a anterior vale 24h a partir da segunda troca, que a expirou')
+    assert.equal(situacao.atual!.geradaPor, null, 'o usuário não existe no banco: nome vazio, sem erro')
+    assert.notEqual(situacao.atual!.ultimoUso, null)
+    const texto = JSON.stringify(situacao)
+    assert.equal(texto.includes(sha(trocada.chave)), false, 'o hash da chave saiu na situação')
+    assert.equal(texto.includes(trocada.chave), false, 'a chave saiu na situação')
+    assert.equal(texto.includes(sha(primeira.chave)), false, 'o hash da chave em carência saiu na situação')
+  })
+})
+

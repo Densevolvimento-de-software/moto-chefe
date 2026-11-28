@@ -4,13 +4,14 @@ import { randomBytes } from 'node:crypto'
 import { after } from 'next/server'
 import { and, eq, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { apiAcessos, apiChaves, apiLimite, contas, grupos, lojas } from '@/lib/db/schema'
+import { apiAcessos, apiChaves, apiLimite, contas, grupos, lojas, usuarios } from '@/lib/db/schema'
 import { sha256 } from '@/lib/assinatura/hash'
 import { origemDaRequisicao } from '@/lib/log-acoes'
 import { iguaisEmTempoConstante, tokenDoBearer } from '@/lib/tempo-constante'
 import {
-  chaveAceita, janelaDoMinuto, linhaDaLoja, linhaDoAcesso, passouDoLimite, planoDaTroca, respostaDeErro, respostaDeLimite,
-  type ErroDoMiolo, type LinhaDoAcesso, type LojaDaApi, type PlanoDaTroca, type RespostaDaApi, type ResultadoDoMiolo,
+  chaveAceita, janelaDoMinuto, LIMITE_POR_MINUTO, linhaDaLoja, linhaDoAcesso, passouDoLimite, planoDaTroca, respostaDeErro,
+  respostaDeLimite, tipoDoLogDaTroca, type ErroDoMiolo, type LinhaDoAcesso, type LojaDaApi, type PlanoDaTroca, type RespostaDaApi,
+  type ResultadoDoMiolo, type TipoLogDaTroca,
 } from '@/lib/api-leitura'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -44,22 +45,78 @@ async function aplicarPlano(plano: PlanoDaTroca, agora: Date, tx: Tx) {
   }
 }
 
-async function trocarNaTransacao(tx: Tx, { geradaPor, agora }: { geradaPor: string; agora: Date }): Promise<string> {
+export type TrocaDaChave = { chave: string; tipo: TipoLogDaTroca }
+
+async function trocarNaTransacao(tx: Tx, { geradaPor, agora }: { geradaPor: string; agora: Date }): Promise<TrocaDaChave> {
   const plano = planoDaTroca(await chavesNaoRevogadas(tx).for('update'), agora)
   await aplicarPlano(plano, agora, tx)
   const chave = randomBytes(32).toString('base64url')
   await tx.insert(apiChaves).values({ hash: sha256(chave), geradaPor, geradaEm: agora })
-  return chave
+  return { chave, tipo: tipoDoLogDaTroca(plano) }
 }
 
 /**
  * Gera uma chave nova e devolve o texto dela uma única vez: no banco fica só o hash. A atual vira carência
- * de 24h e a que já estava em carência sai na hora (ver planoDaTroca). Quem chama informa quem gerou.
+ * de 24h e a que já estava em carência sai na hora (ver planoDaTroca). Devolve também o tipo do log (gerada ou trocada).
  */
-export function trocarChave(opcoes: { geradaPor: string; agora: Date }, executor?: Tx): Promise<string> {
+export function gerarOuTrocarChave(opcoes: { geradaPor: string; agora: Date }, executor?: Tx): Promise<TrocaDaChave> {
   return executor
     ? trocarNaTransacao(executor, opcoes)
     : db.transaction(tx => trocarNaTransacao(tx, opcoes))
+}
+
+/** Só o texto da chave nova (quem não grava log). */
+export async function trocarChave(opcoes: { geradaPor: string; agora: Date }, executor?: Tx): Promise<string> {
+  return (await gerarOuTrocarChave(opcoes, executor)).chave
+}
+
+async function revogarNaTransacao(tx: Tx, agora: Date): Promise<number> {
+  const abertas = await chavesNaoRevogadas(tx).for('update')
+  if (abertas.length === 0) return 0
+  await tx.update(apiChaves).set({ revogadaEm: agora }).where(inArray(apiChaves.id, abertas.map(c => c.id)))
+  return abertas.length
+}
+
+/** Revoga toda chave que ainda não foi revogada: a atual e a do prazo. Devolve quantas saíram; zero não muda nada. */
+export function revogarChaves(agora: Date, executor?: Tx): Promise<number> {
+  return executor
+    ? revogarNaTransacao(executor, agora)
+    : db.transaction(tx => revogarNaTransacao(tx, agora))
+}
+
+export type SituacaoDaChave = {
+  atual: { geradaEm: Date; geradaPor: string | null; ultimoUso: Date | null } | null
+  anterior: { validaAte: Date } | null
+  limitePorMinuto: number
+}
+
+/**
+ * O que a tela mostra da chave: a atual e a que ainda está no prazo, com a lista fechada de campos (sem hash, sem id).
+ * Quem gerou sai pelo nome; usuário que não existe mais sai nulo.
+ */
+export async function lerSituacaoDaChave(agora: Date, executor: Executor = db): Promise<SituacaoDaChave> {
+  const abertas = await executor
+    .select({
+      id: apiChaves.id, geradaEm: apiChaves.geradaEm, geradaPor: usuarios.nome, validaAte: apiChaves.validaAte,
+    })
+    .from(apiChaves)
+    .leftJoin(usuarios, eq(usuarios.id, apiChaves.geradaPor))
+    .where(isNull(apiChaves.revogadaEm))
+  const atual = abertas.find(c => c.validaAte === null) ?? null
+  const anterior = abertas.find(c => c.validaAte !== null && c.validaAte.getTime() > agora.getTime()) ?? null
+  return {
+    atual: atual && { geradaEm: atual.geradaEm, geradaPor: atual.geradaPor, ultimoUso: await ultimoUsoDaChave(atual.id, executor) },
+    anterior: anterior && { validaAte: anterior.validaAte! },
+    limitePorMinuto: LIMITE_POR_MINUTO,
+  }
+}
+
+async function ultimoUsoDaChave(chaveId: string, executor: Executor): Promise<Date | null> {
+  const [linha] = await executor
+    .select({ ultimo: sql<Date | null>`max(${apiAcessos.criadoEm})` })
+    .from(apiAcessos)
+    .where(eq(apiAcessos.chaveId, chaveId))
+  return linha?.ultimo ?? null
 }
 
 /**

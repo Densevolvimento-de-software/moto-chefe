@@ -112,3 +112,29 @@ export function linhaDoAcesso(entrada: EntradaDoAcesso): LinhaDoAcesso {
     linhas: entrada.linhas ?? null,
   }
 }
+
+// Frases da chave da API (#322). Vão para a tela; nunca a mensagem do banco, que traz a consulta e os parâmetros.
+export const FRASE_ERRO_GERAR = 'Não deu para gerar a chave. Nenhuma chave foi criada e a atual continua valendo. Tente de novo.'
+export const FRASE_CHAVE_TROCADA_AGORA = 'A chave acabou de ser trocada. Recarregue a página.'
+export const FRASE_ERRO_REVOGAR = 'Não deu para revogar a chave. Nada mudou. Tente de novo.'
+
+export type TipoLogDaTroca = 'api_chave_gerada' | 'api_chave_trocada'
+
+// Só o índice da chave atual conta como corrida: a segunda troca ao mesmo tempo bate nele (migração 0211).
+const INDICE_CHAVE_ATUAL = 'api_chaves_atual_key'
+
+/** Corrida de troca: o banco barrou a segunda chave atual. Outro erro, mesmo de unicidade, não é corrida. */
+export function ehCorridaDeTroca(erro: unknown): boolean {
+  const causa = (erro as { cause?: { code?: unknown; constraint?: unknown } } | null)?.cause
+  return causa?.code === '23505' && causa?.constraint === INDICE_CHAVE_ATUAL
+}
+
+/** Frase da tela quando gerar ou trocar falha: a corrida tem a sua; qualquer outro erro, a genérica. */
+export function fraseDoErroDeGerar(erro: unknown): string {
+  return ehCorridaDeTroca(erro) ? FRASE_CHAVE_TROCADA_AGORA : FRASE_ERRO_GERAR
+}
+
+/** Com chave atual antes da troca, o log diz "trocada"; sem ela, é a primeira "gerada". */
+export function tipoDoLogDaTroca(plano: PlanoDaTroca): TipoLogDaTroca {
+  return plano.expirar.length > 0 ? 'api_chave_trocada' : 'api_chave_gerada'
+}
