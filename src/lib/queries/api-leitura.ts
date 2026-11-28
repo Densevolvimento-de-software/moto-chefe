@@ -10,8 +10,8 @@ import { origemDaRequisicao } from '@/lib/log-acoes'
 import { iguaisEmTempoConstante, tokenDoBearer } from '@/lib/tempo-constante'
 import {
   chaveAceita, janelaDoMinuto, LIMITE_POR_MINUTO, linhaDaLoja, linhaDoAcesso, passouDoLimite, planoDaTroca, respostaDeErro,
-  respostaDeLimite, tipoDoLogDaTroca, type ErroDoMiolo, type LinhaDoAcesso, type LojaDaApi, type PlanoDaTroca, type RespostaDaApi,
-  type ResultadoDoMiolo, type TipoLogDaTroca,
+  respostaDeLimite, type ErroDoMiolo, type LinhaDoAcesso, type LojaDaApi, type PlanoDaTroca, type RespostaDaApi,
+  type ResultadoDoMiolo,
 } from '@/lib/api-leitura'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -43,32 +43,6 @@ async function aplicarPlano(plano: PlanoDaTroca, agora: Date, tx: Tx) {
   for (const { id, validaAte } of plano.expirar) {
     await tx.update(apiChaves).set({ validaAte }).where(eq(apiChaves.id, id))
   }
-}
-
-export type TrocaDaChave = { chave: string; tipo: TipoLogDaTroca }
-
-async function trocarNaTransacao(tx: Tx, { geradaPor, agora }: { geradaPor: string; agora: Date }): Promise<TrocaDaChave> {
-  await travarGravacaoDaChave(tx)
-  const plano = planoDaTroca(await chavesNaoRevogadas(tx).for('update'), agora)
-  await aplicarPlano(plano, agora, tx)
-  const chave = randomBytes(32).toString('base64url')
-  await tx.insert(apiChaves).values({ hash: sha256(chave), geradaPor, geradaEm: agora })
-  return { chave, tipo: tipoDoLogDaTroca(plano) }
-}
-
-/**
- * Gera uma chave nova e devolve o texto dela uma única vez: no banco fica só o hash. A atual vira carência
- * de 24h e a que já estava em carência sai na hora (ver planoDaTroca). Devolve também o tipo do log (gerada ou trocada).
- */
-export function gerarOuTrocarChave(opcoes: { geradaPor: string; agora: Date }, executor?: Tx): Promise<TrocaDaChave> {
-  return executor
-    ? trocarNaTransacao(executor, opcoes)
-    : db.transaction(tx => trocarNaTransacao(tx, opcoes))
-}
-
-/** Só o texto da chave nova (quem não grava log). */
-export async function trocarChave(opcoes: { geradaPor: string; agora: Date }, executor?: Tx): Promise<string> {
-  return (await gerarOuTrocarChave(opcoes, executor)).chave
 }
 
 async function revogarNaTransacao(tx: Tx, agora: Date): Promise<number> {

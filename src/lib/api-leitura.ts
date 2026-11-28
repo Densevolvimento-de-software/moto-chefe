@@ -122,8 +122,6 @@ export const FRASE_JA_TEM_CHAVE = 'Já existe uma chave. Recarregue a página.'
 export const FRASE_SEM_CHAVE = 'Não há chave para trocar. Recarregue a página.'
 export const FRASE_ERRO_TROCAR = 'Não deu para trocar a chave. Nada mudou. Tente de novo.'
 
-export type TipoLogDaTroca = 'api_chave_gerada' | 'api_chave_trocada'
-
 // Só o índice da chave atual conta como corrida: a segunda troca ao mesmo tempo bate nele (migração 0211).
 const INDICE_CHAVE_ATUAL = 'api_chaves_atual_key'
 
@@ -138,7 +136,3 @@ export function fraseDoErroDaChave(erro: unknown, fraseGenerica: string): string
   return ehCorridaDeTroca(erro) ? FRASE_CHAVE_TROCADA_AGORA : fraseGenerica
 }
 
-/** Com chave atual antes da troca, o log diz "trocada"; sem ela, é a primeira "gerada". */
-export function tipoDoLogDaTroca(plano: PlanoDaTroca): TipoLogDaTroca {
-  return plano.expirar.length > 0 ? 'api_chave_trocada' : 'api_chave_gerada'
-}

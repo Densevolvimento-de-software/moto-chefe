@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   CARENCIA_MS, LIMITE_POR_MINUTO, chaveAceita, corpoDoErro, ehCorridaDeTroca,
   fraseDoErroDaChave, FRASE_ERRO_GERAR, janelaDoMinuto, linhaDaLoja, linhaDoAcesso, passouDoLimite, planoDaTroca, respostaDeLimite,
-  statusDoErro, tipoDoLogDaTroca, type LojaDaApi,
+  statusDoErro, type LojaDaApi,
 } from './api-leitura'
 
 const AGORA = new Date('2026-11-27T12:00:00Z')
@@ -132,8 +132,3 @@ test('erro ao gerar ou trocar: a corrida recebe a frase de recarregar; qualquer 
   assert.equal(frase.includes('insert'), false)
 })
 
-test('log da troca: sem chave atual antes é gerada; com chave atual trocada é trocada', () => {
-  assert.equal(tipoDoLogDaTroca({ revogar: [], expirar: [] }), 'api_chave_gerada')
-  assert.equal(tipoDoLogDaTroca({ revogar: ['v'], expirar: [] }), 'api_chave_gerada')
-  assert.equal(tipoDoLogDaTroca({ revogar: [], expirar: [{ id: 'a', validaAte: emMs(CARENCIA_MS) }] }), 'api_chave_trocada')
-})
