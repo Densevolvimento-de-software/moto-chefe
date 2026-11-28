@@ -58,7 +58,8 @@ async function chamar(query: string, token: string | null = TOKEN) {
 // CNPJ sintéticos. O do grupo A vem formatado, como o cadastro grava (grupos.cnpj é texto livre); os outros só com dígitos.
 const CNPJ = { a: '32.600.000/0001-11', b: '32600000000012', c: '32600000000013', d: '32600000000014', e: '32600000000015', f: '32600000000016', h: '32.600.000/0000-16' }
 // Como a resposta devolve o CNPJ: só dígitos.
-const CNPJ_SAIDA = { a: CNPJ.a.replace(/\D/g, ''), f: CNPJ.f }
+// A empresa geral sai com o CNPJ como está no cadastro do grupo (decisão do Luis, issue 326).
+const CNPJ_SAIDA = { a: CNPJ.a, f: CNPJ.f }
 const G = {} as Record<'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'H', { contaId: string; grupoId: string; usuarioId: string }>
 const L = { a1: '', a2: '', b1: '', c1: '', d1: '', e1: '', f1: '' }
 let idLancadoNoBanco = ''
@@ -146,7 +147,7 @@ after(async () => {
   await db.delete(apiLimite).where(sql`chave_id = ${chaveId}`)
   await db.delete(apiChaves).where(sql`id = ${chaveId}`)
   if (Object.keys(G).length > 0) {
-    await db.delete(despesas).where(inArray(despesas.grupoId, Object.values(G).map(g => g.grupoId)))
+    await db.delete(despesas).where(inArray(despesas.grupoId, [...Object.values(G), ...extras].map(g => g.grupoId)))
   await db.execute(sql`delete from lancamentos_caixa where usuario_id in (select id from usuarios where email like '%-ds326%-%')`)
   }
   for (const [i, contaId] of contaIds.entries()) {
@@ -154,6 +155,28 @@ after(async () => {
   }
   await (globalThis as { __pgPool?: { end(): Promise<void> } }).__pgPool?.end()
 })
+
+// Grupos extras deste arquivo: CNPJ com pontuação, vazio, curto e com letra, e repetido entre grupos.
+type Grupo = { contaId: string; grupoId: string; lojaId: string; usuarioId: string }
+const extras: Grupo[] = []
+async function grupoExtra(rotulo: string, cnpj: string, { autorizada = true, marcada = true }: { autorizada?: boolean; marcada?: boolean } = {}): Promise<Grupo> {
+  const prefixo = `DS326${rotulo}`
+  const base = await semearContaDaApi(db, { prefixo, cnpj, autorizada })
+  contaIds.push(base.contaId)
+  prefixos.push(prefixo)
+  const lojaId = await semearLojaDaApi(db, base.grupoId, `Loja Sintética 326 ${rotulo}`, { marcada })
+  lojaIds.push(lojaId)
+  const usuarioId = await semearUsuario(db, base, { papel: 'aux_adm', rotulo: `usu${rotulo}`, nomeDoUsuario: 'Usuária Sintética 326', comConta: true })
+  const g = { contaId: base.contaId, grupoId: base.grupoId, lojaId, usuarioId }
+  extras.push(g)
+  return g
+}
+async function lancarNoGrupo(g: Grupo, o: { lojaId: string | null; categoria: string; valor: number; data: string }) {
+  await db.insert(despesas).values({
+    grupoId: g.grupoId, lojaId: o.lojaId, usuarioId: g.usuarioId, categoria: o.categoria, valor: String(o.valor), data: o.data,
+    formaPagamento: 'PIX', banco: 'Banco Sintético 326',
+  })
+}
 
 const deNossas = (linhas: Linha[] = []) => linhas.filter(l => l.loja?.id === L.a1 || l.cnpj === CNPJ_SAIDA.a)
 const chaveDaLinha = (l: Linha) => `${l.ano}-${String(l.mes).padStart(2, '0')}|${l.loja ? l.loja.id : `geral:${l.cnpj}`}|${l.categoria}|${l.valor}`
@@ -352,15 +375,65 @@ test('categoria que só existe no catálogo de outra Conta: a despesa sai com o 
   assert.deepEqual(nossas.map(l => [l.categoria, l.grupoDre, l.valor]), [['Categoria Outra Conta DS326', 'outras', 61]])
 })
 
-test('dois grupos com o mesmo CNPJ: a empresa geral sai numa linha só, com a soma dos dois', async () => {
-  // Mesmo CNPJ do grupo F, escrito com pontuação: a empresa geral é por CNPJ, e não por grupo.
-  await semearConta('H', { autorizada: true })
-  const lojaH1 = await semearLojaDaApi(db, G.H.grupoId, 'Loja Sintética 326 H1', { marcada: true })
-  lojaIds.push(lojaH1)
-  await lancar('F', { lojaId: null, categoria: 'Seguro DS326', valor: 150, data: '2035-01-15' })
-  await lancar('H', { lojaId: null, categoria: 'Seguro DS326', valor: 40, data: '2035-01-15' })
-  const { status, corpo } = await chamar('?de=2035-01&ate=2035-01')
+test('dois grupos autorizados com o mesmo CNPJ: uma linha por grupo, cada uma com o seu valor e o seu grupo do DRE', async () => {
+  const y = await grupoExtra('Y', '32.600.000/0002-22')
+  const z = await grupoExtra('Z', '32.600.000/0002-22')
+  await categoria(y.grupoId, 'Seguro Mesmo326', 'comerciais')
+  await categoria(z.grupoId, 'Seguro Mesmo326', 'pessoal')
+  await lancarNoGrupo(y, { lojaId: null, categoria: 'Seguro Mesmo326', valor: 150, data: '2040-03-10' })
+  await lancarNoGrupo(z, { lojaId: null, categoria: 'Seguro Mesmo326', valor: 40, data: '2040-03-10' })
+  const { status, corpo } = await chamar('?de=2040-03&ate=2040-03')
   assert.equal(status, 200)
-  const gerais = (corpo.despesas ?? []).filter(l => l.loja === null && l.cnpj === CNPJ_SAIDA.f)
-  assert.deepEqual(gerais.map(l => [l.categoria, l.valor]), [['Seguro DS326', 190]])
+  const gerais = (corpo.despesas ?? []).filter(l => l.loja === null && l.cnpj === '32.600.000/0002-22')
+  assert.deepEqual(gerais.map(l => [l.categoria, l.grupoDre, l.valor]).sort(), [
+    ['Seguro Mesmo326', 'comerciais', 150],
+    ['Seguro Mesmo326', 'pessoal', 40],
+  ])
 })
+
+test('mesmo CNPJ numa Conta não autorizada ou num grupo sem loja marcada: não entra', async () => {
+  const q = await grupoExtra('Q', '32.600.000/0002-22', { autorizada: false })
+  const r = await grupoExtra('R', '32.600.000/0002-22', { marcada: false })
+  await lancarNoGrupo(q, { lojaId: null, categoria: 'Seguro Mesmo326', valor: 999, data: '2040-03-10' })
+  await lancarNoGrupo(r, { lojaId: null, categoria: 'Seguro Mesmo326', valor: 777, data: '2040-03-10' })
+  const { corpo, texto } = await chamar('?de=2040-03&ate=2040-03')
+  const gerais = (corpo.despesas ?? []).filter(l => l.loja === null && l.cnpj === '32.600.000/0002-22')
+  assert.deepEqual(gerais.map(l => l.valor).sort((a, b) => a - b), [40, 150])
+  assert.ok(!texto.includes(q.grupoId) && !texto.includes(r.grupoId))
+})
+
+// Virada de página exatamente numa linha de empresa geral, com CNPJ vazio, curto e com letra. 498 linhas de loja
+// mais 3 gerais: a 500ª linha é a 2ª geral; a página seguinte começa na 3ª.
+const FORMAS_DE_CNPJ: [string, string, string][] = [
+  ['vazio', '', '2041-05'],
+  ['curto', '326', '2042-05'],
+  ['com letra', 'AB-12', '2043-05'],
+]
+for (const [nome, cnpj, mes] of FORMAS_DE_CNPJ) {
+  test(`CNPJ ${nome}: a linha da empresa geral sai e a página seguinte funciona na virada exatamente nela`, async () => {
+    const g = await grupoExtra(`V${mes.replace('-', '')}`, cnpj)
+    await db.insert(despesas).values([
+      ...Array.from({ length: 498 }, (_, i) => ({
+        grupoId: G.A.grupoId, lojaId: L.a1, usuarioId: G.A.usuarioId, categoria: `Cat${mes} ${String(i).padStart(3, '0')}`,
+        valor: '1', data: `${mes}-10`, formaPagamento: 'PIX', banco: 'Banco Sintético 326',
+      })),
+      ...['Geral 1', 'Geral 2', 'Geral 3'].map(categoriaGeral => ({
+        grupoId: g.grupoId, lojaId: null, usuarioId: g.usuarioId, categoria: `${categoriaGeral} ${mes}`,
+        valor: '2', data: `${mes}-10`, formaPagamento: 'PIX', banco: 'Banco Sintético 326',
+      })),
+    ])
+    const esperado = cnpj === '' ? null : cnpj
+    const primeira = await chamar(`?de=${mes}&ate=${mes}`)
+    assert.equal(primeira.status, 200)
+    assert.equal(primeira.corpo.despesas?.length, 500)
+    const ultima = primeira.corpo.despesas?.at(-1)
+    assert.equal(ultima?.loja, null)
+    assert.equal(ultima?.cnpj, esperado)
+    assert.equal(ultima?.categoria, `Geral 2 ${mes}`)
+    assert.ok(primeira.corpo.proximaPagina)
+    const segunda = await chamar(`?de=${mes}&ate=${mes}&cursor=${primeira.corpo.proximaPagina}`)
+    assert.equal(segunda.status, 200)
+    assert.deepEqual((segunda.corpo.despesas ?? []).map(l => [l.loja, l.cnpj, l.categoria]), [[null, esperado, `Geral 3 ${mes}`]])
+    assert.equal(segunda.corpo.proximaPagina, null)
+  })
+}
