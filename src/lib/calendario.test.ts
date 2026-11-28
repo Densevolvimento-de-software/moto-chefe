@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { podeVerEvento, podeEditarEvento, ocorrenciasNoIntervalo, diasDoSpan, addDias, diffDias } from './calendario'
+import { podeVerEvento, podeEditarEvento, ocorrenciasNoIntervalo, diasDoSpan, addDias, diffDias, ultimoDiaIsoDoMes } from './calendario'
 
 const u = (papel: string, id = 'u1', lojaId: string | null = 'loja-a') => ({ id, papel, lojaId })
 const semParticipantes = new Set<string>()
@@ -125,4 +125,11 @@ test('recorrente não aparece antes da âncora', () => {
 test('janela invertida devolve vazio', () => {
   const e = ev('2026-08-10', '2026-08-10', 'nenhuma')
   assert.deepEqual(ocorrenciasNoIntervalo(e, '2026-08-31', '2026-08-01'), [])
+})
+
+test('último dia do mês AAAA-MM como AAAA-MM-DD: fevereiro de ano comum e bissexto, mês de 30 e de 31 dias', () => {
+  assert.equal(ultimoDiaIsoDoMes('2026-02'), '2026-02-28')
+  assert.equal(ultimoDiaIsoDoMes('2028-02'), '2028-02-29')
+  assert.equal(ultimoDiaIsoDoMes('2026-04'), '2026-04-30')
+  assert.equal(ultimoDiaIsoDoMes('2026-12'), '2026-12-31')
 })

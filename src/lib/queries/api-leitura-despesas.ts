@@ -4,11 +4,10 @@
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { contas, grupos, lojas } from '@/lib/db/schema'
-import { addDias } from '@/lib/calendario'
+import { addDias, ultimoDiaIsoDoMes } from '@/lib/calendario'
 import { inicioDoDiaBrt } from '@/lib/data-venda'
 import { chaveCategoria, somarDespesas, soDigitos } from '@/lib/despesas-operacionais'
 import { cortarPagina } from '@/lib/api-leitura-pagina'
-import { ultimoDiaDoMes } from '@/lib/api-leitura-metas'
 import {
   aposCursorDeDespesa, codificarCursorDeDespesas, cursorDaDespesa, linhaDaDespesa, mesDaData, ordenarLinhasDespesa,
   type CursorDespesa, type LinhaDespesa, type LinhaDespesaDaApi,
@@ -71,7 +70,7 @@ export async function listarDespesasDaApi(
   // Página seguinte: começa no mês do cursor. Os meses antes dele já saíram na página anterior; somar só o necessário.
   const mesInicial = cursor ? `${cursor.a}-${String(cursor.m).padStart(2, '0')}` : periodo.de
   const inicio = inicioDoDiaBrt(`${mesInicial}-01`)
-  const fim = inicioDoDiaBrt(addDias(ultimoDiaDoMes(periodo.ate), 1))
+  const fim = inicioDoDiaBrt(addDias(ultimoDiaIsoDoMes(periodo.ate), 1))
   // Um grupo por vez: as consultas do DRE já mostraram que rodar tudo junto derruba o pool.
   const linhas: LinhaDespesa[] = []
   for (const grupo of await gruposQueSaem()) {
