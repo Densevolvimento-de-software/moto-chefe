@@ -98,7 +98,7 @@ type OpcoesDaOS = {
   descricao?: string; diagnostico?: string | null; observacoes?: string | null; placa?: string | null
   clienteNome?: string | null; clienteFone?: string | null; clienteDoc?: string | null
   motivo?: string | null; marcaExterna?: string | null; modeloExterno?: string | null; chassiOs?: string | null
-  agendamentoId?: string | null
+  agendamentoId?: string | null; clienteId?: string | null
 }
 
 async function semearOS(o: OpcoesDaOS): Promise<string> {
@@ -106,12 +106,12 @@ async function semearOS(o: OpcoesDaOS): Promise<string> {
   await db.execute(sql`insert into ordens_servico (id, numero, moto_id, loja_id, aberta_por, mecanico_id, status, descricao,
       diagnostico, observacoes_finais, placa, cliente_nome_externo, cliente_fone_externo, cliente_documento_externo,
       marca_externa, modelo_externo, chassi_os, data_abertura, data_conclusao, motivo_cancelamento, cancelada_em,
-      agendamento_id, valor_total)
+      agendamento_id, valor_total, cliente_id)
     values (${id}, ${o.numero ?? null}, ${o.motoId ?? null}, ${o.lojaId}, ${o.abertaPor}, ${o.mecanicoId ?? null},
       ${o.status ?? 'concluida'}, ${o.descricao ?? 'Descrição sintética 325'}, ${o.diagnostico ?? null}, ${o.observacoes ?? null},
       ${o.placa ?? null}, ${o.clienteNome ?? null}, ${o.clienteFone ?? null}, ${o.clienteDoc ?? null},
       ${o.marcaExterna ?? null}, ${o.modeloExterno ?? null}, ${o.chassiOs ?? null}, ${o.dataAbertura}, ${o.dataConclusao ?? null},
-      ${o.motivo ?? null}, ${o.motivo ? sql`now()` : null}, ${o.agendamentoId ?? null}, ${o.valorTotal ?? null})`)
+      ${o.motivo ?? null}, ${o.motivo ? sql`now()` : null}, ${o.agendamentoId ?? null}, ${o.valorTotal ?? null}, ${o.clienteId ?? null})`)
   return id
 }
 
@@ -169,6 +169,7 @@ after(async () => {
   await db.execute(sql`delete from api_chaves where hash = any(${sql.param(hashes)}::text[])`)
   await db.execute(sql`delete from ordens_servico where loja_id = any(${sql.param(lojaIds)}::uuid[])`)
   await db.execute(sql`delete from agendamentos where loja_id = any(${sql.param(lojaIds)}::uuid[])`)
+  await db.execute(sql`delete from clientes where conta_id = any(${sql.param(contaIds)}::uuid[])`)
   await db.execute(sql`delete from motos where loja_id = any(${sql.param(lojaIds)}::uuid[])`)
   await db.execute(sql`delete from pecas_catalogo where conta_id = any(${sql.param(contaIds)}::uuid[])`)
   await db.execute(sql`delete from modelos where modelo like 'M325 %'`)
@@ -479,6 +480,20 @@ test('OS no mesmo milissegundo saem pela ordem do id, mesmo com microssegundos d
   assert.equal(primeira.includes(menor), true, 'a OS de menor id fica na primeira página')
   assert.equal(primeira.includes(maior), false)
   assert.deepEqual(deste(paginas[1].ordens).map(o => o.id), [maior])
+})
+
+test('cliente do cadastro ligado à OS não sai: nome, documento, telefone, e-mail, endereço e o id dele ficam fora da resposta', async () => {
+  const cliente = await linha(sql`insert into clientes (nome, cpf_cnpj, celular, email, endereco, conta_id)
+    values ('ClienteCadastroSintetico325', '44455566677', '61988887777', 'cadastro325@teste.invalid', 'EnderecoCadastroSintetico325', ${A.contaId}) returning id`)
+  const agendamentoId = (await linha(sql`insert into agendamentos (loja_id, cliente_nome, cliente_fone, tipo_servico, data_hora_inicio)
+    values (${A1}, 'ClienteAgendamento325', '61999990000', 'revisao', '2026-05-13T13:00:00.000Z') returning id`)).id
+  const dia = '2026-05-13'
+  const os = await semearOS({ lojaId: A1, abertaPor: A.abertaPorId, dataAbertura: `${dia}T15:00:00.000Z`, clienteId: cliente.id, agendamentoId })
+  const { corpo, texto } = await chamar(periodo(dia, dia))
+  assert.ok(deste(corpo.ordens).some(o => o.id === os), 'controle: a OS com cliente do cadastro deveria sair')
+  for (const t of ['ClienteCadastroSintetico325', '44455566677', '61988887777', 'cadastro325@teste.invalid', 'EnderecoCadastroSintetico325', cliente.id, agendamentoId]) {
+    assert.equal(texto.includes(t), false, `"${t}" não pode sair na resposta`)
+  }
 })
 
 // Lê todas as páginas do período, na ordem que a API devolve, até não haver próxima.
