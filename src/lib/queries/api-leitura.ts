@@ -2,7 +2,7 @@
 // o filtro de loja fica dentro da consulta, e a lista de colunas sai da regra pura em @/lib/api-leitura.
 import { randomBytes } from 'node:crypto'
 import { after } from 'next/server'
-import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { apiAcessos, apiChaves, apiLimite, contas, grupos, lojas } from '@/lib/db/schema'
 import { sha256 } from '@/lib/assinatura/hash'
@@ -10,7 +10,7 @@ import { origemDaRequisicao } from '@/lib/log-acoes'
 import { iguaisEmTempoConstante, tokenDoBearer } from '@/lib/tempo-constante'
 import {
   chaveAceita, janelaDoMinuto, linhaDaLoja, linhaDoAcesso, passouDoLimite, planoDaTroca, respostaDeErro, respostaDeLimite,
-  type LinhaDoAcesso, type LojaDaApi, type PlanoDaTroca, type RespostaDaApi, type ResultadoDoMiolo,
+  type ErroDoMiolo, type LinhaDoAcesso, type LojaDaApi, type PlanoDaTroca, type RespostaDaApi, type ResultadoDoMiolo,
 } from '@/lib/api-leitura'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -73,6 +73,13 @@ export const lojasQueSaem = () => db
   .innerJoin(contas, eq(grupos.contaId, contas.id))
   .where(and(eq(lojas.lojaMotochefe, true), eq(grupos.ativo, true), isNull(contas.desativadaEm)))
 
+/**
+ * Custo só de Conta autorizada pelo admin_geral (ADR-0021). O CASE mora aqui: a consulta de vendas (#323) e a de
+ * metas e despesas (#326) usam a mesma regra. Exige `contas` no FROM da consulta.
+ */
+export const custoDaContaExpr = (custo: SQL) =>
+  sql<number | null>`CASE WHEN ${contas.autorizaCustoDespesaMeta} THEN (${custo})::float8 ELSE NULL END`
+
 /** Lojas que saem na API. Inativa continua aparecendo, com ativa falso. */
 export async function listarLojasDaApi(): Promise<LojaDaApi[]> {
   const linhas = await db
@@ -119,12 +126,13 @@ function registrarDepois(linha: LinhaDoAcesso): void {
 /**
  * Casca de toda rota da API. Ordem: chave, limite, miolo, registro. Sem chave, chave errada, revogada ou
  * vencida: a mesma resposta 401. Acima do limite da janela: 429 com Retry-After. Falha no miolo vira 500 com
- * a frase fixa. Toda chamada, inclusive a recusada, gera uma linha em api_acessos.
+ * a frase fixa. Erro de parâmetro que o miolo devolve (ErroDoMiolo) vira a resposta da lista fixa, com o mesmo
+ * limite e o mesmo registro. Toda chamada, inclusive a recusada, gera uma linha em api_acessos.
  */
-export function comChaveDaApi<T extends ResultadoDoMiolo>(
+export function comChaveDaApi(
   headers: Headers,
   endpoint: string,
-  miolo: (chave: { id: string }) => Promise<T>,
+  miolo: (chave: { id: string }) => Promise<ResultadoDoMiolo | ErroDoMiolo>,
 ): Promise<RespostaDaApi> {
   const agora = new Date()
   const origem = origemDaRequisicao(headers)
@@ -142,7 +150,8 @@ export function comChaveDaApi<T extends ResultadoDoMiolo>(
     if (passouDoLimite(await contarPedido(chave.id, janelaDoMinuto(agora)))) {
       return registrar(chave.id, respostaDeLimite(agora))
     }
-    const resultado = await miolo(chave)
+    const resultado: ResultadoDoMiolo | ErroDoMiolo = await miolo(chave)
+    if ('erro' in resultado) return registrar(chave.id, respostaDeErro(resultado.erro))
     return registrar(chave.id, { status: 200, corpo: resultado.corpo }, resultado)
   }
   return buscarChaveAceita(tokenDoBearer(headers.get('authorization')), agora).then(

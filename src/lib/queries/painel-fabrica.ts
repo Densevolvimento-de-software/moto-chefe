@@ -13,7 +13,7 @@ import { periodoDoPainel, type LinhaEstoquePainel, type LojaPainel, type VendaPa
 
 // Mesma chave de ehMarcaDoPainel (@/lib/painel-fabrica): só letras, minúsculas. O
 // translate cobre o acento que o regexp sozinho apagaria ("Motochéfe" → "motochfe").
-const marcaDoPainel = () => sql`regexp_replace(lower(translate(${modelos.marca}, 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc')), '[^a-z]', '', 'g') = 'motochefe'`
+export const marcaDoPainel = () => sql`regexp_replace(lower(translate(${modelos.marca}, 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc')), '[^a-z]', '', 'g') = 'motochefe'`
 
 /** Loja MotoChefe: ativa, de grupo e Conta ativos, com login do portal da fábrica. */
 const lojaDoPainel = () => and(
@@ -23,13 +23,13 @@ const lojaDoPainel = () => and(
   isNull(contas.desativadaEm),
 )!
 
-const modeloExibido = sql<string>`upper(trim(${modelos.modelo}))`
-const corExibida = sql<string>`upper(trim(${motos.cor}))`
+export const modeloExibido = sql<string>`upper(trim(${modelos.modelo}))`
+export const corExibida = sql<string>`upper(trim(${motos.cor}))`
 
 // Valor da moto, bruto (#30, decisão do Luis de 17/11): na dev a venda ainda não tem frete nem acessório, então é o
 // valor da venda. Ponto único de propósito: quando o frete do pedido chegar (#796, feature/nf-endereco-entrega), esta
 // linha passa a ler `valorDaMotoNosRelatoriosExpr()`, a mesma base do relatório da fábrica.
-const valorDaMoto = sql<number>`${vendas.valor}::float8`
+export const valorDaMoto = sql<number>`${vendas.valor}::float8`
 
 export async function listarLojasDoPainel(): Promise<LojaPainel[]> {
   return db
