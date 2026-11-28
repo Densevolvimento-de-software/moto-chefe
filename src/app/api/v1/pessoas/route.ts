@@ -1,4 +1,4 @@
-// GET /api/v1/pessoas (#324): vendedores, mecânicos e auxiliares das lojas marcadas, com página por id. Sem sessão; a
+// GET /api/v1/pessoas (#324): vendedores, auxiliares, mecânicos e sócios das lojas marcadas, com página por id. Sem sessão; a
 // chave, o limite e o registro ficam na casca comChaveDaApi, porque o middleware não cobre /api.
 import { NextRequest, NextResponse } from 'next/server'
 import { lerCursorDePessoas } from '@/lib/api-leitura-pessoas'

@@ -1,6 +1,6 @@
 // Regra da API de pessoas (#324, ADR-0021). Puro: sem banco e sem relógio. "É pessoa que sai" é a única regra de quem
 // entra em Pessoas. A consulta repete a mesma regra em SQL (src/lib/queries/api-leitura-pessoas.ts) e o teste de banco
-// confere as duas com os mesmos usuários. Vendas de peça e OS usam esta função para decidir vendedor e técnico.
+// confere as duas com os mesmos usuários. Pensada para as vendas de peça e a OS usarem também (ainda não usam).
 import { usuarioComCargo, type CargoDoUsuario } from '@/lib/usuario-com-cargo'
 import { codificarCursorObjeto, decodificarCursorObjeto } from '@/lib/api-leitura-pagina'
 import { ehUuid } from '@/lib/uuid'

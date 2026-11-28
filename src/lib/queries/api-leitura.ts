@@ -79,7 +79,7 @@ export const lojasQueSaem = () => db
   .innerJoin(contas, eq(grupos.contaId, contas.id))
   .where(lojaQueSaiCond())
 
-/** Contas com ao menos uma loja que sai (#324, opção (a)): a Conta de sócio entra por aqui. Mesma regra de lojasQueSaem. */
+/** Contas com ao menos uma loja que sai: é por aqui que o sócio entra (#324). Mesma condição de lojasQueSaem. */
 export const contasQueSaem = () => db
   .select({ id: contas.id })
   .from(contas)
