@@ -57,7 +57,7 @@ async function chamar(query: string, token: string | null = TOKEN) {
 // CNPJ sintéticos. O do grupo A vem formatado, como o cadastro grava (grupos.cnpj é texto livre); os outros só com dígitos.
 const CNPJ = { a: '32.600.000/0001-11', b: '32600000000012', c: '32600000000013', d: '32600000000014', e: '32600000000015', f: '32600000000016' }
 // Como a resposta devolve o CNPJ: só dígitos.
-const CNPJ_SAIDA = { a: '32600000000011', f: '32600000000016' }
+const CNPJ_SAIDA = { a: CNPJ.a.replace(/\D/g, ''), f: CNPJ.f }
 const G = {} as Record<'A' | 'B' | 'C' | 'D' | 'E' | 'F', { contaId: string; grupoId: string; usuarioId: string }>
 const L = { a1: '', a2: '', b1: '', c1: '', d1: '', e1: '', f1: '' }
 let idLancadoNoBanco = ''
