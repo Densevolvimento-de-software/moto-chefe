@@ -139,6 +139,12 @@ async function ultimoUsoDaChave(chaveId: string, executor: Executor): Promise<Da
 }
 
 /**
+ * Condição de loja que sai (ADR-0021): marcada pelo admin_geral, de grupo ativo e de Conta não desativada. Única
+ * fonte: lojasQueSaem (ids de lojas) e contasQueSaem (Contas de sócio) usam esta mesma condição.
+ */
+const lojaQueSaiCond = () => and(eq(lojas.lojaMotochefe, true), eq(grupos.ativo, true), isNull(contas.desativadaEm))
+
+/**
  * Ids das lojas que saem na API: marcadas pelo admin_geral, de grupo ativo e Conta não desativada.
  * Quem lê dado de loja (vendas, OS, pessoas) filtra com `inArray(coluna, lojasQueSaem())`, sem copiar a regra.
  */
@@ -147,7 +153,15 @@ export const lojasQueSaem = () => db
   .from(lojas)
   .innerJoin(grupos, eq(lojas.grupoId, grupos.id))
   .innerJoin(contas, eq(grupos.contaId, contas.id))
-  .where(and(eq(lojas.lojaMotochefe, true), eq(grupos.ativo, true), isNull(contas.desativadaEm)))
+  .where(lojaQueSaiCond())
+
+/** Contas com ao menos uma loja que sai: é por aqui que o sócio entra (#324). Mesma condição de lojasQueSaem. */
+export const contasQueSaem = () => db
+  .select({ id: contas.id })
+  .from(contas)
+  .innerJoin(grupos, eq(grupos.contaId, contas.id))
+  .innerJoin(lojas, eq(lojas.grupoId, grupos.id))
+  .where(lojaQueSaiCond())
 
 /**
  * Conta que o admin_geral autorizou para custo, despesa e meta (ADR-0021). É a única regra: o WHERE de metas e
