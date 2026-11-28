@@ -283,8 +283,10 @@ test('duas trocas ao mesmo tempo: sobra uma atual e uma no prazo, e a chave anti
   }
 })
 
-// Duas gerações: a primeira grava uma chave atual sem terminar (transação aberta); a ação chamada depois fica presa
-// na trava dela, e quando a primeira termina, a ação recebe a frase de recarregar, pelo índice da chave atual.
+// Corrida pelo índice: uma linha de chave atual é inserida por fora da ação e fica sem commit. A ação não passa pela
+// trava dela (a outra transação não a pegou), tenta gravar, espera o índice e, quando a outra termina, recebe a frase
+// da corrida. Prova o caminho de segurança e que sobra uma só atual. Pela trava da ação, dois gerar em paralelo caem
+// no teste de "já existe" acima, então esta frase só aparece com a linha de fora.
 test('corrida de gerar: a segunda ação recebe a frase de recarregar, e sobra uma só chave atual', async () => {
   await zerarChaves()
   let pendente: Promise<unknown> | undefined
