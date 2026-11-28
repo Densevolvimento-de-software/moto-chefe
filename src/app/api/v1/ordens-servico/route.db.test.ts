@@ -456,6 +456,31 @@ test('501 OS com itens: 500 na primeira página com cursor e a 501ª na segunda,
   assert.equal(new Set(ours.map(o => o.id)).size, 501)
 })
 
+test('OS no último microssegundo do dia de Brasília entra nesse dia; a do instante seguinte entra no dia de amanhã', async () => {
+  const ultima = await semearOS({ lojaId: A1, abertaPor: A.abertaPorId, dataAbertura: '2026-05-11T02:59:59.999999Z' })
+  const primeira = await semearOS({ lojaId: A1, abertaPor: A.abertaPorId, dataAbertura: '2026-05-11T03:00:00.000000Z' })
+  const dia10 = deste((await chamar(periodo('2026-05-10', '2026-05-10'))).corpo.ordens).map(o => o.id)
+  const dia11 = deste((await chamar(periodo('2026-05-11', '2026-05-11'))).corpo.ordens).map(o => o.id)
+  assert.equal(dia10.includes(ultima), true, 'o último microssegundo de 10/05 deveria entrar em 10/05')
+  assert.equal(dia11.includes(ultima), false)
+  assert.equal(dia11.includes(primeira), true)
+  assert.equal(dia10.includes(primeira), false)
+})
+
+test('OS no mesmo milissegundo saem pela ordem do id, mesmo com microssegundos diferentes; o corte de página não repete nem perde', async () => {
+  const dia = '2026-05-12'
+  await semear501NoMesmoInstante(A1, A.abertaPorId, `${dia}T10:00:00.000000Z`, 499)
+  const [menor, maior] = [randomUUID(), randomUUID()].sort()
+  await semearOS({ id: maior, lojaId: A1, abertaPor: A.abertaPorId, dataAbertura: `${dia}T15:00:00.123100Z` })
+  await semearOS({ id: menor, lojaId: A1, abertaPor: A.abertaPorId, dataAbertura: `${dia}T15:00:00.123400Z` })
+  const paginas = await percorrer(periodo(dia, dia))
+  assert.equal(paginas.length, 2)
+  const primeira = deste(paginas[0].ordens).map(o => o.id)
+  assert.equal(primeira.includes(menor), true, 'a OS de menor id fica na primeira página')
+  assert.equal(primeira.includes(maior), false)
+  assert.deepEqual(deste(paginas[1].ordens).map(o => o.id), [maior])
+})
+
 // Lê todas as páginas do período, na ordem que a API devolve, até não haver próxima.
 async function percorrer(query: string): Promise<Corpo[]> {
   const paginas: Corpo[] = []
