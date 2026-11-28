@@ -1,6 +1,7 @@
 // Regra da API de metas (#326, ADR-0021). Puro: sem banco e sem relógio. Período em AAAA-MM; o mês é o do
 // calendário (a meta é ano e mês, não instante).
 import { codificarCursorObjeto, decodificarCursorObjeto } from '@/lib/api-leitura-pagina'
+import { ehUuid } from '@/lib/uuid'
 import { INICIO_DO_HISTORICO } from '@/lib/api-leitura-vendas'
 import { ultimoDiaIsoDoMes } from '@/lib/calendario'
 
@@ -9,7 +10,6 @@ export const LIMITE_MESES_DO_PERIODO = 12
 
 const INICIO_DO_HISTORICO_MES = INICIO_DO_HISTORICO.slice(0, 7)
 const MES_RE = /^\d{4}-(0[1-9]|1[0-2])$/
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export type PeriodoMeses = { de: string; ate: string }
 /** Ordem da página: ano, mês e id da loja. A página seguinte começa depois desta chave. */
@@ -58,7 +58,7 @@ export function lerCursorDeMetas(
   if (valor === null || Object.keys(valor).sort().join(',') !== 'a,l,m') return { ok: false }
   const { a, m, l } = valor
   if (typeof a !== 'number' || !Number.isSafeInteger(a) || typeof m !== 'number' || !Number.isSafeInteger(m)) return { ok: false }
-  if (m < 1 || m > 12 || typeof l !== 'string' || !UUID_RE.test(l)) return { ok: false }
+  if (m < 1 || m > 12 || typeof l !== 'string' || !ehUuid(l)) return { ok: false }
   const mes = `${a}-${String(m).padStart(2, '0')}`
   if (!MES_RE.test(mes) || mes < periodo.de || mes > periodo.ate) return { ok: false }
   return { ok: true, cursor: { a, m, l } }
