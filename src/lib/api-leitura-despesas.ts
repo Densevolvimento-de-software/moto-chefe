@@ -13,8 +13,10 @@ export type LinhaDespesaDaApi = Omit<LinhaDespesa, 'grupoId'>
 
 /**
  * Ordem da página: mês; depois loja (t=0) antes da empresa geral (t=1); depois o id da loja ou o id do grupo (k, UUID);
- * depois a categoria. O cursor é opaco: leva só essa ordem, que não é segredo. Ele não abre nada, porque a chave da API
- * continua a ser conferida e cada consulta refaz o filtro de loja e de Conta.
+ * depois a categoria.
+ * O cursor é JSON em base64url: dá para ler. Leva só a posição nessa ordem: mês, categoria e id da loja, que a resposta
+ * já mostra; e o id do grupo, que a resposta não devolve mas não abre nada. Não é segredo. Cada campo é validado a cada
+ * pedido (tipo, formato e período), e a chave da API, a Conta e a loja são conferidas de novo.
  */
 export type CursorDespesa = { a: number; m: number; t: 0 | 1; k: string; c: string }
 
