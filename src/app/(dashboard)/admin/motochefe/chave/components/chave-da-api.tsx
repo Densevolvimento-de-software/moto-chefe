@@ -49,8 +49,9 @@ export function ChaveDaApi({ situacao, agora }: { situacao: SituacaoDaChave; ago
     setPedido(null)
     setConfirmacao(null)
     if (r.ok) {
+      // Gerar e trocar mostram a chave nova; revogar a tira, porque ela não vale mais.
       setCopia(null)
-      if (r.chave) setChaveNova(r.chave)
+      setChaveNova(r.chave ?? null)
       return
     }
     setErro({ texto: r.erro, pedido: p, recarregar: FRASES_DE_RECARREGAR.includes(r.erro) })

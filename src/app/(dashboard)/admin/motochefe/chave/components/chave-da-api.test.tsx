@@ -136,6 +136,16 @@ test('revogar pede confirmação com o aviso do efeito; cancelar não chama; con
   assert.equal(revogar.mock.callCount(), 1)
 })
 
+test('revogar tira da tela a chave que acabou de aparecer: ela não vale mais', async () => {
+  const { clique } = await montar(COM_ANTERIOR)
+  await clique(botao('Trocar chave'))
+  await clique(botaoDoDialogo('Trocar chave'))
+  assert.ok(texto().includes(CHAVE_TESTE), 'a chave nova apareceu')
+  await clique(botao('Revogar chave'))
+  await clique(botaoDoDialogo('Revogar chave'))
+  assert.equal(texto().includes(CHAVE_TESTE), false, 'a chave revogada sai da tela')
+})
+
 test('enquanto envia, os botões ficam travados e Escape não fecha a confirmação', async () => {
   let liberar: () => void = () => {}
   resposta = () => new Promise<Resposta>(r => { liberar = () => r({ ok: true }) })
