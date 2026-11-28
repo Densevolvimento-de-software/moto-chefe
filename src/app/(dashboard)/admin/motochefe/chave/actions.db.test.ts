@@ -25,7 +25,12 @@ mock.module('@/lib/supabase/server', { namedExports: {
     data: logadoComo ? { claims: { sub: logadoComo, app_metadata: {} } } : null,
   }) } }),
 } })
-mock.module('next/cache', { namedExports: { revalidatePath: () => {}, revalidateTag: () => {} } })
+// Falha da revalidação da tela, depois da gravação: o teste liga e desliga.
+let revalidaFalha = false
+mock.module('next/cache', { namedExports: {
+  revalidatePath: () => { if (revalidaFalha) throw new Error('revalidação falhou') },
+  revalidateTag: () => {},
+} })
 
 type Actions = typeof import('./actions')
 type Rota = typeof import('@/app/api/v1/lojas/route')
@@ -151,6 +156,20 @@ test('duas gerações ao mesmo tempo: cada resposta é chave ou frase conhecida,
     else assert.ok([FRASE_CHAVE_TROCADA_AGORA, FRASE_ERRO_GERAR].includes(r.erro), r.erro)
   }
   assert.equal((await chavesDoAdmin(sql`valida_ate is null and revogada_em is null`)).length, 1)
+})
+
+// Revalidar a tela depois da gravação não pode trocar a resposta por uma frase de erro: a chave já existe.
+test('revalidar a tela falha depois da gravação: a chave nova ainda sai, sem frase de erro', async () => {
+  await db.execute(sql`update api_chaves set revogada_em = now() where revogada_em is null`)
+  revalidaFalha = true
+  try {
+    const resposta = await actions.gerarOuTrocarChaveAction()
+    assert.equal(resposta.ok, true, resposta.ok ? '' : resposta.erro)
+    if (!resposta.ok) return
+    assert.equal((await chamarApi(resposta.dados.chave)).status, 200, 'a chave gerada passa')
+  } finally {
+    revalidaFalha = false
+  }
 })
 
 after(async () => {

@@ -13,22 +13,33 @@ import { acao, RecusaUsuario, type ResultadoAction } from '@/lib/resultado-actio
 // Só a frase: a mensagem do erro pode trazer a consulta com os parâmetros.
 const FRASE_DE_LOG_GERAR = 'chave da API: gerar ou trocar não gravou'
 const FRASE_DE_LOG_REVOGAR = 'chave da API: revogar não gravou'
+const FRASE_DE_LOG_REVALIDAR = 'chave da API: revalidar a tela falhou (a gravação já saiu)'
+
+// A gravação já saiu. Se revalidar falhar, a resposta segue com a chave: lançar aqui faria a tela perder a chave, que só aparece uma vez.
+function revalidarTela(): void {
+  try {
+    revalidatePath(ROTA_CHAVE_MOTOCHEFE)
+  } catch {
+    console.error(FRASE_DE_LOG_REVALIDAR)
+  }
+}
 
 export async function gerarOuTrocarChaveAction(): Promise<ResultadoAction<{ chave: string }>> {
   return acao(async () => {
     const admin = await exigirAdminGeral()
+    let troca: Awaited<ReturnType<typeof gerarOuTrocarChave>>
     try {
-      const troca = await db.transaction(async tx => {
+      troca = await db.transaction(async tx => {
         const nova = await gerarOuTrocarChave({ geradaPor: admin.id, agora: new Date() }, tx)
         await registrarAcaoSensivel({ tipo: nova.tipo, usuarioId: admin.id, detalhe: {} }, tx)
         return nova
       })
-      revalidatePath(ROTA_CHAVE_MOTOCHEFE)
-      return { chave: troca.chave }
     } catch (erro) {
       console.error(FRASE_DE_LOG_GERAR)
       throw new RecusaUsuario(fraseDoErroDeGerar(erro))
     }
+    revalidarTela()
+    return { chave: troca.chave }
   })
 }
 
@@ -42,10 +53,10 @@ export async function revogarChaveAction(): Promise<ResultadoAction> {
           await registrarAcaoSensivel({ tipo: 'api_chave_revogada', usuarioId: admin.id, detalhe: { revogadas: quantas } }, tx)
         }
       })
-      revalidatePath(ROTA_CHAVE_MOTOCHEFE)
     } catch {
       console.error(FRASE_DE_LOG_REVOGAR)
       throw new RecusaUsuario(FRASE_ERRO_REVOGAR)
     }
+    revalidarTela()
   })
 }
