@@ -12,11 +12,13 @@ const { desmontar: desmontarDom } = montarDom()
 after(desmontarDom)
 
 type Resposta = { ok: true; dados?: { chave: string } } | { ok: false; erro: string }
-const PADRAO = async (): Promise<Resposta> => ({ ok: true })
-let resposta: () => Promise<Resposta> = PADRAO
-const gerar = mock.fn(async (): Promise<Resposta> => resposta())
-const trocar = mock.fn(async (): Promise<Resposta> => resposta())
-const revogar = mock.fn(async (): Promise<Resposta> => resposta())
+type Acao = 'gerar' | 'trocar' | 'revogar'
+// Padrão igual à action real: gerar e trocar devolvem uma chave válida; revogar devolve só o ok.
+const PADRAO = async (acao: Acao): Promise<Resposta> => (acao === 'revogar' ? { ok: true } : { ok: true, dados: { chave: CHAVE_TESTE } })
+let resposta: (acao: Acao) => Promise<Resposta> = PADRAO
+const gerar = mock.fn(async (): Promise<Resposta> => resposta('gerar'))
+const trocar = mock.fn(async (): Promise<Resposta> => resposta('trocar'))
+const revogar = mock.fn(async (): Promise<Resposta> => resposta('revogar'))
 mock.module('../actions', { namedExports: {
   gerarChaveAction: () => gerar(),
   trocarChaveAction: () => trocar(),
@@ -119,6 +121,7 @@ test('trocar com chave anterior no prazo: a confirmação diz até quando ela va
   assert.ok(texto().includes('A chave anterior, que vale até 29/11/2026, 03:00, para na hora.'))
   await clique(botaoDoDialogo('Trocar chave'))
   assert.equal(trocar.mock.callCount(), 1)
+  assert.ok(texto().includes(CHAVE_TESTE), 'a chave nova aparece depois de trocar')
 })
 
 test('revogar pede confirmação com o aviso do efeito; cancelar não chama; confirmar chama uma vez', async () => {
