@@ -341,3 +341,13 @@ test('página seguinte que começa num mês: o mês anterior, já paginado, não
   assert.equal(todas.length, 505)
   assert.equal(new Set(todas.map(chaveDaLinha)).size, todas.length)
 })
+
+test('categoria que só existe no catálogo de outra Conta: a despesa sai com o grupo do DRE "outras", nunca com a classificação de outra Conta', async () => {
+  // A categoria está no catálogo da Conta F (com grupo do DRE 'pessoal'), mas a Conta A não a cadastrou.
+  await categoria(G.F.grupoId, 'Categoria Outra Conta DS326', 'pessoal')
+  await lancar('A', { lojaId: L.a1, categoria: 'Categoria Outra Conta DS326', valor: 61, data: '2034-03-05' })
+  const { status, corpo } = await chamar('?de=2034-03&ate=2034-03')
+  assert.equal(status, 200)
+  const nossas = (corpo.despesas ?? []).filter(l => l.loja?.id === L.a1)
+  assert.deepEqual(nossas.map(l => [l.categoria, l.grupoDre, l.valor]), [['Categoria Outra Conta DS326', 'outras', 61]])
+})
