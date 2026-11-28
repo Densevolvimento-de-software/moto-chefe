@@ -179,6 +179,7 @@ test('frase de "já existe chave": o botão é Recarregar a página e só atuali
   await clique(botao('Recarregar a página'))
   assert.equal(atualizacoes, 1)
   assert.equal(gerar.mock.callCount(), 1)
+  assert.equal(texto().includes(FRASE_JA_TEM_CHAVE), false, 'o erro sai da tela ao recarregar')
 })
 
 test('a chave some ao navegar: desmontada, não volta, e não fica na URL nem no armazenamento', async () => {

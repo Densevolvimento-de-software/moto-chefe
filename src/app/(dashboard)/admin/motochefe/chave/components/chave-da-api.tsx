@@ -57,7 +57,12 @@ export function ChaveDaApi({ situacao, agora }: { situacao: SituacaoDaChave; ago
     setErro({ texto: r.erro, pedido: p, recarregar: FRASES_DE_RECARREGAR.includes(r.erro) })
   }
 
-  // A frase de recarregar não repete a ação: a tela atualizada é que resolve.
+  // A frase de recarregar não repete a ação: a tela atualizada é que resolve, e o erro antigo sai.
+  function recarregarPagina() {
+    setErro(null)
+    router.refresh()
+  }
+
   function tentarDeNovo(e: Erro) {
     setErro(null)
     if (e.pedido === 'trocar') setConfirmacao('trocar')
@@ -84,7 +89,7 @@ export function ChaveDaApi({ situacao, agora }: { situacao: SituacaoDaChave; ago
         <MensagemDeErro
           texto={erro.texto}
           rotulo={erro.recarregar ? 'Recarregar a página' : 'Tentar de novo'}
-          onTentar={() => (erro.recarregar ? router.refresh() : tentarDeNovo(erro))}
+          onTentar={() => (erro.recarregar ? recarregarPagina() : tentarDeNovo(erro))}
         />
       )}
 
