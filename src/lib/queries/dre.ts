@@ -4,7 +4,7 @@ import {
   despesas, despesasOpenFinance,
   lancamentosCaixa,
 } from '@/lib/db/schema'
-import { and, eq, gte, inArray, lt, ne, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, lt, ne, or, sql, type AnyColumn } from 'drizzle-orm'
 import { rotuloMesCurtoAA } from '@/lib/data-venda'
 import { custoPixDaVendaExpr, pixDaOs, pixDaPeca, tarifaPixDaVendaExpr, valorLiquidoExpr } from './valor-liquido'
 import { LINHA_PIX } from '@/lib/conciliacao-cartao'
@@ -38,7 +38,7 @@ const bordas = (ano: number, mes: number) => ({
  * no catálogo de despesa (hoje "Luz" e "Material escritório") não tem grupo e cai
  * em Outras — a tela lista quem caiu lá, para não virar buraco silencioso.
  */
-async function mapaGrupoPorCategoria(grupoId: string) {
+export async function mapaGrupoPorCategoria(grupoId: string) {
   const linhas = await categoriasDespesaDoGrupo(db, grupoId)
   return new Map(linhas.map(l => [chaveCategoria(l.nome), grupoOuOutras(l.grupoDre)]))
 }
@@ -366,8 +366,12 @@ export async function dreEvolucao(opts: {
  * `somarDespesas` — vão junto porque a exportação precisa delas e uma segunda
  * consulta só para elas abriria a porta para as duas divergirem.
  */
-export async function fontesDespesaDoPeriodo(grupoId: string, lojaIds: string[], inicio: Date, fim: Date) {
+export async function fontesDespesaDoPeriodo(
+  grupoId: string, lojaIds: string[], inicio: Date, fim: Date, opcoes: { soLojas?: boolean } = {},
+) {
   const config = await configDespesas(grupoId)
+  // A API (#326) pede só as lojas dela e a empresa geral (loja nula). Sem a opção o filtro some e o DRE lê o grupo todo.
+  const filtroLojas = (coluna: AnyColumn) => (opcoes.soLojas ? or(isNull(coluna), inArray(coluna, lojaIds)) : undefined)
   const [banco, manuais, caixa] = await Promise.all([
     db.select({
         data: despesasOpenFinance.data,
@@ -381,6 +385,7 @@ export async function fontesDespesaDoPeriodo(grupoId: string, lojaIds: string[],
       .from(despesasOpenFinance)
       .where(and(
         eq(despesasOpenFinance.grupoId, grupoId),
+        filtroLojas(despesasOpenFinance.lojaId),
         gte(despesasOpenFinance.data, inicio),
         lt(despesasOpenFinance.data, fim),
       )),
@@ -400,6 +405,7 @@ export async function fontesDespesaDoPeriodo(grupoId: string, lojaIds: string[],
       .from(despesas)
       .where(and(
         eq(despesas.grupoId, grupoId),
+        filtroLojas(despesas.lojaId),
         gte(despesas.data, inicio.toISOString().slice(0, 10)),
         lt(despesas.data, fim.toISOString().slice(0, 10)),
         sql`NOT EXISTS (SELECT 1 FROM ${despesasOpenFinance} o WHERE o.despesa_id = ${despesas.id})`,

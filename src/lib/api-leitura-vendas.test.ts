@@ -1,9 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  codificarCursor, cortarPagina, custoDaVenda, cursorDaUltimaLinha, lerCursor, linhaDaVendaMoto, periodoDaApi,
+  codificarCursor, custoDaVenda, cursorDaUltimaLinha, lerCursor, linhaDaVendaMoto, periodoDaApi,
   type LinhaVendaMotoBanco, type Periodo,
 } from './api-leitura-vendas'
+import { cortarPagina } from './api-leitura-pagina'
 
 const PERIODO: Periodo = { de: '2026-11-01', ate: '2026-11-27' }
 const base64 = (valor: unknown) => Buffer.from(JSON.stringify(valor)).toString('base64url')

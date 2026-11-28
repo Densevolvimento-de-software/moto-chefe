@@ -84,6 +84,12 @@ function pad(n: number): string { return String(n).padStart(2, '0') }
 function ymd(y: number, m: number, d: number): string { return `${y}-${pad(m)}-${pad(d)}` }
 function diasNoMes(y: number, m: number): number { return new Date(Date.UTC(y, m, 0)).getUTCDate() }
 
+/** Último dia do mês AAAA-MM, como AAAA-MM-DD. É o único lugar que monta essa data: as telas e a API chamam daqui. */
+export function ultimoDiaIsoDoMes(mes: string): string {
+  const [y, m] = mes.split('-').map(Number)
+  return ymd(y, m, diasNoMes(y, m))
+}
+
 /** Soma `n` dias a 'YYYY-MM-DD' (aritmética em UTC, sem fuso local). */
 export function addDias(s: string, n: number): string {
   const [y, m, d] = parseYmd(s)
