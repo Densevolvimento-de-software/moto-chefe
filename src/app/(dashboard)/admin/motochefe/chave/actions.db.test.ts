@@ -283,10 +283,11 @@ test('duas trocas ao mesmo tempo: sobra uma atual e uma no prazo, e a chave anti
   }
 })
 
-// Corrida pelo índice: uma linha de chave atual é inserida por fora da ação e fica sem commit. A ação não passa pela
-// trava dela (a outra transação não a pegou), tenta gravar, espera o índice e, quando a outra termina, recebe a frase
-// da corrida. Prova o caminho de segurança e que sobra uma só atual. Pela trava da ação, dois gerar em paralelo caem
-// no teste de "já existe" acima, então esta frase só aparece com a linha de fora.
+// Corrida pelo índice: uma linha de chave atual é inserida por fora da ação e fica sem commit (a transação de fora não
+// pegou a trava de gravação). A ação pega a trava, que está livre; não vê a linha não commitada, então a checagem passa;
+// o insert espera o índice. Quando a transação de fora termina, o índice barra a ação (23505) e ela devolve a frase da
+// corrida. Prova que essa frase sai desse caminho e que sobra uma só atual. Dois gerar em paralelo, pela trava da ação,
+// caem no teste de "já existe" acima.
 test('corrida de gerar: a segunda ação recebe a frase de recarregar, e sobra uma só chave atual', async () => {
   await zerarChaves()
   let pendente: Promise<unknown> | undefined
