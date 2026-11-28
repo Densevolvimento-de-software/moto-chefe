@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { agruparContas, lerAutorizacao, lerMarcacao, resumoDaTela, type LinhaDaConta } from './motochefe-marcacao'
+import { agruparContas, contarMarcadas, erroAindaVale, lerAutorizacao, lerMarcacao, resumoDaTela, valorDaLinha, type ContaDaTela, type LinhaDaConta } from './motochefe-marcacao'
 
 const LOJA_1 = '11111111-1111-4111-8111-111111111111'
 const LOJA_2 = '11111111-1111-4111-8111-222222222222'
@@ -52,4 +52,36 @@ test('resumo da tela bate com o protótipo: 3 de 7, 2 de 3 e 1 de 3', () => {
     { id: 'c', nome: 'C', autorizada: false, lojas: [loja(false)] },
   ])
   assert.deepEqual(resumo, { lojasMarcadas: 3, lojasTotal: 7, contasComMarcada: 2, contasTotal: 3, contasAutorizadas: 1 })
+})
+
+test('contar marcadas: conta só as lojas marcadas, e uma Conta sem loja dá zero', () => {
+  const loja = (marcada: boolean) => ({ id: LOJA_1, nome: 'L', cidade: 'C', ativa: true, marcada })
+  assert.equal(contarMarcadas([loja(true), loja(false), loja(true)]), 2)
+  assert.equal(contarMarcadas([]), 0)
+})
+
+const CONTAS_DA_REGRA: ContaDaTela[] = [
+  { id: CONTA_A, nome: 'A', autorizada: true, lojas: [{ id: LOJA_1, nome: 'L1', cidade: 'C', ativa: true, marcada: false }] },
+  { id: CONTA_B, nome: 'B', autorizada: false, lojas: [] },
+]
+
+test('valor da linha: a loja e a Conta pelo id; linha que sumiu não tem valor', () => {
+  assert.equal(valorDaLinha(CONTAS_DA_REGRA, { tipo: 'loja', id: LOJA_1 }), false)
+  assert.equal(valorDaLinha(CONTAS_DA_REGRA, { tipo: 'conta', id: CONTA_A }), true)
+  assert.equal(valorDaLinha(CONTAS_DA_REGRA, { tipo: 'loja', id: LOJA_2 }), undefined)
+})
+
+// O erro vale enquanto a linha segue como estava antes do pedido que falhou.
+test('o erro ainda vale: só enquanto a linha segue como estava antes do pedido', () => {
+  // Falhou ao marcar a loja (antes: desmarcada). A loja segue desmarcada: vale.
+  assert.equal(erroAindaVale({ tipo: 'loja', id: LOJA_1, valor: true }, CONTAS_DA_REGRA), true)
+  // Outro admin já marcou: o pedido ficou velho, o erro não vale.
+  const marcada = CONTAS_DA_REGRA.map(c => ({ ...c, lojas: c.lojas.map(l => ({ ...l, marcada: true })) }))
+  assert.equal(erroAindaVale({ tipo: 'loja', id: LOJA_1, valor: true }, marcada), false)
+  // A loja sumiu da lista: o erro não vale.
+  assert.equal(erroAindaVale({ tipo: 'loja', id: LOJA_2, valor: true }, CONTAS_DA_REGRA), false)
+  // Falhou ao tirar a autorização (antes: autorizada). Segue autorizada: vale. Depois de tirada por outro: não vale.
+  assert.equal(erroAindaVale({ tipo: 'conta', id: CONTA_A, valor: false }, CONTAS_DA_REGRA), true)
+  assert.equal(erroAindaVale({ tipo: 'conta', id: CONTA_B, valor: true }, CONTAS_DA_REGRA), true)
+  assert.equal(erroAindaVale({ tipo: 'conta', id: CONTA_A, valor: true }, CONTAS_DA_REGRA), false)
 })
